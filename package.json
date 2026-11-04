@@ -1,0 +1,13 @@
+{
+  "name": "hanhukuk",
+  "version": "1.1.1",
+  "private": true,
+  "description": "Türkçe hukuk ve tahsilat takip uygulaması",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node outputs/icrapro/server.cjs",
+    "test": "node tests/run.cjs"
+  }
+}

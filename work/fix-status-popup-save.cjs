@@ -1,0 +1,1 @@
+const fs=require('fs'),p='outputs/icrapro/dashboard.js';let s=fs.readFileSync(p,'utf8');s=s.replace("originalSubmit.call(form,e);if(!source.contains(form)){dialog.close()}","originalSubmit.call(form,e);const current=db.docs.find(d=>d.id===source.dataset.borrowerId);if(current&&debtorStatus(current)===form.elements.status.value){dialog.close()}");fs.writeFileSync(p,s);

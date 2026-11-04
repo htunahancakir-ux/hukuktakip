@@ -1,0 +1,1 @@
+const fs=require('fs');const p='outputs/icrapro/dashboard.js';let s=fs.readFileSync(p,'utf8');const old="enforcement:debtorStatus(d)==='İcra'?'İcrada':d.enforcementTransferredAt?'İcraya sevk edildi':'İcrada değil'";if(!s.includes(old))throw Error('report status missing');s=s.replace(old,"enforcement:debtorStatus(d)==='İcra'?'İcra Açıldı':'- İdari Takip'");fs.writeFileSync(p,s);

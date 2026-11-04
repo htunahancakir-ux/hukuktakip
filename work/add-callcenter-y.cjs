@@ -1,0 +1,1 @@
+const fs=require('fs');const p='outputs/icrapro/personnel.js';let s=fs.readFileSync(p,'utf8');s=s.replaceAll("['Yönetici','Pazarlama','Callcenter','Muhasebe','İcra','Evrak Takip','Diğer']","['Yönetici','Pazarlama','Callcenter','Call Center-Y','Muhasebe','İcra','Evrak Takip','Diğer']");fs.writeFileSync(p,s);

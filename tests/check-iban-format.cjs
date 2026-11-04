@@ -1,0 +1,2 @@
+const assert=require('assert/strict'),{formatIbanNumber,normalizePhoneRecords}=require('../outputs/icrapro/phone-format.js');assert.equal(formatIbanNumber('tr'+'0'.repeat(24)),'TR00 0000 0000 0000 0000 0000 00');assert.equal(formatIbanNumber('TR00 0000 0000 0000 0000 0000 00'),'TR00 0000 0000 0000 0000 0000 00');assert.equal(formatIbanNumber(''),'');const data={iban:'tr'+'0'.repeat(24)};normalizePhoneRecords(data);assert.equal(data.iban,'TR00 0000 0000 0000 0000 0000 00');console.log('PASS: IBAN four-character grouping, uppercase and blank values.');
+

@@ -1,0 +1,1 @@
+const fs=require('fs');const p='outputs/icrapro/dashboard.js';let s=fs.readFileSync(p,'utf8');s=s.replace("const legalRateVerifiedThrough='2026-10-29';","const legalRateVerifiedThrough='2026-11-02';");s=s.replace("end:'2026-10-30',rate:31","end:'2026-11-03',rate:31");fs.writeFileSync(p,s);

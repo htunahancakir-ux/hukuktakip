@@ -1,0 +1,1 @@
+﻿const fs=require('fs');for(const p of ['outputs/icrapro/app.js','outputs/icrapro/dashboard.js']){let s=fs.readFileSync(p,'utf8');s=s.replaceAll("['Derdest','İnfaz','İade'","['Derdest','İnfaz','İade','İcra'").replaceAll("['Derdest','İade','İnfaz']","['Derdest','İade','İnfaz','İcra']");fs.writeFileSync(p,s)}

@@ -1,0 +1,5 @@
+HANHUKUK — Windows portable package
+
+Run BASLAT.cmd after extracting the complete folder.
+Credential-bearing state was removed for GitHub publication. Create a new account at first launch.
+The runtime directory contains Node.js.

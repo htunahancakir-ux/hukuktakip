@@ -1,0 +1,1 @@
+const fs=require('fs');for(const file of ['dashboard.js','access-server.cjs']){const p='outputs/icrapro/'+file;let s=fs.readFileSync(p,'utf8');const old="'Ödemeyi Reddetti','Raporlandı','Diğer'";if(!s.includes(old))throw Error(file+': seçenekler bulunamadı');s=s.replace(old,"'Ödemeyi Reddetti','Raporlandı','İcra Raporu','Diğer'");fs.writeFileSync(p,s)}

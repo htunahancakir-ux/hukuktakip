@@ -1,0 +1,1 @@
+const fs=require('fs');const p='outputs/icrapro/dashboard.js';let s=fs.readFileSync(p,'utf8');s=s.replace(".join('\\r\\n')],url=URL.createObjectURL(blob)",".join('\\r\\n')],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob)");fs.writeFileSync(p,s);

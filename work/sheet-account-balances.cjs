@@ -1,0 +1,1 @@
+const fs=require('fs');const p='outputs/icrapro/access-server.cjs';let s=fs.readFileSync(p,'utf8');s=s.replace("['icrapro-v1','hanhukuk-finance-v1'].includes(key)","['icrapro-v1','hanhukuk-finance-v1','hanhukuk-accounting-v1'].includes(key)");fs.writeFileSync(p,s);

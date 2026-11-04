@@ -1,0 +1,13 @@
+const fs=require('fs');const p='outputs/icrapro/dashboard.js';let s=fs.readFileSync(p,'utf8');s=s.replace('setupBorrowerDragging(dialog);const head=', 'setupBorrowerDragging(dialog);setupBorrowerCornerResize(dialog);const head=');s+=`
+function setupBorrowerCornerResize(dialog){for(const corner of ['nw','ne','sw','se']){const handle=document.createElement('div');handle.className='sheet-corner-resize sheet-corner-'+corner;handle.setAttribute('aria-hidden','true');dialog.append(handle);handle.onpointerdown=e=>{if(e.button!==0||dialog.classList.contains('sheet-maximized'))return;e.preventDefault();e.stopPropagation();const r=dialog.getBoundingClientRect(),startX=e.clientX,startY=e.clientY;dialog.style.position='fixed';dialog.style.margin='0';dialog.style.right='auto';dialog.style.bottom='auto';dialog.style.left=r.left+'px';dialog.style.top=r.top+'px';dialog.style.width=r.width+'px';dialog.style.height=r.height+'px';handle.setPointerCapture(e.pointerId);const move=event=>{const west=corner.includes('w'),north=corner.includes('n'),minWidth=Math.min(680,window.innerWidth*.94),minHeight=Math.min(360,window.innerHeight*.9);let left=r.left,right=r.right,top=r.top,bottom=r.bottom;if(west)left=Math.max(0,Math.min(right-minWidth,r.left+event.clientX-startX));else right=Math.min(window.innerWidth,Math.max(left+minWidth,r.right+event.clientX-startX));if(north)top=Math.max(0,Math.min(bottom-minHeight,r.top+event.clientY-startY));else bottom=Math.min(window.innerHeight,Math.max(top+minHeight,r.bottom+event.clientY-startY));dialog.style.left=left+'px';dialog.style.top=top+'px';dialog.style.width=right-left+'px';dialog.style.height=bottom-top+'px'};const stop=()=>{handle.removeEventListener('pointermove',move);handle.removeEventListener('pointerup',stop);handle.removeEventListener('pointercancel',stop);try{handle.releasePointerCapture(e.pointerId)}catch{}};handle.addEventListener('pointermove',move);handle.addEventListener('pointerup',stop);handle.addEventListener('pointercancel',stop)}}}
+`;fs.writeFileSync(p,s);fs.appendFileSync('outputs/icrapro/style.css',`
+#borrowerDetail.compact-borrower-sheet{resize:none}
+.sheet-corner-resize{position:sticky;display:block;width:18px;height:18px;z-index:20;touch-action:none;user-select:none}
+.sheet-corner-nw,.sheet-corner-ne{top:0;margin-bottom:-18px;float:left}
+.sheet-corner-ne{float:right}
+.sheet-corner-sw,.sheet-corner-se{bottom:0;float:left;margin-top:-18px}
+.sheet-corner-se{float:right}
+.sheet-corner-nw,.sheet-corner-se{cursor:nwse-resize}
+.sheet-corner-ne,.sheet-corner-sw{cursor:nesw-resize}
+.sheet-maximized .sheet-corner-resize{display:none}
+`);

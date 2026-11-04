@@ -1,0 +1,1 @@
+const fs=require('fs');const p='outputs/icrapro/access-server.cjs';let s=fs.readFileSync(p,'utf8');s=s.replace("?.total||Math.round(Number(staff?.bonus||0)*100)","?.total??Math.round(Number(staff?.bonus||0)*100)");fs.writeFileSync(p,s);

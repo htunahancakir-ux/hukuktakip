@@ -1,0 +1,1 @@
+const fs=require('fs');const p='outputs/icrapro/personnel.js';let s=fs.readFileSync(p,'utf8');s=s.replace("const payroll=document.createElement('div');payroll.hidden=true;", "general.querySelectorAll('h3').forEach(h=>{if(h.textContent==='Maaş ve Prim 1')h.remove()});const payroll=document.createElement('div');payroll.hidden=true;");fs.writeFileSync(p,s);

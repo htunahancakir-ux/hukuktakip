@@ -1,0 +1,1 @@
+const fs=require('fs');const p='outputs/icrapro/dashboard.js';let s=fs.readFileSync(p,'utf8');const old="['Borçlu Masrafı',f.expenses]";if(!s.includes(old))throw Error('Masraf başlığı bulunamadı');s=s.replace(old,"['Dosya Masrafı',f.expenses]");fs.writeFileSync(p,s);
