@@ -1,8 +1,8 @@
 # Archive import
 
-Source: Codex.rar, 2026-11-04. Original project layout retained at repository root, including development scripts and portable runtime.
+Source: Codex.rar, 2026-11-04. Original project layout retained at repository root, including development scripts. ZIP archives and EXE files are excluded at the user's request.
 
-Excluded credential-bearing application state and historical state backups (including copies inside ZIPs), environment and credential files. Original archive retained locally. Archives below outputs are sanitized copies.
+Excluded credential-bearing application state and historical state backups (including copies inside ZIPs), environment and credential files. Original archive and portable packages are retained locally and are not part of the current repository tree.
 
 Excluded paths:
 - `work/github-backup-package/work/hanhukuk-state.json`

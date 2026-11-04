@@ -13,3 +13,5 @@ node_modules/
 *.jks
 credentials*
 secrets*
+*.zip
+*.exe
