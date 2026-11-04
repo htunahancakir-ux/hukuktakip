@@ -1,0 +1,15 @@
+node_modules/
+.env
+.env.*
+**/*-state.json
+**/*before-*.json
+*.log
+*.tmp
+.DS_Store
+*.pem
+*.key
+*.pfx
+*.p12
+*.jks
+credentials*
+secrets*
