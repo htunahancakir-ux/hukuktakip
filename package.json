@@ -8,12 +8,14 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env.local outputs/icrapro/server.cjs",
     "build": "node scripts/build.cjs",
-    "test": "node tests/run.cjs && node --test tests/postgres.test.cjs",
+    "test": "node tests/run.cjs && node --test tests/postgres.test.cjs tests/backups.test.cjs",
     "db:migrate": "node --env-file-if-exists=.env.local scripts/database.cjs migrate",
     "db:import": "node --env-file-if-exists=.env.local scripts/database.cjs import",
-    "db:verify": "node --env-file-if-exists=.env.local scripts/database.cjs verify"
+    "db:verify": "node --env-file-if-exists=.env.local scripts/database.cjs verify",
+    "backup:restore": "node --env-file-if-exists=.env.local scripts/restore-backup.cjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1164.0",
     "pg": "^8.16.3"
   },
   "devDependencies": {

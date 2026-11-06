@@ -17,3 +17,5 @@ secrets*
 *.exe
 public/
 .vercel/
+work/backup-settings.json
+work/backups/

@@ -2,7 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm run build",
   "outputDirectory": "public",
-  "functions": { "api/index.js": { "maxDuration": 30, "includeFiles": "{lib/**,outputs/icrapro/*.cjs,outputs/icrapro/*.js}" } },
+  "functions": { "api/index.js": { "maxDuration": 120, "includeFiles": "{lib/**,outputs/icrapro/*.cjs,outputs/icrapro/*.js}" } },
+  "crons": [{ "path": "/api/backups/cron", "schedule": "0 3 * * *" }],
   "rewrites": [{ "source": "/api/:path*", "destination": "/api/index?route=:path*" }],
   "headers": [{ "source": "/(.*)", "headers": [
     { "key": "Cache-Control", "value": "no-store" },
