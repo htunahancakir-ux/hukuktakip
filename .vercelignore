@@ -4,6 +4,7 @@ tests/
 .env*
 **/*.zip
 **/*.hnb
+**/audit-events.jsonl
 **/*.exe
 **/*-state.json
 **/*before-*.json

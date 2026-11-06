@@ -1,3 +1,94 @@
-<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>hanhukuk 1.1.1 · Hukuk ve Tahsilat Yönetimi</title><link rel="stylesheet" href="style.css"></head><body>
-<aside hidden><div class="brand">⚖ <strong>han<span>hukuk</span></strong></div><small>HUKUK VE TAHSİLAT YÖNETİMİ</small><div class="workspace">Çalışma alanı<br><b>Hukuk Bürosu</b><span class="dot">●</span></div><p class="navlabel">ÇALIŞMA ALANI</p><nav><button data-page="home">⌂ &nbsp; Ana Sayfa</button><button data-page="clients">◉ &nbsp; Müvekkiller <i id="count"></i></button><button data-page="intake">▤ &nbsp; Evrak Kabul</button><button data-page="documents">▦ &nbsp; Borçlu Listesi <i id="activeDebtorCount"></i></button><button data-page="messages">✉ &nbsp; Mesajlar / İş Emirleri <i id="messageUnreadCount"></i></button><button data-page="reports">▥ &nbsp; Raporlar</button><button data-page="accounting">₺ &nbsp; Muhasebe</button><button data-page="personnel">♙ &nbsp; Personel</button><button data-page="settings">⚙ &nbsp; Ayarlar</button></nav><div class="sidebottom"><span class="avatar">HB</span><div><b>Hukuk Bürosu</b><br><small>Prototip çalışma alanı</small></div></div></aside>
-<div class="shell" hidden><header><span>Çalışma alanı <em>/</em> <b id="crumb">Müvekkiller</b></span><label class="operator-picker">İşlem Yapan Personel<select id="activeOperator" aria-label="İşlem yapan personel"></select></label><span class="demo">● &nbsp; Sürüm 1.1.1</span></header><main><div class="heading"><div><p class="eyebrow">hanhukuk 1.1.1 / MÜVEKKİL YÖNETİMİ</p><h1 id="title">Müvekkiller</h1><p id="subtitle">Müvekkil bilgilerinizi ve bağlı evrakları tek yerden yönetin.</p></div><button class="primary" id="newClient">＋ Yeni Müvekkil</button></div><div id="clientScopeBar" class="panel formbody" style="margin-bottom:20px" hidden><label class="field">Müvekkile Göre Süz<select id="clientScope" aria-label="Müvekkile göre süz"></select></label></div><div id="clientSearchBar" class="panel" style="margin-bottom:22px" hidden></div><div id="stats" class="stats"></div><div id="content"></div><footer>◈ &nbsp; Prototip ortamı · Yalnızca örnek veriler kullanın. Kayıtlar bu bilgisayardaki uygulama sunucusunda saklanır.</footer></main></div><dialog id="modal"></dialog><div id="toast" role="status"></div><script src="auth.js"></script></body></html>
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>hanhukuk 1.1.1 · Hukuk ve Tahsilat Yönetimi</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="workspace-layout.css" />
+  </head>
+  <body>
+    <aside hidden>
+      <div class="brand">
+        ⚖ <strong>han<span>hukuk</span></strong>
+      </div>
+      <small>HUKUK VE TAHSİLAT YÖNETİMİ</small>
+      <div class="workspace">Çalışma alanı<br /><b>Hukuk Bürosu</b><span class="dot">●</span></div>
+      <p class="navlabel">ÇALIŞMA ALANI</p>
+      <nav>
+        <button data-page="home">⌂ &nbsp; Ana Sayfa</button
+        ><button data-page="clients">◉ &nbsp; Müvekkiller <i id="count"></i></button
+        ><button data-page="intake">▤ &nbsp; Evrak Kabul</button
+        ><button data-page="documents">▦ &nbsp; Borçlu Listesi <i id="activeDebtorCount"></i></button
+        ><button data-page="messages">✉ &nbsp; Mesajlar / İş Emirleri <i id="messageUnreadCount"></i></button
+        ><button data-page="reports">▥ &nbsp; Raporlar</button
+        ><button data-page="accounting">₺ &nbsp; Muhasebe</button
+        ><button data-page="personnel">♙ &nbsp; Personel</button
+        ><button data-page="settings">⚙ &nbsp; Ayarlar</button>
+      </nav>
+      <div class="sidebottom">
+        <span class="avatar">HB</span>
+        <div><b>Hukuk Bürosu</b><br /><small>Prototip çalışma alanı</small></div>
+      </div>
+    </aside>
+    <div class="shell" hidden>
+      <header>
+        <span class="workspace-crumb">Çalışma alanı <em>/</em> <b id="crumb">Müvekkiller</b></span>
+        <form id="workspaceSearch" class="workspace-search" role="search" aria-label="Global arama">
+          <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <circle cx="8.5" cy="8.5" r="4.5" stroke="currentColor" stroke-width="1.6" />
+            <path d="m12 12 4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+          </svg>
+          <input
+            type="search"
+            id="workspaceSearchQuery"
+            maxlength="80"
+            autocomplete="off"
+            aria-label="Müvekkil, borçlu, evrak veya dosya ara"
+            placeholder="Müvekkil, borçlu, evrak veya dosya ara"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded="false"
+            aria-controls="workspaceSearchResults"
+          />
+          <div
+            id="workspaceSearchResults"
+            class="workspace-search-results"
+            role="listbox"
+            aria-label="Arama sonuçları"
+            hidden
+          ></div>
+        </form>
+        <label class="operator-picker"
+          >İşlem Yapan Personel<select id="activeOperator" aria-label="İşlem yapan personel"></select></label
+        ><span class="demo">● &nbsp; Sürüm 1.1.1</span>
+      </header>
+      <main>
+        <div class="heading">
+          <div>
+            <p class="eyebrow">hanhukuk 1.1.1 / MÜVEKKİL YÖNETİMİ</p>
+            <h1 id="title">Müvekkiller</h1>
+            <p id="subtitle">Müvekkil bilgilerinizi ve bağlı evrakları tek yerden yönetin.</p>
+          </div>
+          <button class="primary" id="newClient">＋ Yeni Müvekkil</button>
+        </div>
+        <div id="clientScopeBar" class="panel formbody" style="margin-bottom: 20px" hidden>
+          <label class="field"
+            >Müvekkile Göre Süz<select id="clientScope" aria-label="Müvekkile göre süz"></select
+          ></label>
+        </div>
+        <div id="clientSearchBar" class="panel" style="margin-bottom: 22px" hidden></div>
+        <div id="stats" class="stats"></div>
+        <div id="content"></div>
+        <footer>
+          ◈ &nbsp; Prototip ortamı · Yalnızca örnek veriler kullanın. Kayıtlar bu bilgisayardaki uygulama
+          sunucusunda saklanır.
+        </footer>
+      </main>
+    </div>
+    <dialog id="modal"></dialog>
+    <div id="toast" role="status"></div>
+    <script src="workspace-assets.js"></script>
+    <script src="auth.js"></script>
+  </body>
+</html>

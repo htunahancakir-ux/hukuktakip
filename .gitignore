@@ -15,6 +15,7 @@ credentials*
 secrets*
 *.zip
 *.hnb
+audit-events.jsonl
 *.exe
 public/
 .vercel/

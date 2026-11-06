@@ -1,0 +1,606 @@
+function setupClientDistrict(prefix = 'client') {
+  const city = $('#' + prefix + 'City'),
+    input = $('#' + prefix + 'District'),
+    box = $('#' + prefix + 'DistrictSuggestions');
+  let lastCity = city.value;
+  function synchronize() {
+    const canonical = turkeyCities.find(
+      (c) => c.toLocaleLowerCase('tr') === city.value.trim().toLocaleLowerCase('tr'),
+    );
+    if (city.value !== lastCity) {
+      input.value = '';
+      input.setCustomValidity('');
+      lastCity = city.value;
+    }
+    input.disabled = !canonical;
+    input.placeholder = canonical ? 'İlçenin ilk harfini yazın…' : 'Önce il seçin';
+    box.hidden = true;
+    input.setAttribute('aria-expanded', 'false');
+    return canonical;
+  }
+  function show() {
+    const selected = synchronize();
+    if (!selected) return;
+    const query = input.value.trim().toLocaleLowerCase('tr'),
+      names = (turkeyDistricts[selected] || []).filter((d) =>
+        normalizeSearch(d).includes(normalizeSearch(query)),
+      );
+    box.innerHTML =
+      names
+        .map((name) => `<button type="button" data-district="${esc(name)}">${esc(name)}</button>`)
+        .join('') || '<p>Eşleşen ilçe bulunamadı.</p>';
+    box.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+    box.querySelectorAll('button').forEach(
+      (b) =>
+        (b.onclick = () => {
+          input.value = b.dataset.district;
+          input.setCustomValidity('');
+          input.focus();
+          box.hidden = true;
+          input.setAttribute('aria-expanded', 'false');
+        }),
+    );
+  }
+  city.addEventListener('input', synchronize);
+  city.addEventListener('change', synchronize);
+  input.onfocus = show;
+  input.oninput = show;
+  input.onkeydown = (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      show();
+      box.querySelector('button')?.focus();
+    }
+    if (e.key === 'Escape') {
+      box.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+    }
+  };
+  box.onkeydown = (e) => {
+    const buttons = [...box.querySelectorAll('button')],
+      index = buttons.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const next = index + (e.key === 'ArrowDown' ? 1 : -1);
+      if (next < 0) input.focus();
+      else buttons[next % buttons.length]?.focus();
+    }
+    if (e.key === 'Escape') {
+      input.focus();
+      box.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+    }
+  };
+  input.parentElement.addEventListener('focusout', (e) => {
+    if (!input.parentElement.contains(e.relatedTarget)) {
+      box.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+    }
+  });
+  synchronize();
+}
+
+function clientCityField(c, prefix = 'client') {
+  return `<div class="field"><label for="${prefix}City">İl *</label><input id="${prefix}City" name="city" required autocomplete="off" value="${esc(c.city || '')}" placeholder="İlin ilk harfini yazın…" aria-controls="${prefix}CitySuggestions" aria-expanded="false"><div id="${prefix}CitySuggestions" class="city-suggestions" hidden></div></div><div class="field"><label for="${prefix}District">İlçe *</label><input id="${prefix}District" name="district" required autocomplete="off" value="${esc(c.district || '')}" placeholder="Önce il seçin" aria-controls="${prefix}DistrictSuggestions" aria-expanded="false"><div id="${prefix}DistrictSuggestions" class="city-suggestions" hidden></div></div>`;
+}
+
+function setupClientCity(prefix = 'client') {
+  const input = $('#' + prefix + 'City'),
+    box = $('#' + prefix + 'CitySuggestions');
+  function show() {
+    const q = input.value.trim().toLocaleLowerCase('tr');
+    const cities = turkeyCities.filter((city) => normalizeSearch(city).includes(normalizeSearch(q)));
+    box.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+    box.innerHTML =
+      cities.map((city) => `<button type="button" data-city="${city}">${city}</button>`).join('') ||
+      '<p>Eşleşen il bulunamadı.</p>';
+    box.querySelectorAll('button').forEach(
+      (b) =>
+        (b.onclick = () => {
+          input.value = b.dataset.city;
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+          input.setCustomValidity('');
+          box.hidden = true;
+          input.setAttribute('aria-expanded', 'false');
+          document.getElementById(prefix + 'District').focus();
+        }),
+    );
+  }
+  input.oninput = show;
+  input.onfocus = show;
+  input.onkeydown = (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (box.hidden) show();
+      box.querySelector('button')?.focus();
+    }
+    if (e.key === 'Escape') {
+      box.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+    }
+  };
+  box.onkeydown = (e) => {
+    const buttons = [...box.querySelectorAll('button')],
+      index = buttons.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const next = e.key === 'ArrowDown' ? index + 1 : index - 1;
+      if (next < 0) input.focus();
+      else buttons[next % buttons.length]?.focus();
+    }
+    if (e.key === 'Escape') {
+      input.focus();
+      box.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+    }
+  };
+  input.form.addEventListener('focusout', (e) => {
+    if (!input.parentElement.contains(e.relatedTarget)) {
+      box.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+    }
+  });
+}
+
+function renderClientScope() {
+  const bar = document.getElementById('clientScopeBar'),
+    filter = document.getElementById('clientScope');
+  bar.hidden = page !== 'intake';
+  if (page !== 'intake') return;
+  if (selected && !db.clients.some((c) => c.id === selected)) selected = '';
+  filter.innerHTML =
+    '<option value="">Tüm Müvekkiller</option>' +
+    db.clients
+      .map(
+        (c) =>
+          `<option value="${esc(c.id)}" ${selected === c.id ? 'selected' : ''}>${esc(c.name)}${c.identity ? ' · ' + esc(c.identity) : ''}</option>`,
+      )
+      .join('');
+  filter.onchange = (e) => {
+    selected = e.target.value;
+    const form = document.getElementById('intakeForm');
+    if (form) form.elements.client.value = selected;
+    stats();
+  };
+}
+
+function renderClientSuggestions(query, list) {
+  const box = document.getElementById('clientSuggestions'),
+    input = document.getElementById('search');
+  if (!box) return;
+  box.hidden = !query;
+  input.setAttribute('aria-expanded', String(!!query));
+  box.innerHTML = query
+    ? list.length
+      ? list
+          .map(
+            (c) =>
+              `<button type="button" data-client-suggestion="${esc(c.id)}"><strong>${esc(c.name)}</strong><small>${esc(c.type)}${c.identity ? ' · ' + esc(c.identity) : ''}</small></button>`,
+          )
+          .join('')
+      : '<p>Eşleşen müvekkil bulunamadı.</p>'
+    : '';
+  box.querySelectorAll('[data-client-suggestion]').forEach(
+    (button) =>
+      (button.onclick = () => {
+        const client = db.clients.find((c) => c.id === button.dataset.clientSuggestion);
+        input.value = client.name;
+        clientRows();
+        box.hidden = true;
+        input.setAttribute('aria-expanded', 'false');
+        input.focus();
+      }),
+  );
+  input.onkeydown = (event) => {
+    if (event.key === 'Escape') {
+      box.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+    }
+    if (event.key === 'ArrowDown' && !box.hidden) {
+      event.preventDefault();
+      box.querySelector('button')?.focus();
+    }
+  };
+  box.onkeydown = (event) => {
+    const buttons = [...box.querySelectorAll('button')],
+      index = buttons.indexOf(document.activeElement);
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      buttons[(index + 1) % buttons.length]?.focus();
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (index <= 0) input.focus();
+      else buttons[index - 1].focus();
+    }
+    if (event.key === 'Escape') {
+      box.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+      input.focus();
+    }
+  };
+}
+
+function normalizeSearch(value) {
+  return String(value ?? '')
+    .toLocaleLowerCase('tr')
+    .replace(/ı/g, 'i')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+function recordSearchText(doc, client) {
+  const fields = (record) =>
+    Object.entries(record || {})
+      .filter(
+        ([key, value]) =>
+          !['id', 'client', 'fileData'].includes(key) && ['string', 'number'].includes(typeof value),
+      )
+      .flatMap(([key, value]) => {
+        const out = [value];
+        if (/date|due|issued|created|period/i.test(key)) {
+          const date = String(value).slice(0, 10);
+          if (/^\d{4}-\d{2}-\d{2}$/.test(date))
+            out.push(date.split('-').reverse().join('.'), date.split('-').reverse().join('/'));
+        }
+        return out;
+      });
+  const staff =
+    typeof personnel === 'undefined'
+      ? []
+      : personnel
+          .filter((p) => [client?.documentStaff, client?.collectionStaff].includes(p.id))
+          .map((p) => p.name);
+  const amount = Number(doc.amount || 0);
+  return normalizeSearch(
+    [
+      ...fields(doc),
+      ...fields(client),
+      ...staff,
+      docType(doc),
+      String(amount),
+      amount.toFixed(2),
+      new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2 }).format(amount),
+    ].join(' '),
+  );
+}
+
+function borrowerPhoneMatches(doc, query) {
+  const digits = (value) => String(value || '').replace(/\D/g, ''),
+    needle = digits(query);
+  if (!needle) return true;
+  const phones = [
+    doc.phone1,
+    doc.phone2,
+    doc.referencePhone1,
+    doc.referencePhone2,
+    doc.officePhone1,
+    doc.officePhone2,
+    ...(doc.additionalPhones || []),
+  ];
+  return phones.some((phone) => {
+    const value = digits(phone);
+    return (
+      value.includes(needle) ||
+      (needle.startsWith('90') && value.replace(/^0/, '').includes(needle.slice(2))) ||
+      (needle.startsWith('0') && value.replace(/^90/, '').replace(/^0/, '').includes(needle.slice(1)))
+    );
+  });
+}
+
+function matchesGlobalSearch(doc, client, query) {
+  const text = recordSearchText(doc, client);
+  if (
+    normalizeSearch(query)
+      .split(/\s+/)
+      .filter(Boolean)
+      .every((term) => text.includes(term))
+  )
+    return true;
+  return (
+    /^[+\d\s().-]+$/.test(String(query || '')) &&
+    String(query).replace(/\D/g, '').length >= 3 &&
+    borrowerPhoneMatches(doc, query)
+  );
+}
+
+function clientDocumentTotals(docs) {
+  const closed = docs.filter((d) => normalizeSearch(d.status) === 'infaz');
+  const returned = docs.filter((d) => normalizeSearch(d.status) === 'iade');
+  return {
+    accepted: docs.length,
+    closed: closed.length,
+    returned: returned.length,
+    closedAmount: closed.reduce((sum, d) => sum + Math.round(Number(d.amount || 0) * 100), 0) / 100,
+    paidAmount: docs.reduce((sum, d) => sum + clientPayoutTotals(d).paid, 0) / 100,
+  };
+}
+
+function clientRows() {
+  const q = normalizeSearch($('#search').value);
+  const list = db.clients.filter((c) =>
+    [c.name, c.fullName, c.tradeName, c.identity].some((value) => normalizeSearch(value).includes(q)),
+  );
+  renderClientSuggestions(q, list);
+  $('#rows').innerHTML =
+    list
+      .map(
+        (c) =>
+          `<tr><td><div class="rowname"><span class="initial">${esc(c.name.slice(0, 2).toLocaleUpperCase('tr'))}</span><div><strong>${esc(c.name)}</strong><small>${esc(c.identity || 'Kimlik bilgisi eklenmedi')}</small></div></div></td><td><span class="badge">${esc(c.type)}</span></td><td>${esc(c.phone || '—')}<small>${esc(c.email || c.address || '—')}</small></td><td>${db.docs.filter((d) => d.client === c.id).length} evrak</td><td><button class="link" data-edit="${c.id}">Düzenle</button><button class="link" data-intake="${c.id}">＋ Evrak</button></td></tr>`,
+      )
+      .join('') ||
+    '<tr><td colspan="5" class="empty">Müvekkil bulunamadı. Yeni bir kayıt ekleyebilirsiniz.</td></tr>';
+  $('#total').textContent = `${list.length} müvekkil gösteriliyor`;
+  document.querySelectorAll('[data-edit]').forEach((b) => (b.onclick = () => clientModal(b.dataset.edit)));
+  document.querySelectorAll('[data-intake]').forEach(
+    (b) =>
+      (b.onclick = () => {
+        selected = b.dataset.intake;
+        page = 'intake';
+        render();
+      }),
+  );
+}
+
+function clientModal(id) {
+  let c = db.clients.find((x) => x.id === id) || {};
+  kind = c.type || 'Şahıs';
+  $('#modal').innerHTML =
+    `<form id="clientForm"><div class="panelhead"><div><h2>${id ? 'Müvekkili Düzenle' : 'Yeni Müvekkil Kaydı'}</h2><p>Kimlik, iletişim ve adres bilgileri</p></div><button class="link" type="button" id="close">✕</button></div><div class="formbody"><div class="segments">${['Şahıs', 'Şirket', 'Şahıs Şirketi'].map((t) => `<button type="button" class="${kind === t ? 'selected' : ''}" data-kind="${t}">${t}</button>`).join('')}</div><label class="field" style="margin-bottom:23px">Müvekkil Türü<select name="clientCategory" required><option value="">Müvekkil türü seçin</option>${['Mağaza', 'Yediemin', 'Diğer'].map((category) => `<option value="${category}" ${c.clientCategory === category ? 'selected' : ''}>${category}</option>`).join('')}</select></label><h3 class="sectiontitle">01 &nbsp; Müvekkil bilgileri</h3><div class="grid">${field('Ticari Unvan', 'tradeName', 'text', c.tradeName ?? (c.type && c.type !== 'Şahıs' ? c.name : ''), false).replace('<input ', '<input data-optional="true" ')}${field('Ad Soyad', 'fullName', 'text', c.fullName ?? (!c.type || c.type === 'Şahıs' ? c.name : ''), false).replace('<input ', '<input data-optional="true" ')}${field('TC Kimlik / Vergi Numarası', 'identity', 'text', c.identity)}${field('Telefon', 'phone', 'tel', c.phone)}${field('E-posta', 'email', 'email', c.email, false, true)}${clientCityField(c)}<label class="field full">Açık Adres<textarea name="address" rows="2">${esc(c.address || '')}</textarea></label>${field('Referans', 'reference', 'text', c.reference, false, true)}${staffSelect('Evrak Alan Personel', 'documentStaff', c.documentStaff)}${staffSelect('Evrak Kaydeden *', 'recordedBy', c.recordedBy).replace('<select ', '<select required ')}${staffSelect('Tahsilat Uzmanı Personel', 'collectionStaff', c.collectionStaff).replace('<select name="collectionStaff"', '<select data-optional="true" name="collectionStaff"')}<h3 class="sectiontitle full">Banka Bilgileri</h3>${field('Banka Adı', 'bankName', 'text', c.bankName)}${field('Şube', 'bankBranch', 'text', c.bankBranch)}${field('Hesap Sahibi', 'accountHolder', 'text', c.accountHolder, false, true)}<label class="field full">IBAN (isteğe bağlı)<input name="iban" data-optional="true" type="text" value="${esc(c.iban || '')}" placeholder="TR00 0000 0000 0000 0000 0000 00" maxlength="32" autocomplete="off"></label>${clientAttachmentFields(c)}<label class="field full">Notlar<textarea name="notes" rows="2" data-optional="true">${esc(c.notes || '')}</textarea></label></div></div><div class="actions"><button type="button" class="secondary" id="cancel">Vazgeç</button><button class="primary">Müvekkili Kaydet</button></div></form>`;
+  for (const name of ['email', 'iban']) {
+    document.getElementById('clientForm').elements[name].dataset.optional = 'true';
+  }
+  const clientIbanInput = document.getElementById('clientForm').elements.iban;
+  clientIbanInput.required = false;
+  clientIbanInput.addEventListener('input', () => clientIbanInput.setCustomValidity(''));
+  setupRecordFormTabs($('#clientForm'), 'client');
+  setupExtraContacts($('#clientForm'), c);
+  $('#modal').showModal();
+  setupClientCity();
+  setupClientDistrict();
+  $('#close').onclick = $('#cancel').onclick = () => $('#modal').close();
+  document.querySelectorAll('[data-kind]').forEach(
+    (b) =>
+      (b.onclick = () => {
+        kind = b.dataset.kind;
+        document.querySelectorAll('[data-kind]').forEach((a) => a.classList.toggle('selected', a === b));
+      }),
+  );
+  $('#clientForm').onsubmit = async (e) => {
+    e.preventDefault();
+    let v = Object.fromEntries(new FormData(e.target));
+    Object.assign(v, readExtraContacts(e.target));
+    const city = turkeyCities.find(
+      (city) => city.toLocaleLowerCase('tr') === v.city.trim().toLocaleLowerCase('tr'),
+    );
+    if (!city) {
+      $('#clientCity').setCustomValidity('Türkiye illerinden birini seçin.');
+      $('#clientCity').reportValidity();
+      return;
+    }
+    v.city = city;
+    const district = (turkeyDistricts[city] || []).find(
+      (name) => name.toLocaleLowerCase('tr') === v.district.trim().toLocaleLowerCase('tr'),
+    );
+    if (!district) {
+      $('#clientDistrict').setCustomValidity('Seçili ilin ilçelerinden birini seçin.');
+      $('#clientDistrict').reportValidity();
+      return;
+    }
+    v.district = district;
+    if (!v.district) return toast('İlçe bilgisini girin.');
+    if (!['Mağaza', 'Yediemin', 'Diğer'].includes(v.clientCategory)) return toast('Müvekkil türünü seçin.');
+    if (
+      !v.recordedBy ||
+      (v.recordedBy !== c.recordedBy && !personnel.some((p) => p.id === v.recordedBy && p.active))
+    )
+      return toast('Evrak kaydeden için kayıtlı aktif bir personel seçin.');
+    v.recordedByName = personnel.find((p) => p.id === v.recordedBy)?.name || c.recordedByName || '';
+    if (!validStaffSelection(v, c)) return toast('Kayıtlı ve aktif bir personel seçin.');
+    v.tradeName = String(v.tradeName || '').trim();
+    v.fullName = String(v.fullName || '').trim();
+    v.name = kind === 'Şahıs' ? v.fullName || v.tradeName : v.tradeName || v.fullName;
+    if (!v.name) return toast('Ticari unvan veya ad soyad girin.');
+    const duplicate = clientDebtorIdentityConflict('client', id, v.identity, v.name);
+    if (duplicate) return toast(duplicate);
+    if (v.identity && db.clients.some((x) => x.id !== id && x.identity === v.identity))
+      return toast('Bu kimlik / vergi numarası zaten kayıtlı.');
+    v.iban = v.iban.replace(/\s/g, '').toUpperCase();
+    if (!validClientIban(v.iban)) {
+      const input = e.target.elements.iban;
+      input.setCustomValidity('Geçerli bir Türkiye IBAN numarası girin.');
+      input.reportValidity();
+      return;
+    }
+    const button = e.target.querySelector('button.primary');
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      v.attachments = await collectClientAttachments(c);
+      Object.assign(v, {
+        id: id || crypto.randomUUID(),
+        type: kind,
+        createdAt: id ? c.createdAt : new Date().toISOString(),
+      });
+      const before = db.clients.slice();
+      if (id) db.clients[db.clients.findIndex((x) => x.id === id)] = v;
+      else db.clients.push(v);
+      try {
+        save();
+      } catch (error) {
+        db.clients = before;
+        throw error;
+      }
+      $('#modal').close();
+      render();
+      toast('Müvekkil kaydı kaydedildi.');
+    } catch (error) {
+      toast(error.message || 'Dosyalar kaydedilemedi.');
+    } finally {
+      button.disabled = false;
+    }
+  };
+}
+
+function validClientIban(value) {
+  value = String(value || '')
+    .replace(/\s/g, '')
+    .toUpperCase();
+  if (!String(value || '').trim()) return true;
+  if (!/^TR\d{24}$/.test(value)) return false;
+  const rearranged = value.slice(4) + value.slice(0, 4);
+  let remainder = 0;
+  for (const char of rearranged) {
+    const digits = /[A-Z]/.test(char) ? String(char.charCodeAt(0) - 55) : char;
+    for (const digit of digits) remainder = (remainder * 10 + Number(digit)) % 97;
+  }
+  return remainder === 1;
+}
+
+function clientAttachmentFields(c) {
+  const files = Array.isArray(c.attachments) ? c.attachments : [];
+  return `<section class="full" data-record-group="files"><h3 class="sectiontitle full">Fotoğraf ve Vekâletname</h3><label class="field full">Fotoğraf Ekle (isteğe bağlı)<input id="clientPhotos" type="file" accept="image/jpeg,image/png,image/webp" multiple data-optional="true"><small>JPG, PNG veya WEBP · Her dosya en fazla 2 MB</small></label><label class="field full">PDF Vekâletname Ekle (isteğe bağlı)<input id="clientPowerOfAttorney" type="file" accept="application/pdf" multiple data-optional="true"><small>PDF · Her dosya en fazla 2 MB. Yeni yüklemeler mevcut dosyalara eklenir.</small></label><div class="full">${files.map((file) => `<div style="margin:12px 0">${file.kind === 'photo' ? `<img src="${esc(file.data)}" alt="Müvekkil fotoğrafı" style="max-width:160px;max-height:130px;object-fit:contain;border-radius:6px;display:block;margin-bottom:8px">` : ''}<a href="${esc(file.data)}" download="${esc(file.name)}">${esc(file.name)}</a><small> · ${file.kind === 'photo' ? 'Fotoğraf' : 'Vekâletname'}</small></div>`).join('') || '<p>Henüz dosya eklenmedi.</p>'}</div></section>`;
+}
+
+async function collectClientAttachments(c) {
+  const existing = Array.isArray(c.attachments) ? c.attachments : [],
+    items = [
+      ...[...$('#clientPhotos').files].map((file) => ({ file, kind: 'photo' })),
+      ...[...$('#clientPowerOfAttorney').files].map((file) => ({ file, kind: 'powerOfAttorney' })),
+    ];
+  for (const { file, kind } of items) {
+    if (file.size > 2 * 1024 * 1024) throw Error('Her dosya en fazla 2 MB olabilir.');
+    if (
+      !(kind === 'photo' ? ['image/jpeg', 'image/png', 'image/webp'] : ['application/pdf']).includes(
+        file.type,
+      )
+    )
+      throw Error('Fotoğraf için JPG/PNG/WEBP, vekâletname için PDF seçin.');
+  }
+  const added = await Promise.all(
+    items.map(
+      ({ file, kind }) =>
+        new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () =>
+            resolve({
+              id: crypto.randomUUID(),
+              name: file.name,
+              mime: file.type,
+              kind,
+              data: reader.result,
+              createdAt: new Date().toISOString(),
+            });
+          reader.onerror = () => reject(Error('Dosya okunamadı: ' + file.name));
+          reader.readAsDataURL(file);
+        }),
+    ),
+  );
+  return [...existing, ...added];
+}
+
+function clientDebtorIdentityConflict(kind, id, value, borrowerName) {
+  const identity = (v) => String(v || '').replace(/\s/g, ''),
+    name = (v) =>
+      String(v || '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .toLocaleUpperCase('tr'),
+    key = identity(value);
+  if (!/^\d{10,11}$/.test(key)) return '';
+  const conflict =
+    kind === 'client'
+      ? db.clients.some((c) => c.id !== id && identity(c.identity) === key) ||
+        db.docs.some((d) => identity(d.identity) === key)
+      : db.clients.some((c) => identity(c.identity) === key) ||
+        db.docs.some(
+          (d) =>
+            d.id !== id &&
+            identity(d.identity) === key &&
+            (!name(borrowerName) || name(d.debtor) !== name(borrowerName)),
+        );
+  return conflict
+    ? 'Bu TC kimlik / vergi numarası başka bir müvekkil veya borçluda kayıtlı. Kayıt yapılamadı.'
+    : '';
+}
+
+function setupExtraContacts(form, record) {
+  for (const type of ['phone', 'address']) {
+    const anchor =
+      form.elements[type === 'phone' ? (form.elements.phone ? 'phone' : 'phone1') : 'address']?.closest(
+        'label',
+      );
+    if (!anchor) continue;
+    const section = document.createElement('section');
+    section.className = 'full extra-contacts';
+    section.dataset.extraContact = type;
+    anchor.after(section);
+    const list = document.createElement('div');
+    list.className = 'grid';
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'secondary';
+    add.textContent = type === 'phone' ? '＋ Telefon Ekle' : '＋ Adres Ekle';
+    section.append(list, add);
+    function row(value = {}) {
+      const box = document.createElement('div');
+      box.className = 'full extra-contact-row';
+      if (type === 'phone') {
+        box.innerHTML =
+          '<label class="field">Ek Telefon<input type="tel" data-extra="phone" data-optional="true" value="' +
+          esc(value.phone || '') +
+          '"></label>';
+      } else {
+        box.innerHTML =
+          '<div class="grid"><label class="field">İl<select data-extra="city" data-optional="true"><option value="">İl seçin</option>' +
+          turkeyCities
+            .map(
+              (city) => '<option ' + (city === value.city ? 'selected' : '') + '>' + esc(city) + '</option>',
+            )
+            .join('') +
+          '</select></label><label class="field">İlçe<select data-extra="district" data-optional="true"></select></label><label class="field full">Ek Açık Adres<textarea data-extra="address" data-optional="true" rows="2">' +
+          esc(value.address || '') +
+          '</textarea></label></div>';
+        const city = box.querySelector('[data-extra="city"]'),
+          district = box.querySelector('[data-extra="district"]');
+        function update() {
+          district.innerHTML =
+            '<option value="">İlçe seçin</option>' +
+            (turkeyDistricts[city.value] || []).map((d) => '<option>' + esc(d) + '</option>').join('');
+        }
+        city.onchange = update;
+        update();
+        district.value = value.district || '';
+      }
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'link';
+      remove.textContent = 'Kaldır';
+      remove.onclick = () => box.remove();
+      box.append(remove);
+      list.append(box);
+    }
+    add.onclick = () => row();
+    for (const value of record[type === 'phone' ? 'additionalPhones' : 'additionalAddresses'] || [])
+      row(typeof value === 'string' ? { phone: value } : value);
+    form.addEventListener('reset', () => list.replaceChildren());
+  }
+}
+
+function readExtraContacts(form) {
+  const values = (type) =>
+    [...form.querySelectorAll('[data-extra-contact="' + type + '"] .extra-contact-row')].map((row) =>
+      Object.fromEntries(
+        [...row.querySelectorAll('[data-extra]')].map((el) => [el.dataset.extra, el.value.trim()]),
+      ),
+    );
+  return {
+    additionalPhones: values('phone')
+      .map((r) => r.phone)
+      .filter(Boolean),
+    additionalAddresses: values('address').filter((r) => r.address || r.city || r.district),
+  };
+}

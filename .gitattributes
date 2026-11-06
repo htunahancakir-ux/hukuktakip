@@ -1,0 +1,4 @@
+outputs/icrapro/*.js text eol=lf
+outputs/icrapro/*.cjs text eol=lf
+outputs/icrapro/*.html text eol=lf
+outputs/icrapro/workspace-layout.css text eol=lf
