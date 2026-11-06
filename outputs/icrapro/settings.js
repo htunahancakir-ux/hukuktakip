@@ -8,8 +8,8 @@ function settings(){if(settingsTab==='staff')return personnelSettings();if(!sett
 $('#content').innerHTML=`<div class="settings-tabs" role="tablist" aria-label="Ayar sekmeleri">${Object.entries(tabs).map(([key,t])=>`<button type="button" id="tab-${key}" role="tab" aria-selected="${settingsTab===key}" aria-controls="settingsPanel" data-settings-tab="${key}" class="${settingsTab===key?'selected':''}">${t[0]}</button>`).join('')}<button type="button" role="tab" aria-selected="false" id="staffTab">Personel</button></div><form class="panel" id="settingsForm"><section role="tabpanel" id="settingsPanel" aria-labelledby="tab-${settingsTab}"><div class="panelhead"><div><h2>${tabs[settingsTab][0]}</h2><p>${tabs[settingsTab][1]}</p></div><span class="badge" id="saveState">Kaydedildi</span></div><div class="formbody"><div class="notice">Firma adı menüde ve teslim tutanaklarında kullanılır. Ayarlar bu tarayıcıda saklanır.</div><div class="grid">${fields}</div></div></section><div class="actions"><button type="button" class="secondary" id="discardSettings">Değişiklikleri Geri Al</button><button type="submit" class="primary">Ayarları Kaydet</button></div></form>`;
 const form=$('#settingsForm');function capture(){const data=Object.fromEntries(new FormData(form));if(settingsTab==='preferences')data.showContact=form.elements.showContact.checked;settingsDraft[settingsTab]={...settingsDraft[settingsTab],...data};$('#saveState').textContent=JSON.stringify(settingsDraft)===JSON.stringify(config)?'Kaydedildi':'Kaydedilmemiş değişiklikler'}form.oninput=capture;capture();$('#staffTab').onclick=()=>{capture();settingsTab='staff';settings()};document.querySelectorAll('[data-settings-tab]').forEach(b=>b.onclick=()=>{capture();settingsTab=b.dataset.settingsTab;settings()});$('#discardSettings').onclick=()=>{settingsDraft=structuredClone(config);settings();toast('Kaydedilmiş ayarlara dönüldü.')};form.onsubmit=e=>{e.preventDefault();capture();if(!validateSettingsDraft())return;settingsDraft.firm.name=settingsDraft.firm.name.trim();if(!settingsDraft.firm.name){settingsTab='firm';settings();return toast('Firma / büro adını girin.')}const prefix=settingsDraft.preferences.prefix.trim();if(!/^[A-Za-z0-9ÇĞİÖŞÜçğıöşü-]{1,12}$/.test(prefix)){settingsTab='preferences';settings();return toast('Geçerli bir evrak ön eki girin.')}settingsDraft.preferences.prefix=prefix;try{localStorage.setItem('icrapro-settings-v1',JSON.stringify(settingsDraft))}catch{return toast('Ayarlar kaydedilemedi. Tarayıcı depolama alanını kontrol edin.')}config=structuredClone(settingsDraft);applySettings();settings();toast('Tüm ayarlar kaydedildi.')}}
 
-function backupDate(value) {
-  return value ? new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : 'Henüz yok';
+function backupDate(value, precise = false) {
+  return value ? new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', dateStyle: 'medium', timeStyle: precise ? 'medium' : 'short' }).format(new Date(value)) : 'Henüz yok';
 }
 
 function backupFileSize(bytes) {
@@ -18,12 +18,34 @@ function backupFileSize(bytes) {
   return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 }).format(amount) + ' ' + unit;
 }
 
-function bindBackupFiles() {
+function backupLastDownload(download) {
+  if (!download) return 'Henüz indirme kaydı yok.';
+  return `<b>Dosya:</b> <span style="overflow-wrap:anywhere">${esc(download.filename)}</span><br>
+    <b>Yedek tarihi:</b> ${backupDate(download.backupAt)}<br>
+    <b>İndirme zamanı:</b> ${backupDate(download.downloadedAt, true)}<br>
+    <b>İndiren:</b> ${esc(download.name)} (${esc(download.username)})`;
+}
+
+function bindBackupFiles(lastDownload) {
   const panel = $('#backupFiles');
   if (!panel) return;
   const month = panel.querySelector('#backupMonth');
   const result = panel.querySelector('#backupFileList');
+  const summary = panel.querySelector('#lastBackupDownload');
   let latestRequest = 0;
+  let followDownload = 0;
+  async function refreshSummary() {
+    try {
+      const response = await fetch('/api/backups', { cache: 'no-store' });
+      if (!response.ok || !panel.isConnected) return;
+      const { lastDownload: current } = await response.json();
+      if (current && (!lastDownload || current.downloadedAt >= lastDownload.downloadedAt)) {
+        lastDownload = current;
+        const markup = backupLastDownload(current);
+        if (summary.innerHTML !== markup) summary.innerHTML = markup;
+      }
+    } catch { /* Keep the last confirmed record visible if the refresh fails. */ }
+  }
   async function refresh() {
     const request = ++latestRequest;
     if (!month.value) { result.textContent = 'Yedekleri görmek için bir ay seçin.'; return; }
@@ -41,7 +63,23 @@ function bindBackupFiles() {
     }
   }
   month.onchange = refresh;
-  panel.querySelector('#refreshBackupFiles').onclick = refresh;
+  panel.querySelector('#refreshBackupFiles').onclick = () => { refresh(); refreshSummary(); };
+  result.addEventListener('click', event => {
+    if (!event.target.closest('a[href]')) return;
+    const request = ++followDownload;
+    const previous = lastDownload?.downloadedAt;
+    const delays = [1500, 3500, 7000, 15000];
+    const check = () => {
+      const delay = delays.shift();
+      if (!delay || !panel.isConnected || request !== followDownload) return;
+      setTimeout(async () => {
+        if (!panel.isConnected || request !== followDownload) return;
+        await refreshSummary();
+        if (lastDownload?.downloadedAt === previous) check();
+      }, delay);
+    };
+    check();
+  });
   refresh();
 }
 
@@ -65,21 +103,23 @@ function backupSettingsPage() {
       <small>Yerel sürümde aynı şifreli dosya bilgisayarın yedek klasörüne de kaydedilir. Vercel'de kalıcı kopya R2'de tutulur. Yedekler kullanıcı ve parola kayıtlarını içerir; şifreleme anahtarını güvenli yerde saklayın.</small></div>
       <div class="actions full"><button class="primary" type="submit">Yedekleme Ayarlarını Kaydet</button><button class="secondary" type="button" id="backupNow">Şimdi Yedekle</button></div>
     </form></div></div>
-    ${hanAuth.role === 'ceo' ? `<section class="panel" id="backupFiles" style="margin-top:18px">
-      <div class="panelhead"><div><h2>Yedek Dosyaları</h2><p>Geri yüklemek istediğiniz şifreli kopyayı bilgisayarınıza indirin.</p></div></div>
+    <section class="panel" id="backupFiles" style="margin-top:18px">
+      <div class="panelhead"><div><h2>Yedek Dosyaları</h2><p>Şifreli yedeği bilgisayarınıza indirin.</p></div></div>
       <div class="formbody"><div class="toolbar">
         <label class="field">Yedek ayı (UTC)<input id="backupMonth" type="month" placeholder="YYYY-AA" value="${esc(latestMonth)}"></label>
         <button type="button" class="secondary" id="refreshBackupFiles">Listeyi Yenile</button>
       </div><div id="backupFileList" aria-live="polite"></div>
-      <details><summary>İndirilen dosya nasıl geri yüklenir?</summary>
+      <h3>Son indirilen yedek</h3>
+      <p id="lastBackupDownload" aria-live="polite">${backupLastDownload(status.lastDownload)}</p>
+      ${hanAuth.role === 'ceo' ? `<details><summary>İndirilen dosya nasıl geri yüklenir?</summary>
         <p>Proje klasöründeki terminalde aşağıdaki komutu çalıştırın. YEDEK.hnb yerine indirilen dosyanın yolunu yazın.</p>
         <p><code>npm run backup:restore -- "YEDEK.hnb" --local "work/kurtarma/hanhukuk-state.json"</code></p>
         <p>Yedeğin şifreleme anahtarı ve yedek tarihindeki etkin CEO hesabı gerekir. Bu komut yeni bir yerel dosya oluşturur.</p>
-      </details></div>
-    </section>` : ''}`;
+      </details>` : ''}</div>
+    </section>`;
   document.querySelectorAll('[data-settings-tab]').forEach(button => button.onclick = () => { settingsTab = button.dataset.settingsTab; settings(); });
   $('#staffTab').onclick = () => { settingsTab = 'staff'; settings(); };
-  bindBackupFiles();
+  bindBackupFiles(status.lastDownload);
   $('#backupSettingsForm').onsubmit = event => {
     event.preventDefault();
     try {

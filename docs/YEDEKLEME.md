@@ -23,7 +23,7 @@ Vercel Cron her gün **03.00 UTC / 06.00 Türkiye saati** için yapılandırılm
 
 ## Bilgisayara indirme ve geri yükleme
 
-1. CEO hesabıyla giriş yapın. **Ayarlar → Yedekleme → Yedek Dosyaları** bölümünde ayı ve istediğiniz yedeği seçip **İndir (.hnb)** düğmesine basın. Tarihler Türkiye saatiyle görünür; ay filtresi dosyanın UTC tarihine göre çalışır.
+1. CEO veya Admin hesabıyla giriş yapın. **Ayarlar → Yedekleme → Yedek Dosyaları** bölümünde ayı ve istediğiniz yedeği seçip **İndir (.hnb)** düğmesine basın. Son gönderilen dosya, indirme zamanı ve indiren kullanıcı burada gösterilir. Tarihler Türkiye saatiyle görünür; ay filtresi dosyanın UTC tarihine göre çalışır.
 2. İndirilen `.hnb` dosyası şifrelidir. Aynı `BACKUP_ENCRYPTION_KEY` değerini güvenli ortamda bulundurun. Anahtar kaybolursa yedek açılamaz.
 3. Proje klasöründe terminali açın ve aşağıdaki komutta indirilen dosyanın yolunu kullanın. İstendiğinde yedekte kayıtlı, etkin CEO hesabının kullanıcı adını ve yedek tarihindeki şifresini girin. Şifre terminalde görünmez.
 

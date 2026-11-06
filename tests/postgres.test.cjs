@@ -108,7 +108,7 @@ test('Vercel mode fails closed without database and accepts only configured HTTP
   }finally{await app.close();await pg.close()}
 });
 
-test('Only the CEO can download and restore a backup, and restore refuses to overwrite', async t => {
+test('Managers can download with a record of the last sender; only the CEO can restore', async t => {
   for (const [name, value] of Object.entries({ R2_ACCOUNT_ID: 'test', R2_BUCKET_NAME: 'test',
     R2_ACCESS_KEY_ID: 'test', R2_SECRET_ACCESS_KEY: 'test' })) {
     const previous = process.env[name];
@@ -116,7 +116,10 @@ test('Only the CEO can download and restore a backup, and restore refuses to ove
     t.after(() => { if (previous === undefined) delete process.env[name]; else process.env[name] = previous; });
   }
   const state = fixture();
-  state.users.push({ ...state.users[0], id: 'test-admin', username: 'admin', role: 'admin' });
+  state.users.push(
+    { ...state.users[0], id: 'test-admin', username: 'admin', name: 'Test Admin', role: 'admin' },
+    { ...state.users[0], id: 'test-staff', username: 'staff', role: 'staff' }
+  );
   const filename = '2026-11-06T20-00-00-000Z-00000000-0000-4000-8000-000000000001.hnb';
   const legacyKey = 'hanhukuk/' + filename;
   const newKey = 'hanhukuk/production/' + filename.replace('11-06', '11-07');
@@ -132,7 +135,7 @@ test('Only the CEO can download and restore a backup, and restore refuses to ove
       const { Key, Prefix } = command.input;
       if (Prefix === 'hanhukuk/production/2026-11-')
         return { Contents: [{ Key: newKey, Size: encrypted.length }] };
-      assert.equal(Key, legacyKey);
+      assert.ok([legacyKey, newKey].includes(Key));
       return { ContentLength: encrypted.length, Metadata: { format: 'hanhukuk-backup-v1' },
         ...(command.constructor.name === 'GetObjectCommand' ? { Body: Readable.from([encrypted]) } : {}) };
     }
@@ -150,20 +153,37 @@ test('Only the CEO can download and restore a backup, and restore refuses to ove
     }
     const ceo = await login('test');
     const admin = await login('admin');
+    const staff = await login('staff');
     const list = app.url + '/api/backups/files?month=2026-11';
     const download = key => app.url + '/api/backups/download?key=' + encodeURIComponent(key);
+    const lastDownload = async headers => (await (await fetch(app.url + '/api/backups', { headers })).json()).lastDownload;
     assert.equal((await fetch(list)).status, 403);
-    assert.equal((await fetch(list, { headers: admin })).status, 403);
-    assert.equal((await fetch(download(legacyKey), { headers: admin })).status, 403);
-    assert.equal((await fetch(download('hanhukuk/local/' + filename), { headers: ceo })).status, 404);
-    const listed = await (await fetch(list, { headers: ceo })).json();
+    assert.equal((await fetch(list, { headers: staff })).status, 403);
+    assert.equal((await fetch(download(legacyKey), { headers: staff })).status, 403);
+    assert.equal(await lastDownload(admin), null);
+    const listed = await (await fetch(list, { headers: admin })).json();
     assert.deepEqual(listed.backups.map(row => row.key), [newKey, legacyKey]);
-    const response = await fetch(download(legacyKey), { headers: ceo });
+    const response = await fetch(download(legacyKey), { headers: admin });
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('content-disposition'), `attachment; filename="hanhukuk-canli-${filename}"`);
     assert.equal(response.headers.get('cache-control'), 'private, no-store');
     const downloaded = Buffer.from(await response.arrayBuffer());
     assert.deepEqual(downloaded, encrypted);
+    const first = await lastDownload(ceo);
+    assert.equal(first.filename, 'hanhukuk-canli-' + filename);
+    assert.equal(first.backupAt, '2026-11-06T20:00:00.000Z');
+    assert.equal(first.name, 'Test Admin');
+    assert.equal(first.username, 'admin');
+    assert.ok(Number.isFinite(Date.parse(first.downloadedAt)));
+    assert.equal((await fetch(download('hanhukuk/local/' + filename), { headers: ceo })).status, 404);
+    assert.deepEqual(await lastDownload(admin), first);
+    const next = await fetch(download(newKey), { headers: ceo });
+    assert.equal(next.status, 200);
+    await next.arrayBuffer();
+    const latest = await lastDownload(admin);
+    assert.equal(latest.username, 'test');
+    assert.equal(latest.backupAt, '2026-11-07T20:00:00.000Z');
+    assert.ok(latest.downloadedAt >= first.downloadedAt);
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'han-restore-'));
     const file = path.join(directory, 'download.hnb');
     const localTarget = path.join(directory, 'recovered.json');
