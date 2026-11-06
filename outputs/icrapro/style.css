@@ -161,3 +161,5 @@
 
 #personnelForm .personnel-phone-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start;}
 @media(max-width:600px){#personnelForm .personnel-phone-pair{grid-template-columns:1fr;}}
+
+.password-input-wrap{position:relative;display:block;width:100%}.field .password-input-wrap input{padding-right:50px}.password-visibility{position:absolute;right:3px;top:50%;transform:translateY(-50%);width:42px;height:36px;display:grid;place-items:center;border:0;border-radius:5px;background:transparent;color:#526174}.password-visibility:hover{background:#edf4f5}.password-visibility:focus-visible{outline:2px solid #315767;outline-offset:1px}.password-visibility[aria-pressed="false"] .password-eye-slash{display:none}
