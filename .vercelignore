@@ -1,0 +1,9 @@
+work/
+tests/
+.git/
+.env*
+**/*.zip
+**/*.exe
+**/*-state.json
+**/*before-*.json
+**/*.log

@@ -1,13 +1,22 @@
 {
   "name": "hanhukuk",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "private": true,
-  "description": "Türkçe hukuk ve tahsilat takip uygulaması",
   "engines": {
-    "node": ">=24"
+    "node": "24.x"
   },
   "scripts": {
-    "start": "node outputs/icrapro/server.cjs",
-    "test": "node tests/run.cjs"
+    "start": "node --env-file-if-exists=.env.local outputs/icrapro/server.cjs",
+    "build": "node scripts/build.cjs",
+    "test": "node tests/run.cjs && node --test tests/postgres.test.cjs",
+    "db:migrate": "node --env-file-if-exists=.env.local scripts/database.cjs migrate",
+    "db:import": "node --env-file-if-exists=.env.local scripts/database.cjs import",
+    "db:verify": "node --env-file-if-exists=.env.local scripts/database.cjs verify"
+  },
+  "dependencies": {
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.14"
   }
 }

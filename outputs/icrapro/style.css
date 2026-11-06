@@ -154,3 +154,10 @@
 .personnel-salary-first{grid-template-columns:1fr;max-width:480px;gap:16px}
 
 .monthly-payroll-report-button{background:#7c3aed;color:white}
+
+#docRows tr .debtor-name, .debtor-name-emphasis { color: #c62828; font-size: 1.15em; font-weight: 700; }
+
+[data-borrower-panel='personal'] .borrower-sheet-name { color: #c62828; font-size: 22px; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; }
+
+#personnelForm .personnel-phone-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start;}
+@media(max-width:600px){#personnelForm .personnel-phone-pair{grid-template-columns:1fr;}}

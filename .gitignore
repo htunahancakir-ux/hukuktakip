@@ -15,3 +15,5 @@ credentials*
 secrets*
 *.zip
 *.exe
+public/
+.vercel/

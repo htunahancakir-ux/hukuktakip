@@ -19,9 +19,8 @@ function revenueRanking(state, eligible, today) {
   const totals = new Map(eligible.map(p => [p.id, 0]));
   for (const event of state.data['hanhukuk-finance-v1']) {
     if (event.type !== 'payment' || !Number.isSafeInteger(event.amount) || event.amount <= 0 || event.date && event.date > today) continue;
-    const operator = state.users.find(u => u.id === event.operatorId);
     const doc = state.data['icrapro-v1'].docs.find(d => d.id === event.documentId);
-    const staffId = event.collectionStaffId || operator?.staffId || doc?.relatedStaff;
+    const staffId = event.turnoverStaffId || event.collectionStaffId || doc?.relatedStaff;
     if (totals.has(staffId)) totals.set(staffId, totals.get(staffId) + event.amount);
   }
   return eligible.map(p => ({...p, collectionTotal:totals.get(p.id)})).sort((a,b) => b.collectionTotal - a.collectionTotal || a.name.localeCompare(b.name,'tr') || a.id.localeCompare(b.id)).slice(0,3);

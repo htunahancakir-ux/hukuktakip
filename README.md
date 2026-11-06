@@ -1,42 +1,15 @@
-# hanhukuk 1.1.1
+# Han Hukuk 1.2 — Supabase / Vercel hazırlığı
 
-Türkçe hukuk bürosu, evrak kabul, borçlu, tahsilat, muhasebe ve personel takip uygulaması.
+6 Kasım 2026 tarihli Han Hukuk uygulaması. Node.js 24, sade JavaScript arayüzü ve Supabase PostgreSQL kullanır.
 
-## Çalıştırma
+Kurulum: npm ci. Test: npm test. Derleme: npm run build. Yerel başlatma: npm start.
 
-Node.js 24 veya daha yeni bir sürüm kurulu olmalıdır. Harici paket bağımlılığı yoktur.
+Yerel adres: http://127.0.0.1:4317/. DATABASE_URL yokken yerel sunucu work/hanhukuk-state.json dosyasını kullanır. Vercel API'sinde PostgreSQL zorunludur; bağlantı veya veri aktarımı eksikse 503 döndürür.
 
-```sh
-node outputs/icrapro/server.cjs
-```
+Supabase kurulumu, ortam değişkenleri, kayıt aktarımı ve Vercel ayarları: [kurulum kılavuzu](docs/SUPABASE-VERCEL.md).
 
-Tarayıcıda http://127.0.0.1:4317/ adresini açın. İlk çalıştırmada CEO hesabınızı oluşturun.
+İlk geçiş mevcut kayıtları özel şemadaki JSONB alanlarında korur; ilişkisel tablolara ayrıştırma sonraki aşamadır. Oturumlar kalıcıdır, değişiklikler transaction içinde kaydedilir, eski veri üzerine yazma reddedilir.
 
-Uygulama yalnızca yerel bilgisayara bağlıdır. Diğer bilgisayarlardan erişim için ayrıca güvenli ağ ve sunucu yapılandırması gerekir.
+Canlı kayıtlar, parola hashleri, .env, ZIP ve EXE dosyaları depoya dahil edilmez. Testler sentetik verilerle çalışır.
 
-## Veriler
-
-Kayıtlar `work/hanhukuk-state.json` dosyasında saklanır. `HANHUKUK_STATE_FILE` ortam değişkeniyle başka bir yer seçilebilir; `HANHUKUK_PORT` varsayılan 4317 portunu değiştirir.
-
-Bu depo canlı kayıt, kullanıcı parolası, yüklenmiş belge veya veri yedeği içermez. Veri dosyasını düzenli olarak ayrıca yedekleyin. İlk kurulum boş başlar.
-
-## Kapsam
-
-- Müvekkil, personel, çoklu telefon/adres ve belge kaydı
-- Senet, çek, sözleşme, cari ekstre, ilam, fatura ve yediemin evrakları
-- Sekmeli borçlu föyü, dosya zinciri, PDF/fotoğraf önizlemeleri
-- Tahsilat, masraf, taksitlendirme, ödeme sözü ve arama hatırlatmaları
-- Kasa/banka hareketleri, müvekkil ödemeleri, makbuz ve ibraname çıktıları
-- Günlük/aylık/yıllık raporlar ve personel prim hesapları
-- CEO, yönetici ve personel hesapları; sunucuda yetki kontrolleri
-- Aylık maaş/prim dönem arşivi
-
-Hukuki hesaplama oranları ve tarife sürümü `outputs/icrapro/legal-charges.cjs` ile arayüzdeki hesaplama bölümünde tanımlıdır. Yeni mevzuat/tarife yayımlandığında güncellenmelidir. UYAP veya bankaya gerçek işlem göndermez.
-
-## Kontroller
-
-```sh
-node tests/run.cjs
-```
-
-Testler hesaplama kurallarını ve kaynak dosyalarının JavaScript sözdizimini kontrol eder; canlı verilere dokunmaz.
+Bu dal canlıya geçiş hazırlığıdır. Gerçek Supabase bağlantı testi, belge depolama/sayfalama, zamanlanmış işler ve canlı kabul testleri tamamlanmadan üretim sürümü olarak kullanılmamalıdır.
