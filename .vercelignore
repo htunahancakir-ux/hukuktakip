@@ -3,6 +3,7 @@ tests/
 .git/
 .env*
 **/*.zip
+**/*.hnb
 **/*.exe
 **/*-state.json
 **/*before-*.json

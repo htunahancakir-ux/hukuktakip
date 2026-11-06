@@ -44,6 +44,8 @@ test('scheduled backup writes the same encrypted copy locally and to R2, then ob
   });
   const original = { users: [{ id: 'ceo' }], data: { 'icrapro-v1': { docs: [{ debtor: 'Örnek' }] } } };
   const store = memoryStore(original);
+  const legacyKey = 'hanhukuk/2026-11-06T20-00-00-000Z-00000000-0000-4000-8000-000000000001.hnb';
+  await store.updatePolicy(policy => { policy.lastObjectKey = legacyKey; return true; });
   let remote;
   const backups = createBackupService({ store, localDirectory: directory,
     upload: async (name, bytes) => { remote = { name, bytes }; } });
@@ -51,6 +53,8 @@ test('scheduled backup writes the same encrypted copy locally and to R2, then ob
   const first = await backups.run();
   assert.equal(first.ok, true);
   assert.equal(first.localSaved, true);
+  assert.match(remote.name, /^hanhukuk\/local\//);
+  assert.equal((await store.readPolicy()).legacyObjectKey, legacyKey);
   const file = fs.readFileSync(path.join(directory, path.basename(remote.name)));
   assert.deepEqual(file, remote.bytes);
   assert.deepEqual(decryptState(file, Buffer.from(process.env.BACKUP_ENCRYPTION_KEY, 'hex')), original);

@@ -2,9 +2,15 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const http = require('node:http');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
+const { Readable } = require('node:stream');
 const { PGlite } = require('@electric-sql/pglite');
 const { migrate, importState, createStore } = require('../lib/postgres-store.cjs');
 const { createApplication } = require('../lib/application.cjs');
+const { encryptState } = require('../lib/backup-service.cjs');
+const { restoreBackup } = require('../scripts/restore-backup.cjs');
 
 const password = 'Synthetic-Postgres-Test-Only';
 function fixture() {
@@ -100,4 +106,81 @@ test('Vercel mode fails closed without database and accepts only configured HTTP
     assert.equal((await fetch(app.url+'/work/hanhukuk-state.json')).status,404);
     assert.equal((await fetch(app.url+'/access-server.cjs')).status,404);
   }finally{await app.close();await pg.close()}
+});
+
+test('Only the CEO can download and restore a backup, and restore refuses to overwrite', async t => {
+  for (const [name, value] of Object.entries({ R2_ACCOUNT_ID: 'test', R2_BUCKET_NAME: 'test',
+    R2_ACCESS_KEY_ID: 'test', R2_SECRET_ACCESS_KEY: 'test' })) {
+    const previous = process.env[name];
+    process.env[name] = value;
+    t.after(() => { if (previous === undefined) delete process.env[name]; else process.env[name] = previous; });
+  }
+  const state = fixture();
+  state.users.push({ ...state.users[0], id: 'test-admin', username: 'admin', role: 'admin' });
+  const filename = '2026-11-06T20-00-00-000Z-00000000-0000-4000-8000-000000000001.hnb';
+  const legacyKey = 'hanhukuk/' + filename;
+  const newKey = 'hanhukuk/production/' + filename.replace('11-06', '11-07');
+  state.backupPolicy = { lastObjectKey: newKey, legacyObjectKey: legacyKey };
+  const encryptionKey = crypto.randomBytes(32);
+  const encrypted = encryptState(state, encryptionKey);
+  const { pg, pool } = await database();
+  t.after(() => pg.close());
+  await importState(pool, state);
+  const r2Client = () => ({
+    destroy() {},
+    async send(command) {
+      const { Key, Prefix } = command.input;
+      if (Prefix === 'hanhukuk/production/2026-11-')
+        return { Contents: [{ Key: newKey, Size: encrypted.length }] };
+      assert.equal(Key, legacyKey);
+      return { ContentLength: encrypted.length, Metadata: { format: 'hanhukuk-backup-v1' },
+        ...(command.constructor.name === 'GetObjectCommand' ? { Body: Readable.from([encrypted]) } : {}) };
+    }
+  });
+  const app = await serve(createApplication({ cloud: true, store: createStore(pool),
+    appOrigin: 'https://example.invalid', backupR2Client: r2Client }));
+  try {
+    async function login(username) {
+      const response = await fetch(app.url + '/api/login', {
+        method: 'POST', headers: { 'X-Han-Request': '1', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      assert.equal(response.status, 200);
+      return { cookie: response.headers.get('set-cookie').split(';')[0] };
+    }
+    const ceo = await login('test');
+    const admin = await login('admin');
+    const list = app.url + '/api/backups/files?month=2026-11';
+    const download = key => app.url + '/api/backups/download?key=' + encodeURIComponent(key);
+    assert.equal((await fetch(list)).status, 403);
+    assert.equal((await fetch(list, { headers: admin })).status, 403);
+    assert.equal((await fetch(download(legacyKey), { headers: admin })).status, 403);
+    assert.equal((await fetch(download('hanhukuk/local/' + filename), { headers: ceo })).status, 404);
+    const listed = await (await fetch(list, { headers: ceo })).json();
+    assert.deepEqual(listed.backups.map(row => row.key), [newKey, legacyKey]);
+    const response = await fetch(download(legacyKey), { headers: ceo });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-disposition'), `attachment; filename="hanhukuk-canli-${filename}"`);
+    assert.equal(response.headers.get('cache-control'), 'private, no-store');
+    const downloaded = Buffer.from(await response.arrayBuffer());
+    assert.deepEqual(downloaded, encrypted);
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'han-restore-'));
+    const file = path.join(directory, 'download.hnb');
+    const localTarget = path.join(directory, 'recovered.json');
+    try {
+      await fs.writeFile(file, downloaded);
+      const restore = username => restoreBackup({ file, localTarget, rawKey: encryptionKey.toString('hex'),
+        credentials: async () => ({ username, password }) });
+      await assert.rejects(restore('admin'), /etkin CEO/);
+      await assert.rejects(fs.stat(localTarget), { code: 'ENOENT' });
+      await restore('test');
+      const { backupPolicy, ...expected } = state;
+      assert.deepEqual(JSON.parse(await fs.readFile(localTarget, 'utf8')), expected);
+      await assert.rejects(restore('test'), /Hedef dosya zaten var/);
+    } finally {
+      await fs.rm(file, { force: true });
+      await fs.rm(localTarget, { force: true });
+      await fs.rmdir(directory);
+    }
+  } finally { await app.close(); }
 });

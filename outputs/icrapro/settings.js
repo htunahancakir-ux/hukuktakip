@@ -12,10 +12,44 @@ function backupDate(value) {
   return value ? new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : 'Henüz yok';
 }
 
+function backupFileSize(bytes) {
+  if (!Number.isFinite(bytes)) return '—';
+  const [amount, unit] = bytes >= 1048576 ? [bytes / 1048576, 'MB'] : [bytes / 1024, 'KB'];
+  return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 }).format(amount) + ' ' + unit;
+}
+
+function bindBackupFiles() {
+  const panel = $('#backupFiles');
+  if (!panel) return;
+  const month = panel.querySelector('#backupMonth');
+  const result = panel.querySelector('#backupFileList');
+  let latestRequest = 0;
+  async function refresh() {
+    const request = ++latestRequest;
+    if (!month.value) { result.textContent = 'Yedekleri görmek için bir ay seçin.'; return; }
+    result.textContent = 'Yedekler yükleniyor…';
+    try {
+      const response = await fetch('/api/backups/files?month=' + encodeURIComponent(month.value), { cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok) throw Error(data.error || 'Yedekler listelenemedi.');
+      if (request !== latestRequest || !panel.isConnected) return;
+      if (!data.backups.length) { result.textContent = 'Bu ay için yedek bulunamadı.'; return; }
+      result.innerHTML = `<div class="overflow"><table><thead><tr><th>Yedek tarihi</th><th>Boyut</th><th>Dosya</th></tr></thead><tbody>${data.backups.map(backup =>
+        `<tr><td>${backupDate(backup.createdAt)}</td><td>${backupFileSize(backup.size)}</td><td><a class="link" href="/api/backups/download?key=${encodeURIComponent(backup.key)}" aria-label="${esc(backupDate(backup.createdAt))} tarihli yedeği indir">İndir (.hnb)</a></td></tr>`).join('')}</tbody></table></div>`;
+    } catch (error) {
+      if (request === latestRequest && panel.isConnected) result.textContent = error.message || 'Yedekler listelenemedi.';
+    }
+  }
+  month.onchange = refresh;
+  panel.querySelector('#refreshBackupFiles').onclick = refresh;
+  refresh();
+}
+
 function backupSettingsPage() {
   let status;
   try { status = authApi('/api/backups'); }
   catch (error) { $('#content').textContent = error.message; return; }
+  const latestMonth = (status.lastObjectKey?.split('/').at(-1) || new Date().toISOString()).slice(0, 7);
   const tabs = [['firm','Firma Bilgileri'],['contact','İletişim ve Adres'],['preferences','Uygulama Tercihleri'],['backup','Yedekleme']];
   $('#content').innerHTML = `<div class="settings-tabs" role="tablist" aria-label="Ayar sekmeleri">${tabs.map(([key,label]) => `<button type="button" role="tab" aria-selected="${key==='backup'}" data-settings-tab="${key}" class="${key==='backup'?'selected':''}">${label}</button>`).join('')}<button type="button" role="tab" aria-selected="false" id="staffTab">Personel</button></div>
     <div class="panel"><div class="panelhead"><div><h2>Yedekleme</h2><p>Uygulama verilerinin şifreli kopyasını Cloudflare R2'ye kaydedin.</p></div></div>
@@ -30,9 +64,22 @@ function backupSettingsPage() {
       ${status.lastError?`<p role="alert">${esc(status.lastError)}</p>`:''}
       <small>Yerel sürümde aynı şifreli dosya bilgisayarın yedek klasörüne de kaydedilir. Vercel'de kalıcı kopya R2'de tutulur. Yedekler kullanıcı ve parola kayıtlarını içerir; şifreleme anahtarını güvenli yerde saklayın.</small></div>
       <div class="actions full"><button class="primary" type="submit">Yedekleme Ayarlarını Kaydet</button><button class="secondary" type="button" id="backupNow">Şimdi Yedekle</button></div>
-    </form></div></div>`;
+    </form></div></div>
+    ${hanAuth.role === 'ceo' ? `<section class="panel" id="backupFiles" style="margin-top:18px">
+      <div class="panelhead"><div><h2>Yedek Dosyaları</h2><p>Geri yüklemek istediğiniz şifreli kopyayı bilgisayarınıza indirin.</p></div></div>
+      <div class="formbody"><div class="toolbar">
+        <label class="field">Yedek ayı (UTC)<input id="backupMonth" type="month" placeholder="YYYY-AA" value="${esc(latestMonth)}"></label>
+        <button type="button" class="secondary" id="refreshBackupFiles">Listeyi Yenile</button>
+      </div><div id="backupFileList" aria-live="polite"></div>
+      <details><summary>İndirilen dosya nasıl geri yüklenir?</summary>
+        <p>Proje klasöründeki terminalde aşağıdaki komutu çalıştırın. YEDEK.hnb yerine indirilen dosyanın yolunu yazın.</p>
+        <p><code>npm run backup:restore -- "YEDEK.hnb" --local "work/kurtarma/hanhukuk-state.json"</code></p>
+        <p>Yedeğin şifreleme anahtarı ve yedek tarihindeki etkin CEO hesabı gerekir. Bu komut yeni bir yerel dosya oluşturur.</p>
+      </details></div>
+    </section>` : ''}`;
   document.querySelectorAll('[data-settings-tab]').forEach(button => button.onclick = () => { settingsTab = button.dataset.settingsTab; settings(); });
   $('#staffTab').onclick = () => { settingsTab = 'staff'; settings(); };
+  bindBackupFiles();
   $('#backupSettingsForm').onsubmit = event => {
     event.preventDefault();
     try {

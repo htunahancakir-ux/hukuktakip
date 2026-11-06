@@ -21,11 +21,19 @@ Yedek, uygulama durumunun tamamını (kullanıcı parola hashleri ve evrak ekler
 
 Vercel Cron her gün **03.00 UTC / 06.00 Türkiye saati** için yapılandırılmıştır. Seçilen aralık dolmadıysa o gün işlem atlanır. Yerel sunucu 15 dakikada bir aralığı denetler. İlk otomatik yedek, etkinleştirmeden sonraki ilk kontrolde alınır; istenirse hemen manuel yedek alınabilir.
 
-## Geri yükleme
+## Bilgisayara indirme ve geri yükleme
 
-1. Cloudflare R2 panelinden istenen `.hnb` nesnesini indirin veya yerel `work/backups/` klasöründeki dosyayı seçin.
-2. Aynı `BACKUP_ENCRYPTION_KEY` değerini güvenli ortamda bulundurun. Anahtar kaybolursa şifreli yedek çözülemez.
-3. Boş bir hedefte `npm run backup:restore -- "YEDEK.hnb"` çalıştırın. `DATABASE_URL` varsa boş PostgreSQL `han_private.han_state` tablosuna aktarır; yoksa boş yerel durum dosyasına yazar. **Mevcut canlı verinin üzerine yazmaz.** Önce ayrı ortamda geri yükleme denemesi yapın.
+1. CEO hesabıyla giriş yapın. **Ayarlar → Yedekleme → Yedek Dosyaları** bölümünde ayı ve istediğiniz yedeği seçip **İndir (.hnb)** düğmesine basın. Tarihler Türkiye saatiyle görünür; ay filtresi dosyanın UTC tarihine göre çalışır.
+2. İndirilen `.hnb` dosyası şifrelidir. Aynı `BACKUP_ENCRYPTION_KEY` değerini güvenli ortamda bulundurun. Anahtar kaybolursa yedek açılamaz.
+3. Proje klasöründe terminali açın ve aşağıdaki komutta indirilen dosyanın yolunu kullanın. İstendiğinde yedekte kayıtlı, etkin CEO hesabının kullanıcı adını ve yedek tarihindeki şifresini girin. Şifre terminalde görünmez.
+
+```powershell
+npm run backup:restore -- "C:\Users\Kullanici\Downloads\YEDEK.hnb" --local "work/kurtarma/hanhukuk-state.json"
+```
+
+`--local` komutu mevcut bir veritabanı bağlantısı tanımlı olsa bile yeni bir yerel dosyaya yazar. Hedef dosya zaten varsa işlem durur. Bir kurtarma ortamında PostgreSQL'e aktarmak için `--local` seçeneğini çıkarıp `DATABASE_URL` değerini boş hedefe yönlendirin; hedefte uygulama kaydı varsa işlem yine durur. Önce ayrı ortamda yedeği doğrulayın.
+
+Yeni canlı ve yerel yedekler R2'de ayrı klasörlerde tutulur. Bu sürümden önceki son kayıtlı kopya listede görünür; kaynak bilgisi bulunmayan daha eski kopyalara Cloudflare R2 panelinden erişilebilir.
 
 R2 saklama süresi bu sürümde otomatik silinmez; yaşam döngüsü kuralı ihtiyaca göre ayrıca yapılandırılmalıdır. Supabase'in kendi veritabanı yedekleri ek bir koruma sağlar, ancak Storage API nesnelerini kapsamaz.
 
