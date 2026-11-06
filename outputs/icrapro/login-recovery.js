@@ -1,7 +1,3 @@
-function loginBrand() {
-  return '<div class="login-brand"><div class="brand">⚖ <strong>han<span>hukuk</span></strong></div><small>HUKUK VE TAHSİLAT YÖNETİMİ</small></div>';
-}
-
 async function recoveryApi(path, data) {
   const response = await fetch(path, {
     method: 'POST',
@@ -15,28 +11,23 @@ async function recoveryApi(path, data) {
 }
 
 function passwordRecoveryGate(token) {
-  document.querySelector('aside').hidden = true;
-  document.querySelector('.shell').hidden = true;
-  let gate = document.getElementById('authGate');
-  if (!gate) {
-    gate = document.createElement('main');
-    gate.id = 'authGate';
-    document.body.append(gate);
-  }
-  gate.innerHTML = `<form id="recoveryForm" class="panel">${loginBrand()}
-    <div class="panelhead"><div><h2>${token ? 'Yeni Şifre Oluştur' : 'Şifremi Unuttum'}</h2>
-    <p>${token ? 'Hesabınız için yeni bir şifre belirleyin.' : 'Kullanıcı adınızı veya kayıtlı telefonunuzu girin. Bağlantı kayıtlı WhatsApp numaranıza gönderilir.'}</p></div></div>
-    <div class="formbody grid">${
+  loginFrame(`<form id="recoveryForm" class="panel" aria-labelledby="recoveryTitle">
+    <div class="login-heading"><h1 id="recoveryTitle">${token ? 'Yeni şifreniz.' : 'Şifrenizi yenileyin.'}</h1>
+    <p>${token ? 'Hesabınız için en az 10 karakterli yeni bir şifre belirleyin.' : 'Kullanıcı adınızı veya kayıtlı telefonunuzu girin. Şifre oluşturma bağlantısı WhatsApp numaranıza gönderilir.'}</p></div>
+    <div class="login-fields">${
       token
-        ? '<label class="field full">Yeni şifre<input name="password" type="password" required minlength="10" maxlength="128" autocomplete="new-password"></label><label class="field full">Yeni şifre tekrar<input name="confirm" type="password" required minlength="10" maxlength="128" autocomplete="new-password"></label>'
-        : '<label class="field full">Telefon veya kullanıcı adı<input name="account" required maxlength="80" autocomplete="username"></label><small class="full">Talep sınırı: günde 1, 7 günde 3 ve 30 günde 8. Kalan haklar bağlantı mesajında gösterilir.</small>'
-    }<p id="recoveryStatus" class="full" role="status"></p></div>
-    <div class="actions"><button type="button" class="secondary" id="backToLogin">Girişe Dön</button>
-    <button type="submit" class="primary">${token ? 'Şifreyi Kaydet' : 'Bağlantı İste'}</button></div></form>`;
+        ? '<label class="field" for="recovery-password">Yeni şifre<input id="recovery-password" name="password" type="password" required minlength="10" maxlength="128" autocomplete="new-password" placeholder="Yeni şifrenizi girin" aria-describedby="recoveryStatus"></label><label class="field" for="recovery-confirm">Yeni şifre tekrar<input id="recovery-confirm" name="confirm" type="password" required minlength="10" maxlength="128" autocomplete="new-password" placeholder="Yeni şifrenizi tekrar girin" aria-describedby="recoveryStatus"></label>'
+        : '<label class="field" for="recovery-account">Telefon veya kullanıcı adı<input id="recovery-account" name="account" required maxlength="80" autocomplete="username" placeholder="05xx xxx xx xx veya kullanıcı adınız" aria-describedby="recoveryStatus"></label><p class="login-note">Talep sınırı: günde 1, 7 günde 3 ve 30 günde 8. Kalan haklar bağlantı mesajında gösterilir.</p>'
+    }</div><p id="recoveryStatus" class="login-status" role="status"></p>
+    <div class="login-actions"><button type="submit" class="login-submit">${token ? 'Şifreyi kaydet' : 'Bağlantı iste'}</button>
+    <button type="button" class="login-link" id="backToLogin">Girişe dön</button></div></form>`);
   const form = document.getElementById('recoveryForm');
   const submit = form.querySelector('[type="submit"]');
   const status = document.getElementById('recoveryStatus');
-  document.getElementById('backToLogin').onclick = () => authGate(false);
+  document.getElementById('backToLogin').onclick = () => {
+    authGate(false);
+    document.getElementById('login-username').focus({ preventScroll: true });
+  };
   if (token) installPasswordVisibility(form);
   form.onsubmit = async (event) => {
     event.preventDefault();

@@ -157,26 +157,31 @@ function installPasswordVisibility(form) {
   });
 }
 function authGate(setup) {
-  document.querySelector('aside').hidden = true;
-  document.querySelector('.shell').hidden = true;
-  let gate = document.getElementById('authGate');
-  if (!gate) {
-    gate = document.createElement('main');
-    gate.id = 'authGate';
-    document.body.append(gate);
-  }
-  gate.innerHTML = `<form id="loginForm" class="panel"><div class="panelhead"><div><h2>Han Hukuk Takip</h2><p>${setup ? 'İlk Yönetici Hesabını Oluştur' : 'Kullanıcı Girişi'}</p></div></div><div class="formbody grid">${setup ? '<label class="field full">Yönetici Ad Soyad<input name="name" required autocomplete="name"></label>' : ''}<label class="field full">Kullanıcı Adı<input name="username" required autocomplete="username"></label><label class="field full">Şifre<input name="password" type="password" required ${setup ? 'minlength="10"' : ''} autocomplete="${setup ? 'new-password' : 'current-password'}"></label>${setup ? '<label class="field full">Şifre Tekrar<input name="confirm" type="password" required minlength="10" autocomplete="new-password"></label><p class="full">Şifre en az 10 karakter olmalıdır. Bu tarayıcıdaki mevcut kayıtlar yönetici kurulumunda sunucuya taşınır. Şifrenizi unutmayın.</p>' : ''}<p id="authError" class="full" role="alert"></p></div><div class="actions"><button class="primary">${setup ? 'Yönetici Hesabını Oluştur' : 'Giriş Yap'}</button></div></form>`;
+  loginFrame(`<form id="loginForm" class="panel" aria-labelledby="loginTitle">
+    <div class="login-heading"><h1 id="loginTitle">${setup ? 'İlk adımı atın.' : 'Hoş geldiniz.'}</h1>
+      <p>${setup ? 'Han Hukuk çalışma alanınız için ilk yönetici hesabını oluşturun.' : 'Çalışma alanınıza erişmek için<br>hesap bilgilerinizle giriş yapın.'}</p></div>
+    <div class="login-fields">
+      ${setup ? '<label class="field" for="login-name">Ad soyad<input id="login-name" name="name" required autocomplete="name" placeholder="Adınız ve soyadınız"></label>' : ''}
+      <label class="field" for="login-username">Kullanıcı adı
+        <span class="login-control">${loginIcon('user')}<input id="login-username" name="username" required autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Kullanıcı adınızı girin" aria-describedby="authError"></span>
+      </label>
+      <div class="field"><div class="login-field-label"><label for="login-password">Şifre</label>
+        ${setup ? '' : '<button type="button" class="login-link" id="forgotPassword">Şifremi unuttum</button>'}</div>
+        <div class="login-control">${loginIcon('lock')}<input id="login-password" name="password" type="password" required ${setup ? 'minlength="10"' : ''} autocomplete="${setup ? 'new-password' : 'current-password'}" placeholder="Şifrenizi girin" aria-describedby="authError"></div>
+      </div>
+      ${setup ? '<label class="field" for="login-confirm">Şifre tekrar<input id="login-confirm" name="confirm" type="password" required minlength="10" autocomplete="new-password" placeholder="Şifrenizi tekrar girin"></label><p class="login-note">Şifreniz en az 10 karakter olmalı. Bu tarayıcıdaki mevcut kayıtlar yönetici kurulumunda sunucuya taşınır.</p>' : ''}
+    </div>
+    <p id="authError" class="login-status" role="alert"></p>
+    <div class="login-actions"><button class="login-submit" type="submit">${setup ? 'Yönetici hesabını oluştur' : 'Giriş yap'}</button></div>
+    <div class="login-authorized">${loginIcon('lock')}<span>Yalnızca yetkili kullanıcılar içindir.</span></div>
+  </form>`);
   const loginForm = document.getElementById('loginForm');
-  loginForm.insertAdjacentHTML('afterbegin', loginBrand());
-  const submit = loginForm.querySelector('.actions button');
-  submit.type = 'submit';
+  const submit = loginForm.querySelector('[type="submit"]');
   if (!setup) {
-    const forgot = document.createElement('button');
-    forgot.type = 'button';
-    forgot.className = 'link';
-    forgot.textContent = 'Şifremi Unuttum';
-    forgot.onclick = () => passwordRecoveryGate();
-    submit.before(forgot);
+    document.getElementById('forgotPassword').onclick = () => {
+      passwordRecoveryGate();
+      document.getElementById('recovery-account').focus({ preventScroll: true });
+    };
   }
   installPasswordVisibility(loginForm);
   loginForm.onsubmit = async (event) => {

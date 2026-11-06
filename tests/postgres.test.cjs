@@ -546,6 +546,7 @@ test('Every workspace browser module is served in the shared manifest; server in
     assert.ok(html.indexOf('src="login-recovery.js"') < html.indexOf('src="auth.js"'));
     const preAuth = [
       'workspace-assets.js',
+      'login-layout.js',
       'login-recovery.js',
       'modal-dismissal.js',
       'employee-terms.js',
