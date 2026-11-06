@@ -1,3 +1,6 @@
+const { requiresEmployeeTerms } = require('../../lib/employee-terms.cjs');
+const { version: appVersion } = require('../../package.json');
+
 async function handleSessionRoutes(ctx) {
   const {
     req,
@@ -19,7 +22,12 @@ async function handleSessionRoutes(ctx) {
     dataKeys,
   } = ctx;
   if (url.pathname === '/api/session') {
-    send(res, 200, { setup: ctx.state.users.length === 0, user: u ? publicUser(u) : null });
+    send(res, 200, {
+      setup: ctx.state.users.length === 0,
+      user: u ? publicUser(u) : null,
+      employeeTermsRequired: requiresEmployeeTerms(ctx.state, u),
+      appVersion,
+    });
     return true;
   }
   if (url.pathname === '/api/setup' && req.method === 'POST') {

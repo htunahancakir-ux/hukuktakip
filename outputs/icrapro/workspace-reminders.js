@@ -294,7 +294,7 @@ function bindLoggedInConversation(d, root) {
       d.conversations = result.conversations;
       const record = db.docs.find((x) => x.id === d.id);
       if (record) record.conversations = result.conversations;
-      if (['ceo', 'admin'].includes(hanAuth.role)) borrowerDetail(d.id);
+      if (['ceo', 'admin'].includes(hanAuth.role)) borrowerDetail(d.id, form);
       else staffBorrowerDetail(d.id, d);
       toast('Görüşme kaydedildi.', root.querySelector('#borrowerConversationForm') || root);
     } catch (error) {

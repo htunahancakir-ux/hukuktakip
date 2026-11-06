@@ -43,6 +43,13 @@ async function restoreBackup({ file, rawKey, localTarget, credentials }) {
   delete state.backupPolicy;
   delete state.whatsappConfig;
   delete state.passwordRecovery;
+  delete state.reminderScheduler;
+  for (const reminder of state.scheduledReminders || []) {
+    if (['pending', 'sending'].includes(reminder.deliveryStatus)) {
+      reminder.deliveryStatus = 'cancelled';
+      delete reminder.phoneHash;
+    }
+  }
   if (!localTarget && process.env.DATABASE_URL) {
     const pool = createPool();
     try {

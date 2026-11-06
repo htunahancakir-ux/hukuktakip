@@ -12,6 +12,9 @@ const auditActions = {
   backup: 'Yedek aldı',
   restore: 'Arşivden çıkardı',
   whatsapp: 'WhatsApp gönderdi',
+  accept: 'Sözleşmeyi kabul etti',
+  publish: 'Sözleşmeyi yayınladı',
+  resend: 'Sözleşmeyi tekrar gösterdi',
   login: 'Giriş yaptı',
   logout: 'Çıkış yaptı',
   failed: 'Giriş başarısız',
@@ -48,7 +51,7 @@ function auditSettingsPage(source = 'settings') {
         <label class="field" id="auditActionField">İşlem<select name="action" data-optional="true"><option value="">Tümü</option>${Object.entries(
           auditActions,
         )
-          .slice(0, 7)
+          .filter(([key]) => !['login', 'logout', 'failed', 'blocked'].includes(key))
           .map(([key, label]) => `<option value="${key}">${label}</option>`)
           .join('')}</select></label>
         <button class="primary" type="submit">Filtrele</button>

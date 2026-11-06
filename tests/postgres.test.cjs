@@ -544,7 +544,18 @@ test('Every workspace browser module is served in the shared manifest; server in
     assert.match(html, /href="workspace-layout\.css"/);
     assert.ok(html.indexOf('src="login-recovery.js"') >= 0);
     assert.ok(html.indexOf('src="login-recovery.js"') < html.indexOf('src="auth.js"'));
-    const publicScripts = ['workspace-assets.js', 'login-recovery.js', 'auth.js', ...workspaceScripts];
+    const preAuth = [
+      'workspace-assets.js',
+      'login-recovery.js',
+      'modal-dismissal.js',
+      'employee-terms.js',
+      'employee-terms-settings.js',
+    ];
+    for (const file of preAuth) {
+      const index = html.indexOf('src="' + file + '"');
+      assert.ok(index >= 0 && index < html.indexOf('src="auth.js"'), file);
+    }
+    const publicScripts = [...preAuth, 'auth.js', ...workspaceScripts];
     assert.equal(new Set(publicScripts).size, publicScripts.length);
     const scripts = await Promise.all(
       publicScripts.map(async (file) => {
@@ -559,6 +570,229 @@ test('Every workspace browser module is served in the shared manifest; server in
     assert.equal((await fetch(app.url + '/audit-events.jsonl')).status, 404);
   } finally {
     await app.close();
+  }
+});
+
+test('CEO publishes immutable terms; new and existing accounts must accept and see only their own history', async () => {
+  const { draft } = require('../lib/employee-terms.cjs');
+  const { pg, pool } = await database();
+  const state = fixture();
+  state.users.push({ ...state.users[0], id: 'existing-admin', role: 'admin', username: 'admin' });
+  await importState(pool, state);
+  const app = await serve(createApplication({ store: createStore(pool) }));
+  const request = (path, cookie, method = 'GET', body) =>
+    fetch(app.url + '/api/' + path, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'X-Han-Request': '1', ...(cookie ? { cookie } : {}) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  const login = async (username) => {
+    const response = await request('login', null, 'POST', { username, password });
+    assert.equal(response.status, 200);
+    return response.headers.get('set-cookie').split(';')[0];
+  };
+  const publish = (cookie, version, baseVersion, controllerName) =>
+    request('employee-terms/settings', cookie, 'PUT', {
+      action: 'publish',
+      ...draft(controllerName),
+      version,
+      baseVersion,
+    });
+  const accept = (cookie, doc, values) =>
+    request('employee-terms/accept', cookie, 'POST', {
+      version: doc.version,
+      hash: doc.hash,
+      accepted: true,
+      ...values,
+    });
+  const current = async (cookie) => (await request('employee-terms/current', cookie)).json();
+  try {
+    assert.equal((await request('employee-terms/history')).status, 401);
+    const ceo = await login('test');
+    const admin = await login('admin');
+    assert.equal((await publish(admin, '1.3.0', null)).status, 403);
+    const initial = await publish(ceo, '1.3.0', null);
+    assert.equal(initial.status, 200);
+    const { document: doc } = await initial.json();
+    assert.equal(doc.controllerName, 'Han Hukuk (Av. Hasan Bahadır Patan)');
+    assert.match(doc.sections[2].highlight, /ekran görüntüsü almaz/);
+    assert.equal((await current(admin)).notice, null);
+    assert.equal((await (await request('session', admin)).json()).employeeTermsRequired, true);
+    for (const path of [
+      'data?key=icrapro-v1',
+      'search?q=test',
+      'backups',
+      'audit',
+      'scheduled-reminders',
+      'employee-terms/records',
+    ]) {
+      const result = await request(path, admin);
+      assert.equal(result.status, 428, path);
+      assert.equal((await result.json()).code, 'employee_terms_required');
+    }
+    assert.equal((await accept(admin, doc, { hash: 'stale' })).status, 409);
+    assert.equal((await accept(admin, doc, { accepted: false })).status, 400);
+    const [first, duplicate] = await Promise.all([accept(admin, doc), accept(admin, doc)]);
+    assert.equal(first.status, 200);
+    const { acceptedAt } = await first.json();
+    assert.deepEqual(await duplicate.json(), { acceptedAt });
+    assert.equal((await request('data?key=icrapro-v1', admin)).status, 200);
+    const history = await (await request('employee-terms/history', admin)).json();
+    assert.equal(history.items.length, 1);
+    assert.equal(history.items[0].accountId, 'existing-admin');
+    assert.equal(history.items[0].acceptedAt, acceptedAt);
+    assert.equal((await accept(ceo, doc)).status, 200);
+    const resend = await request('employee-terms/settings', ceo, 'PUT', {
+      action: 'resend',
+      version: doc.version,
+      recipient: 'existing-admin',
+    });
+    assert.deepEqual(await resend.json(), { recipients: 1 });
+    const { reminder } = await current(admin);
+    assert.ok(reminder);
+    assert.equal((await current(ceo)).reminder, null);
+    assert.equal(
+      (
+        await request('employee-terms/reminder-seen', admin, 'POST', {
+          version: doc.version,
+          hash: doc.hash,
+          sentAt: reminder,
+        })
+      ).status,
+      200,
+    );
+    assert.equal((await current(admin)).reminder, null);
+    assert.equal((await current(admin)).acceptedAt, acceptedAt);
+    const added = await request('users', ceo, 'POST', {
+      username: 'new-staff',
+      name: 'Yeni çalışan',
+      password,
+      role: 'staff',
+    });
+    assert.equal(added.status, 200);
+    const staff = await login('new-staff');
+    assert.equal((await current(staff)).required, true);
+    assert.equal((await request('employee-terms/history?version=1.3.0', staff)).status, 404);
+    assert.equal((await request('logout', staff, 'POST', {})).status, 200);
+    assert.equal((await publish(ceo, '1.3.0', '1.3.0')).status, 409);
+    const update = await publish(ceo, '1.3.1', '1.3.0', 'Yeni veri sorumlusu');
+    assert.equal(update.status, 200);
+    assert.equal((await current(admin)).required, true);
+    const old = await (await request('employee-terms/history?version=1.3.0', admin)).json();
+    assert.equal(old.document.controllerName, doc.controllerName);
+    assert.equal(old.document.hash, doc.hash);
+    const noticeResult = await request('employee-terms/settings', ceo, 'PUT', {
+      action: 'notice',
+      version: 'A1',
+      url: 'https://example.test/notice',
+    });
+    assert.equal(noticeResult.status, 200);
+    const { notice } = await current(admin);
+    assert.equal((await request('employee-terms/notice-opened', admin, 'POST', notice)).status, 200);
+    assert.equal((await current(admin)).required, true);
+    const stored = await pool.query("SELECT payload->'employeeTerms' AS terms FROM han_private.han_state");
+    assert.equal(stored.rows[0].terms.acceptances.length, 2);
+    assert.equal(stored.rows[0].terms.noticeEvents.length, 1);
+  } finally {
+    await app.close();
+    await pg.close();
+  }
+});
+
+test('Scheduled reminders respect ownership, local time and destination consent; cron claims a due job once', async (t) => {
+  const { digest, scheduleTime } = require('../lib/scheduled-reminders.cjs');
+  const { configure } = require('../lib/whatsapp.cjs');
+  const previous = process.env.WHATSAPP_ENCRYPTION_KEY;
+  process.env.WHATSAPP_ENCRYPTION_KEY = crypto.randomBytes(32).toString('hex');
+  t.after(() => {
+    if (previous === undefined) delete process.env.WHATSAPP_ENCRYPTION_KEY;
+    else process.env.WHATSAPP_ENCRYPTION_KEY = previous;
+  });
+  assert.equal(scheduleTime('2030-02-29', '10:00', 0), null);
+  assert.equal(scheduleTime('2030-11-07', '00:02', 0), '2030-11-06T21:02:00.000Z');
+  const { pg, pool } = await database();
+  const state = fixture();
+  const secret = crypto.randomBytes(32).toString('hex');
+  state.reminderScheduler = { hash: digest(secret) };
+  state.users[0].whatsappAllowed = true;
+  state.users[0].whatsappPhone = '905321234567';
+  state.users.push({
+    ...state.users[0],
+    id: 'other',
+    role: 'staff',
+    username: 'other',
+    whatsappAllowed: false,
+  });
+  state.data['icrapro-v1'].docs.push({ id: 'test-file', number: 'EVR-1', debtor: 'Örnek Borçlu' });
+  state.whatsappConfig = configure(null, {
+    enabled: true,
+    phoneNumberId: '10000000001',
+    reminderTemplate: 'reminder',
+    token: 'synthetic-private-reminder-token-only',
+  });
+  await importState(pool, state);
+  const store = createStore(pool);
+  const messages = [];
+  const app = await serve(
+    createApplication({
+      store,
+      whatsappFetch: async (_url, { body }) => {
+        messages.push(JSON.parse(body));
+        return Response.json({ messages: [{ id: 'accepted' }] });
+      },
+    }),
+  );
+  const call = (path, method, headers, body) =>
+    fetch(app.url + '/api/' + path, {
+      method,
+      headers: { ...headers, 'Content-Type': 'application/json', 'X-Han-Request': '1' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  const login = async (username) => ({
+    cookie: (await call('login', 'POST', {}, { username, password })).headers.get('set-cookie').split(';')[0],
+  });
+  try {
+    const ceo = await login('test');
+    const other = await login('other');
+    const date = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    const create = {
+      action: 'create',
+      note: 'Gizli dosya notu',
+      date,
+      time: '12:00',
+      whatsapp: true,
+      targetType: 'document',
+      targetId: 'test-file',
+    };
+    assert.equal((await call('scheduled-reminders', 'POST', other, create)).status, 404);
+    const created = await call('scheduled-reminders', 'POST', ceo, create);
+    assert.equal(created.status, 200);
+    const { id } = await created.json();
+    assert.deepEqual((await (await call('scheduled-reminders', 'GET', other)).json()).items, []);
+    assert.equal((await call('scheduled-reminders', 'POST', other, { action: 'cancel', id })).status, 404);
+    await store.transaction(({ state, saveState }) => {
+      state.scheduledReminders[0].dueAt = new Date(Date.now() - 60000).toISOString();
+      saveState(state);
+    });
+    const cron = (authorization) => call('scheduled-reminders/cron', 'POST', { authorization }, {});
+    assert.equal((await cron('Bearer ' + '0'.repeat(64))).status, 401);
+    const runs = await Promise.all([cron('Bearer ' + secret), cron('Bearer ' + secret)]);
+    assert.deepEqual(
+      runs.map((row) => row.status),
+      [200, 200],
+    );
+    assert.equal(messages.length, 1);
+    assert.equal(messages[0].to, '905321234567');
+    assert.doesNotMatch(JSON.stringify(messages[0]), /Gizli dosya notu|Örnek Borçlu|EVR-1/);
+    const own = await (await call('scheduled-reminders', 'GET', ceo)).json();
+    assert.equal(own.items[0].deliveryStatus, 'accepted');
+    assert.equal(own.items[0].target.detail, 'EVR-1');
+    assert.equal(own.dueCount, 1);
+    assert.equal((await call('scheduled-reminders', 'POST', ceo, { action: 'complete', id })).status, 200);
+    assert.equal((await (await call('scheduled-reminders?summary', 'GET', ceo)).json()).dueCount, 0);
+  } finally {
+    await app.close();
+    await pg.close();
   }
 });
 

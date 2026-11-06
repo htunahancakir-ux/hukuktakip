@@ -211,6 +211,7 @@ function render() {
     !['ceo', 'admin'].includes(hanAuth.role) ||
     page === 'users' ||
     page === 'messages' ||
+    page === 'reminders' ||
     page === 'reports' ||
     page === 'accounting' ||
     page === 'home' ||
@@ -221,6 +222,7 @@ function render() {
     .forEach((b) => b.classList.toggle('active', b.dataset.page === page));
   const titles = {
     messages: ['Mesajlar / İş Emirleri', 'Kullanıcılara tek tek veya toplu mesaj gönderin.'],
+    reminders: ['Hatırlatmalar', 'Dosyaya bağlı veya kişisel hatırlatmalarınızı zamanlayın.'],
     users: ['Kullanıcı Yönetimi', 'Hesapları ve yetkileri yönetin.'],
     noAccess: ['Yetki Bekleniyor', 'Yöneticinizin size işlem yetkisi ataması gerekiyor.'],
     reports: ['Raporlar', 'İşlemleri süzün, toplamları inceleyin ve dışa aktarın.'],
@@ -247,6 +249,7 @@ function render() {
     clientRows();
     $('#search').oninput = clientRows;
   } else if (page === 'messages') messagesPage();
+  else if (page === 'reminders') scheduledRemindersPage();
   else if (page === 'users') userManagement();
   else if (page === 'noAccess')
     $('#content').innerHTML = '<div class="panel formbody">Hesabınıza henüz işlem yetkisi atanmadı.</div>';

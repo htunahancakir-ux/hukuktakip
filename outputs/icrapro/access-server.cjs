@@ -1,4 +1,7 @@
 const { handleSessionRoutes, handleAccountRoutes } = require('./access-accounts.cjs');
+const { handleEmployeeTermsRoutes } = require('./access-employee-terms.cjs');
+const { handleScheduledReminderRoutes } = require('./access-scheduled-reminders.cjs');
+const { requiresEmployeeTerms, REQUIRED_MESSAGE } = require('../../lib/employee-terms.cjs');
 const { searchWorkspace } = require('../../lib/workspace-search.cjs');
 const { handleWhatsAppRoutes } = require('./access-whatsapp.cjs');
 const {
@@ -49,6 +52,15 @@ function createAccess(stateFile, options = {}) {
   const secure = options.secureCookies ? '; Secure' : '';
   const revision = (key) =>
     '\"' + crypto.createHash('sha256').update(JSON.stringify(state.data[key])).digest('hex') + '\"';
+  function saveState(next) {
+    if (options.saveState) options.saveState(next);
+    else {
+      fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+      fs.writeFileSync(stateFile + '.tmp', JSON.stringify(next), { mode: 0o600 });
+      fs.renameSync(stateFile + '.tmp', stateFile);
+    }
+    state = next;
+  }
   function persist(next, actor) {
     if (actor) archiveRemovedDocuments(state, next, actor);
     delete next.data['icrapro-v1'].archivedNumbers;
@@ -110,13 +122,7 @@ function createAccess(stateFile, options = {}) {
     }
     const duplicate = duplicateIdentityError(next.data['icrapro-v1'], state.data['icrapro-v1']);
     if (duplicate) throw Object.assign(Error(duplicate), { code: 409 });
-    if (options.saveState) options.saveState(next);
-    else {
-      fs.mkdirSync(path.dirname(stateFile), { recursive: true });
-      fs.writeFileSync(stateFile + '.tmp', JSON.stringify(next), { mode: 0o600 });
-      fs.renameSync(stateFile + '.tmp', stateFile);
-    }
-    state = next;
+    saveState(next);
   }
   const publicUser = (u) => ({
     id: u.id,
@@ -293,7 +299,7 @@ function createAccess(stateFile, options = {}) {
     }, 60000);
     automationTimer.unref();
   }
-  return async function access(req, res, url) {
+  async function access(req, res, url) {
     if (!url.pathname.startsWith('/api/')) return false;
     try {
       if (
@@ -303,7 +309,14 @@ function createAccess(stateFile, options = {}) {
       )
         throw fail(403, 'İstek kaynağı doğrulanamadı.');
       const u = current(req);
-      if (u && url.pathname !== '/api/search') {
+      const termsRequired = requiresEmployeeTerms(state, u);
+      if (
+        u &&
+        !termsRequired &&
+        url.pathname !== '/api/search' &&
+        url.pathname !== '/api/scheduled-reminders' &&
+        !url.pathname.startsWith('/api/employee-terms/')
+      ) {
         const next = structuredClone(state),
           payrollChanged = syncPayrollPeriods(next, parkingToday()),
           workflowChanged = runWorkflowAutomation(next, parkingToday());
@@ -319,6 +332,8 @@ function createAccess(stateFile, options = {}) {
         options,
         attempts,
         persist: (next) => persist(next, u),
+        persistEmployeeTerms: saveState,
+        persistMetadata: saveState,
         publicUser,
         passwordOK,
         userEnabled,
@@ -349,8 +364,19 @@ function createAccess(stateFile, options = {}) {
         },
       };
       if (await handleSessionRoutes(ctx)) return true;
+      if (await handleEmployeeTermsRoutes(ctx)) return true;
+      if (
+        ['/api/password-reset/request', '/api/password-reset/complete'].includes(url.pathname) &&
+        (await handleWhatsAppRoutes(ctx))
+      )
+        return true;
+      if (termsRequired && url.pathname !== '/api/logout') {
+        send(res, 428, { error: REQUIRED_MESSAGE, code: 'employee_terms_required' });
+        return true;
+      }
       if (await handleWhatsAppRoutes(ctx)) return true;
       if (!u) throw fail(401, 'Giriş yapın.');
+      if (await handleScheduledReminderRoutes(ctx)) return true;
       if (url.pathname === '/api/search' && req.method === 'GET') {
         send(res, 200, { items: searchWorkspace(state, u, url.searchParams.get('q')) });
         return true;
@@ -366,6 +392,8 @@ function createAccess(stateFile, options = {}) {
       send(res, error.code || 500, { error: error.code ? error.message : 'Sunucu işlemi tamamlayamadı.' });
     }
     return true;
-  };
+  }
+  access.metadataTransaction = (work) => work({ state: structuredClone(state), saveState });
+  return access;
 }
 module.exports = { createAccess };

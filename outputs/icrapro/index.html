@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>hanhukuk 1.1.1 · Hukuk ve Tahsilat Yönetimi</title>
+    <title>hanhukuk · Hukuk ve Tahsilat Yönetimi</title>
     <link rel="stylesheet" href="style.css" />
     <link rel="stylesheet" href="workspace-layout.css" />
   </head>
@@ -21,6 +21,7 @@
         ><button data-page="intake">▤ &nbsp; Evrak Kabul</button
         ><button data-page="documents">▦ &nbsp; Borçlu Listesi <i id="activeDebtorCount"></i></button
         ><button data-page="messages">✉ &nbsp; Mesajlar / İş Emirleri <i id="messageUnreadCount"></i></button
+        ><button data-page="reminders">◷ &nbsp; Hatırlatmalar <i id="scheduledReminderCount"></i></button
         ><button data-page="reports">▥ &nbsp; Raporlar</button
         ><button data-page="accounting">₺ &nbsp; Muhasebe</button
         ><button data-page="personnel">♙ &nbsp; Personel</button
@@ -61,12 +62,12 @@
         </form>
         <label class="operator-picker"
           >İşlem Yapan Personel<select id="activeOperator" aria-label="İşlem yapan personel"></select></label
-        ><span class="demo">● &nbsp; Sürüm 1.1.1</span>
+        ><span class="demo" id="appVersion"></span>
       </header>
       <main>
         <div class="heading">
           <div>
-            <p class="eyebrow">hanhukuk 1.1.1 / MÜVEKKİL YÖNETİMİ</p>
+            <p class="eyebrow">hanhukuk / MÜVEKKİL YÖNETİMİ</p>
             <h1 id="title">Müvekkiller</h1>
             <p id="subtitle">Müvekkil bilgilerinizi ve bağlı evrakları tek yerden yönetin.</p>
           </div>
@@ -90,6 +91,9 @@
     <div id="toast" role="status"></div>
     <script src="workspace-assets.js"></script>
     <script src="login-recovery.js"></script>
+    <script src="modal-dismissal.js"></script>
+    <script src="employee-terms.js"></script>
+    <script src="employee-terms-settings.js"></script>
     <script src="auth.js"></script>
   </body>
 </html>

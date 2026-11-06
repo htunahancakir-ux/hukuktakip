@@ -1,4 +1,4 @@
-function borrowerDetail(id) {
+function borrowerDetail(id, savedForm) {
   const d = db.docs.find((x) => x.id === id);
   if (!d) return;
   let dialog = document.getElementById('borrowerDetail');
@@ -7,6 +7,8 @@ function borrowerDetail(id) {
     dialog.id = 'borrowerDetail';
     document.body.append(dialog);
   }
+  const drafts = dialog.open && dialog.dataset.borrowerId === id ? modalDrafts(dialog, savedForm) : [];
+  dialog.dataset.borrowerId = id;
   const f = docFinance(d),
     client = db.clients.find((c) => c.id === d.client),
     type = docType(d),
@@ -91,8 +93,11 @@ function borrowerDetail(id) {
     if (page === 'documents') docRows();
     stats();
     toast('Evrak durumu kaydedildi.');
-    borrowerDetail(id);
+    borrowerDetail(id, e.target);
   };
+  for (const draft of drafts) {
+    if (draft.id) dialog.querySelector('#' + CSS.escape(draft.id))?.replaceWith(draft);
+  }
   if (!dialog.open) {
     if (document.querySelector('.pinned-borrower-sheet')) dialog.show();
     else dialog.showModal();
@@ -763,7 +768,7 @@ function setupBorrowerEnforcementFields(dialog, d, meta) {
         docRows();
       }
       updateActiveDebtorCount();
-      borrowerDetail(d.id);
+      borrowerDetail(d.id, form);
       toast('İcra bilgileri kaydedildi. Dosya İcra klasöründe.', document.getElementById('borrowerDetail'));
     } catch (error) {
       toast(error.message, dialog);

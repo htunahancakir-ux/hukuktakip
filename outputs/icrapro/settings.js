@@ -209,6 +209,7 @@ function settingsSectionTabs(active) {
     ['preferences', 'Uygulama Tercihleri'],
     ['staff', 'Personel'],
     ['audit', 'İşlem Kayıtları'],
+    ['employeeTerms', 'Gizlilik Sözleşmesi'],
     ...(hanAuth.role === 'ceo' ? [['whatsapp', 'WhatsApp Business']] : []),
     ['backup', 'Yedekleme'],
   ];
@@ -314,6 +315,7 @@ settings = function () {
   if (settingsTab === 'backup') return backupSettingsPage();
   if (settingsTab === 'audit') return auditSettingsPage();
   if (settingsTab === 'whatsapp') return whatsappSettingsPage();
+  if (settingsTab === 'employeeTerms') return employeeTermsSettingsPage();
   originalSettings();
   const notice = document.querySelector('#settingsForm .notice');
   if (notice)

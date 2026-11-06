@@ -26,6 +26,10 @@ function authApi(url, method = 'GET', data) {
     location.reload();
     throw Error('Oturum sona erdi. Yeniden giriş yapın.');
   }
+  if (request.status === 428 && result.code === 'employee_terms_required') {
+    location.reload();
+    throw Error(result.error);
+  }
   if (request.status < 200 || request.status >= 300) throw Error(result.error || 'İşlem yapılamadı.');
   const version = request.getResponseHeader('ETag');
   if (version && url.startsWith('/api/data?')) hanDataVersions.set(url, version);
@@ -42,7 +46,7 @@ function hanCan(permission) {
 function hanPageAllowed(p) {
   return (
     ['ceo', 'admin'].includes(hanAuth?.role) ||
-    (!!hanAuth && ['home', 'messages', 'reports'].includes(p)) ||
+    (!!hanAuth && ['home', 'messages', 'reports', 'reminders'].includes(p)) ||
     (p === 'accounting' && (hanCan('cashIn') || hanCan('cashOut'))) ||
     (p === 'clients' && hanCan('clients')) ||
     (['intake', 'documents'].includes(p) && hanCan('documents'))
@@ -68,9 +72,12 @@ function accessMenu() {
   }
   const op = document.getElementById('activeOperator');
   if (op) {
-    op.outerHTML = '<strong id="signedInUser"></strong>';
-    document.getElementById('signedInUser').textContent =
-      hanAuth.name + (hanAuth.role === 'ceo' ? ' · CEO' : '');
+    op.outerHTML =
+      '<button type="button" class="link" id="signedInUser" title="Hesabım · Sözleşme geçmişi"></button>';
+    const account = document.getElementById('signedInUser');
+    account.textContent = hanAuth.name + (hanAuth.role === 'ceo' ? ' · CEO' : '') + ' · Hesabım';
+    account.setAttribute('aria-label', 'Hesabım · ' + hanAuth.name);
+    account.onclick = showMyEmployeeTerms;
   }
   if (!document.getElementById('signOut')) {
     const b = document.createElement('button');
@@ -120,6 +127,7 @@ async function launchApplication() {
   startMessageNotifications();
   startCollectionNotices();
   startWorkflowNotices();
+  startScheduledReminderNotices();
   showPendingWorkOrders();
 }
 function installPasswordVisibility(form) {
@@ -157,7 +165,7 @@ function authGate(setup) {
     gate.id = 'authGate';
     document.body.append(gate);
   }
-  gate.innerHTML = `<form id="loginForm" class="panel"><div class="panelhead"><div><h2>hanhukuk 1.1.1</h2><p>${setup ? 'İlk Yönetici Hesabını Oluştur' : 'Kullanıcı Girişi'}</p></div></div><div class="formbody grid">${setup ? '<label class="field full">Yönetici Ad Soyad<input name="name" required autocomplete="name"></label>' : ''}<label class="field full">Kullanıcı Adı<input name="username" required autocomplete="username"></label><label class="field full">Şifre<input name="password" type="password" required ${setup ? 'minlength="10"' : ''} autocomplete="${setup ? 'new-password' : 'current-password'}"></label>${setup ? '<label class="field full">Şifre Tekrar<input name="confirm" type="password" required minlength="10" autocomplete="new-password"></label><p class="full">Şifre en az 10 karakter olmalıdır. Bu tarayıcıdaki mevcut kayıtlar yönetici kurulumunda sunucuya taşınır. Şifrenizi unutmayın.</p>' : ''}<p id="authError" class="full" role="alert"></p></div><div class="actions"><button class="primary">${setup ? 'Yönetici Hesabını Oluştur' : 'Giriş Yap'}</button></div></form>`;
+  gate.innerHTML = `<form id="loginForm" class="panel"><div class="panelhead"><div><h2>Han Hukuk Takip</h2><p>${setup ? 'İlk Yönetici Hesabını Oluştur' : 'Kullanıcı Girişi'}</p></div></div><div class="formbody grid">${setup ? '<label class="field full">Yönetici Ad Soyad<input name="name" required autocomplete="name"></label>' : ''}<label class="field full">Kullanıcı Adı<input name="username" required autocomplete="username"></label><label class="field full">Şifre<input name="password" type="password" required ${setup ? 'minlength="10"' : ''} autocomplete="${setup ? 'new-password' : 'current-password'}"></label>${setup ? '<label class="field full">Şifre Tekrar<input name="confirm" type="password" required minlength="10" autocomplete="new-password"></label><p class="full">Şifre en az 10 karakter olmalıdır. Bu tarayıcıdaki mevcut kayıtlar yönetici kurulumunda sunucuya taşınır. Şifrenizi unutmayın.</p>' : ''}<p id="authError" class="full" role="alert"></p></div><div class="actions"><button class="primary">${setup ? 'Yönetici Hesabını Oluştur' : 'Giriş Yap'}</button></div></form>`;
   const loginForm = document.getElementById('loginForm');
   loginForm.insertAdjacentHTML('afterbegin', loginBrand());
   const submit = loginForm.querySelector('.actions button');
@@ -189,9 +197,10 @@ function authGate(setup) {
         }
       }
       hanAuth = authApi(setup ? '/api/setup' : '/api/login', 'POST', data);
-      await launchApplication();
+      await enterWorkspace();
     } catch (error) {
-      document.getElementById('authError').textContent = error.message || 'Uygulama yüklenemedi.';
+      const output = document.getElementById('authError');
+      if (output) output.textContent = error.message || 'Uygulama yüklenemedi.';
       button.disabled = false;
     }
   };
@@ -204,9 +213,15 @@ if (passwordLink) {
 } else {
   try {
     const session = authApi('/api/session');
+    if (session.appVersion) {
+      document.getElementById('appVersion').textContent = '●  Sürüm ' + session.appVersion;
+    }
     if (session.user) {
       hanAuth = session.user;
-      launchApplication().catch(() => authGate(false));
+      enterWorkspace().catch(() => {
+        authGate(false);
+        document.getElementById('authError').textContent = 'Çalışma alanı açılamadı. Sayfayı yenileyin.';
+      });
     } else authGate(session.setup);
   } catch {
     authGate(false);

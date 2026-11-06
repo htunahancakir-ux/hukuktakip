@@ -18,4 +18,6 @@ Meta, gönderimi başlatan şablonları kendi kurallarına göre değerlendirir.
 
 WhatsApp seçimi, mesaj ve iş emri ekranlarında varsayılan olarak açıktır. Gönderen seçimi kaldırabilir. Uygulama içi işlem, WhatsApp sonucu ayrı gösterilerek kaydedilir. Meta'nın gönderimi kabul etmesi, mesajın okunduğunu göstermez. Tutanak, makbuz, PDF ve fotoğraf gönderiminde alıcının numarası ve onayı istenir.
 
+**Hatırlatmalar** menüsünde Türkiye saatiyle bir gün ve saat belirleyip kendinize bildirim kurabilirsiniz. WhatsApp seçimi için aynı iş emri/hatırlatma şablonu ve hesabınızda onaylı numara gerekir. Mesajda saat ve uygulama bağlantısı bulunur; dosya bilgileri ve not uygulamada kalır. Canlı zamanlayıcı, uygulama yayınlandıktan sonra Supabase'de [zamanlayıcı SQL dosyası](../scripts/supabase-reminder-scheduler.sql) ile etkinleştirilir. Yerel geliştirme sunucusunda otomatik WhatsApp gönderimi varsayılan olarak kapalıdır; ayrı test hesabıyla denemek için `HANHUKUK_LOCAL_REMINDER_DELIVERY=1` ayarlanabilir.
+
 Meta anahtarı sunucuda şifrelenir. İstenirse `WHATSAPP_ENCRYPTION_KEY` ile ayrı bir 32 baytlık anahtar tanımlanabilir. Yoksa mevcut yedekleme anahtarından WhatsApp için ayrı bir anahtar türetilir. Entegrasyon ayarları ve geçici şifre bağlantıları uygulama yedeğine dahil edilmez.
