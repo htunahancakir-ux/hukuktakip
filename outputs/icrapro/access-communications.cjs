@@ -1,3 +1,5 @@
+const { queue: queueWhatsApp } = require('../../lib/whatsapp.cjs');
+
 async function handleCommunicationRoutes(ctx) {
   const { req, res, url, u, persist, userEnabled, fail, body, send, crypto } = ctx;
   if (url.pathname === '/api/work-orders' && req.method === 'GET') {
@@ -58,6 +60,10 @@ async function handleCommunicationRoutes(ctx) {
       },
     ];
     persist(next);
+    if (v.whatsapp === true)
+      queueWhatsApp(res, next, 'reminderTemplate', [assignee], () => ({
+        values: [u.name, order.title, order.due || 'Belirtilmedi'],
+      }));
     send(res, 201, { ok: true, id: order.id });
     return true;
   }
@@ -114,7 +120,9 @@ async function handleCommunicationRoutes(ctx) {
     send(
       res,
       200,
-      ctx.state.users.filter((x) => userEnabled(x) && x.id !== u.id).map((x) => ({ id: x.id, name: x.name })),
+      ctx.state.users
+        .filter((x) => userEnabled(x) && x.id !== u.id)
+        .map((x) => ({ id: x.id, name: x.name, role: x.role })),
     );
     return true;
   }
@@ -216,6 +224,20 @@ async function handleCommunicationRoutes(ctx) {
         },
       ];
       persist(next);
+      if (v.whatsapp === true)
+        queueWhatsApp(
+          res,
+          next,
+          'messageTemplate',
+          requested.map((id) => next.users.find((user) => user.id === id)),
+          () => ({
+            values: [
+              u.name,
+              subject,
+              messageText.length > 850 ? messageText.slice(0, 850) + '…' : messageText,
+            ],
+          }),
+        );
       send(res, 201, { ok: true });
       return true;
     }

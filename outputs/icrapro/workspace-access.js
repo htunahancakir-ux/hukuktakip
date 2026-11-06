@@ -21,9 +21,16 @@ function userManagement(editId) {
             `<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td>${u.role === 'ceo' ? 'CEO' : u.role === 'admin' ? 'Yönetici' : 'Personel'}</td><td>${u.active ? 'Aktif' : 'Pasif'}</td><td>${u.role !== 'ceo' || hanAuth.role === 'ceo' ? `<button class="link" data-reset-password="${u.id}">Şifre Değiştir / Sıfırla</button>` : 'CEO tarafından yönetilir'}</td></tr>`,
         )
         .join('') || '<tr><td colspan="5" class="empty">Kullanıcı bulunamadı.</td></tr>';
-    document
-      .querySelectorAll('[data-reset-password]')
-      .forEach((b) => (b.onclick = () => userManagement(b.dataset.resetPassword)));
+    document.querySelectorAll('[data-reset-password]').forEach((b) => {
+      b.onclick = () => userManagement(b.dataset.resetPassword);
+      const account = users.find((user) => user.id === b.dataset.resetPassword);
+      const whatsapp = document.createElement('button');
+      whatsapp.type = 'button';
+      whatsapp.className = 'link';
+      whatsapp.textContent = 'WhatsApp ve Şifre Bağlantısı';
+      whatsapp.onclick = () => whatsappAccountDialog(account);
+      b.after(whatsapp);
+    });
   };
   $('#passwordUserSearch').oninput = renderRows;
   renderRows();

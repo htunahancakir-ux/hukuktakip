@@ -49,6 +49,28 @@ function messagesPage() {
   updateMessageBadge();
 }
 
+function messageRecipientGroups(users, selected) {
+  const sorted = [...users].sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+  const groups = [
+    ['Yöneticiler', sorted.filter((user) => ['ceo', 'admin'].includes(user.role))],
+    ['Personel', sorted.filter((user) => !['ceo', 'admin'].includes(user.role))],
+  ];
+  return (
+    groups
+      .filter(([, people]) => people.length)
+      .map(
+        ([label, people]) =>
+          `<fieldset class="message-recipient-group"><legend>${label}</legend><div class="message-recipient-grid">${people
+            .map(
+              (user) =>
+                `<label title="${esc(user.name)}"><input type="checkbox" name="recipient" value="${esc(user.id)}" ${selected === user.id ? 'checked' : ''}><span>${esc(user.name)}</span></label>`,
+            )
+            .join('')}</div></fieldset>`,
+      )
+      .join('') || '<p>Mesaj gönderilebilecek başka aktif kullanıcı yok.</p>'
+  );
+}
+
 function composeMessage(reply) {
   let users;
   try {
@@ -62,28 +84,35 @@ function composeMessage(reply) {
     dialog.id = 'messageComposeDialog';
     document.body.append(dialog);
   }
-  dialog.innerHTML = `<form id="messageComposeForm"><div class="panelhead"><h2>${reply ? 'Mesajı Yanıtla' : 'Yeni Mesaj'}</h2><button type="button" class="secondary" id="closeMessageCompose">Kapat</button></div><div class="formbody"><label class="field">Gönderim<select name="audience"><option value="selected">Kişi / Seçili Kişiler</option><option value="all">Tüm Aktif Kullanıcılar</option></select></label><div id="messageRecipients" class="message-recipients">${users.map((u) => `<label class="settings-check"><input type="checkbox" name="recipient" value="${u.id}" ${reply?.senderId === u.id ? 'checked' : ''}>${esc(u.name)}</label>`).join('') || '<p>Mesaj gönderilebilecek başka aktif kullanıcı yok.</p>'}</div><label class="field">Konu<input name="subject" required maxlength="150" value="${reply ? esc(('Yanıt: ' + reply.subject).slice(0, 150)) : ''}"></label><label class="field">Mesaj<textarea name="text" required maxlength="10000" rows="7" placeholder="Mesajınızı yazın…"></textarea></label><p>Mesajlar yönetici tarafından da görüntülenebilir.</p></div><div class="actions"><button class="primary" type="submit">Gönder</button></div></form>`;
+  dialog.innerHTML = `<form id="messageComposeForm"><div class="panelhead"><h2>${reply ? 'Mesajı Yanıtla' : 'Yeni Mesaj'}</h2><button type="button" class="secondary" id="closeMessageCompose">Kapat</button></div><div class="formbody"><label class="field">Gönderim<select name="audience"><option value="selected">Kişi / Seçili Kişiler</option><option value="all">Tüm Aktif Kullanıcılar</option></select></label><div id="messageRecipients" class="message-recipients">${messageRecipientGroups(users, reply?.senderId)}</div><label class="field">Konu<input name="subject" required maxlength="150" value="${reply ? esc(('Yanıt: ' + reply.subject).slice(0, 150)) : ''}"></label><label class="field">Mesaj<textarea name="text" required maxlength="10000" rows="4" placeholder="Mesajınızı yazın…"></textarea></label><p>Mesajlar yönetici tarafından da görüntülenebilir.</p></div><div class="actions"><button class="primary" type="submit">Gönder</button></div></form>`;
   $('#closeMessageCompose').onclick = () => dialog.close();
   const form = $('#messageComposeForm');
+  form
+    .querySelector('.formbody')
+    .insertAdjacentHTML(
+      'beforeend',
+      '<label class="settings-check"><input type="checkbox" name="whatsapp" checked> WhatsApp’tan da gönder</label>',
+    );
   form.elements.audience.onchange = () => {
     const all = form.elements.audience.value === 'all';
     $('#messageRecipients').hidden = all;
     form.querySelectorAll('[name="recipient"]').forEach((el) => (el.disabled = all));
   };
-  form.onsubmit = (e) => {
+  form.onsubmit = async (e) => {
     e.preventDefault();
     const button = form.querySelector('[type="submit"]');
     button.disabled = true;
     try {
       const value = Object.fromEntries(new FormData(form));
       value.recipientIds = [...form.querySelectorAll('[name="recipient"]:checked')].map((el) => el.value);
-      authApi('/api/messages', 'POST', value);
+      value.whatsapp = form.elements.whatsapp.checked;
+      const result = await recoveryApi('/api/messages', value);
       dialog.close();
       communicationView = 'messages';
       messageBox = 'sent';
       messageOffset = 0;
       messagesPage();
-      toast('Mesaj gönderildi.');
+      toast('Uygulama içi mesaj gönderildi.' + whatsappDeliveryNotice(result));
     } catch (error) {
       toast(error.message);
     } finally {
@@ -238,19 +267,29 @@ function composeWorkOrder() {
   dialog.innerHTML = `<form id="workOrderComposeForm"><div class="panelhead"><h2>İş Emri Ata</h2><button type="button" class="secondary" id="closeWorkCompose">Kapat</button></div><div class="formbody grid"><label class="field full">Atanacak Kişi<select name="assigneeId" required><option value="">Seçin</option>${users.map((u) => `<option value="${u.id}">${esc(u.name)}</option>`).join('')}</select></label><label class="field full">İş Başlığı<select name="title" required><option value="">İş başlığı seçin</option><option>Arama Yap</option><option>Borçluya Geri Dön</option><option>İcra Aç</option><option>Diğer</option></select></label><label class="field full">İş Açıklaması<textarea name="description" data-optional="true" maxlength="10000" rows="6"></textarea></label><label class="field full">Son Tarih (isteğe bağlı)<input name="due" type="date" data-optional="true"></label></div><div class="actions"><button type="submit" class="primary">İş Emrini Ata</button></div></form>`;
   $('#closeWorkCompose').onclick = () => dialog.close();
   const form = $('#workOrderComposeForm');
-  form.onsubmit = (e) => {
+  form
+    .querySelector('.formbody')
+    .insertAdjacentHTML(
+      'beforeend',
+      '<label class="settings-check"><input type="checkbox" name="whatsapp" checked> WhatsApp’tan da gönder</label>',
+    );
+  form.onsubmit = async (e) => {
     e.preventDefault();
     const button = form.querySelector('[type="submit"]');
     button.disabled = true;
     try {
-      authApi('/api/work-orders', 'POST', Object.fromEntries(new FormData(form)));
+      const value = Object.fromEntries(new FormData(form));
+      value.whatsapp = form.elements.whatsapp.checked;
+      const result = await recoveryApi('/api/work-orders', value);
       dialog.close();
       communicationView = 'orders';
       workOrderScope = 'created';
       workOrderStatus = 'pending';
       workOrderOffset = 0;
       messagesPage();
-      toast('İş emri kaydedildi ve görevliye bildirim gönderildi.');
+      toast(
+        'İş emri kaydedildi ve görevliye uygulama içi bildirim gönderildi.' + whatsappDeliveryNotice(result),
+      );
     } catch (error) {
       toast(error.message);
     } finally {
@@ -270,6 +309,27 @@ function openWorkOrder(order) {
   }
   dialog.innerHTML = `<div class="panelhead"><h2>${esc(order.title)}</h2><button class="secondary" id="closeWorkDetail">Kapat</button></div><div class="formbody"><p>Atayan: <b>${esc(order.assignerName)}</b> · Görevli: <b>${esc(order.assigneeName)}</b></p><p>Atama: ${messageTimestamp(order.createdAt)} · Son tarih: ${esc(displayDate(order.due) || '—')}</p><div class="message-text">${esc(order.description)}</div>${order.status === 'done' ? `<p>✓ Yapıldı · ${messageTimestamp(order.completedAt)}</p><p><b>İş Sonucu:</b> ${esc(order.completionResult || 'Belirtilmedi')}</p><div class="message-text">${esc(order.completionNote || '')}</div>` : order.assigneeId === hanAuth.id ? '<form id="completeWorkForm"><label class="field">İş Sonucu<select name="result" required><option value="">Sonuç seçin</option><option>Borçlu Arandı</option><option>İcra Açıldı</option><option>Diğer</option></select></label><label class="field" style="margin-top:20px">Tamamlama Notu (isteğe bağlı)<textarea name="note" rows="3" maxlength="3000" data-optional="true"></textarea></label><div class="actions"><button type="submit" class="primary">✓ Yapıldı</button></div></form>' : '<p>Durum: Yapılmadı / Bekliyor</p>'}</div>`;
   $('#closeWorkDetail').onclick = () => dialog.close();
+  if (
+    order.status === 'pending' &&
+    (order.assignerId === hanAuth.id || ['ceo', 'admin'].includes(hanAuth.role))
+  ) {
+    const reminder = document.createElement('button');
+    reminder.type = 'button';
+    reminder.className = 'secondary';
+    reminder.textContent = 'WhatsApp’tan Hatırlat';
+    reminder.onclick = async () => {
+      reminder.disabled = true;
+      try {
+        const result = await recoveryApi('/api/whatsapp/reminder', { orderId: order.id });
+        toast(whatsappDeliveryNotice(result).trim(), dialog);
+      } catch (error) {
+        toast(error.message, dialog);
+      } finally {
+        reminder.disabled = false;
+      }
+    };
+    dialog.querySelector('.formbody').append(reminder);
+  }
   if ($('#completeWorkForm'))
     $('#completeWorkForm').onsubmit = (e) => {
       e.preventDefault();

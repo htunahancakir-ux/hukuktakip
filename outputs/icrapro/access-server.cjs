@@ -1,5 +1,11 @@
 const { handleSessionRoutes, handleAccountRoutes } = require('./access-accounts.cjs');
 const { searchWorkspace } = require('../../lib/workspace-search.cjs');
+const { handleWhatsAppRoutes } = require('./access-whatsapp.cjs');
+const {
+  activeArchives,
+  archiveRemovedDocuments,
+  preventArchivedNumberReuse,
+} = require('../../lib/document-archive.cjs');
 const { handleWorkflowRoutes } = require('./access-workflow.cjs');
 const { handleDocumentRoutes } = require('./access-documents.cjs');
 const { handleCommunicationRoutes } = require('./access-communications.cjs');
@@ -43,7 +49,10 @@ function createAccess(stateFile, options = {}) {
   const secure = options.secureCookies ? '; Secure' : '';
   const revision = (key) =>
     '\"' + crypto.createHash('sha256').update(JSON.stringify(state.data[key])).digest('hex') + '\"';
-  function persist(next) {
+  function persist(next, actor) {
+    if (actor) archiveRemovedDocuments(state, next, actor);
+    delete next.data['icrapro-v1'].archivedNumbers;
+    preventArchivedNumberReuse(state, next);
     normalizePhoneRecords(next.data);
     syncPayrollPeriods(next, parkingToday());
     for (const d of next.data['icrapro-v1'].docs) {
@@ -210,7 +219,12 @@ function createAccess(stateFile, options = {}) {
   }
   function readKey(key, u) {
     const value = structuredClone(state.data[key] ?? defaults[key]);
-    if (key === 'icrapro-v1') value.docs.forEach((d) => applyParkingFee(d, parkingToday()));
+    if (key === 'icrapro-v1') {
+      value.docs.forEach((d) => applyParkingFee(d, parkingToday()));
+      value.archivedNumbers = activeArchives(state)
+        .map((entry) => entry.document.number)
+        .filter(Boolean);
+    }
     if (
       ['ceo', 'admin'].includes(u.role) ||
       ['icrapro-v1', 'hanhukuk-finance-v1', 'hanhukuk-accounting-v1'].includes(key)
@@ -304,7 +318,7 @@ function createAccess(stateFile, options = {}) {
         u,
         options,
         attempts,
-        persist,
+        persist: (next) => persist(next, u),
         publicUser,
         passwordOK,
         userEnabled,
@@ -335,6 +349,7 @@ function createAccess(stateFile, options = {}) {
         },
       };
       if (await handleSessionRoutes(ctx)) return true;
+      if (await handleWhatsAppRoutes(ctx)) return true;
       if (!u) throw fail(401, 'Giriş yapın.');
       if (url.pathname === '/api/search' && req.method === 'GET') {
         send(res, 200, { items: searchWorkspace(state, u, url.searchParams.get('q')) });

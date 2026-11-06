@@ -7,6 +7,7 @@ const workspaceScripts = [
   'settings.js',
   'workspace-audit.js',
   'workspace-search.js',
+  'workspace-whatsapp.js',
   'parking-fees.js',
   'document-types.js',
   'districts.js',

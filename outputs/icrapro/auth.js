@@ -158,10 +158,22 @@ function authGate(setup) {
     document.body.append(gate);
   }
   gate.innerHTML = `<form id="loginForm" class="panel"><div class="panelhead"><div><h2>hanhukuk 1.1.1</h2><p>${setup ? 'İlk Yönetici Hesabını Oluştur' : 'Kullanıcı Girişi'}</p></div></div><div class="formbody grid">${setup ? '<label class="field full">Yönetici Ad Soyad<input name="name" required autocomplete="name"></label>' : ''}<label class="field full">Kullanıcı Adı<input name="username" required autocomplete="username"></label><label class="field full">Şifre<input name="password" type="password" required ${setup ? 'minlength="10"' : ''} autocomplete="${setup ? 'new-password' : 'current-password'}"></label>${setup ? '<label class="field full">Şifre Tekrar<input name="confirm" type="password" required minlength="10" autocomplete="new-password"></label><p class="full">Şifre en az 10 karakter olmalıdır. Bu tarayıcıdaki mevcut kayıtlar yönetici kurulumunda sunucuya taşınır. Şifrenizi unutmayın.</p>' : ''}<p id="authError" class="full" role="alert"></p></div><div class="actions"><button class="primary">${setup ? 'Yönetici Hesabını Oluştur' : 'Giriş Yap'}</button></div></form>`;
-  installPasswordVisibility(document.getElementById('loginForm'));
-  document.getElementById('loginForm').onsubmit = async (event) => {
+  const loginForm = document.getElementById('loginForm');
+  loginForm.insertAdjacentHTML('afterbegin', loginBrand());
+  const submit = loginForm.querySelector('.actions button');
+  submit.type = 'submit';
+  if (!setup) {
+    const forgot = document.createElement('button');
+    forgot.type = 'button';
+    forgot.className = 'link';
+    forgot.textContent = 'Şifremi Unuttum';
+    forgot.onclick = () => passwordRecoveryGate();
+    submit.before(forgot);
+  }
+  installPasswordVisibility(loginForm);
+  loginForm.onsubmit = async (event) => {
     event.preventDefault();
-    const button = event.target.querySelector('button');
+    const button = submit;
     button.disabled = true;
     try {
       const data = Object.fromEntries(new FormData(event.target));
@@ -185,15 +197,21 @@ function authGate(setup) {
   };
 }
 
-try {
-  const session = authApi('/api/session');
-  if (session.user) {
-    hanAuth = session.user;
-    launchApplication().catch(() => authGate(false));
-  } else authGate(session.setup);
-} catch {
-  authGate(false);
-  document.getElementById('authError').textContent = 'Sunucuya ulaşılamadı. Uygulamayı yeniden başlatın.';
+const passwordLink = /^#sifre=([a-zA-Z0-9_-]{43})$/.exec(location.hash);
+if (passwordLink) {
+  history.replaceState(null, '', location.pathname + location.search);
+  passwordRecoveryGate(passwordLink[1]);
+} else {
+  try {
+    const session = authApi('/api/session');
+    if (session.user) {
+      hanAuth = session.user;
+      launchApplication().catch(() => authGate(false));
+    } else authGate(session.setup);
+  } catch {
+    authGate(false);
+    document.getElementById('authError').textContent = 'Sunucuya ulaşılamadı. Uygulamayı yeniden başlatın.';
+  }
 }
 
 let messageBox = 'inbox',

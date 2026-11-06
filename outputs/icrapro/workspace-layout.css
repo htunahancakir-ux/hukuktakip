@@ -1,4 +1,93 @@
 /* The workspace header stays compact across all navigation views. */
+.login-brand {
+  padding: 17px 22px 16px;
+  background: #122636;
+  border-radius: 10px 10px 0 0;
+  color: #fff;
+}
+.login-brand small {
+  display: block;
+  margin: 8px 0 0;
+  color: #dce8ef;
+  font-size: 9px;
+  letter-spacing: 1.6px;
+}
+#messageComposeDialog {
+  width: min(760px, calc(100% - 28px));
+  max-height: calc(100dvh - 24px);
+}
+#messageComposeDialog .panelhead,
+#messageComposeDialog .actions {
+  padding: 9px 15px;
+}
+#messageComposeDialog .formbody {
+  display: grid;
+  gap: 7px;
+  padding: 9px 15px;
+}
+#messageComposeDialog .formbody > p {
+  margin: 0;
+  font-size: 11px;
+}
+#messageComposeDialog .formbody > .settings-check,
+#messageComposeDialog .formbody > .field {
+  margin: 0;
+  min-height: 0;
+  padding: 0;
+  gap: 4px;
+}
+#messageComposeDialog .field input,
+#messageComposeDialog .field select,
+#messageComposeDialog .field textarea {
+  padding: 6px 9px;
+}
+#messageComposeDialog .field textarea {
+  min-height: 60px;
+  height: 66px;
+}
+#messageComposeDialog .panelhead button,
+#messageComposeDialog .actions button {
+  padding: 7px 11px;
+}
+#messageComposeDialog .message-recipients {
+  display: grid;
+  gap: 6px;
+  padding: 4px 0;
+  max-height: min(37vh, 330px);
+}
+#messageComposeDialog .message-recipients[hidden] {
+  display: none;
+}
+.message-recipient-group {
+  min-width: 0;
+  margin: 0;
+  padding: 4px 6px 6px;
+  border: 1px solid #e0e7ed;
+  border-radius: 6px;
+}
+.message-recipient-group legend {
+  padding: 0 4px;
+  color: #345e6d;
+  font-size: 11px;
+  font-weight: 650;
+}
+.message-recipient-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 3px 6px;
+}
+.message-recipient-grid label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 3px 4px;
+  min-width: 0;
+  font-size: 11px;
+  cursor: pointer;
+}
+.message-recipient-grid label span {
+  overflow-wrap: anywhere;
+}
 .shell > header {
   position: sticky;
   top: 0;

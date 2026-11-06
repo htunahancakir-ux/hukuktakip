@@ -13,6 +13,7 @@ const { createApplication } = require('../lib/application.cjs');
 const { encryptState } = require('../lib/backup-service.cjs');
 const { restoreBackup } = require('../scripts/restore-backup.cjs');
 const workspaceScripts = require('../outputs/icrapro/workspace-assets.js');
+const { reserveReset } = require('../lib/whatsapp.cjs');
 
 const password = 'Synthetic-Postgres-Test-Only';
 function fixture() {
@@ -446,7 +447,7 @@ test('Audit tracks successful changes and separates login, logout and failed log
     assert.deepEqual(await search('cagdas', staff), ['doc-1']);
     assert.deepEqual(await search('5329876543', staff), ['doc-1']);
     const dataUrl = app.url + '/api/data?key=icrapro-v1';
-    async function update(change) {
+    async function update(change, status = 200) {
       const old = await fetch(dataUrl, { headers: { cookie: admin } });
       const value = await old.json();
       change(value);
@@ -455,7 +456,7 @@ test('Audit tracks successful changes and separates login, logout and failed log
         headers: { ...mutation, cookie: admin, 'If-Match': old.headers.get('etag') },
         body: JSON.stringify({ value }),
       });
-      assert.equal(next.status, 200);
+      assert.equal(next.status, status);
     }
     await update((value) =>
       value.docs.push({ id: 'audit-doc', debtor: 'Synthetic private name', number: 'EVR-3', amount: 0 }),
@@ -464,6 +465,15 @@ test('Audit tracks successful changes and separates login, logout and failed log
       value.docs.find((row) => row.id === 'audit-doc').notes = 'Synthetic private content';
     });
     assert.equal((await post('/api/documents/delete', { documentId: 'audit-doc' }, admin)).status, 200);
+    assert.equal(
+      (await fetch(app.url + '/api/documents/archived', { headers: { cookie: staff } })).status,
+      403,
+    );
+    const archived = await (
+      await fetch(app.url + '/api/documents/archived', { headers: { cookie: admin } })
+    ).json();
+    assert.equal(archived.items[0].number, 'EVR-3');
+    assert.equal(archived.items[0].deletedByName, 'Deneme Yönetici');
     assert.equal((await post('/api/logout', {}, staff)).status, 200);
     const log = async (category, extras = '') => {
       const response = await fetch(app.url + '/api/audit?category=' + category + extras, {
@@ -500,6 +510,25 @@ test('Audit tracks successful changes and separates login, logout and failed log
       (await log('changes', '&action=delete')).every((row) => row.action === 'delete'),
       true,
     );
+    assert.equal((await post('/api/documents/restore', { documentId: 'audit-doc' }, admin)).status, 200);
+    const restored = await (await fetch(dataUrl, { headers: { cookie: admin } })).json();
+    assert.equal(restored.docs.find((row) => row.id === 'audit-doc').notes, 'Synthetic private content');
+    assert.ok(!restored.archivedNumbers.includes('EVR-3'));
+    assert.equal((await log('changes', '&action=restore'))[0].record_ref, 'EVR-3');
+    await update((value) => {
+      value.docs = value.docs.filter((row) => row.id !== 'doc-2');
+    });
+    const removed = await (
+      await fetch(app.url + '/api/documents/archived', { headers: { cookie: admin } })
+    ).json();
+    assert.deepEqual(
+      removed.items.map((row) => row.number),
+      ['EVR-2'],
+    );
+    await update(
+      (value) => value.docs.push({ id: 'number-reuse', debtor: 'Test', number: 'EVR-2', amount: 0 }),
+      409,
+    );
   } finally {
     await app.close();
     await pg.close();
@@ -513,7 +542,9 @@ test('Every workspace browser module is served in the shared manifest; server in
     assert.ok(html.indexOf('src="workspace-assets.js"') >= 0);
     assert.ok(html.indexOf('src="workspace-assets.js"') < html.indexOf('src="auth.js"'));
     assert.match(html, /href="workspace-layout\.css"/);
-    const publicScripts = ['workspace-assets.js', 'auth.js', ...workspaceScripts];
+    assert.ok(html.indexOf('src="login-recovery.js"') >= 0);
+    assert.ok(html.indexOf('src="login-recovery.js"') < html.indexOf('src="auth.js"'));
+    const publicScripts = ['workspace-assets.js', 'login-recovery.js', 'auth.js', ...workspaceScripts];
     assert.equal(new Set(publicScripts).size, publicScripts.length);
     const scripts = await Promise.all(
       publicScripts.map(async (file) => {
@@ -529,4 +560,174 @@ test('Every workspace browser module is served in the shared manifest; server in
   } finally {
     await app.close();
   }
+});
+
+test('WhatsApp recovery uses one-time links, registered contacts and private credentials', async (t) => {
+  const previous = process.env.WHATSAPP_ENCRYPTION_KEY;
+  process.env.WHATSAPP_ENCRYPTION_KEY = crypto.randomBytes(32).toString('hex');
+  t.after(() => {
+    if (previous === undefined) delete process.env.WHATSAPP_ENCRYPTION_KEY;
+    else process.env.WHATSAPP_ENCRYPTION_KEY = previous;
+  });
+  const { pg, pool } = await database();
+  const state = fixture();
+  state.users.push({
+    ...state.users[0],
+    id: 'wa-staff',
+    username: 'staff',
+    name: 'Test Personel',
+    role: 'staff',
+    whatsappPhone: '905321234567',
+    whatsappAllowed: true,
+  });
+  state.data['icrapro-v1'].docs.push({
+    id: 'wa-doc',
+    debtor: 'Çağdaş Şahin',
+    number: 'S-0042',
+    docType: 'Senet',
+    amount: 170,
+    originalDocument: 'Alındı',
+    deliveredBy: 'Teslim Eden',
+    receivedBy: 'Teslim Alan',
+  });
+  await importState(pool, state);
+  const store = createStore(pool);
+  const token = 'Synthetic-Test-Token-Not-For-Provider';
+  const messages = [],
+    pending = [],
+    uploads = [];
+  const app = await serve(
+    createApplication({
+      store,
+      background: (task) => pending.push(task),
+      whatsappFetch: async (url, options) => {
+        assert.equal(options.headers.Authorization, 'Bearer ' + token);
+        assert.equal(new URL(url).hostname, 'graph.facebook.com');
+        if (url.endsWith('/media')) {
+          const file = options.body.get('file');
+          uploads.push({ mime: file.type, bytes: Buffer.from(await file.arrayBuffer()) });
+          return Response.json({ id: 'test-media' });
+        }
+        messages.push(JSON.parse(options.body));
+        return Response.json({ messages: [{ id: 'test-message' }] });
+      },
+    }),
+  );
+  try {
+    const send = (path, input, { cookie, method = 'POST' } = {}) =>
+      fetch(app.url + path, {
+        method,
+        headers: { 'Content-Type': 'application/json', 'X-Han-Request': '1', ...(cookie && { cookie }) },
+        body: JSON.stringify(input),
+      });
+    const ceo = (await send('/api/login', { username: 'test', password })).headers
+      .get('set-cookie')
+      .split(';')[0];
+    const staff = (await send('/api/login', { username: 'staff', password })).headers
+      .get('set-cookie')
+      .split(';')[0];
+    const config = {
+      enabled: true,
+      phoneNumberId: '123456789',
+      token,
+      resetTemplate: 'password_link_tr',
+      reminderTemplate: 'work_notice',
+      messageTemplate: 'office_message',
+      documentTemplate: 'office_document',
+    };
+    assert.equal((await send('/api/whatsapp/config', config, { cookie: staff, method: 'PUT' })).status, 403);
+    const saved = await send('/api/whatsapp/config', config, { cookie: ceo, method: 'PUT' });
+    assert.equal(saved.status, 200);
+    const savedConfig = await saved.text();
+    assert.doesNotMatch(savedConfig, /Synthetic-Test-Token/);
+    assert.equal(JSON.parse(savedConfig).tokenSaved, true);
+    assert.notEqual((await store.readState()).whatsappConfig.sealedToken, token);
+
+    const unknown = await (await send('/api/password-reset/request', { account: 'unknown' })).json();
+    const requested = await (
+      await send('/api/password-reset/request', { account: '0 (532) 123 45 67' })
+    ).json();
+    await Promise.all(pending);
+    assert.deepEqual(unknown, requested);
+    assert.equal(messages.length, 1);
+    assert.equal(messages[0].to, '905321234567');
+    const [counts, button] = messages[0].template.components;
+    assert.deepEqual(
+      counts.parameters.map((value) => value.text),
+      ['0', '2', '7'],
+    );
+    const linkToken = button.parameters[0].text;
+    assert.match(linkToken, /^[a-zA-Z0-9_-]{43}$/);
+    assert.doesNotMatch(JSON.stringify(await store.readState()), new RegExp(linkToken));
+    assert.deepEqual(
+      await (await send('/api/password-reset/request', { account: 'staff' })).json(),
+      requested,
+    );
+    assert.equal(messages.length, 1);
+
+    const changedPassword = 'Replacement-Synthetic-Only';
+    assert.equal(
+      (await send('/api/password-reset/complete', { token: linkToken, password: changedPassword })).status,
+      200,
+    );
+    assert.equal(
+      (await send('/api/password-reset/complete', { token: linkToken, password: changedPassword })).status,
+      400,
+    );
+    assert.equal(
+      (await (await fetch(app.url + '/api/session', { headers: { cookie: staff } })).json()).user,
+      null,
+    );
+    assert.equal((await send('/api/login', { username: 'staff', password })).status, 401);
+    assert.equal((await send('/api/login', { username: 'staff', password: changedPassword })).status, 200);
+
+    const inApp = await send(
+      '/api/messages',
+      { recipientIds: ['wa-staff'], subject: 'Deneme', text: 'İç mesaj', whatsapp: false },
+      { cookie: ceo },
+    );
+    assert.equal(inApp.status, 201);
+    assert.equal(messages.length, 1);
+    const both = await send(
+      '/api/messages',
+      { recipientIds: ['wa-staff'], subject: 'Deneme', text: 'İç mesaj', whatsapp: true },
+      { cookie: ceo },
+    );
+    assert.equal((await both.json()).whatsapp.accepted, 1);
+    const doc = {
+      documentId: 'wa-doc',
+      kind: 'receipt',
+      phone: '05320000000',
+      consent: true,
+      remember: true,
+    };
+    assert.equal(
+      (await send('/api/whatsapp/document', { ...doc, consent: false }, { cookie: ceo })).status,
+      400,
+    );
+    const shared = await send('/api/whatsapp/document', doc, { cookie: ceo });
+    assert.equal(shared.status, 200);
+    assert.equal((await shared.json()).whatsapp.accepted, 1);
+    assert.equal(uploads[0].mime, 'application/pdf');
+    assert.equal(uploads[0].bytes.subarray(0, 5).toString(), '%PDF-');
+    assert.equal((await store.readState()).data['icrapro-v1'].docs[0].whatsappPhone, '905320000000');
+  } finally {
+    await app.close();
+    await pg.close();
+  }
+});
+
+test('Password link quotas enforce all three rolling windows', () => {
+  const state = {},
+    user = { id: 'demo', hash: 'test-hash' };
+  const begin = Date.UTC(2026, 10, 1);
+  const request = (days) => reserveReset(state, user, begin + days * 86400000);
+  assert.deepEqual(request(0).remaining, [0, 2, 7]);
+  assert.equal(request(0.5), null);
+  assert.ok(request(1));
+  assert.ok(request(2));
+  assert.equal(request(3), null);
+  for (const days of [7, 8, 9, 14, 15]) assert.ok(request(days));
+  assert.equal(request(16), null);
+  assert.ok(request(30));
 });

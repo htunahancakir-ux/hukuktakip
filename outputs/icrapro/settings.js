@@ -209,6 +209,7 @@ function settingsSectionTabs(active) {
     ['preferences', 'Uygulama Tercihleri'],
     ['staff', 'Personel'],
     ['audit', 'İşlem Kayıtları'],
+    ...(hanAuth.role === 'ceo' ? [['whatsapp', 'WhatsApp Business']] : []),
     ['backup', 'Yedekleme'],
   ];
   return `<div class="settings-tabs" role="tablist" aria-label="Ayar sekmeleri">${tabs
@@ -312,6 +313,7 @@ const originalSettings = settings;
 settings = function () {
   if (settingsTab === 'backup') return backupSettingsPage();
   if (settingsTab === 'audit') return auditSettingsPage();
+  if (settingsTab === 'whatsapp') return whatsappSettingsPage();
   originalSettings();
   const notice = document.querySelector('#settingsForm .notice');
   if (notice)

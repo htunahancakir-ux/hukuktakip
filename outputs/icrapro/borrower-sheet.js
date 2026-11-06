@@ -32,6 +32,13 @@ function borrowerDetail(id) {
       '',
     )}</div><button class="primary" id="borrowerFinancial">Tahsilat</button><button class="secondary" id="borrowerExpense">Masraf</button>${repaymentSection(d)}</section><section role="tabpanel" id="borrower-panel-document" aria-labelledby="borrower-tab-document" data-borrower-panel="document" hidden><h3 class="sectiontitle" style="margin-top:30px">${esc(type)} Bilgileri</h3><div class="grid">${value('Evrak Türü', type)}${isParkingDocument(d) ? value('Anlaşılan Ofis Payı (%)', validParkingRate(d) ? String(d.parkingCommissionRate) : 'Belirtilmedi') : ''}${value('Evrak Aslı', d.originalDocument || 'Belirtilmedi')}${value(definition.serial, d.serial)}${value(definition.due, d.due)}${value('Düzenleme Tarihi', d.issued)}${definition.extras.map(([label, key]) => value(label, d[key])).join('')}${value('Teslim Eden', d.deliveredBy)}${value('Teslim Alan', d.receivedBy)}${value('Kabul Notu', d.notes)}</div>${borrowerAttachmentPreviews(d)}</section></div>`;
   layoutBorrowerSheet(dialog, d, f, client);
+  if (d.fileData || d.photoData) {
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+    if (d.fileData) addWhatsAppFileButton(actions, d, 'file');
+    if (d.photoData) addWhatsAppFileButton(actions, d, 'photo');
+    if (actions.childElementCount) dialog.querySelector('#borrower-panel-document')?.append(actions);
+  }
   setupBorrowerPin(dialog, d);
   setupBorrowerChain(dialog, d);
   setupBorrowerDeletion(dialog, d);
@@ -693,6 +700,18 @@ function borrowerClientInfo(id) {
     clientAttachmentPreviews(c) +
     '</div>';
   dialog.querySelector('#closeClientInfo').onclick = () => dialog.close();
+  dialog.querySelectorAll('[data-wa-client-index]').forEach((host) => {
+    const attachmentIndex = Number(host.dataset.waClientIndex);
+    const file = c.attachments[attachmentIndex];
+    if (/^data:(application\/pdf|image\/(?:png|jpeg));base64,/i.test(file?.data || ''))
+      addWhatsAppFileButton(
+        host,
+        { id: c.id, number: c.name, phone1: c.phone, whatsappPhone: c.whatsappPhone },
+        'clientAttachment',
+        null,
+        { clientId: c.id, attachmentIndex },
+      );
+  });
   if (!dialog.open) dialog.showModal();
 }
 
@@ -1348,6 +1367,7 @@ function openBorrowerRelease(id) {
     letter +
     '</div>';
   dialog.querySelector('[data-close-release]').onclick = () => dialog.close();
+  addWhatsAppFileButton(dialog.querySelector('.panelhead .toolbar'), d, 'release');
   dialog.querySelector('[data-print-release]').onclick = () => {
     const frame = document.createElement('iframe');
     frame.style.cssText = 'position:fixed;width:0;height:0;border:0';
@@ -1415,6 +1435,7 @@ function openCollectionReceipt(eventId) {
     letter +
     '</div>';
   dialog.querySelector('[data-receipt-close]').onclick = () => dialog.close();
+  addWhatsAppFileButton(dialog.querySelector('.panelhead .toolbar'), d, 'collection', event.id);
   dialog.querySelector('[data-receipt-print]').onclick = () => {
     const frame = document.createElement('iframe');
     frame.style.cssText = 'position:fixed;width:0;height:0;border:0';
@@ -1453,15 +1474,13 @@ function deleteBorrowerDocument(id) {
       d.number +
         ' · ' +
         d.debtor +
-        ' dosyasını silmek istiyor musunuz? Tahsilat ve kasa hareketleri korunacaktır.',
+        ' dosyası Silinen Evraklar arşivine alınsın mı? Ekler ve tahsilat geçmişi korunur.',
     )
   )
     return;
   try {
     authApi('/api/documents/delete', 'POST', { documentId: id });
-    db.docs = db.docs.filter((d) => d.id !== id);
-    for (const doc of db.docs)
-      doc.linkedDocumentIds = (doc.linkedDocumentIds || []).filter((target) => target !== id);
+    db = authApi('/api/data?key=icrapro-v1');
     const detail = document.getElementById('borrowerDetail');
     if (detail?.open) detail.close();
     document.querySelectorAll('.pinned-borrower-sheet').forEach((p) => {
@@ -1469,7 +1488,7 @@ function deleteBorrowerDocument(id) {
     });
     page = 'documents';
     render();
-    toast('Dosya silindi.');
+    toast('Evrak Silinen Evraklar arşivine alındı.');
   } catch (error) {
     toast(error.message);
   }
@@ -1487,7 +1506,9 @@ function clientAttachmentPreviews(c) {
       .map((f) => {
         const pdf = /^data:application\/pdf;/i.test(f.data);
         return (
-          '<article class="client-poa-file"><h4>' +
+          '<article class="client-poa-file" data-wa-client-index="' +
+          c.attachments.indexOf(f) +
+          '"><h4>' +
           esc(f.name || (pdf ? 'Vekâletname PDF' : 'Vekâletname / Fotoğraf')) +
           '</h4>' +
           (pdf

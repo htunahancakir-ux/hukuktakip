@@ -1,3 +1,5 @@
+const { activeArchives } = require('../../lib/document-archive.cjs');
+
 async function handleDocumentRoutes(ctx) {
   const { req, res, url, u, persist, current, allowed, fail, body, send, parkingToday, applyParkingFee } =
     ctx;
@@ -7,18 +9,46 @@ async function handleDocumentRoutes(ctx) {
       doc = ctx.state.data['icrapro-v1'].docs.find((d) => d.id === v.documentId);
     if (!doc) throw fail(404, 'Dosya bulunamadı.');
     const next = structuredClone(ctx.state);
-    next.deletedDocuments = [
-      ...(next.deletedDocuments || []),
-      {
-        document: structuredClone(doc),
-        deletedAt: new Date().toISOString(),
-        deletedBy: u.id,
-        deletedByName: u.name,
-      },
-    ];
     next.data['icrapro-v1'].docs = next.data['icrapro-v1'].docs.filter((d) => d.id !== doc.id);
-    for (const d of next.data['icrapro-v1'].docs)
-      d.linkedDocumentIds = (d.linkedDocumentIds || []).filter((id) => id !== doc.id);
+    persist(next);
+    send(res, 200, { ok: true });
+    return true;
+  }
+  if (url.pathname === '/api/documents/archived' && req.method === 'GET') {
+    if (!['ceo', 'admin'].includes(u.role))
+      throw fail(403, 'Silinen evrakları yalnızca yöneticiler görebilir.');
+    const offset = Math.max(0, Math.floor(Number(url.searchParams.get('offset')) || 0));
+    const rows = activeArchives(ctx.state).slice().reverse();
+    const items = rows.slice(offset, offset + 50).map(({ document, deletedAt, deletedByName }) => ({
+      id: document.id,
+      number: document.number,
+      debtor: document.debtor,
+      type: document.docType,
+      deletedAt,
+      deletedByName,
+    }));
+    send(res, 200, { items, total: rows.length });
+    return true;
+  }
+  if (url.pathname === '/api/documents/restore' && req.method === 'POST') {
+    if (!['ceo', 'admin'].includes(u.role)) throw fail(403, 'Evrakı yalnızca yönetici arşivden çıkarabilir.');
+    const { documentId } = await body(req);
+    const next = structuredClone(ctx.state);
+    const archived = activeArchives(next).findLast((entry) => entry.document.id === documentId);
+    if (!archived) throw fail(404, 'Evrak arşivde bulunamadı.');
+    const doc = structuredClone(archived.document);
+    const { clients, docs } = next.data['icrapro-v1'];
+    if (doc.client && !clients.some((client) => client.id === doc.client))
+      throw fail(409, 'Evrakın bağlı olduğu müvekkil bulunamadı.');
+    if (docs.some((row) => row.id === doc.id || (doc.number && row.number === doc.number)))
+      throw fail(409, 'Aktif listede aynı numarada bir evrak var.');
+    doc.linkedDocumentIds = (doc.linkedDocumentIds || []).filter((id) => docs.some((row) => row.id === id));
+    for (const row of docs)
+      if (doc.linkedDocumentIds.includes(row.id))
+        row.linkedDocumentIds = [...new Set([...(row.linkedDocumentIds || []), doc.id])];
+    docs.push(doc);
+    archived.restoredAt = new Date().toISOString();
+    archived.restoredBy = u.id;
     persist(next);
     send(res, 200, { ok: true });
     return true;
