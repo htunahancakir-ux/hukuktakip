@@ -85,3 +85,8 @@ test('Full payout selection fills remaining amount and restores typed partial am
  mode.value='partial';change();assert.equal(amount.value,'250');assert.equal(amount.readOnly,false);assert.equal(amount._moneyProxy.value,'250');assert.equal(amount._moneyProxy.readOnly,false);assert.equal(updates,2);
  amount.value='';mode.value='full';change();mode.value='partial';change();assert.equal(amount.value,'');
 });
+
+test('Accounting save displays the actual rejection and does not change local balance',()=>{
+ const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');const source=fs.readFileSync(path.join(__dirname,'../outputs/icrapro/workspace-accounting.js'),'utf8');const helper=source.slice(source.indexOf('function saveAccounting'),source.indexOf('function accountOptions'));
+ let message='';const accounting={entries:[]};const ctx={accounting,localStorage:{setItem(){throw Error('Kayıt başka bir işlemle değişti. Sayfayı yenileyip tekrar deneyin.');}},toast:value=>message=value};vm.createContext(ctx);vm.runInContext(helper,ctx);assert.equal(ctx.saveAccounting({entries:[{amount:100}]}),false);assert.equal(ctx.accounting,accounting);assert(message.includes('Kayıt başka bir işlemle değişti'));
+});

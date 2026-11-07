@@ -55,8 +55,8 @@ function saveAccounting(next) {
     localStorage.setItem('hanhukuk-accounting-v1', JSON.stringify(next));
     accounting = next;
     return true;
-  } catch {
-    toast('Muhasebe kaydı saklanamadı.');
+  } catch (error) {
+    toast('Muhasebe kaydı saklanamadı. '+(error.message||''));
     return false;
   }
 }
