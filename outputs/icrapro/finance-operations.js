@@ -961,6 +961,19 @@ function clientPayoutPage() {
     .forEach((b) => (b.onclick = () => clientPayoutForm(b.dataset.clientPayout)));
 }
 
+function configureClientPayoutAmount(form,remainingCents,onChange){
+  const amount=form.elements.amount,mode=form.elements.paymentMode;
+  amount.min='0.01';amount.max=String(remainingCents/100);amount.step='0.01';
+  let partial='';
+  mode.addEventListener('change',()=>{
+    const full=mode.value==='full';
+    if(full)partial=amount.value;
+    amount.value=full?String(remainingCents/100):partial;
+    amount.readOnly=full;
+    if(amount._moneyProxy){amount._moneyProxy.readOnly=full;amount._moneyProxy.value=formatAmountInput(amount.value);amount._moneyProxy.setCustomValidity('');}
+    onChange();
+  });
+}
 function clientPayoutForm(id) {
   try {
     syncPayoutSources();
@@ -978,12 +991,12 @@ function clientPayoutForm(id) {
     dialog.id = 'clientPayoutDialog';
     document.body.append(dialog);
   }
-  dialog.innerHTML = `<form id="clientPayoutForm"><div class="panelhead"><div><h2>Müvekkile Ödeme Kaydet</h2><p>${esc(d.number)} · ${esc(client?.name || 'Müvekkil bulunamadı')}</p></div><button class="secondary" type="button" id="closeClientPayout">Kapat</button></div><div class="formbody"><div class="notice">Ödenecek tutar: <b>${money(p.remaining / 100)}</b>. Kayıt gider sayılmaz; seçilen hesaptan düşülür.</div><p>Banka: ${esc(client?.bankName || '—')} · Hesap sahibi: ${esc(client?.accountHolder || '—')}<br>IBAN: ${esc(client?.iban || '—')}</p><div class="grid">${collectionAccountField('out')}${field('Ödenecek Tutar (TL)', 'amount', 'number', p.remaining / 100, true)}${field('Ödeme Tarihi', 'date', 'date', businessDate(), true)}${field('Dekont / Ödeme Açıklaması', 'note', 'text', '', true, true)}</div><p id="clientPayoutRemainingPreview" role="status" aria-live="polite"></p></div><div class="actions"><button class="primary" type="submit">Ödemeyi Kaydet</button></div></form>`;
+  dialog.innerHTML = `<form id="clientPayoutForm"><div class="panelhead"><div><h2>Müvekkile Ödeme Kaydet</h2><p>${esc(d.number)} · ${esc(client?.name || 'Müvekkil bulunamadı')}</p></div><button class="secondary" type="button" id="closeClientPayout">Kapat</button></div><div class="formbody"><div class="notice">Ödenecek tutar: <b>${money(p.remaining / 100)}</b>. Kayıt gider sayılmaz; seçilen hesaptan düşülür.</div><p>Banka: ${esc(client?.bankName || '—')} · Hesap sahibi: ${esc(client?.accountHolder || '—')}<br>IBAN: ${esc(client?.iban || '—')}</p><div class="grid">${collectionAccountField('out')}<label class="field">Ödeme Şekli<select name="paymentMode" data-optional="true"><option value="partial">Tutar Gir (Kısmi Ödeme)</option><option value="full">Ödemenin Tamamı</option></select></label>${field('Ödenecek Tutar (TL)', 'amount', 'number', '', true)}${field('Ödeme Tarihi', 'date', 'date', businessDate(), true)}${field('Dekont / Ödeme Açıklaması', 'note', 'text', '', true, true)}</div><p id="clientPayoutRemainingPreview" role="status" aria-live="polite"></p></div><div class="actions"><button class="primary" type="submit">Ödemeyi Kaydet</button></div></form>`;
   $('#closeClientPayout').onclick = () => dialog.close();
   if (!dialog.open) dialog.showModal();
   const form = $('#clientPayoutForm');
-  form.elements.amount.min='0.01';form.elements.amount.max=String(p.remaining/100);form.elements.amount.step='0.01';
   const updateRemaining=()=>{const amount=financeCents(form.elements.amount.value);$('#clientPayoutRemainingPreview').textContent=Number.isSafeInteger(amount)&&amount>0&&amount<=p.remaining?'Bu ödeme sonrası kalan: '+money((p.remaining-amount)/100):'0’dan büyük ve kalan tutarı aşmayan bir ödeme girin.';};
+  configureClientPayoutAmount(form,p.remaining,updateRemaining);
   form.elements.amount.addEventListener('input',updateRemaining);form.elements.amount.addEventListener('change',updateRemaining);updateRemaining();
   form.onsubmit = (e) => {
     e.preventDefault();
@@ -996,7 +1009,7 @@ function clientPayoutForm(id) {
       if (live.remaining !== p.remaining)
         throw Error('Ödeme tutarı değişti; pencereyi kapatıp yeniden açın.');
       const v = Object.fromEntries(new FormData(form)),
-        paymentAmount = financeCents(v.amount),
+        paymentAmount = v.paymentMode==='full'?live.remaining:financeCents(v.amount),
         account = accounting.accounts.find((a) => a.id === v.accountId),
         operator = activeOperator();
       if(!Number.isSafeInteger(paymentAmount)||paymentAmount<=0)throw Error('Geçerli, sıfırdan büyük bir ödeme tutarı girin.');

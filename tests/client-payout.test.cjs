@@ -70,3 +70,18 @@ test('Accounting route validates partial payout and rejects stale ETag', async (
   await assert.rejects(request(ledger(state,payment(70001,'b')),'2'),{code:400});
   assert.equal(persisted,1);
 });
+
+test('Full payout selection fills remaining amount and restores typed partial amount', () => {
+ const fs=require('node:fs'),vm=require('node:vm');
+ const source=fs.readFileSync(require('node:path').join(__dirname,'../outputs/icrapro/finance-operations.js'),'utf8');
+ const helper=source.slice(source.indexOf('function configureClientPayoutAmount'),source.indexOf('function clientPayoutForm(id)'));
+ const ctx={formatAmountInput:v=>String(v)};vm.createContext(ctx);vm.runInContext(helper,ctx);
+ let change,updates=0;
+ const amount={value:'250',_moneyProxy:{value:'250',setCustomValidity(v){this.error=v;}}};
+ const mode={value:'partial',addEventListener(event,handler){change=handler;}};
+ ctx.configureClientPayoutAmount({elements:{amount,paymentMode:mode}},100000,()=>updates++);
+ assert.equal(amount.max,'1000');
+ mode.value='full';change();assert.equal(amount.value,'1000');assert.equal(amount.readOnly,true);assert.equal(amount._moneyProxy.value,'1000');assert.equal(amount._moneyProxy.readOnly,true);
+ mode.value='partial';change();assert.equal(amount.value,'250');assert.equal(amount.readOnly,false);assert.equal(amount._moneyProxy.value,'250');assert.equal(amount._moneyProxy.readOnly,false);assert.equal(updates,2);
+ amount.value='';mode.value='full';change();mode.value='partial';change();assert.equal(amount.value,'');
+});
