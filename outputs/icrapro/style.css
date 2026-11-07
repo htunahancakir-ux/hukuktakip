@@ -218,3 +218,5 @@ aside > .brand-home strong { min-width: 0; letter-spacing: 0; }
 .compact-borrower-sheet .sheet-meta-field.sheet-debtor-name { grid-column: span 2; }
 .compact-borrower-sheet .sheet-meta-field.sheet-debtor-name > strong { color: #c62828; font-size: 22px !important; font-weight: 800; line-height: 1.3; overflow-wrap: anywhere; }
 .compact-borrower-sheet .detail-field > .borrower-sheet-name { color: #c62828; font-size: clamp(24px, 2.2vw, 32px); font-weight: 800; line-height: 1.3; overflow-wrap: anywhere; }
+
+.compact-borrower-sheet .sheet-folio-number, .compact-borrower-sheet .sheet-folio-number > strong { color: #15803d; font-weight: 800; }

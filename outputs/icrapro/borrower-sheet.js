@@ -580,7 +580,8 @@ function layoutBorrowerSheet(dialog, d, f, client) {
   setupBorrowerCornerResize(dialog);
   const head = dialog.querySelector(':scope > .panelhead'),
     body = dialog.querySelector(':scope > .formbody');
-  head.querySelector('h2').textContent = 'Borçlu Föyü · ' + d.number;
+  head.querySelector('h2').innerHTML =
+    'Borçlu Föyü · <span class="sheet-folio-number">' + esc(d.number) + '</span>';
   const field = (label, value, className = '') =>
     '<div class="sheet-meta-field' +
     (className ? ' ' + className : '') +
@@ -592,7 +593,8 @@ function layoutBorrowerSheet(dialog, d, f, client) {
   const meta = document.createElement('div');
   meta.className = 'sheet-metadata';
   meta.innerHTML =
-    field('Föy No', d.number) +
+    field('Föy No', d.number, 'sheet-folio-number') +
+    field('Borçlu', d.debtor, 'sheet-debtor-name') +
     field('Takip Tarihi', displayDate(borrowerTrackingDate(d))) +
     field(
       'Evrakı Kaydeden',
@@ -609,7 +611,6 @@ function layoutBorrowerSheet(dialog, d, f, client) {
       : '<strong>—</strong>') +
     '</div>' +
     field('Vade Tarihi', isParkingDocument(d) ? '—' : displayDate(d.due)) +
-    field('Borçlu', d.debtor, 'sheet-debtor-name') +
     field('TC / Vergi No', d.identity) +
     field('Telefon', d.phone1) +
     field('İl / İlçe', [d.city, d.district].filter(Boolean).join(' / ')) +
