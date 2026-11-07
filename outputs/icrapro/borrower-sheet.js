@@ -787,7 +787,9 @@ function setupBorrowerEnforcementFields(dialog, d, meta) {
     '" placeholder="Örn. İstanbul 1. İcra Dairesi"></label><label class="field">İcra Dosya Numarası<input name="enforcementFileNumber" required maxlength="100" value="' +
     esc(d.enforcementFileNumber || '') +
     '" placeholder="Örn. 2026/1234"></label><button type="submit" class="primary">İcra Bilgilerini Kaydet</button>';
-  meta.append(form);
+  const address = meta.querySelector('.sheet-address');
+  if (address) meta.insertBefore(form, address);
+  else meta.append(form);
   form.onsubmit = (e) => {
     e.preventDefault();
     try {

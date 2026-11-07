@@ -224,3 +224,8 @@ aside > .brand-home strong { min-width: 0; letter-spacing: 0; }
 .borrower-financial-stats { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
 .borrower-payment-history { min-width: 680px; }
 .borrower-payment-history td { vertical-align: top; }
+
+.compact-borrower-sheet .sheet-enforcement-form { grid-column: 2 / -1; min-width: 0; }
+.compact-borrower-sheet .sheet-enforcement-form .field, .compact-borrower-sheet .sheet-enforcement-form input { min-width: 0; }
+.compact-borrower-sheet .sheet-folio-number > strong { font-size: 18px !important; line-height: 1.3; }
+.compact-borrower-sheet h2 .sheet-folio-number { font-size: 18px; }
