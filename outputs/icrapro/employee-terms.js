@@ -1,8 +1,5 @@
 function termsEscape(value) {
-  return String(value ?? '').replace(
-    /[&<>"']/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
-  );
+  return escapeHtml(value);
 }
 
 function termsDate(value) {
@@ -34,8 +31,9 @@ function termsDocumentMarkup(doc) {
 }
 
 function termsNoticeLink(notice) {
-  return notice
-    ? `<a data-terms-notice href="${termsEscape(notice.url)}" target="_blank" rel="noopener noreferrer">Çalışan Aydınlatma Metni (${termsEscape(notice.version)})</a>`
+  const url = notice && safeHttpsUrl(notice.url);
+  return url
+    ? `<a data-terms-notice href="${termsEscape(url)}" target="_blank" rel="noopener noreferrer">Çalışan Aydınlatma Metni (${termsEscape(notice.version)})</a>`
     : '';
 }
 

@@ -18,7 +18,7 @@ function userManagement(editId) {
         .filter((u) => normalizeSearch(u.name + ' ' + u.username).includes(normalizeSearch(query)))
         .map(
           (u) =>
-            `<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td>${u.role === 'ceo' ? 'CEO' : u.role === 'admin' ? 'Yönetici' : 'Personel'}</td><td>${u.active ? 'Aktif' : 'Pasif'}</td><td>${u.role !== 'ceo' || hanAuth.role === 'ceo' ? `<button class="link" data-reset-password="${u.id}">Şifre Değiştir / Sıfırla</button>` : 'CEO tarafından yönetilir'}</td></tr>`,
+            `<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td>${u.role === 'ceo' ? 'CEO' : u.role === 'admin' ? 'Yönetici' : 'Personel'}</td><td>${u.active ? 'Aktif' : 'Pasif'}</td><td>${u.role !== 'ceo' || hanAuth.role === 'ceo' ? `<button class="link" data-reset-password="${esc(u.id)}">Şifre Değiştir / Sıfırla</button>` : 'CEO tarafından yönetilir'}</td></tr>`,
         )
         .join('') || '<tr><td colspan="5" class="empty">Kullanıcı bulunamadı.</td></tr>';
     document.querySelectorAll('[data-reset-password]').forEach((b) => {
@@ -142,7 +142,7 @@ function staffDashboard() {
       .map(([k, t]) => `<option value="${k}" ${dashboardPeriod === k ? 'selected' : ''}>${t}</option>`)
       .join(
         '',
-      )}</select></label><label class="field">${dashboardPeriod === 'year' ? 'Yıl' : dashboardPeriod === 'month' ? 'Ay' : 'Tarih'}<input id="staffDashboardDate" type="${dashboardPeriod === 'year' ? 'number' : dashboardPeriod === 'month' ? 'month' : 'date'}" value="${dashboardPeriod === 'year' ? dashboardDate.slice(0, 4) : dashboardPeriod === 'month' ? dashboardDate.slice(0, 7) : dashboardDate}" ${dashboardPeriod === 'year' ? 'min="1900" max="9999"' : ''}></label></div></div><div class="formbody"><div class="stats">${[
+      )}</select></label><label class="field">${dashboardPeriod === 'year' ? 'Yıl' : dashboardPeriod === 'month' ? 'Ay' : 'Tarih'}<input id="staffDashboardDate" type="${dashboardPeriod === 'year' ? 'number' : dashboardPeriod === 'month' ? 'month' : 'date'}" value="${esc(dashboardPeriod === 'year' ? dashboardDate.slice(0, 4) : dashboardPeriod === 'month' ? dashboardDate.slice(0, 7) : dashboardDate)}" ${dashboardPeriod === 'year' ? 'min="1900" max="9999"' : ''}></label></div></div><div class="formbody"><div class="stats">${[
       ['Tahsilat Toplamım', result.collected],
       ['Brüt Kâr Toplamım', result.grossProfit],
       ['Prim 2 (' + dashboardDate.slice(0, 7) + ')', result.bonus || 0],
@@ -151,11 +151,11 @@ function staffDashboard() {
     ]
       .map(
         ([title, n]) =>
-          `<div class="stat"><div><small>${title}</small><strong>${money(n / 100)}</strong></div></div>`,
+          `<div class="stat"><div><small>${esc(title)}</small><strong>${money(n / 100)}</strong></div></div>`,
       )
       .join(
         '',
-      )}</div><p>Callcenter / Call Center-Y Prim 2, seçilen ayın toplam tahsilatına ve birim hedeflerine göre hesaplanır.</p>${result.linked ? '' : '<p>Hesabınız henüz bir personel kaydına bağlanmamış. Yönetici bağlantıyı tamamladığında dosya toplamlarınız görünecek.</p>'}</div></div><div class="panel" style="margin-top:20px"><div class="overflow"><table><thead><tr><th>TARİH</th><th>TAHSİLAT</th><th>BRÜT KÂR</th></tr></thead><tbody>${result.rows.map((r) => `<tr><td>${displayDate(r.key)}</td><td>${money(r.collected / 100)}</td><td>${money(r.grossProfit / 100)}</td></tr>`).join('')}</tbody><tfoot><tr><td>TOPLAM</td><td>${money(result.collected / 100)}</td><td>${money(result.grossProfit / 100)}</td></tr></tfoot></table></div></div>`;
+      )}</div><p>Callcenter / Call Center-Y Prim 2, seçilen ayın toplam tahsilatına ve birim hedeflerine göre hesaplanır.</p>${result.linked ? '' : '<p>Hesabınız henüz bir personel kaydına bağlanmamış. Yönetici bağlantıyı tamamladığında dosya toplamlarınız görünecek.</p>'}</div></div><div class="panel" style="margin-top:20px"><div class="overflow"><table><thead><tr><th>TARİH</th><th>TAHSİLAT</th><th>BRÜT KÂR</th></tr></thead><tbody>${result.rows.map((r) => `<tr><td>${esc(displayDate(r.key))}</td><td>${money(r.collected / 100)}</td><td>${money(r.grossProfit / 100)}</td></tr>`).join('')}</tbody><tfoot><tr><td>TOPLAM</td><td>${money(result.collected / 100)}</td><td>${money(result.grossProfit / 100)}</td></tr></tfoot></table></div></div>`;
   $('#staffDashboardPeriod').onchange = (e) => {
     dashboardPeriod = e.target.value;
     staffDashboard();

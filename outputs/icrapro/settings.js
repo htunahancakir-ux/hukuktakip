@@ -242,7 +242,7 @@ function settingsSectionTabs(active) {
   return `<div class="settings-tabs" role="tablist" aria-label="Ayar sekmeleri">${tabs
     .map(
       ([key, label]) =>
-        `<button type="button" id="tab-${key}" role="tab" aria-selected="${key === active}" data-settings-tab="${key}" class="${key === active ? 'selected' : ''}">${label}</button>`,
+        `<button type="button" id="tab-${key}" role="tab" aria-selected="${key === active}" data-settings-tab="${key}" class="${key === active ? 'selected' : ''}">${esc(label)}</button>`,
     )
     .join('')}</div>`;
 }

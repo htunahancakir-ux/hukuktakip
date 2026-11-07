@@ -445,7 +445,7 @@ test('Managers can download with a record of the last sender; only the CEO can r
     async function login(username) {
       const response = await fetch(app.url + '/api/login', {
         method: 'POST',
-        headers: { 'X-Han-Request': '1', 'Content-Type': 'application/json' },
+        headers: { Origin: 'https://example.invalid', 'X-Han-Request': '1', 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       });
       assert.equal(response.status, 200);
@@ -709,6 +709,7 @@ test('Every workspace browser module is served in the shared manifest; server in
     assert.ok(html.indexOf('src="login-recovery.js"') >= 0);
     assert.ok(html.indexOf('src="login-recovery.js"') < html.indexOf('src="auth.js"'));
     const preAuth = [
+      'html-safety.js',
       'workspace-assets.js',
       'login-layout.js',
       'login-recovery.js',

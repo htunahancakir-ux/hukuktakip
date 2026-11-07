@@ -202,7 +202,7 @@ function dashboard() {
     );
   const f = (n) => money(n / 100);
   $('#content').innerHTML =
-    `<div class="panel" style="margin-bottom:22px"><div class="panelhead"><div><h2>Gelir ve Tahsilat Özeti</h2><p>İşlem tarihine göre günlük, aylık ve yıllık takip</p></div><div class="toolbar"><label class="field">Görünüm<select id="dashboardPeriod"><option value="day" ${dashboardPeriod === 'day' ? 'selected' : ''}>Günlük</option><option value="month" ${dashboardPeriod === 'month' ? 'selected' : ''}>Aylık</option><option value="year" ${dashboardPeriod === 'year' ? 'selected' : ''}>Yıllık</option></select></label><label class="field">${dashboardPeriod === 'day' ? 'Gün' : dashboardPeriod === 'month' ? 'Ay' : 'Yıl'}<input id="dashboardDate" type="${dashboardPeriod === 'day' ? 'date' : dashboardPeriod === 'month' ? 'month' : 'number'}" value="${dashboardPeriod === 'day' ? dashboardDate : dashboardPeriod === 'month' ? dashboardDate.slice(0, 7) : dashboardDate.slice(0, 4)}" ${dashboardPeriod === 'year' ? 'min="1900" max="9999"' : ''}></label></div></div></div><div class="stats">${[
+    `<div class="panel" style="margin-bottom:22px"><div class="panelhead"><div><h2>Gelir ve Tahsilat Özeti</h2><p>İşlem tarihine göre günlük, aylık ve yıllık takip</p></div><div class="toolbar"><label class="field">Görünüm<select id="dashboardPeriod"><option value="day" ${dashboardPeriod === 'day' ? 'selected' : ''}>Günlük</option><option value="month" ${dashboardPeriod === 'month' ? 'selected' : ''}>Aylık</option><option value="year" ${dashboardPeriod === 'year' ? 'selected' : ''}>Yıllık</option></select></label><label class="field">${dashboardPeriod === 'day' ? 'Gün' : dashboardPeriod === 'month' ? 'Ay' : 'Yıl'}<input id="dashboardDate" type="${dashboardPeriod === 'day' ? 'date' : dashboardPeriod === 'month' ? 'month' : 'number'}" value="${esc(dashboardPeriod === 'day' ? dashboardDate : dashboardPeriod === 'month' ? dashboardDate.slice(0, 7) : dashboardDate.slice(0, 4))}" ${dashboardPeriod === 'year' ? 'min="1900" max="9999"' : ''}></label></div></div></div><div class="stats">${[
       ['Tahsilat', f(total.collected)],
       ['Brüt Kâr', f(total.revenue)],
       ['Net Kâr', f(total.profit)],
@@ -212,7 +212,7 @@ function dashboard() {
     ]
       .map(
         ([title, value]) =>
-          `<div class="stat"><div><small>${title}</small><strong>${value}</strong></div></div>`,
+          `<div class="stat"><div><small>${esc(title)}</small><strong>${value}</strong></div></div>`,
       )
       .join(
         '',
@@ -603,7 +603,7 @@ function openLegalCalculator(id) {
     dialog.id = 'legalCalculator';
     document.body.append(dialog);
   }
-  dialog.innerHTML = `<form id="legalCalculatorForm"><div class="panelhead"><h2>Yasal Faiz ve İcra Vekâlet Ücreti</h2><button type="button" class="link" id="closeLegal">Kapat</button></div><div class="formbody"><div class="notice">Para alacağı için icra takibi açılmış varsayımıyla ön hesap. Gerçek takip açılmaz. Başlangıç vadedir; başlangıç dahil, hesap tarihi hariç; basit faiz ve 365 gün esası kullanılır. Özel faiz veya ilam hükmü varsa bu hesabı uygulamayın. Oran doğrulama sınırı: ${displayDate(legalRateVerifiedThrough)}. Tarife: 03.11.2026 AAÜT, icra takibi.</div><div class="grid">${field('Vade / Faiz Başlangıcı', 'start', 'date', d.due || '', true)}${field('Varsayımsal Takip / Hesap Tarihi', 'end', 'date', businessDate(), true)}<label class="field">Vekâlet Ücreti Matrahı<select name="baseMode"><option value="principalInterest">Anapara + hesaplanan işlemiş faiz</option><option value="principal">Yalnız anapara</option></select></label><label class="field">Ödeme Aşaması<select name="early"><option value="no">Tam ücret — ödeme süresi indirimi yok</option><option value="yes">Ödeme süresinde ödeme — dörtte üç ücret</option></select></label></div><p>Anapara: <b>${money(d.amount)}</b> · Masraflar ve vekâlet ücreti faiz matrahına alınmaz.</p><button class="secondary" type="submit">Hesaplamayı Göster</button><div id="legalCalculationOutput" style="margin-top:20px"></div><p><a href="https://mevzuat.adalet.gov.tr/mevzuat/104794" target="_blank" rel="noopener">3095 sayılı Kanun</a> · <a href="https://www.barobirlik.org.tr/dosyalar/belgeler/AvUcretTarifesi/tbb2026.pdf" target="_blank" rel="noopener">AAÜT — madde 11 ve üçüncü kısım</a> · <a href="https://www.tcmb.gov.tr/wps/wcm/connect/TR/TCMB%2BTR/Main%2BMenu/Temel%2BFaaliyetler/Para%2BPolitikasi/Reeskont%2Bve%2BAvans%2BFaiz%2BOranlari?v=1.0.8" target="_blank" rel="noopener">TCMB</a></p></div></form>`;
+  dialog.innerHTML = `<form id="legalCalculatorForm"><div class="panelhead"><h2>Yasal Faiz ve İcra Vekâlet Ücreti</h2><button type="button" class="link" id="closeLegal">Kapat</button></div><div class="formbody"><div class="notice">Para alacağı için icra takibi açılmış varsayımıyla ön hesap. Gerçek takip açılmaz. Başlangıç vadedir; başlangıç dahil, hesap tarihi hariç; basit faiz ve 365 gün esası kullanılır. Özel faiz veya ilam hükmü varsa bu hesabı uygulamayın. Oran doğrulama sınırı: ${esc(displayDate(legalRateVerifiedThrough))}. Tarife: 03.11.2026 AAÜT, icra takibi.</div><div class="grid">${field('Vade / Faiz Başlangıcı', 'start', 'date', d.due || '', true)}${field('Varsayımsal Takip / Hesap Tarihi', 'end', 'date', businessDate(), true)}<label class="field">Vekâlet Ücreti Matrahı<select name="baseMode"><option value="principalInterest">Anapara + hesaplanan işlemiş faiz</option><option value="principal">Yalnız anapara</option></select></label><label class="field">Ödeme Aşaması<select name="early"><option value="no">Tam ücret — ödeme süresi indirimi yok</option><option value="yes">Ödeme süresinde ödeme — dörtte üç ücret</option></select></label></div><p>Anapara: <b>${money(d.amount)}</b> · Masraflar ve vekâlet ücreti faiz matrahına alınmaz.</p><button class="secondary" type="submit">Hesaplamayı Göster</button><div id="legalCalculationOutput" style="margin-top:20px"></div><p><a href="https://mevzuat.adalet.gov.tr/mevzuat/104794" target="_blank" rel="noopener">3095 sayılı Kanun</a> · <a href="https://www.barobirlik.org.tr/dosyalar/belgeler/AvUcretTarifesi/tbb2026.pdf" target="_blank" rel="noopener">AAÜT — madde 11 ve üçüncü kısım</a> · <a href="https://www.tcmb.gov.tr/wps/wcm/connect/TR/TCMB%2BTR/Main%2BMenu/Temel%2BFaaliyetler/Para%2BPolitikasi/Reeskont%2Bve%2BAvans%2BFaiz%2BOranlari?v=1.0.8" target="_blank" rel="noopener">TCMB</a></p></div></form>`;
   $('#closeLegal').onclick = () => dialog.close();
   dialog.showModal();
   const form = $('#legalCalculatorForm');
@@ -613,7 +613,7 @@ function openLegalCalculator(id) {
     $('#legalCalculationOutput').innerHTML = '';
   };
   form.onchange = form.oninput;
-    form.onsubmit = (e) => {
+  form.onsubmit = (e) => {
     e.preventDefault();
     result = null;
     try {
@@ -636,7 +636,7 @@ function openLegalCalculator(id) {
         calculatedAt: new Date().toISOString(),
       };
       $('#legalCalculationOutput').innerHTML =
-        `<div class="overflow"><table><thead><tr><th>DÖNEM (SON GÜN HARİÇ)</th><th>GÜN</th><th>YILLIK ORAN</th><th>FAİZ</th></tr></thead><tbody>${interest.rows.map((r) => `<tr><td>${displayDate(r.from)} – ${displayDate(r.to)}</td><td>${r.days}</td><td>%${r.rate}</td><td>${money(r.interest / 100)}</td></tr>`).join('')}</tbody></table></div><p>Toplam ${interest.days} gün · <b>Faiz: ${money(interest.amount / 100)}</b></p><p>Vekâlet matrahı: ${money(base / 100)} · Asıl alacak üst sınırı: ${money(principal / 100)}<br><b>İcra vekâlet ücreti: ${money(fee.amount / 100)}</b>${fee.early ? ' (dörtte üç ücret)' : ''}</p><p>Masraflar hariç toplam: <b>${money((principal + interest.amount + fee.amount) / 100)}</b></p><label class="settings-check"><input type="checkbox" id="confirmLegal">Vade başlangıcı, genel kanuni faiz, matrah ve seçilen tarifenin bu evraka uygunluğunu kontrol ettim.</label><button type="button" class="primary" id="applyLegal">Hesaplanan Faiz ve Ücreti Borca Uygula</button>`;
+        `<div class="overflow"><table><thead><tr><th>DÖNEM (SON GÜN HARİÇ)</th><th>GÜN</th><th>YILLIK ORAN</th><th>FAİZ</th></tr></thead><tbody>${interest.rows.map((r) => `<tr><td>${esc(displayDate(r.from))} – ${esc(displayDate(r.to))}</td><td>${r.days}</td><td>%${r.rate}</td><td>${money(r.interest / 100)}</td></tr>`).join('')}</tbody></table></div><p>Toplam ${interest.days} gün · <b>Faiz: ${money(interest.amount / 100)}</b></p><p>Vekâlet matrahı: ${money(base / 100)} · Asıl alacak üst sınırı: ${money(principal / 100)}<br><b>İcra vekâlet ücreti: ${money(fee.amount / 100)}</b>${fee.early ? ' (dörtte üç ücret)' : ''}</p><p>Masraflar hariç toplam: <b>${money((principal + interest.amount + fee.amount) / 100)}</b></p><label class="settings-check"><input type="checkbox" id="confirmLegal">Vade başlangıcı, genel kanuni faiz, matrah ve seçilen tarifenin bu evraka uygunluğunu kontrol ettim.</label><button type="button" class="primary" id="applyLegal">Hesaplanan Faiz ve Ücreti Borca Uygula</button>`;
       $('#applyLegal').onclick = () => {
         if (!result || !$('#confirmLegal').checked)
           return toast('Hesabın evraka uygunluğunu kontrol edip işaretleyin.');
@@ -697,7 +697,7 @@ function repaymentSection(d) {
           .map((r, i) => {
             const paid = Math.min(r.amount, paidSince);
             paidSince -= paid;
-            return `<tr><td>${i + 1}</td><td>${displayDate(r.due)}</td><td>${money(r.amount / 100)}</td><td>${money(paid / 100)}</td><td>${money((r.amount - paid) / 100)}</td></tr>`;
+            return `<tr><td>${i + 1}</td><td>${esc(displayDate(r.due))}</td><td>${money(r.amount / 100)}</td><td>${money(paid / 100)}</td><td>${money((r.amount - paid) / 100)}</td></tr>`;
           })
           .join(
             '',
@@ -883,7 +883,7 @@ function clientPayoutTotals(d) {
 
 function clientPayoutSection(d) {
   const p = clientPayoutTotals(d);
-  return `<h3 class="sectiontitle" style="margin-top:30px">Müvekkile Ödeme</h3><div class="grid"><div class="detail-field"><small>Müvekkile Ödenecek ${isParkingDocument(d) ? 'Firma Payı' : 'Anapara'}</small><b>${money(p.entitlement / 100)}</b></div><div class="detail-field"><small>Müvekkile Ödenen</small><b>${money(p.paid / 100)}</b></div><div class="detail-field"><small>Müvekkile Kalan Ödeme</small><b>${money(p.remaining / 100)}</b></div></div><p>Bu ödeme kasadan/bankadan çıkar; gider veya kâr hesabına dahil edilmez.${isParkingDocument(d) ? ' Yediemin dosyasında anlaşmalı ofis payı düşülerek firma payı ödenir.' : ''}</p><button class="primary" type="button" id="payClientFromBorrower" ${!p.eligible || !p.remaining ? 'disabled' : ''}>Müvekkile Ödeme Kaydet</button>${!p.eligible ? '<p>Ödeme için dosyanın infaz olması ve borçlu bakiyesinin kapanması gerekir.</p>' : ''}${p.rows.map((e) => `<p>${displayDate(e.date)} · ${money(e.amount / 100)} · ${esc(e.accountName || '')} · ${esc(e.operatorName || '')}<br>${esc(e.note)}</p>`).join('')}`;
+  return `<h3 class="sectiontitle" style="margin-top:30px">Müvekkile Ödeme</h3><div class="grid"><div class="detail-field"><small>Müvekkile Ödenecek ${isParkingDocument(d) ? 'Firma Payı' : 'Anapara'}</small><b>${money(p.entitlement / 100)}</b></div><div class="detail-field"><small>Müvekkile Ödenen</small><b>${money(p.paid / 100)}</b></div><div class="detail-field"><small>Müvekkile Kalan Ödeme</small><b>${money(p.remaining / 100)}</b></div></div><p>Bu ödeme kasadan/bankadan çıkar; gider veya kâr hesabına dahil edilmez.${isParkingDocument(d) ? ' Yediemin dosyasında anlaşmalı ofis payı düşülerek firma payı ödenir.' : ''}</p><button class="primary" type="button" id="payClientFromBorrower" ${!p.eligible || !p.remaining ? 'disabled' : ''}>Müvekkile Ödeme Kaydet</button>${!p.eligible ? '<p>Ödeme için dosyanın infaz olması ve borçlu bakiyesinin kapanması gerekir.</p>' : ''}${p.rows.map((e) => `<p>${esc(displayDate(e.date))} · ${money(e.amount / 100)} · ${esc(e.accountName || '')} · ${esc(e.operatorName || '')}<br>${esc(e.note)}</p>`).join('')}`;
 }
 
 function bindClientPayout(d) {
@@ -899,28 +899,94 @@ function syncPayoutSources() {
   if (records && Array.isArray(records.clients) && Array.isArray(records.docs)) db = records;
 }
 
-let clientPayoutExtraFilters={debtor:'',identity:'',number:'',type:'',staff:'',minAmount:'',maxAmount:'',minCents:'',maxCents:'',paymentState:''};
-function matchesClientPayoutExtra(d,p,f){
-  return (!f.debtor||normalizeSearch(d.debtor||'').includes(normalizeSearch(f.debtor.trim())))&&
-    (!f.identity||String(d.identity||'').includes(f.identity.trim()))&&
-    (!f.number||normalizeSearch(d.number||'').includes(normalizeSearch(f.number.trim())))&&
-    (!f.type||docType(d)===f.type)&&(!f.staff||(f.staff==='unassigned'?!d.relatedStaff:d.relatedStaff===f.staff))&&
-    (f.minCents===''||p.remaining>=Number(f.minCents))&&(f.maxCents===''||p.remaining<=Number(f.maxCents))&&
-    (!f.paymentState||(f.paymentState==='partial'?p.paid>0:p.paid===0));
+let clientPayoutExtraFilters = {
+  debtor: '',
+  identity: '',
+  number: '',
+  type: '',
+  staff: '',
+  minAmount: '',
+  maxAmount: '',
+  minCents: '',
+  maxCents: '',
+  paymentState: '',
+};
+function matchesClientPayoutExtra(d, p, f) {
+  return (
+    (!f.debtor || normalizeSearch(d.debtor || '').includes(normalizeSearch(f.debtor.trim()))) &&
+    (!f.identity || String(d.identity || '').includes(f.identity.trim())) &&
+    (!f.number || normalizeSearch(d.number || '').includes(normalizeSearch(f.number.trim()))) &&
+    (!f.type || docType(d) === f.type) &&
+    (!f.staff || (f.staff === 'unassigned' ? !d.relatedStaff : d.relatedStaff === f.staff)) &&
+    (f.minCents === '' || p.remaining >= Number(f.minCents)) &&
+    (f.maxCents === '' || p.remaining <= Number(f.maxCents)) &&
+    (!f.paymentState || (f.paymentState === 'partial' ? p.paid > 0 : p.paid === 0))
+  );
 }
-function clientPayoutFilterMarkup(){
- const f=clientPayoutExtraFilters;
- const input=(label,name,type='text',value=f[name])=>'<label class="field">'+label+'<input name="'+name+'" type="'+type+'" data-optional="true" value="'+esc(value||'')+'"></label>';
- const options=(rows,value)=>rows.map(([id,label])=>'<option value="'+esc(id)+'" '+(value===id?'selected':'')+'>'+esc(label)+'</option>').join('');
- return '<details class="borrower-filter-section" id="clientPayoutFilterSection"'+(document.getElementById('clientPayoutFilterSection')?.open?' open':'')+'><summary>Filtreleme</summary><form id="clientPayoutDateForm" class="formbody"><div class="grid">'+
- '<label class="field">Müvekkil<select name="client" id="clientPayoutFilter" data-optional="true">'+options([['','Tüm Müvekkiller'],...db.clients.map(c=>[c.id,c.name])],clientPayoutFilter)+'</select></label>'+
- input('İnfaz Tarihi — Başlangıç','start','date',clientPayoutStart)+input('İnfaz Tarihi — Bitiş','end','date',clientPayoutEnd)+
- input('Borçlu Adı','debtor')+input('TC Kimlik / Vergi No','identity')+input('Evrak No','number')+
- '<label class="field">Evrak Türü<select name="type" data-optional="true">'+options([['','Tüm Evrak Türleri'],...Object.keys(documentTypes).map(t=>[t,t])],f.type)+'</select></label>'+
- '<label class="field">Dosya Sorumlusu<select name="staff" data-optional="true">'+options([['','Tüm Personeller'],['unassigned','Atanmamış'],...personnel.map(p=>[p.id,p.name+(p.active?'':' (pasif)')])],f.staff)+'</select></label>'+
- input('En Az Ödenecek Tutar (TL)','minAmount')+input('En Çok Ödenecek Tutar (TL)','maxAmount')+
- '<label class="field">Ödeme Durumu<select name="paymentState" data-optional="true">'+options([['','Ödemesi Bekleyen Tüm Dosyalar'],['unpaid','Hiç Ödeme Yapılmamış'],['partial','Kısmen Ödenmiş']],f.paymentState)+'</select></label>'+
- '</div><div class="toolbar" style="margin-top:16px"><button type="submit" class="primary">Filtrele</button><button type="button" class="secondary" id="clearPayoutDates">Tüm Filtreleri Temizle</button></div><p>Başlangıç ve bitiş günleri dahildir. Tarih filtresi açıkken infaz tarihi bulunmayan dosyalar gösterilmez.</p></form></details>';
+function clientPayoutFilterMarkup() {
+  const f = clientPayoutExtraFilters;
+  const input = (label, name, type = 'text', value = f[name]) =>
+    '<label class="field">' +
+    label +
+    '<input name="' +
+    name +
+    '" type="' +
+    type +
+    '" data-optional="true" value="' +
+    esc(value || '') +
+    '"></label>';
+  const options = (rows, value) =>
+    rows
+      .map(
+        ([id, label]) =>
+          '<option value="' +
+          esc(id) +
+          '" ' +
+          (value === id ? 'selected' : '') +
+          '>' +
+          esc(label) +
+          '</option>',
+      )
+      .join('');
+  return (
+    '<details class="borrower-filter-section" id="clientPayoutFilterSection"' +
+    (document.getElementById('clientPayoutFilterSection')?.open ? ' open' : '') +
+    '><summary>Filtreleme</summary><form id="clientPayoutDateForm" class="formbody"><div class="grid">' +
+    '<label class="field">Müvekkil<select name="client" id="clientPayoutFilter" data-optional="true">' +
+    options([['', 'Tüm Müvekkiller'], ...db.clients.map((c) => [c.id, c.name])], clientPayoutFilter) +
+    '</select></label>' +
+    input('İnfaz Tarihi — Başlangıç', 'start', 'date', clientPayoutStart) +
+    input('İnfaz Tarihi — Bitiş', 'end', 'date', clientPayoutEnd) +
+    input('Borçlu Adı', 'debtor') +
+    input('TC Kimlik / Vergi No', 'identity') +
+    input('Evrak No', 'number') +
+    '<label class="field">Evrak Türü<select name="type" data-optional="true">' +
+    options([['', 'Tüm Evrak Türleri'], ...Object.keys(documentTypes).map((t) => [t, t])], f.type) +
+    '</select></label>' +
+    '<label class="field">Dosya Sorumlusu<select name="staff" data-optional="true">' +
+    options(
+      [
+        ['', 'Tüm Personeller'],
+        ['unassigned', 'Atanmamış'],
+        ...personnel.map((p) => [p.id, p.name + (p.active ? '' : ' (pasif)')]),
+      ],
+      f.staff,
+    ) +
+    '</select></label>' +
+    input('En Az Ödenecek Tutar (TL)', 'minAmount') +
+    input('En Çok Ödenecek Tutar (TL)', 'maxAmount') +
+    '<label class="field">Ödeme Durumu<select name="paymentState" data-optional="true">' +
+    options(
+      [
+        ['', 'Ödemesi Bekleyen Tüm Dosyalar'],
+        ['unpaid', 'Hiç Ödeme Yapılmamış'],
+        ['partial', 'Kısmen Ödenmiş'],
+      ],
+      f.paymentState,
+    ) +
+    '</select></label>' +
+    '</div><div class="toolbar" style="margin-top:16px"><button type="submit" class="primary">Filtrele</button><button type="button" class="secondary" id="clearPayoutDates">Tüm Filtreleri Temizle</button></div><p>Başlangıç ve bitiş günleri dahildir. Tarih filtresi açıkken infaz tarihi bulunmayan dosyalar gösterilmez.</p></form></details>'
+  );
 }
 function clientPayoutPage() {
   try {
@@ -935,10 +1001,11 @@ function clientPayoutPage() {
         p.eligible &&
         p.remaining > 0 &&
         matchesPayoutDate(d, clientPayoutStart, clientPayoutEnd) &&
-        (!clientPayoutFilter || d.client === clientPayoutFilter) && matchesClientPayoutExtra(d,p,clientPayoutExtraFilters),
+        (!clientPayoutFilter || d.client === clientPayoutFilter) &&
+        matchesClientPayoutExtra(d, p, clientPayoutExtraFilters),
     );
   $('#content').innerHTML =
-    `<div class="panel"><div class="panelhead"><div><h2>Müvekkil Ödemeleri</h2><p>Yalnızca infaz edilmiş ve müvekkile ödemesi tamamlanmamış dosyalar.</p></div><button type="button" class="secondary" id="backAccounting">← Kasa / Banka</button></div>${clientPayoutFilterMarkup()}<div class="formbody"><div class="notice" style="margin-top:18px">Müvekkile anapara iadesi gider değildir. Seçilen hesap bakiyesi azalır; ciro ve kâr değişmez. Yediemin dosyasında anlaşmalı ofis payı ayrılır. Bu ekran ödeme kaydı tutar, bankaya havale talimatı göndermez.</div><p>${list.length} dosya · Toplam ödenecek: <b>${money(list.reduce((s, x) => s + x.p.remaining, 0) / 100)}</b></p></div><div class="overflow"><table><thead><tr><th>DOSYA</th><th>BORÇLU / MÜVEKKİL</th><th>İNFAZ TARİHİ</th><th>ANAPARA</th><th>ÖDENEN</th><th>ÖDENECEK</th><th>İŞLEM</th></tr></thead><tbody>${list.map(({ d, p }) => `<tr><td>${esc(d.number)}<small>${esc(docType(d))}</small></td><td>${esc(d.debtor)}<small>${esc(db.clients.find((c) => c.id === d.client)?.name || '—')}</small></td><td>${esc(displayDate(clientPayoutClosureDate(d)) || '—')}</td><td>${money(p.entitlement / 100)}</td><td>${money(p.paid / 100)}</td><td><b>${money(p.remaining / 100)}</b></td><td><button class="primary" type="button" data-client-payout="${d.id}">Ödeme Kaydet</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">Müvekkile ödemesi bekleyen infaz dosyası bulunmuyor.</td></tr>'}</tbody><tfoot><tr><td colspan="3"><strong>ALT TOPLAM</strong></td><td><strong>${money(list.reduce((sum, x) => sum + x.p.entitlement, 0) / 100)}</strong></td><td><strong>${money(list.reduce((sum, x) => sum + x.p.paid, 0) / 100)}</strong></td><td><strong>${money(list.reduce((sum, x) => sum + x.p.remaining, 0) / 100)}</strong></td><td></td></tr></tfoot></table></div></div>`;
+    `<div class="panel"><div class="panelhead"><div><h2>Müvekkil Ödemeleri</h2><p>Yalnızca infaz edilmiş ve müvekkile ödemesi tamamlanmamış dosyalar.</p></div><button type="button" class="secondary" id="backAccounting">← Kasa / Banka</button></div>${clientPayoutFilterMarkup()}<div class="formbody"><div class="notice" style="margin-top:18px">Müvekkile anapara iadesi gider değildir. Seçilen hesap bakiyesi azalır; ciro ve kâr değişmez. Yediemin dosyasında anlaşmalı ofis payı ayrılır. Bu ekran ödeme kaydı tutar, bankaya havale talimatı göndermez.</div><p>${list.length} dosya · Toplam ödenecek: <b>${money(list.reduce((s, x) => s + x.p.remaining, 0) / 100)}</b></p></div><div class="overflow"><table><thead><tr><th>DOSYA</th><th>BORÇLU / MÜVEKKİL</th><th>İNFAZ TARİHİ</th><th>ANAPARA</th><th>ÖDENEN</th><th>ÖDENECEK</th><th>İŞLEM</th></tr></thead><tbody>${list.map(({ d, p }) => `<tr><td>${esc(d.number)}<small>${esc(docType(d))}</small></td><td>${esc(d.debtor)}<small>${esc(db.clients.find((c) => c.id === d.client)?.name || '—')}</small></td><td>${esc(displayDate(clientPayoutClosureDate(d)) || '—')}</td><td>${money(p.entitlement / 100)}</td><td>${money(p.paid / 100)}</td><td><b>${money(p.remaining / 100)}</b></td><td><button class="primary" type="button" data-client-payout="${esc(d.id)}">Ödeme Kaydet</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">Müvekkile ödemesi bekleyen infaz dosyası bulunmuyor.</td></tr>'}</tbody><tfoot><tr><td colspan="3"><strong>ALT TOPLAM</strong></td><td><strong>${money(list.reduce((sum, x) => sum + x.p.entitlement, 0) / 100)}</strong></td><td><strong>${money(list.reduce((sum, x) => sum + x.p.paid, 0) / 100)}</strong></td><td><strong>${money(list.reduce((sum, x) => sum + x.p.remaining, 0) / 100)}</strong></td><td></td></tr></tfoot></table></div></div>`;
   $('#backAccounting').onclick = accountingPage;
   const dateForm = $('#clientPayoutDateForm');
   dateForm.onsubmit = (e) => {
@@ -947,22 +1014,27 @@ function clientPayoutPage() {
     const start = dateForm.elements.start.value,
       end = dateForm.elements.end.value;
     if (start && end && start > end) return toast('Başlangıç tarihi bitiş tarihinden sonra olamaz.');
-    const next=Object.fromEntries(new FormData(dateForm));
-    for(const [name,key] of [['minAmount','minCents'],['maxAmount','maxCents']]){
-      const parsed=parseAmountInput(next[name]);
-      if(parsed===null||(parsed!==''&&Number(parsed)<0))return toast('Geçerli, sıfır veya pozitif tutar girin.');
-      next[key]=parsed===''?'':financeCents(parsed);
+    const next = Object.fromEntries(new FormData(dateForm));
+    for (const [name, key] of [
+      ['minAmount', 'minCents'],
+      ['maxAmount', 'maxCents'],
+    ]) {
+      const parsed = parseAmountInput(next[name]);
+      if (parsed === null || (parsed !== '' && Number(parsed) < 0))
+        return toast('Geçerli, sıfır veya pozitif tutar girin.');
+      next[key] = parsed === '' ? '' : financeCents(parsed);
     }
-    if(next.minCents!==''&&next.maxCents!==''&&next.minCents>next.maxCents)return toast('En az tutar, en çok tutardan büyük olamaz.');
-    clientPayoutFilter=next.client;
-    clientPayoutExtraFilters=next;
+    if (next.minCents !== '' && next.maxCents !== '' && next.minCents > next.maxCents)
+      return toast('En az tutar, en çok tutardan büyük olamaz.');
+    clientPayoutFilter = next.client;
+    clientPayoutExtraFilters = next;
     clientPayoutStart = start;
     clientPayoutEnd = end;
     clientPayoutPage();
   };
   $('#clearPayoutDates').onclick = () => {
-    clientPayoutFilter='';
-    for(const key of Object.keys(clientPayoutExtraFilters))clientPayoutExtraFilters[key]='';
+    clientPayoutFilter = '';
+    for (const key of Object.keys(clientPayoutExtraFilters)) clientPayoutExtraFilters[key] = '';
     clientPayoutStart = '';
     clientPayoutEnd = '';
     clientPayoutPage();
@@ -972,16 +1044,23 @@ function clientPayoutPage() {
     .forEach((b) => (b.onclick = () => clientPayoutForm(b.dataset.clientPayout)));
 }
 
-function configureClientPayoutAmount(form,remainingCents,onChange){
-  const amount=form.elements.amount,mode=form.elements.paymentMode;
-  amount.min='0.01';amount.max=String(remainingCents/100);amount.step='0.01';
-  let partial='';
-  mode.addEventListener('change',()=>{
-    const full=mode.value==='full';
-    if(full)partial=amount.value;
-    amount.value=full?String(remainingCents/100):partial;
-    amount.readOnly=full;
-    if(amount._moneyProxy){amount._moneyProxy.readOnly=full;amount._moneyProxy.value=formatAmountInput(amount.value);amount._moneyProxy.setCustomValidity('');}
+function configureClientPayoutAmount(form, remainingCents, onChange) {
+  const amount = form.elements.amount,
+    mode = form.elements.paymentMode;
+  amount.min = '0.01';
+  amount.max = String(remainingCents / 100);
+  amount.step = '0.01';
+  let partial = '';
+  mode.addEventListener('change', () => {
+    const full = mode.value === 'full';
+    if (full) partial = amount.value;
+    amount.value = full ? String(remainingCents / 100) : partial;
+    amount.readOnly = full;
+    if (amount._moneyProxy) {
+      amount._moneyProxy.readOnly = full;
+      amount._moneyProxy.value = formatAmountInput(amount.value);
+      amount._moneyProxy.setCustomValidity('');
+    }
     onChange();
   });
 }
@@ -1006,9 +1085,17 @@ function clientPayoutForm(id) {
   $('#closeClientPayout').onclick = () => dialog.close();
   if (!dialog.open) dialog.showModal();
   const form = $('#clientPayoutForm');
-  const updateRemaining=()=>{const amount=financeCents(form.elements.amount.value);$('#clientPayoutRemainingPreview').textContent=Number.isSafeInteger(amount)&&amount>0&&amount<=p.remaining?'Bu ödeme sonrası kalan: '+money((p.remaining-amount)/100):'0’dan büyük ve kalan tutarı aşmayan bir ödeme girin.';};
-  configureClientPayoutAmount(form,p.remaining,updateRemaining);
-  form.elements.amount.addEventListener('input',updateRemaining);form.elements.amount.addEventListener('change',updateRemaining);updateRemaining();
+  const updateRemaining = () => {
+    const amount = financeCents(form.elements.amount.value);
+    $('#clientPayoutRemainingPreview').textContent =
+      Number.isSafeInteger(amount) && amount > 0 && amount <= p.remaining
+        ? 'Bu ödeme sonrası kalan: ' + money((p.remaining - amount) / 100)
+        : '0’dan büyük ve kalan tutarı aşmayan bir ödeme girin.';
+  };
+  configureClientPayoutAmount(form, p.remaining, updateRemaining);
+  form.elements.amount.addEventListener('input', updateRemaining);
+  form.elements.amount.addEventListener('change', updateRemaining);
+  updateRemaining();
   const paymentRequestId = crypto.randomUUID();
   form.onsubmit = (e) => {
     e.preventDefault();
@@ -1021,11 +1108,12 @@ function clientPayoutForm(id) {
       if (live.remaining !== p.remaining)
         throw Error('Ödeme tutarı değişti; pencereyi kapatıp yeniden açın.');
       const v = Object.fromEntries(new FormData(form)),
-        paymentAmount = v.paymentMode==='full'?live.remaining:financeCents(v.amount),
+        paymentAmount = v.paymentMode === 'full' ? live.remaining : financeCents(v.amount),
         account = accounting.accounts.find((a) => a.id === v.accountId),
         operator = activeOperator();
-      if(!Number.isSafeInteger(paymentAmount)||paymentAmount<=0)throw Error('Geçerli, sıfırdan büyük bir ödeme tutarı girin.');
-      if(paymentAmount>live.remaining)throw Error('Ödeme tutarı müvekkile kalan tutarı aşamaz.');
+      if (!Number.isSafeInteger(paymentAmount) || paymentAmount <= 0)
+        throw Error('Geçerli, sıfırdan büyük bir ödeme tutarı girin.');
+      if (paymentAmount > live.remaining) throw Error('Ödeme tutarı müvekkile kalan tutarı aşamaz.');
       if (!operator) throw Error('Üst bölümden işlem yapan personeli seçin.');
       if (!account) throw Error('Paranın çıktığı hesabı seçin.');
       legalDate(v.date);
@@ -1034,8 +1122,8 @@ function clientPayoutForm(id) {
         throw Error('Ödeme tarihi infaz tarihinden önce olamaz.');
       if (!v.note.trim()) throw Error('Ödeme açıklamasını girin.');
       if (accountBalance(account.id) < paymentAmount) throw Error('Seçilen hesapta yeterli bakiye yok.');
-        authApi('/api/client-payout', 'POST', {
-          id: paymentRequestId,
+      authApi('/api/client-payout', 'POST', {
+        id: paymentRequestId,
         type: 'clientPayout',
         documentId: current.id,
         clientId: current.client,
@@ -1049,13 +1137,22 @@ function clientPayoutForm(id) {
         createdAt: new Date().toISOString(),
       });
       dialog.close();
-        try { syncPayoutSources(); } catch { toast('Ödeme kaydedildi. Güncel bakiyeyi görmek için sayfayı yenileyin.'); return; }
+      try {
+        syncPayoutSources();
+      } catch {
+        toast('Ödeme kaydedildi. Güncel bakiyeyi görmek için sayfayı yenileyin.');
+        return;
+      }
       const borrower = document.getElementById('borrowerDetail');
       if (borrower?.open) borrowerDetail(id);
       if (page === 'accounting') clientPayoutPage();
       else if (page === 'clients') render();
       else stats();
-      toast(paymentAmount<live.remaining?'Kısmi müvekkil ödemesi kaydedildi.':'Müvekkil ödemesi tamamlandı.');
+      toast(
+        paymentAmount < live.remaining
+          ? 'Kısmi müvekkil ödemesi kaydedildi.'
+          : 'Müvekkil ödemesi tamamlandı.',
+      );
     } catch (error) {
       toast(error.message);
     }
@@ -1103,7 +1200,7 @@ function repaymentHistoryMarkup(d) {
               '<div class="notice" style="margin-top:12px"><b>' +
               (i + 1) +
               '. Yapılandırma</b> · ' +
-              displayDate(p.createdAt) +
+              esc(displayDate(p.createdAt)) +
               ' · ' +
               money(p.balance / 100) +
               '<div class="overflow"><table><thead><tr><th>TAKSİT</th><th>VADE</th><th>TUTAR</th></tr></thead><tbody>' +
@@ -1113,7 +1210,7 @@ function repaymentHistoryMarkup(d) {
                     '<tr><td>' +
                     (j + 1) +
                     '</td><td>' +
-                    displayDate(r.due) +
+                    esc(displayDate(r.due)) +
                     '</td><td>' +
                     money(r.amount / 100) +
                     '</td></tr>',

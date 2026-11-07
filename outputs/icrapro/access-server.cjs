@@ -2,7 +2,13 @@ const { handleSessionRoutes, handleAccountRoutes } = require('./access-accounts.
 const { handleEmployeeTermsRoutes } = require('./access-employee-terms.cjs');
 const { handleScheduledReminderRoutes } = require('./access-scheduled-reminders.cjs');
 const { requiresEmployeeTerms, REQUIRED_MESSAGE } = require('../../lib/employee-terms.cjs');
-const { sessionKey, requestDeviceType, sessionIsValid } = require('../../lib/session-policy.cjs');
+const {
+  sessionKey,
+  sessionCookie,
+  requestDeviceType,
+  sessionIsValid,
+} = require('../../lib/session-policy.cjs');
+const { mutationSourceAllowed, secureCookiesRequired } = require('../../lib/request-security.cjs');
 const {
   hashPassword: hash,
   verifyPassword: passwordOK,
@@ -48,12 +54,14 @@ const defaults = {
 };
 
 function createAccess(stateFile, options = {}) {
+  options = { ...options, secureCookies: secureCookiesRequired(options) };
   let state = options.initialState || { users: [], data: structuredClone(defaults) };
   if (!options.initialState && stateFile && fs.existsSync(stateFile))
     state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
   const sessions = options.sessions || new Map(),
     attempts = options.attempts || new Map();
-  const secure = options.secureCookies ? '; Secure' : '';
+  const clearSessionCookie = (res) =>
+    res.setHeader('Set-Cookie', sessionCookie('', { secure: options.secureCookies, maxAge: 0 }));
   const revision = (key) =>
     '\"' + crypto.createHash('sha256').update(JSON.stringify(state.data[key])).digest('hex') + '\"';
   function saveState(next) {
@@ -113,10 +121,9 @@ function createAccess(stateFile, options = {}) {
       until: now + lifetime,
       seenAt: now,
     });
-    const maxAge = remember ? '; Max-Age=' + lifetime / 1000 : '';
     res.setHeader(
       'Set-Cookie',
-      'han_session=' + token + '; HttpOnly; SameSite=Strict; Path=/' + maxAge + secure,
+      sessionCookie(token, { secure: options.secureCookies, maxAge: remember ? lifetime / 1000 : undefined }),
     );
     return true;
   }
@@ -246,12 +253,7 @@ function createAccess(stateFile, options = {}) {
   async function access(req, res, url) {
     if (!url.pathname.startsWith('/api/')) return false;
     try {
-      if (
-        req.method !== 'GET' &&
-        (req.headers['x-han-request'] !== '1' ||
-          (req.headers.origin && req.headers.origin !== (options.appOrigin || 'http://' + req.headers.host)))
-      )
-        throw fail(403, 'İstek kaynağı doğrulanamadı.');
+      if (!mutationSourceAllowed(req, options)) throw fail(403, 'İstek kaynağı doğrulanamadı.');
       const u = current(req);
       const termsRequired = options.employeeTermsRequired
         ? options.employeeTermsRequired(u)
@@ -305,7 +307,7 @@ function createAccess(stateFile, options = {}) {
         isCallcenter,
         calculateCallcenterBonus,
         recognizedCollectionRevenue,
-        secure,
+        clearSessionCookie,
         revision,
         readKey,
         ledgerBalance,

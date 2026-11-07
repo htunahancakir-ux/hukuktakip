@@ -89,7 +89,7 @@ async function handleDataRoutes(ctx) {
     const v = await body(req),
       next = structuredClone(ctx.state);
     if (['ceo', 'admin'].includes(u.role) || (key === 'hanhukuk-finance-v1' && allowed(u, 'documents'))) {
-      if (key === 'hanhukuk-accounting-v1') validateNewClientPayouts(ctx.state,v.value,u);
+      if (key === 'hanhukuk-accounting-v1') validateNewClientPayouts(ctx.state, v.value, u);
       if (key === 'hanhukuk-finance-v1') {
         if (!Array.isArray(v.value)) throw fail(400, 'Geçersiz finans kaydı.');
         if (!['ceo', 'admin'].includes(u.role)) {

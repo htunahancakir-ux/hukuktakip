@@ -14,9 +14,9 @@ function borrowerDetail(id, savedForm) {
     type = docType(d),
     definition = documentTypes[type];
   const value = (label, v) =>
-    `<div class="detail-field"><small>${label}</small><div>${esc(displayDate(v) || '—')}</div></div>`;
+    `<div class="detail-field"><small>${esc(label)}</small><div>${esc(displayDate(v) || '—')}</div></div>`;
   const address = (label, a, district, city) => value(label, [a, district, city].filter(Boolean).join(' / '));
-  dialog.innerHTML = `<div class="panelhead"><div><h2>Borçlu Detayı · <span class="debtor-name-emphasis">${esc(d.debtor)}</span></h2><p>${esc(d.number)} · ${esc(type)} · ${esc(client?.name || '')}</p><p><b>Dosya Sorumlusu:</b> ${esc(personnel.find((p) => p.id === d.relatedStaff)?.name || d.relatedStaffName || 'Atanmad?')}</p></div><div class="toolbar">${(Array.isArray(d.guarantors) ? d.guarantors : []).map((g, index) => `<button type="button" class="primary guarantor-top-button" data-top-guarantor="${esc(g.id)}" title="${esc(g.name)}" aria-label="Kefil ${index + 1}: ${esc(g.name)}">♙ Kefil ${index + 1}</button>`).join('')}<button class="secondary" id="closeBorrower">Kapat</button></div></div><div class="formbody"><div class="settings-tabs borrower-tabs" role="tablist" aria-label="Borçlu föyü bölümleri">${borrowerSheetTabs.map(([key, label]) => `<button type="button" role="tab" id="borrower-tab-${key}" aria-controls="borrower-panel-${key}" data-borrower-tab="${key}">${label}</button>`).join('')}</div><section role="tabpanel" id="borrower-panel-personal" aria-labelledby="borrower-tab-personal" data-borrower-panel="personal"><h3 class="sectiontitle">Borçlu Bilgileri</h3><div class="grid"><div class="detail-field"><small>Ad Soyad / Unvan</small><div class="borrower-sheet-name">${esc(d.debtor || '—')}</div></div>${value('Takip Tarihi', borrowerTrackingDate(d))}${value('TC Kimlik / Vergi No', d.identity)}${value('Tel-1', d.phone1)}${value('Tel-2', d.phone2)}${value('Ref. Tel-1', d.referencePhone1)}${value('Ref. Tel-2', d.referencePhone2)}${value('Ofis Tel-1', d.officePhone1)}${value('Ofis Tel-2', d.officePhone2)}${address('Borçlu Adres-1', d.address, d.district, d.city)}${address('Borçlu Adres-2', d.address2, d.address2District, d.address2City)}${address('Borçlu Adres (Ofis)-3', d.officeAddress3, d.officeAddress3District, d.officeAddress3City)}${(d.additionalPhones || []).map((phone, i) => value('Ek Telefon ' + (i + 1), phone)).join('')}${(d.additionalAddresses || []).map((a, i) => address('Ek Adres ' + (i + 1), a.address, a.district, a.city)).join('')}${value('Dosya Sorumlusu', personnel.find((p) => p.id === d.relatedStaff)?.name || d.relatedStaffName)}</div></section><section role="tabpanel" id="borrower-panel-assets" aria-labelledby="borrower-tab-assets" data-borrower-panel="assets" hidden>${propertySummary(d)}</section><section role="tabpanel" id="borrower-panel-guarantors" aria-labelledby="borrower-tab-guarantors" data-borrower-panel="guarantors" hidden>${guarantorSection(d)}</section><section role="tabpanel" id="borrower-panel-conversations" aria-labelledby="borrower-tab-conversations" data-borrower-panel="conversations" hidden>${borrowerConversationsMarkup(d)}</section><section role="tabpanel" id="borrower-panel-financial" aria-labelledby="borrower-tab-financial" data-borrower-panel="financial" hidden>${borrowerFinanceOverview(d, f)}</section><section role="tabpanel" id="borrower-panel-payout" aria-labelledby="borrower-tab-payout" data-borrower-panel="payout" hidden>${clientPayoutSection(d)}</section><section role="tabpanel" id="borrower-panel-finance" aria-labelledby="borrower-tab-finance" data-borrower-panel="finance" hidden><h3 class="sectiontitle" style="margin-top:30px">Finansal Bilgiler</h3><form id="borrowerStatusForm"><div class="grid"><label class="field">Durum<select name="status">${['Derdest', 'İade', 'İnfaz', 'İcra'].map((s) => `<option ${s === (d.status || 'Derdest') ? 'selected' : ''}>${s}</option>`).join('')}</select></label>${debtorStatus(d) === 'İnfaz' ? value('İnfaz Tarihi', clientPayoutClosureDate(d)) : ''}<div class="detail-status-action"><button class="primary">Durumu Kaydet</button></div></div></form><div class="stats" style="margin-top:20px">${[
+  dialog.innerHTML = `<div class="panelhead"><div><h2>Borçlu Detayı · <span class="debtor-name-emphasis">${esc(d.debtor)}</span></h2><p>${esc(d.number)} · ${esc(type)} · ${esc(client?.name || '')}</p><p><b>Dosya Sorumlusu:</b> ${esc(personnel.find((p) => p.id === d.relatedStaff)?.name || d.relatedStaffName || 'Atanmad?')}</p></div><div class="toolbar">${(Array.isArray(d.guarantors) ? d.guarantors : []).map((g, index) => `<button type="button" class="primary guarantor-top-button" data-top-guarantor="${esc(g.id)}" title="${esc(g.name)}" aria-label="Kefil ${index + 1}: ${esc(g.name)}">♙ Kefil ${index + 1}</button>`).join('')}<button class="secondary" id="closeBorrower">Kapat</button></div></div><div class="formbody"><div class="settings-tabs borrower-tabs" role="tablist" aria-label="Borçlu föyü bölümleri">${borrowerSheetTabs.map(([key, label]) => `<button type="button" role="tab" id="borrower-tab-${key}" aria-controls="borrower-panel-${key}" data-borrower-tab="${key}">${esc(label)}</button>`).join('')}</div><section role="tabpanel" id="borrower-panel-personal" aria-labelledby="borrower-tab-personal" data-borrower-panel="personal"><h3 class="sectiontitle">Borçlu Bilgileri</h3><div class="grid"><div class="detail-field"><small>Ad Soyad / Unvan</small><div class="borrower-sheet-name">${esc(d.debtor || '—')}</div></div>${value('Takip Tarihi', borrowerTrackingDate(d))}${value('TC Kimlik / Vergi No', d.identity)}${value('Tel-1', d.phone1)}${value('Tel-2', d.phone2)}${value('Ref. Tel-1', d.referencePhone1)}${value('Ref. Tel-2', d.referencePhone2)}${value('Ofis Tel-1', d.officePhone1)}${value('Ofis Tel-2', d.officePhone2)}${address('Borçlu Adres-1', d.address, d.district, d.city)}${address('Borçlu Adres-2', d.address2, d.address2District, d.address2City)}${address('Borçlu Adres (Ofis)-3', d.officeAddress3, d.officeAddress3District, d.officeAddress3City)}${(d.additionalPhones || []).map((phone, i) => value('Ek Telefon ' + (i + 1), phone)).join('')}${(d.additionalAddresses || []).map((a, i) => address('Ek Adres ' + (i + 1), a.address, a.district, a.city)).join('')}${value('Dosya Sorumlusu', personnel.find((p) => p.id === d.relatedStaff)?.name || d.relatedStaffName)}</div></section><section role="tabpanel" id="borrower-panel-assets" aria-labelledby="borrower-tab-assets" data-borrower-panel="assets" hidden>${propertySummary(d)}</section><section role="tabpanel" id="borrower-panel-guarantors" aria-labelledby="borrower-tab-guarantors" data-borrower-panel="guarantors" hidden>${guarantorSection(d)}</section><section role="tabpanel" id="borrower-panel-conversations" aria-labelledby="borrower-tab-conversations" data-borrower-panel="conversations" hidden>${borrowerConversationsMarkup(d)}</section><section role="tabpanel" id="borrower-panel-financial" aria-labelledby="borrower-tab-financial" data-borrower-panel="financial" hidden>${borrowerFinanceOverview(d, f)}</section><section role="tabpanel" id="borrower-panel-payout" aria-labelledby="borrower-tab-payout" data-borrower-panel="payout" hidden>${clientPayoutSection(d)}</section><section role="tabpanel" id="borrower-panel-finance" aria-labelledby="borrower-tab-finance" data-borrower-panel="finance" hidden><h3 class="sectiontitle" style="margin-top:30px">Finansal Bilgiler</h3><form id="borrowerStatusForm"><div class="grid"><label class="field">Durum<select name="status">${['Derdest', 'İade', 'İnfaz', 'İcra'].map((s) => `<option ${s === (d.status || 'Derdest') ? 'selected' : ''}>${s}</option>`).join('')}</select></label>${debtorStatus(d) === 'İnfaz' ? value('İnfaz Tarihi', clientPayoutClosureDate(d)) : ''}<div class="detail-status-action"><button class="primary">Durumu Kaydet</button></div></div></form><div class="stats" style="margin-top:20px">${[
     ['Anapara', f.principal],
     ['Faiz', isParkingDocument(d) ? 0 : financeCents(d.financeInterest)],
     ['Avukatlık / Hizmet Ücreti', isParkingDocument(d) ? 0 : financeCents(d.financeFee)],
@@ -28,7 +28,7 @@ function borrowerDetail(id, savedForm) {
   ]
     .map(
       ([title, n]) =>
-        `<div class="stat"><div><small>${title}</small><strong>${money(n / 100)}</strong></div></div>`,
+        `<div class="stat"><div><small>${esc(title)}</small><strong>${money(n / 100)}</strong></div></div>`,
     )
     .join(
       '',
@@ -128,7 +128,7 @@ function borrowerFinanceOverview(d, f) {
     ['Kalan Borç', f.remaining],
   ];
   return `<h3 class="sectiontitle">Borçlu Finansal Durumu</h3><p>Dosya Durumu: <b>${esc(debtorStatus(d))}</b></p>
-    <div class="stats borrower-financial-stats">${cards.map(([label, amount]) => `<div class="stat"><div><small>${label}</small><strong>${money(amount / 100)}</strong></div></div>`).join('')}</div>
+    <div class="stats borrower-financial-stats">${cards.map(([label, amount]) => `<div class="stat"><div><small>${esc(label)}</small><strong>${money(amount / 100)}</strong></div></div>`).join('')}</div>
     <h3 class="sectiontitle">Borçlu Ödeme Geçmişi (${payments.length})</h3>
     <div class="overflow"><table class="borrower-payment-history"><thead><tr><th>TARİH</th><th>ÖDENEN TUTAR</th><th>KASA / BANKA</th><th>İŞLEMİ YAPAN</th><th>AÇIKLAMA</th><th>MAKBUZ</th></tr></thead>
     <tbody>${payments.map((event) => `<tr><td>${esc(displayDate(event.date))}</td><td>${money(event.amount / 100)}</td><td>${esc(event.accountName || accounting.accounts.find((account) => account.id === event.accountId)?.name || 'Belirtilmedi')}</td><td>${esc(event.operatorName || 'Belirtilmedi')}</td><td class="conversation-note">${esc(event.note || '—')}</td><td><button type="button" class="link" data-sheet-collection-receipt="${esc(event.id)}">Tahsilat Makbuzu</button></td></tr>`).join('') || '<tr><td colspan="6" class="empty">Henüz borçlu ödemesi kaydedilmedi.</td></tr>'}</tbody>
@@ -168,7 +168,7 @@ function guarantorPhoneFields(g) {
 }
 
 function guarantorExtraAddress(g, name, prefix, title) {
-  return `<h3 class="sectiontitle full">${title}</h3>${clientCityField(
+  return `<h3 class="sectiontitle full">${esc(title)}</h3>${clientCityField(
     { city: g[name + 'City'], district: g[name + 'District'] },
     prefix,
   )
@@ -176,7 +176,7 @@ function guarantorExtraAddress(g, name, prefix, title) {
     .replace(
       'name="district"',
       'name="' + name + 'District"',
-    )}<label class="field full">${title} — Açık Adres<textarea name="${name}" rows="3" data-optional="true">${esc(g[name] || '')}</textarea></label>`;
+    )}<label class="field full">${esc(title)} — Açık Adres<textarea name="${name}" rows="3" data-optional="true">${esc(g[name] || '')}</textarea></label>`;
 }
 
 function configureGuarantorOptionalFields() {
@@ -338,7 +338,7 @@ function guarantorDetail(d, id) {
   if (!g) return;
   const dialog = guarantorDialog();
   const item = (label, value) =>
-    `<div class="detail-field"><small>${label}</small><div>${esc(value || '—')}</div></div>`;
+    `<div class="detail-field"><small>${esc(label)}</small><div>${esc(value || '—')}</div></div>`;
   dialog.innerHTML = `<div class="panelhead"><div><h2>Kefil Bilgileri</h2><p>Borçlu: ${esc(d.debtor)} · ${esc(d.number)}</p></div><button type="button" class="secondary" id="closeGuarantorDetail">Kapat</button></div><div class="formbody grid">${item('Ad Soyad', g.name)}${item('TC Kimlik Numarası', g.identity)}${item('Tel-1', g.phone1 || g.phone)}${item('Tel-2', g.phone2)}${item('Ref. Tel-1', g.referencePhone1)}${item('Ref. Tel-2', g.referencePhone2)}${item('Ofis Tel-1', g.officePhone1)}${item('Ofis Tel-2', g.officePhone2)}${item('İl', g.city)}${item('İlçe', g.district)}${item('Açık Adres', g.address)}${item('Kefil Adres-2', [g.address2, g.address2District, g.address2City].filter(Boolean).join(' / '))}${item('Kefil Adres (Ofis)-3', [g.officeAddress3, g.officeAddress3District, g.officeAddress3City].filter(Boolean).join(' / '))}${item('Açıklama / Not', g.notes)}<div class="full">${propertySummary(g)}</div></div><div class="actions"><button type="button" class="primary" id="editGuarantorDetail">Kefili Düzenle</button></div>`;
   $('#closeGuarantorDetail').onclick = () => dialog.close();
   $('#editGuarantorDetail').onclick = () => guarantorForm(d, g.id);
@@ -444,7 +444,7 @@ function propertyFields(record, prefix) {
   return `<section class="full"><h3 class="sectiontitle">Tapu, Araç ve SGK Bilgileri</h3><div class="grid">${propertySections
     .map(([key, title]) => {
       const status = record[key + 'Status'];
-      return `<fieldset class="property-field"><legend>${title}</legend><div class="property-options">${['Var', 'Yok'].map((choice) => `<label><input type="radio" name="${key}Status" value="${choice}" ${status === choice ? 'checked' : ''} data-optional="true"> ${choice}</label>`).join('')}</div><div data-property-details="${key}" ${status === 'Var' ? '' : 'hidden'}><label class="field" for="${prefix}-${key}-details">${title} Bilgileri<textarea id="${prefix}-${key}-details" name="${key}Details" rows="3" data-optional="true" ${status === 'Var' ? 'required' : 'disabled'} placeholder="${title} ile ilgili bilgileri yazın…">${esc(record[key + 'Details'] || '')}</textarea></label></div></fieldset>`;
+      return `<fieldset class="property-field"><legend>${esc(title)}</legend><div class="property-options">${['Var', 'Yok'].map((choice) => `<label><input type="radio" name="${key}Status" value="${choice}" ${status === choice ? 'checked' : ''} data-optional="true"> ${choice}</label>`).join('')}</div><div data-property-details="${key}" ${status === 'Var' ? '' : 'hidden'}><label class="field" for="${prefix}-${key}-details">${esc(title)} Bilgileri<textarea id="${prefix}-${key}-details" name="${key}Details" rows="3" data-optional="true" ${status === 'Var' ? 'required' : 'disabled'} placeholder="${esc(title)} ile ilgili bilgileri yazın…">${esc(record[key + 'Details'] || '')}</textarea></label></div></fieldset>`;
     })
     .join('')}${prefix === 'intake' ? parkingCaptureFields(record) : ''}</div></section>`;
 }
@@ -512,7 +512,7 @@ function validatePropertyFields(value) {
 }
 
 function propertySummary(record) {
-  return `<section style="margin-top:24px"><h3 class="sectiontitle">Tapu, Araç ve SGK Bilgileri</h3><div class="grid">${propertySections.map(([key, title]) => `<div class="detail-field"><small>${title}</small><b>${esc(record[key + 'Status'] || 'Belirtilmedi')}</b>${record[key + 'Status'] === 'Var' ? `<p class="conversation-note">${esc(record[key + 'Details'] || '—')}</p>` : ''}</div>`).join('')}${record.docType === 'Yediemin Park Ücreti' ? '<div class="detail-field"><small>Yakalama</small><b>' + esc(record.captureStatus || 'Belirtilmedi') + '</b>' + (record.captureStatus === 'Var' ? '<p class="conversation-note">' + esc(record.captureDetails || '—') + '</p>' : '') + '</div>' : ''}</div></section>`;
+  return `<section style="margin-top:24px"><h3 class="sectiontitle">Tapu, Araç ve SGK Bilgileri</h3><div class="grid">${propertySections.map(([key, title]) => `<div class="detail-field"><small>${esc(title)}</small><b>${esc(record[key + 'Status'] || 'Belirtilmedi')}</b>${record[key + 'Status'] === 'Var' ? `<p class="conversation-note">${esc(record[key + 'Details'] || '—')}</p>` : ''}</div>`).join('')}${record.docType === 'Yediemin Park Ücreti' ? '<div class="detail-field"><small>Yakalama</small><b>' + esc(record.captureStatus || 'Belirtilmedi') + '</b>' + (record.captureStatus === 'Var' ? '<p class="conversation-note">' + esc(record.captureDetails || '—') + '</p>' : '') + '</div>' : ''}</div></section>`;
 }
 
 function conversationNow() {
@@ -663,7 +663,7 @@ function layoutBorrowerSheet(dialog, d, f, client) {
     .reduce((a, e) => a + e.amount, 0);
   summary.innerHTML =
     '<h3>Dosya Hesabı</h3><div class="sheet-summary-date">Hesap Tarihi <b>' +
-    displayDate(businessDate()) +
+    esc(displayDate(businessDate())) +
     '</b></div>' +
     [
       ['Evrak Tutarı', financeCents(d.originalAmount ?? d.amount)],
@@ -1157,12 +1157,8 @@ function openBorrowerChain(id) {
 }
 
 function borrowerAttachmentPreviews(d) {
-  const pdf =
-      typeof d.fileData === 'string' && /^data:application\/pdf;base64,/i.test(d.fileData) ? d.fileData : '',
-    photo =
-      typeof d.photoData === 'string' && /^data:image\/(png|jpeg|jpg);base64,/i.test(d.photoData)
-        ? d.photoData
-        : '';
+  const pdf = safeAttachmentUrl(d.fileData, 'pdf'),
+    photo = safeAttachmentUrl(d.photoData, 'photo');
   if (!pdf && !photo) return '<p class="notice">Bu evrak için yüklenmiş fotoğraf veya PDF bulunmuyor.</p>';
   return (
     '<div class="borrower-attachment-previews">' +
@@ -1536,11 +1532,7 @@ function deleteBorrowerDocument(id) {
 }
 
 function clientAttachmentPreviews(c) {
-  const files = (Array.isArray(c.attachments) ? c.attachments : []).filter(
-    (f) =>
-      typeof f.data === 'string' &&
-      /^data:(application\/pdf|image\/(jpeg|jpg|png|webp));base64,/i.test(f.data),
-  );
+  const files = (Array.isArray(c.attachments) ? c.attachments : []).filter((f) => safeAttachmentUrl(f.data));
   return (
     '<section class="client-poa-previews"><h3>Vekâletname / Yüklenen Belgeler</h3>' +
     (files

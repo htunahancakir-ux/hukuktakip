@@ -107,3 +107,60 @@ Yeni şema özel şemadadır, RLS açıktır, PUBLIC erişimi kapalıdır. Kulla
 `npm run db:rehearse` yalnız bellek içindeki sentetik veritabanını kullanır. `.env.local` yüklemez ve Supabase'e yazmaz.
 
 **İlk aşama bile SQL geçişi ve uyumlu kod birlikte yayımlanmadan canlıda etkin değildir.** İkinci aşama için arayüzün yeni komutlara geçirilmesi, mevcut özel hesaplama kurallarının taşınması, tüm yeni tabloları kapsayan yedek/geri yükleme ve gerçek çok bağlantılı yük testi tamamlanmalıdır. Hazırlanan pilotun eski arayüzle aynı anda yazmaya açılması güvenli değildir.
+
+## SQL Injection incelemesi — 7 Kasım 2026
+
+`b248b59` tabanındaki HTTP girdilerinden SQL çağrılarına kadar yapılan kod incelemesinde kullanıcı tarafından erişilebilir, doğrulanmış bir SQLi açığı bulunmadı. Bu sonuç bütün güvenlik kategorileri için garanti veya canlı penetrasyon testi anlamına gelmez.
+
+| Girdi / akış | Veritabanına aktarım | Sonuç |
+| --- | --- | --- |
+| Kullanıcı adı | `security-store.cjs`: `username = $1`; değer ayrı parametre dizisinde | SQL metnine eklenmiyor. |
+| Oturum çerezi, IP ve hesap kimliği | Oturum/IP özeti ve kimlikler `$1`, `$2` parametrelerinde | Kullanıcı metni SQL sözdizimi olmuyor. |
+| Audit kişi, tarih, kategori, işlem ve cursor filtreleri | `auditQuery` doğrulaması; sabit SQL parçaları ve ayrı values dizisi | Dinamik WHERE yalnız geliştiricinin sabit parçalarından kuruluyor. LIMIT sabit `PAGE_SIZE` değeridir. |
+| Form, not, ayar ve toplu kayıtlar | JSON serileştirme ardından `payload = $1::jsonb` | JSON alan adları dahil içerik veri olarak saklanıyor. |
+| Pilot evrak/kişi araması, kimlik, sayfa sınırı ve mali komutlar | Ayrı parametreler; aramada `plainto_tsquery`, sınırda tamsayı kontrolü | Arama veya kimlik metni sorgu komutuna dönüşmüyor. |
+| Migration SQL | Yalnız yerel, sürümlenen SQL dosyaları; HTTP gövdesinden SQL alınmıyor | Yönetim komutu; kullanıcı girdisini SQL olarak çalıştıran bir HTTP ucu bulunmadı. SQL içindeki dinamik tablo adları `%I` ile kaçışlanıyor. |
+
+Pilot aktarımın eski `insert` yardımcısı tablo adını ve `Object.keys(row)` sonucunu doğrudan SQL'e ekliyordu. Tüm çağrılar modül içindeki sabit tablo adları ve elle tanımlanmış alanlarla yapıldığından mevcut bir uzak saldırı yolu tespit edilmedi. Ancak ileride istek gövdesinin doğrudan bu yardımcıya geçirilmesi SQLi riski doğurabilirdi.
+
+Ek koruma olarak [insert.cjs](../lib/records/insert.cjs) eklendi. Yalnız tanımlı tablo ve o tabloya ait sütun adları kabul edilir; bilinmeyen adlar sorgu çalıştırılmadan reddedilir. Değerler `$1`, `$2`, … parametreleriyle iletilir. [Aktarım modülü](../lib/records/import.cjs) bu yardımcıyı kullanır. Bu değişiklik hâlen pilot modüldedir; canlı HTTP sorgularının güvenli parametre bağlama davranışı değiştirilmedi.
+
+SQLi için gerekli ayrım sorgu metni ile değerlerin ayrı gönderilmesidir. Tablo/sütun adları parametrelenemez; izin listesiyle kontrol edilir. [node-postgres sorgu belgesi](https://node-postgres.com/features/queries)
+
+Supabase paylaşımlı transaction pooler ile uyum için node-postgres sorgularına `name` eklenmedi. Parametreler korunur; oturuma bağlı adlandırılmış prepared statement önbelleği etkinleştirilmez. [Supabase node-postgres bağlantı notu](https://supabase.com/kb/troubleshooting/disabling-prepared-statements-qL8lEL)
+
+Üç yeni güvenlik testi eklendi: izin dışı SQL tanımlayıcılarının reddi; HTTP giriş/çerez/filtre/JSON kayıt akışı; pilot aktarım ve kayıt sorguları. İlgili toplam 7 test yerel sentetik PostgreSQL/PGlite üzerinde geçti. Girdilerde tırnak, SQL yorumu, boolean koşul ve ikinci SQL komutu denemeleri kullanıldı; oturum atlatılmadığı, kayıtların korunması ve metinlerin aynen saklanması doğrulandı. Canlı veritabanına saldırı girdisi gönderilmedi. Kontroller canlı veriler değiştirilmeden tamamlandı.
+
+## XSS incelemesi ve düzeltmeleri — 7 Kasım 2026
+
+İnceleme, uygulamanın sunduğu tarayıcı modüllerini, HTML şablonlarını, dosya bağlantılarını ve yazdırma çıktısını kapsadı. Mevcut `esc` çoğu metinde kullanılıyordu; aşağıdaki açık noktalar düzeltildi:
+
+| Nokta | Risk | Düzeltme |
+| --- | --- | --- |
+| Seçili müvekkil özet kartı | Müvekkil adı doğrudan `innerHTML` içine giriyordu; kayıtlı zararlı HTML başka kullanıcıda çalışabilirdi. | Kart değerleri HTML çıkış kodlamasından geçirildi. |
+| Teslim tutanağı ekleri | `fileData` / `photoData` kaçışsız `href` içine yerleştiriliyordu; tırnakla öznitelikten çıkılabiliyordu. | Adres biçimi ve MIME izin listesi; ardından öznitelik kodlaması. |
+| Müvekkil ekleri ve mevcut evrak indirme linkleri | HTML kaçışlama, `javascript:` gibi aktif adresleri tek başına engellemiyordu. | Yalnız uygulamanın desteklediği PDF ve raster fotoğraf base64 data URL'leri; HTML/SVG, dış URL ve bozuk içerik reddedilir. |
+| Kayıt kimlikleri ve tarih alanları | Bazı `data-*` / `value` alanları kaçışsızdı; `displayDate` bilinmeyen metni aynen döndürüyordu. | HTML'e çıkış noktasında kodlama; tarih biçimleme işlevinin düz metin davranışı korunur. |
+| Rapor/yazdırma ve aydınlatma linki | Rapor tarihleri `srcdoc` içinde HTML olabiliyordu; linkte tarayıcı tarafı protokol kontrolü yoktu. | Rapor metinleri kodlanır; dış aydınlatma bağlantısı yalnız HTTPS kabul eder. |
+
+Ortak [html-safety.js](../outputs/icrapro/html-safety.js), `& < > " '` karakterlerini HTML metni ve tırnaklı, çalıştırılabilir olmayan öznitelikler için kodlar. Düz metin DOM atamalarındaki `textContent` / `value` kullanımı korunur. Kullanıcı içeriği JavaScript olay özniteliğine aktarılmaz. Veritabanında içerik değiştirilmez veya topluca temizlenmez; geçersiz eski ekler kayıtta kalır fakat aktif bağlantı/önizleme oluşturmaz.
+
+[XSS testleri](../tests/xss.test.cjs) gerçek üretim render fonksiyonlarını jsdom içinde çalıştırır. Pozitif kontrol, zafiyetli olay işleyicisinin test ortamında gerçekten çalışabildiğini doğrular. Yedi senaryo; metin/öznitelik kırma, dosya protokolleri, rapor `srcdoc`, sözleşme ve normal Türkçe/PDF/fotoğraf davranışını kapsar. Bu bir canlı saldırı testi veya tüm tarayıcılar için penetrasyon testi değildir.
+
+Yaklaşım: [OWASP XSS Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html).
+
+## Çerez, oturum ve CSRF incelemesi — 7 Kasım 2026
+
+Üretim giriş çerezi zaten `HttpOnly; Secure; SameSite=Strict; Path=/` taşıyordu ve `Domain` içermiyordu. Oturum 32 rastgele bayttan üretiliyor, sunucuda yalnız SHA-256 özeti tutuluyor; çıkış/şifre değişimi sunucu oturumlarını geçersiz kılıyordu. Bu korumalar korundu.
+
+- [session-policy.cjs](../lib/session-policy.cjs) artık giriş ve çerez silme için ortak üretici içerir. `HttpOnly`, `SameSite=Strict`, `Path=/` her zaman; `Secure` Vercel/HTTPS yapılandırmasında uygulanır. Yerel HTTP geliştirme çalışmaya devam eder. Çerez silme `Max-Age=0` ve geçmiş `Expires` ile aynı kapsam/bayrakları kullanır.
+- Bozuk veya birden fazla `han_session` çerezi oturum olarak kabul edilmez. Mevcut çerez adı, masaüstü/mobil oturum politikası ve süreler değişmedi: normal oturum sunucuda 8 saat, beni hatırla 14 gün. Kullanıcılar bu değişiklik nedeniyle topluca çıkartılmaz.
+- [request-security.cjs](../lib/request-security.cjs) bütün tarayıcı mutasyonları için ortak kontrol sağlar. `X-Han-Request: 1` zorunludur; yabancı/alt alan kaynakları `Origin`, `Referer` ve Fetch Metadata üzerinden reddedilir. HTTPS ortamında kaynak kanıtı tamamen eksik istekler de reddedilir. Yerel HTTP araçları özel başlığı kullanabilir.
+- Üretim hedefi `APP_ORIGIN` içindeki HTTPS origin'dir; gelen `Host` / proxy başlıkları hedef olarak güvenilir sayılmaz. Kontrol, veritabanı okuması, kilit, hız sayacı ve iş verisi yazmasından önce yapılır. CORS ile üçüncü taraf kaynaklara yetki açılmaz. Cron uçları ayrı bearer secret doğrulamalarını korur.
+- HTTPS cevaplarına `Strict-Transport-Security: max-age=31536000` eklendi. `no-store` ve `nosniff` korunur.
+
+[Oturum testleri](../tests/session-security.test.cjs), çerezin scriptlerden gizlenmesini, HTTP/alt alan ayrımını, 45 reddedilen istek senaryosunda veritabanına hiç girilmemesini, geçerli kaynak alternatiflerini, şifre sonrası token yenilenmesini ve çıkışta iptali doğrular. Testlerde yalnız sentetik yerel veriler kullanılır.
+
+`HttpOnly`, çerezin JavaScript ile okunmasını engeller; sayfada çalışabilen XSS kodunun kullanıcı adına istek yapmasını tek başına engellemez. Bu nedenle HTML çıkış kodlaması ayrıca uygulanmıştır. AJAX API için özel başlık ve sıkı kaynak/CORS denetimi [OWASP CSRF Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html) yaklaşımıdır; çerez kapsamı ve özet saklama [OWASP Session Management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html) ile uyumludur.
+
+Yayın öncesi doğrulama: GitHub main üzerindeki `941ee8b` değişiklikleriyle birleştirme sonrası `npm test` ile **59/59 test** ve mevcut iş kuralı kontrolleri geçti. `npm run build` ve `npm run format:check` başarılı. Bu güvenlik sürümü veritabanı geçişi gerektirmez; testler canlı veriler değiştirilmeden tamamlandı.

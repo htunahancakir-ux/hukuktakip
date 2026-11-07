@@ -338,7 +338,7 @@ function renderReportsPage() {
       )
       .join(
         '',
-      )}</select></label>${field('Başlangıç Tarihi', 'reportFrom', 'date', reportFilters.from)}${field('Bitiş Tarihi', 'reportTo', 'date', reportFilters.to)}<label class="field">Müvekkil<select id="reportClient"><option value="">Tümü</option>${db.clients.map((c) => `<option value="${c.id}" ${reportFilters.client === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label class="field">Personel<select id="reportStaff"><option value="">Tümü</option>${personnel.map((p) => `<option value="${p.id}" ${reportFilters.staff === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label><label class="field">Durum<select id="reportStatus"><option value="">Tümü</option>${(reportFilters.type === 'personnel' ? ['Aktif', 'Pasif'] : reportFilters.type === 'installments' ? ['Ödendi', 'Kısmi Ödendi', 'Bekliyor', 'Gecikmiş'] : ['Derdest', 'İnfaz', 'İade', 'İcra']).map((s) => `<option ${reportFilters.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label><label class="field">Kasa / Banka<select id="reportAccount"><option value="">Tümü</option>${accounting.accounts.map((a) => `<option value="${a.id}" ${reportFilters.account === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></label><label class="field full">Raporda Ara<input type="search" id="reportQuery" value="${esc(reportFilters.query)}" placeholder="İsim, evrak no, açıklama…"></label><label class="settings-check full"><input type="checkbox" id="reportUndated" ${reportFilters.undated ? 'checked' : ''}> Kayıt tarihi bulunmayan eski kayıtları da göster</label><button class="secondary" id="clearReportFilters">Süzgeçleri Temizle</button></div></div><div id="reportResult" style="margin-top:22px"></div>`;
+      )}</select></label>${field('Başlangıç Tarihi', 'reportFrom', 'date', reportFilters.from)}${field('Bitiş Tarihi', 'reportTo', 'date', reportFilters.to)}<label class="field">Müvekkil<select id="reportClient"><option value="">Tümü</option>${db.clients.map((c) => `<option value="${esc(c.id)}" ${reportFilters.client === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label class="field">Personel<select id="reportStaff"><option value="">Tümü</option>${personnel.map((p) => `<option value="${esc(p.id)}" ${reportFilters.staff === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label><label class="field">Durum<select id="reportStatus"><option value="">Tümü</option>${(reportFilters.type === 'personnel' ? ['Aktif', 'Pasif'] : reportFilters.type === 'installments' ? ['Ödendi', 'Kısmi Ödendi', 'Bekliyor', 'Gecikmiş'] : ['Derdest', 'İnfaz', 'İade', 'İcra']).map((s) => `<option ${reportFilters.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label><label class="field">Kasa / Banka<select id="reportAccount"><option value="">Tümü</option>${accounting.accounts.map((a) => `<option value="${esc(a.id)}" ${reportFilters.account === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></label><label class="field full">Raporda Ara<input type="search" id="reportQuery" value="${esc(reportFilters.query)}" placeholder="İsim, evrak no, açıklama…"></label><label class="settings-check full"><input type="checkbox" id="reportUndated" ${reportFilters.undated ? 'checked' : ''}> Kayıt tarihi bulunmayan eski kayıtları da göster</label><button class="secondary" id="clearReportFilters">Süzgeçleri Temizle</button></div></div><div id="reportResult" style="margin-top:22px"></div>`;
   function refresh() {
     const from = document.querySelector('[name="reportFrom"]').value,
       to = document.querySelector('[name="reportTo"]').value;
@@ -457,7 +457,7 @@ function reportTable(def, rows, openableDocuments) {
         .join('') +
       '</tr></tfoot></table></div>'
     );
-  return `<div class="overflow"><table><thead><tr><th>TARİH</th>${def.columns.map((c) => `<th>${esc(c[1])}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr><td>${r.date ? displayDate(r.date) : 'Tarih yok'}</td>${def.columns.map((c) => `<td>${renderCell(r, c)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${def.columns.length + 1}" class="empty">Bu seçimle eşleşen kayıt yok.</td></tr>`}</tbody><tfoot><tr><td><b>TOPLAM</b></td>${def.columns.map((c) => `<td>${c[2] === 'money' ? '<b>' + money(rows.reduce((s, r) => s + Number(r.cells[c[0]] || 0), 0) / 100) + '</b>' : ''}</td>`).join('')}</tr></tfoot></table></div>`;
+  return `<div class="overflow"><table><thead><tr><th>TARİH</th>${def.columns.map((c) => `<th>${esc(c[1])}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.date ? displayDate(r.date) : 'Tarih yok')}</td>${def.columns.map((c) => `<td>${renderCell(r, c)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${def.columns.length + 1}" class="empty">Bu seçimle eşleşen kayıt yok.</td></tr>`}</tbody><tfoot><tr><td><b>TOPLAM</b></td>${def.columns.map((c) => `<td>${c[2] === 'money' ? '<b>' + money(rows.reduce((s, r) => s + Number(r.cells[c[0]] || 0), 0) / 100) + '</b>' : ''}</td>`).join('')}</tr></tfoot></table></div>`;
 }
 
 function renderReportResult() {
@@ -527,7 +527,7 @@ function printReport() {
       frame.contentWindow.print();
       setTimeout(() => frame.remove(), 60000);
     };
-    frame.srcdoc = `<!doctype html><html lang="tr"><meta charset="utf-8"><title>${esc(definition.label)}</title><style>body{font:10px Arial;color:#182b3a}table{border-collapse:collapse;width:100%}td,th{padding:6px;border:1px solid #ccc;text-align:left;overflow-wrap:anywhere}th{background:#eef2f5}@page{size:A4 landscape;margin:10mm}</style><h1>hanhukuk 1.1.1 · ${esc(definition.label)}</h1><p>${reportFilters.from ? displayDate(reportFilters.from) : 'Başlangıç yok'} – ${reportFilters.to ? displayDate(reportFilters.to) : 'Bitiş yok'} · ${rows.length} kayıt · Oluşturma: ${displayDate(businessDate())}</p>${reportTable(definition, rows)}</html>`;
+    frame.srcdoc = `<!doctype html><html lang="tr"><meta charset="utf-8"><title>${esc(definition.label)}</title><style>body{font:10px Arial;color:#182b3a}table{border-collapse:collapse;width:100%}td,th{padding:6px;border:1px solid #ccc;text-align:left;overflow-wrap:anywhere}th{background:#eef2f5}@page{size:A4 landscape;margin:10mm}</style><h1>hanhukuk 1.1.1 · ${esc(definition.label)}</h1><p>${esc(reportFilters.from ? displayDate(reportFilters.from) : 'Başlangıç yok')} – ${esc(reportFilters.to ? displayDate(reportFilters.to) : 'Bitiş yok')} · ${rows.length} kayıt · Oluşturma: ${esc(displayDate(businessDate()))}</p>${reportTable(definition, rows)}</html>`;
   } catch (error) {
     toast(error.message);
   }
@@ -646,9 +646,9 @@ function renderInsReportPage() {
       )
       .join('') +
     '</select></label></div><p>Seçilen tarih aralığı: <strong>' +
-    displayDate(insDate) +
+    esc(displayDate(insDate)) +
     ' – ' +
-    displayDate(insEndDate) +
+    esc(displayDate(insEndDate)) +
     '</strong></p><div class="overflow"><table><thead><tr><th>PERSONEL</th><th>TAHSİLAT</th><th>İNFAZ ADEDİ</th><th>İNFAZ TUTARI</th></tr></thead><tbody>' +
     rows
       .map(
@@ -749,7 +749,7 @@ function renderClientListReportPage() {
     '<div class="panel"><div class="panelhead"><div><h2>Müvekkil Listesi</h2><p>' +
     rows.length +
     ' müvekkil · ' +
-    displayDate(businessDate()) +
+    esc(displayDate(businessDate())) +
     '</p></div><div class="toolbar"><button class="secondary" id="clientListBack">Raporlara Dön</button><button class="secondary" id="clientListPrint">Yazdır / PDF</button><button class="primary client-list-report-button" id="clientListCsv">CSV İndir</button></div></div><div class="overflow">' +
     table +
     '</div><div class="tablefoot">Toplam ' +
@@ -779,7 +779,7 @@ function renderClientListReportPage() {
     };
     frame.srcdoc =
       '<!doctype html><html lang="tr"><meta charset="utf-8"><title>Müvekkil Listesi</title><style>body{font:12px Arial}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:8px;text-align:left}th{background:#eee}@page{size:A4 landscape;margin:12mm}</style><h1>hanhukuk 1.1.1 · Müvekkil Listesi</h1><p>' +
-      displayDate(businessDate()) +
+      esc(displayDate(businessDate())) +
       ' · ' +
       rows.length +
       ' müvekkil</p>' +
@@ -873,11 +873,11 @@ function monthlyPayrollReportPage() {
       '</tr></tfoot></table>';
   $('#content').innerHTML =
     '<div class="panel"><div class="panelhead"><div><h2>Aylık Maaş ve Prim Raporu</h2><p>' +
-    data.month +
+    esc(data.month) +
     ' · ' +
     (data.closed ? 'Geçmiş dönem' : 'Güncel dönem') +
     '</p></div><div class="toolbar"><label class="field">Rapor Ayı<input type="month" data-payroll-report-month data-optional="true" value="' +
-    data.month +
+    esc(data.month) +
     '"></label><button class="secondary" data-payroll-report-back>Raporlara Dön</button><button class="secondary" data-payroll-report-print>Yazdır / PDF</button><button class="primary" data-payroll-report-csv>CSV İndir</button></div></div>' +
     (data.missing
       ? '<div class="formbody notice">Bu ay için kayıtlı maaş ve prim dönemi bulunmuyor.</div>'
@@ -923,9 +923,9 @@ function monthlyPayrollReportPage() {
     };
     frame.srcdoc =
       '<!doctype html><html lang="tr"><meta charset="utf-8"><title>Maaş ve Prim ' +
-      data.month +
+      esc(data.month) +
       '</title><style>@page{size:A4 landscape;margin:15mm}body{font:11px Arial}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:8px;text-align:left}</style><h1>Maaş ve Prim Raporu · ' +
-      data.month +
+      esc(data.month) +
       '</h1>' +
       table +
       '</html>';

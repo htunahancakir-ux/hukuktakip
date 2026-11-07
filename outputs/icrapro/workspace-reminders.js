@@ -41,7 +41,7 @@ function paymentPromiseButton(d) {
 function paymentPromiseSummary(d) {
   const p = d.paymentPromise;
   return p
-    ? `<div class="notice" style="margin:16px 0"><b>Ödeme Sözü:</b> ${displayDate(p.date)} · ${money(p.amount / 100)}<p class="message-text">${esc(p.description)}</p><small>Son güncelleyen: ${esc(p.updatedByName || '—')} · ${p.updatedAt ? messageTimestamp(p.updatedAt) : ''}</small></div>`
+    ? `<div class="notice" style="margin:16px 0"><b>Ödeme Sözü:</b> ${esc(displayDate(p.date))} · ${money(p.amount / 100)}<p class="message-text">${esc(p.description)}</p><small>Son güncelleyen: ${esc(p.updatedByName || '—')} · ${p.updatedAt ? messageTimestamp(p.updatedAt) : ''}</small></div>`
     : '';
 }
 
@@ -116,7 +116,7 @@ function loadPaymentPromisesHome() {
     host.textContent = error.message;
     return;
   }
-  host.innerHTML = `<div class="panelhead"><div><h2>Ödeme Sözü Veren Borçlularım</h2><p>Bugün veya daha önce ödeme sözü vermiş, size atanmış dosyalar.</p></div><button class="secondary" id="refreshPaymentPromises">Yenile</button></div><div class="overflow"><table><thead><tr><th>BORÇLU / EVRAK</th><th>ÖDEME TARİHİ</th><th>SÖZ VERİLEN</th><th>KARŞILANMAYAN</th><th>AÇIKLAMA</th></tr></thead><tbody>${result.rows.map((r) => `<tr><td><button class="link" data-promise-borrower="${r.documentId}">${esc(r.debtor)}</button><small>${esc(r.number)}</small></td><td>${displayDate(r.date)}${r.date < result.today ? ' · Gecikmiş' : ''}</td><td>${money(r.amount / 100)}</td><td>${money(r.remaining / 100)}</td><td class="conversation-note">${esc(r.description)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">Tarihi gelmiş bekleyen ödeme sözü yok.</td></tr>'}</tbody></table></div>`;
+  host.innerHTML = `<div class="panelhead"><div><h2>Ödeme Sözü Veren Borçlularım</h2><p>Bugün veya daha önce ödeme sözü vermiş, size atanmış dosyalar.</p></div><button class="secondary" id="refreshPaymentPromises">Yenile</button></div><div class="overflow"><table><thead><tr><th>BORÇLU / EVRAK</th><th>ÖDEME TARİHİ</th><th>SÖZ VERİLEN</th><th>KARŞILANMAYAN</th><th>AÇIKLAMA</th></tr></thead><tbody>${result.rows.map((r) => `<tr><td><button class="link" data-promise-borrower="${esc(r.documentId)}">${esc(r.debtor)}</button><small>${esc(r.number)}</small></td><td>${esc(displayDate(r.date))}${r.date < result.today ? ' · Gecikmiş' : ''}</td><td>${money(r.amount / 100)}</td><td>${money(r.remaining / 100)}</td><td class="conversation-note">${esc(r.description)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">Tarihi gelmiş bekleyen ödeme sözü yok.</td></tr>'}</tbody></table></div>`;
   $('#refreshPaymentPromises').onclick = loadPaymentPromisesHome;
   host
     .querySelectorAll('[data-promise-borrower]')
@@ -346,7 +346,7 @@ function loadCallRemindersHome() {
           '</strong> · ' +
           esc(r.number) +
           '</button><b>' +
-          displayDate(r.date) +
+          esc(displayDate(r.date)) +
           ' ' +
           esc(r.time) +
           '</b>' +
@@ -439,9 +439,9 @@ function loadDueInstallmentsHome() {
           '</small></td>' +
           (manager ? '<td>' + esc(r.staffName) + '</td>' : '') +
           '<td>' +
-          r.sequence +
+          esc(r.sequence) +
           '</td><td>' +
-          displayDate(r.due) +
+          esc(displayDate(r.due)) +
           (r.due < result.today ? ' · Gecikmiş' : ' · Bugün') +
           '</td><td>' +
           money(r.amount / 100) +

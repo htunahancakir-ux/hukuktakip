@@ -207,7 +207,7 @@ function setupDocumentTypes() {
 function documentExtraReceipt(d) {
   return `<br><b>Evrak Türü:</b> ${esc(docType(d))}${documentTypes[docType(d)].extras
     .filter(([, key]) => d[key])
-    .map(([label, key]) => `<br><b>${label}:</b> ${esc(displayDate(d[key]))}`)
+    .map(([label, key]) => `<br><b>${esc(label)}:</b> ${esc(displayDate(d[key]))}`)
     .join('')}`;
 }
 

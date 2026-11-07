@@ -23,7 +23,7 @@ function whatsappSettingsPage() {
       <label class="field">Şablon dili<input name="language" data-optional="true" value="${esc(config.language)}"></label>
       <label class="field full">Meta erişim anahtarı<input name="token" type="password" maxlength="4096" autocomplete="new-password" data-optional="true"
         placeholder="${config.tokenSaved ? 'Kayıtlı anahtarı korumak için boş bırakın' : 'Meta Cloud API erişim anahtarı'}"></label>
-      ${whatsappTemplates.map(([key, label]) => `<label class="field">${label}<input name="${key}" maxlength="128" data-optional="true" value="${esc(config[key])}"></label>`).join('')}
+      ${whatsappTemplates.map(([key, label]) => `<label class="field">${esc(label)}<input name="${key}" maxlength="128" data-optional="true" value="${esc(config[key])}"></label>`).join('')}
       <details class="full"><summary>Şablonları nasıl hazırlamalıyım?</summary>
         <p>Meta geliştirici panelinde WhatsApp ürününü açın, işletme gönderici numaranızı ekleyin ve telefon numarası kimliğini alın. Ardından API erişim anahtarını ve WhatsApp Manager’da onaylanan şablon adlarını yukarıya girin.</p>
         <p>Şifre şablonunun metninde sırasıyla günlük, haftalık ve aylık kalan hak için üç değişken kullanın. İlk düğme, sonunda değişken olan bir URL olmalı: <code>https://www.hanhukuktakip.com/#sifre={{1}}</code></p>

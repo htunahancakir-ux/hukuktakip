@@ -1,5 +1,5 @@
 function field(label, name, type = 'text', value = '', required = false, full = false) {
-  return `<label class="field ${full ? 'full' : ''}">${label}${required ? ' *' : ''}<input name="${name}" type="${type}" value="${esc(value)}" ${required ? 'required' : ''} ${name === 'identity' ? 'inputmode="numeric" pattern="[0-9]{10,11}" title="10 veya 11 rakam girin"' : ''} ${name === 'amount' ? 'min="0.01" step="0.01"' : ''}></label>`;
+  return `<label class="field ${full ? 'full' : ''}">${esc(label)}${required ? ' *' : ''}<input name="${esc(name)}" type="${esc(type)}" value="${esc(value)}" ${required ? 'required' : ''} ${name === 'identity' ? 'inputmode="numeric" pattern="[0-9]{10,11}" title="10 veya 11 rakam girin"' : ''} ${name === 'amount' ? 'min="0.01" step="0.01"' : ''}></label>`;
 }
 
 function displayDate(value) {

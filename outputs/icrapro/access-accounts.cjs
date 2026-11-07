@@ -95,7 +95,7 @@ async function handleAccountRoutes(ctx) {
     res,
     url,
     u,
-    secure,
+    clearSessionCookie,
     persist,
     publicUser,
     userEnabled,
@@ -184,14 +184,13 @@ async function handleAccountRoutes(ctx) {
     account.passwordChangedBy = u.id;
     persist(next);
     invalidate(target.id);
-    if (target.id === u.id)
-      res.setHeader('Set-Cookie', 'han_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' + secure);
+    if (target.id === u.id) clearSessionCookie(res);
     send(res, 200, { ok: true, reauthenticate: target.id === u.id });
     return true;
   }
   if (url.pathname === '/api/logout' && req.method === 'POST') {
     invalidate(u.id);
-    res.setHeader('Set-Cookie', 'han_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' + secure);
+    clearSessionCookie(res);
     send(res, 200, { ok: true });
     return true;
   }

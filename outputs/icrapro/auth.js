@@ -358,7 +358,7 @@ async function showOnlineUsers() {
   try {
     const { active, windowMinutes } = await presenceRequest('GET');
     const modal = document.getElementById('modal');
-    modal.innerHTML = `<div class="panelhead"><div><h2>Aktif kullanıcılar</h2><p>Son ${windowMinutes} dakika içinde etkin olan hesaplar.</p></div><button type="button" class="secondary" id="closeOnlineUsers">Kapat</button></div><div class="formbody"><p><b>${active.length}</b> aktif kullanıcı</p>${
+    modal.innerHTML = `<div class="panelhead"><div><h2>Aktif kullanıcılar</h2><p>Son ${esc(windowMinutes)} dakika içinde etkin olan hesaplar.</p></div><button type="button" class="secondary" id="closeOnlineUsers">Kapat</button></div><div class="formbody"><p><b>${active.length}</b> aktif kullanıcı</p>${
       active.length
         ? `<div class="online-users-list">${active
             .map(

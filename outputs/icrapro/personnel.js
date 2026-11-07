@@ -16,7 +16,7 @@ function staffSelect(label, name, value = '') {
   const active = personnel.filter((p) => p.active);
   const current = personnel.find((p) => p.id === value);
   const unavailable = value && !active.some((p) => p.id === value);
-  return `<label class="field">${label}<select name="${name}"><option value="">Personel seçin</option>${active.map((p) => `<option value="${esc(p.id)}" ${p.id === value ? 'selected' : ''}>${esc(p.name)}${p.title ? ' · ' + esc(p.title) : ''}</option>`).join('')}${unavailable ? `<option value="${esc(value)}" selected>${esc(current ? current.name + ' (pasif)' : value + ' (eski kayıt)')}</option>` : ''}</select><small>${active.length ? 'Kayıtlı aktif personelden seçin.' : 'Önce Ayarlar → Personel bölümünden personel ekleyin.'}</small>${unavailable ? '<small>Mevcut atama korunur; değiştirmek için aktif personel seçin.</small>' : ''}</label>`;
+  return `<label class="field">${esc(label)}<select name="${name}"><option value="">Personel seçin</option>${active.map((p) => `<option value="${esc(p.id)}" ${p.id === value ? 'selected' : ''}>${esc(p.name)}${p.title ? ' · ' + esc(p.title) : ''}</option>`).join('')}${unavailable ? `<option value="${esc(value)}" selected>${esc(current ? current.name + ' (pasif)' : value + ' (eski kayıt)')}</option>` : ''}</select><small>${active.length ? 'Kayıtlı aktif personelden seçin.' : 'Önce Ayarlar → Personel bölümünden personel ekleyin.'}</small>${unavailable ? '<small>Mevcut atama korunur; değiştirmek için aktif personel seçin.</small>' : ''}</label>`;
 }
 function validStaffSelection(value, previous) {
   return ['documentStaff', 'collectionStaff'].every(
@@ -88,7 +88,7 @@ function personnelSettings(editId) {
     ]
       .map(
         ([key, label]) =>
-          `<label class="settings-check"><input type="checkbox" name="loginPermission" value="${key}" ${(loginAccount?.permissions || []).includes(key) ? 'checked' : ''}>${label}</label>`,
+          `<label class="settings-check"><input type="checkbox" name="loginPermission" value="${key}" ${(loginAccount?.permissions || []).includes(key) ? 'checked' : ''}>${esc(label)}</label>`,
       )
       .join(
         '',
@@ -180,7 +180,7 @@ function personnelSettings(editId) {
   };
 }
 function salaryField(label, name, value) {
-  return `<label class="field">${label}<input name="${name}" type="number" min="0" step="0.01" value="${esc(value ?? '')}" ${name === 'unofficialSalary' ? 'data-optional="true"' : 'required'}></label>`;
+  return `<label class="field">${esc(label)}<input name="${name}" type="number" min="0" step="0.01" value="${esc(value ?? '')}" ${name === 'unofficialSalary' ? 'data-optional="true"' : 'required'}></label>`;
 }
 function payrollView() {
   loadCalculatedBonus2();
@@ -196,7 +196,7 @@ function payrollView() {
     ]
       .map(
         ([label, n]) =>
-          `<div class="stat"><div><small>${label}</small><strong>${money(n / 100)}</strong></div></div>`,
+          `<div class="stat"><div><small>${esc(label)}</small><strong>${money(n / 100)}</strong></div></div>`,
       )
       .join(
         '',
@@ -327,7 +327,7 @@ function dailyBonusSection(host, staffId) {
     '<div class="panelhead"><div><h2>Günlük Prim</h2><p>Aylık toplam: <strong>' +
     money(rows.reduce((sum, e) => sum + e.amount, 0) / 100) +
     '</strong></p></div><div class="toolbar"><label class="field">Prim Ayı<input type="month" data-bonus-month data-optional="true" value="' +
-    dailyBonusMonth +
+    esc(dailyBonusMonth) +
     '"></label><button type="button" class="primary" data-add-daily-bonus>Günlük Prim Ekle</button></div></div><div class="overflow"><table><thead><tr><th>PERSONEL</th><th>TARİH</th><th>TUTAR</th><th>AÇIKLAMA</th></tr></thead><tbody>' +
     rows
       .slice()
@@ -337,7 +337,7 @@ function dailyBonusSection(host, staffId) {
           '<tr><td>' +
           esc(e.staffName) +
           '</td><td>' +
-          displayDate(e.date) +
+          esc(displayDate(e.date)) +
           '</td><td>' +
           money(e.amount / 100) +
           '</td><td>' +
@@ -449,7 +449,7 @@ function personnelBonus2View() {
   const data = loadCalculatedBonus2(bonus2Month || businessDate().slice(0, 7));
   $('#personnelView').innerHTML =
     '<div class="panel"><div class="panelhead"><div><h2>Prim 2</h2><p>Aylık toplam tahsilata göre otomatik hesaplanır. Kota: Callcenter 900.000 TL, Call Center-Y 1.000.000 TL. Call Center-E: 500.000 TL ve üzerinde toplam tahsilatın %4’ü.</p></div><label class="field">Ay<input type="month" data-bonus2-month data-optional="true" value="' +
-    data.month +
+    esc(data.month) +
     '"></label></div><div class="overflow"><table><thead><tr><th>PERSONEL</th><th>TAHSİLAT</th><th>ORAN</th><th>ORAN PRİMİ</th><th>EK HEDEF PRİMİ</th><th>EKİP</th><th>1–15</th><th>16–AY SONU</th><th>PRİM 2 TOPLAMI</th></tr></thead><tbody>' +
     data.rows
       .map(
@@ -459,7 +459,7 @@ function personnelBonus2View() {
           '</td><td>' +
           money((r.collected || 0) / 100) +
           '</td><td>%' +
-          (r.rate || 0) +
+          esc(r.rate || 0) +
           '</td>' +
           ['percentageBonus', 'targetBonus', 'teamBonus', 'firstHalfBonus', 'secondHalfBonus', 'total']
             .map((key) => '<td>' + money((r[key] || 0) / 100) + '</td>')

@@ -41,7 +41,7 @@ function auditSettingsPage(source = 'settings') {
       <div class="audit-tabs" role="group" aria-label="Kayıt türü">${Object.entries(auditCategories)
         .map(
           ([key, label]) =>
-            `<button type="button" data-audit-category="${key}" aria-pressed="${key === 'changes'}">${label}</button>`,
+            `<button type="button" data-audit-category="${key}" aria-pressed="${key === 'changes'}">${esc(label)}</button>`,
         )
         .join('')}</div>
       <form class="audit-filters" id="auditFilters">
@@ -52,7 +52,7 @@ function auditSettingsPage(source = 'settings') {
           auditActions,
         )
           .filter(([key]) => !['login', 'logout', 'failed', 'blocked'].includes(key))
-          .map(([key, label]) => `<option value="${key}">${label}</option>`)
+          .map(([key, label]) => `<option value="${key}">${esc(label)}</option>`)
           .join('')}</select></label>
         <button class="primary" type="submit">Filtrele</button>
         <button class="secondary" type="reset">Temizle</button>

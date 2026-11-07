@@ -222,3 +222,44 @@ test('A 2000-document source over 4 MiB is read in bounded record pages', async 
     await pg.close();
   }
 });
+
+test('Normalized import and repository bind hostile values without executing SQL', async () => {
+  const payload = "'); DELETE FROM han_core.documents; --";
+  const { pg, pool } = await setup(2, (state) => {
+    state.data['icrapro-v1'].clients[0].name = payload;
+    state.data['icrapro-v1'].docs[0][payload] = payload;
+  });
+  try {
+    await importNormalized(pool);
+    assert.equal(
+      (await pool.query("SELECT name FROM han_core.parties WHERE id='client:c1'")).rows[0].name,
+      payload,
+    );
+    const repo = createRecordRepository(pool);
+    await assert.rejects(repo.listDocuments("token' OR 1=1 --"), (e) => e.status === 401);
+    await assert.rejects(
+      repo.listDocuments('token', { limit: '1; DELETE FROM han_core.documents' }),
+      (e) => e.status === 400,
+    );
+    await assert.rejects(
+      repo.updateDocumentNote('token', 'hostile-id', {
+        id: "d00000' OR '1'='1",
+        revision: 1,
+        note: 'not allowed',
+      }),
+      (e) => e.status === 404,
+    );
+    for (const options of [{ query: payload }, { after: "' OR 1=1 --" }]) {
+      const result = await repo.listDocuments('staff-token', options);
+      assert.ok(result.items.every((row) => row.assigned_staff_id === 'p1'));
+    }
+    await repo.updateDocumentNote('token', 'literal-note', { id: 'd00000', revision: 1, note: payload });
+    const { rows } = await pool.query('SELECT id, extras FROM han_core.documents ORDER BY id');
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].extras.notes, payload);
+    assert.equal(rows[0].extras[payload], payload, 'Untrusted source keys stay JSON keys');
+    assert.equal(rows[1].extras.notes, 'Sentetik açıklama. ');
+  } finally {
+    await pg.close();
+  }
+});

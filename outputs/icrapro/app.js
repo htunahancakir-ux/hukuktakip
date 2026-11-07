@@ -93,11 +93,7 @@ document.addEventListener('click', (event) => {
 const $ = (s) => document.querySelector(s),
   money = (n) =>
     new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + ' TL',
-  esc = (s) =>
-    String(s ?? '').replace(
-      /[&<>"']/g,
-      (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
-    );
+  esc = escapeHtml;
 let db;
 try {
   db = JSON.parse(localStorage.getItem('icrapro-v1'));
@@ -193,7 +189,7 @@ function stats() {
   $('#stats').innerHTML = cards
     .map(
       (x) =>
-        `<div class="stat"><div><small>${x[0]}</small><strong>${x[1]}</strong><small>${x[2]}</small></div><span class="icon">${x[3]}</span></div>`,
+        `<div class="stat"><div><small>${esc(x[0])}</small><strong>${esc(x[1])}</strong><small>${esc(x[2])}</small></div><span class="icon">${esc(x[3])}</span></div>`,
     )
     .join('');
 }
