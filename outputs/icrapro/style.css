@@ -208,3 +208,9 @@ aside > .brand-home strong { min-width: 0; letter-spacing: 0; }
 
 .client-name-link { padding: 0; font-size: 13px; font-weight: 700; text-align: left; white-space: normal; line-height: 1.4; }
 .client-name-link:hover, .client-name-link:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
+
+.message-recipients { display: grid; gap: 8px; }
+.message-recipients > .settings-check { position: sticky; top: 0; z-index: 1; margin: 0; padding: 7px 4px; background: white; border-bottom: 1px solid #dce5ed; font-weight: 650; }
+.message-recipients .message-recipient-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 4px 8px; }
+.message-recipient-grid label { display: flex; align-items: center; gap: 6px; }
+#workOrderComposeDialog .message-recipients { padding: 4px 0; max-height: min(37vh, 330px); }

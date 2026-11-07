@@ -9,7 +9,7 @@
     "start": "node --env-file-if-exists=.env.local outputs/icrapro/server.cjs",
     "build": "node scripts/build.cjs",
     "format:check": "prettier --check \"outputs/icrapro/{access-*.cjs,workspace-*.js,auth.js,login-*.js,login-layout.css,employee-terms*.js,modal-dismissal.js,app.js,dashboard.js,client-records.js,document-records.js,document-types.js,form-inputs.js,borrower-sheet.js,finance-operations.js,settings.js,personnel.js,index.html,workspace-layout.css}\"",
-    "test": "node tests/run.cjs && node --test --test-concurrency=1 tests/deletion-policy.test.cjs tests/client-payout.test.cjs tests/postgres.test.cjs tests/backups.test.cjs tests/performance.test.cjs tests/records.test.cjs",
+    "test": "node tests/run.cjs && node --test --test-concurrency=1 tests/work-order-batch.test.cjs tests/deletion-policy.test.cjs tests/client-payout.test.cjs tests/postgres.test.cjs tests/backups.test.cjs tests/performance.test.cjs tests/records.test.cjs",
     "db:migrate": "node --env-file-if-exists=.env.local scripts/database.cjs migrate",
     "db:import": "node --env-file-if-exists=.env.local scripts/database.cjs import",
     "db:verify": "node --env-file-if-exists=.env.local scripts/database.cjs verify",

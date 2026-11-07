@@ -1,3 +1,4 @@
+const { createWorkOrderBatch } = require('../../lib/work-order-batch.cjs');
 const { queue: queueWhatsApp } = require('../../lib/whatsapp.cjs');
 const { messageSummary } = require('../../lib/notification-summary.cjs');
 
@@ -21,51 +22,16 @@ async function handleCommunicationRoutes(ctx) {
     return true;
   }
   if (url.pathname === '/api/work-orders' && req.method === 'POST') {
-    const v = await body(req),
-      title = String(v.title || '').trim(),
-      description = String(v.description || '').trim(),
-      assignee = ctx.state.users.find((x) => x.id === v.assigneeId && userEnabled(x) && x.id !== u.id);
-    if (!assignee || !title || title.length > 150 || description.length > 10000)
-      throw fail(400, 'Atanacak aktif kişi ve iş başlığı seçin.');
-    if (v.due && (!/^\d{4}-\d{2}-\d{2}$/.test(v.due) || !Number.isFinite(Date.parse(v.due))))
-      throw fail(400, 'Geçerli son tarih girin.');
-    const next = structuredClone(ctx.state),
-      now = new Date().toISOString(),
-      order = {
-        id: crypto.randomUUID(),
-        title,
-        description,
-        assigneeId: assignee.id,
-        assigneeName: assignee.name,
-        assignerId: u.id,
-        assignerName: u.name,
-        due: v.due || '',
-        status: 'pending',
-        createdAt: now,
-      };
-    next.workOrders = [...(next.workOrders || []), order];
-    next.messages = [
-      ...(next.messages || []),
-      {
-        id: crypto.randomUUID(),
-        senderId: u.id,
-        senderName: u.name,
-        recipientIds: [assignee.id],
-        recipientNames: [assignee.name],
-        subject: ('Yeni iş emri: ' + title).slice(0, 150),
-        text: description,
-        workOrderId: order.id,
-        systemType: 'workOrderAssigned',
-        createdAt: now,
-        readBy: {},
-      },
-    ];
+    const v = await body(req);
+    const { next, orders, assignees } = createWorkOrderBatch(ctx.state, v, u, userEnabled, () =>
+      crypto.randomUUID(),
+    );
     persist(next);
     if (v.whatsapp === true)
-      queueWhatsApp(res, next, 'reminderTemplate', [assignee], () => ({
-        values: [u.name, order.title, order.due || 'Belirtilmedi'],
+      queueWhatsApp(res, next, 'reminderTemplate', assignees, () => ({
+        values: [u.name, orders[0].title, orders[0].due || 'Belirtilmedi'],
       }));
-    send(res, 201, { ok: true, id: order.id });
+    send(res, 201, { ok: true, id: orders[0].id, ids: orders.map((order) => order.id) });
     return true;
   }
   if (url.pathname === '/api/work-orders/complete' && req.method === 'POST') {

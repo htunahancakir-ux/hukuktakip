@@ -56,6 +56,7 @@ function messageRecipientGroups(users, selected) {
     ['Personel', sorted.filter((user) => !['ceo', 'admin'].includes(user.role))],
   ];
   return (
+    '<label class="settings-check"><input type="checkbox" name="selectAllRecipients" data-optional="true"> Hepsi</label>' +
     groups
       .filter(([, people]) => people.length)
       .map(
@@ -67,8 +68,31 @@ function messageRecipientGroups(users, selected) {
             )
             .join('')}</div></fieldset>`,
       )
-      .join('') || '<p>Mesaj gönderilebilecek başka aktif kullanıcı yok.</p>'
+      .join('') +
+    (users.length ? '' : '<p>Mesaj gönderilebilecek başka aktif kullanıcı yok.</p>')
   );
+}
+
+function configureMessageRecipients(form) {
+  const all = form.elements.selectAllRecipients;
+  const recipients = [...form.querySelectorAll('[name="recipient"]')];
+  const sync = () => {
+    const selected = recipients.filter((input) => input.checked).length;
+    all.checked = recipients.length > 0 && selected === recipients.length;
+    all.indeterminate = selected > 0 && selected < recipients.length;
+    all.disabled = recipients.length === 0;
+  };
+  all.onchange = () => {
+    recipients.forEach((input) => {
+      input.checked = all.checked;
+      input.disabled = false;
+    });
+    sync();
+  };
+  recipients.forEach((input) => {
+    input.onchange = sync;
+  });
+  sync();
 }
 
 function composeMessage(reply) {
@@ -84,7 +108,7 @@ function composeMessage(reply) {
     dialog.id = 'messageComposeDialog';
     document.body.append(dialog);
   }
-  dialog.innerHTML = `<form id="messageComposeForm"><div class="panelhead"><h2>${reply ? 'Mesajı Yanıtla' : 'Yeni Mesaj'}</h2><button type="button" class="secondary" id="closeMessageCompose">Kapat</button></div><div class="formbody"><label class="field">Gönderim<select name="audience"><option value="selected">Kişi / Seçili Kişiler</option><option value="all">Tüm Aktif Kullanıcılar</option></select></label><div id="messageRecipients" class="message-recipients">${messageRecipientGroups(users, reply?.senderId)}</div><label class="field">Konu<input name="subject" required maxlength="150" value="${reply ? esc(('Yanıt: ' + reply.subject).slice(0, 150)) : ''}"></label><label class="field">Mesaj<textarea name="text" required maxlength="10000" rows="4" placeholder="Mesajınızı yazın…"></textarea></label><p>Mesajlar yönetici tarafından da görüntülenebilir.</p></div><div class="actions"><button class="primary" type="submit">Gönder</button></div></form>`;
+  dialog.innerHTML = `<form id="messageComposeForm"><div class="panelhead"><h2>${reply ? 'Mesajı Yanıtla' : 'Yeni Mesaj'}</h2><button type="button" class="secondary" id="closeMessageCompose">Kapat</button></div><div class="formbody"><div id="messageRecipients" class="message-recipients">${messageRecipientGroups(users, reply?.senderId)}</div><label class="field">Konu<input name="subject" required maxlength="150" value="${reply ? esc(('Yanıt: ' + reply.subject).slice(0, 150)) : ''}"></label><label class="field">Mesaj<textarea name="text" required maxlength="10000" rows="4" placeholder="Mesajınızı yazın…"></textarea></label><p>Mesajlar yönetici tarafından da görüntülenebilir.</p></div><div class="actions"><button class="primary" type="submit">Gönder</button></div></form>`;
   $('#closeMessageCompose').onclick = () => dialog.close();
   const form = $('#messageComposeForm');
   form
@@ -93,11 +117,7 @@ function composeMessage(reply) {
       'beforeend',
       '<label class="settings-check"><input type="checkbox" name="whatsapp" checked> WhatsApp’tan da gönder</label>',
     );
-  form.elements.audience.onchange = () => {
-    const all = form.elements.audience.value === 'all';
-    $('#messageRecipients').hidden = all;
-    form.querySelectorAll('[name="recipient"]').forEach((el) => (el.disabled = all));
-  };
+  configureMessageRecipients(form);
   form.onsubmit = async (e) => {
     e.preventDefault();
     const button = form.querySelector('[type="submit"]');
@@ -257,7 +277,7 @@ function composeWorkOrder() {
     dialog.id = 'workOrderComposeDialog';
     document.body.append(dialog);
   }
-  dialog.innerHTML = `<form id="workOrderComposeForm"><div class="panelhead"><h2>İş Emri Ata</h2><button type="button" class="secondary" id="closeWorkCompose">Kapat</button></div><div class="formbody grid"><label class="field full">Atanacak Kişi<select name="assigneeId" required><option value="">Seçin</option>${users.map((u) => `<option value="${u.id}">${esc(u.name)}</option>`).join('')}</select></label><label class="field full">İş Başlığı<select name="title" required><option value="">İş başlığı seçin</option><option>Arama Yap</option><option>Borçluya Geri Dön</option><option>İcra Aç</option><option>Diğer</option></select></label><label class="field full">İş Açıklaması<textarea name="description" data-optional="true" maxlength="10000" rows="6"></textarea></label><label class="field full">Son Tarih (isteğe bağlı)<input name="due" type="date" data-optional="true"></label></div><div class="actions"><button type="submit" class="primary">İş Emrini Ata</button></div></form>`;
+  dialog.innerHTML = `<form id="workOrderComposeForm"><div class="panelhead"><h2>İş Emri Ata</h2><button type="button" class="secondary" id="closeWorkCompose">Kapat</button></div><div class="formbody grid"><fieldset class="full"><legend>Atanacak Kişiler</legend><div class="message-recipients">${messageRecipientGroups(users)}</div></fieldset><label class="field full">İş Başlığı<select name="title" required><option value="">İş başlığı seçin</option><option>Arama Yap</option><option>Borçluya Geri Dön</option><option>İcra Aç</option><option>Diğer</option></select></label><label class="field full">İş Açıklaması<textarea name="description" data-optional="true" maxlength="10000" rows="6"></textarea></label><label class="field full">Son Tarih (isteğe bağlı)<input name="due" type="date" data-optional="true"></label></div><div class="actions"><button type="submit" class="primary">İş Emrini Ata</button></div></form>`;
   $('#closeWorkCompose').onclick = () => dialog.close();
   const form = $('#workOrderComposeForm');
   form
@@ -266,12 +286,17 @@ function composeWorkOrder() {
       'beforeend',
       '<label class="settings-check"><input type="checkbox" name="whatsapp" checked> WhatsApp’tan da gönder</label>',
     );
+  configureMessageRecipients(form);
   form.onsubmit = async (e) => {
     e.preventDefault();
     const button = form.querySelector('[type="submit"]');
     button.disabled = true;
     try {
       const value = Object.fromEntries(new FormData(form));
+      value.assigneeIds = [...form.querySelectorAll('[name="recipient"]:checked')].map(
+        (input) => input.value,
+      );
+      if (!value.assigneeIds.length) throw Error('En az bir görevli seçin.');
       value.whatsapp = form.elements.whatsapp.checked;
       const result = await recoveryApi('/api/work-orders', value);
       dialog.close();
@@ -281,7 +306,8 @@ function composeWorkOrder() {
       workOrderOffset = 0;
       messagesPage();
       toast(
-        'İş emri kaydedildi ve görevliye uygulama içi bildirim gönderildi.' + whatsappDeliveryNotice(result),
+        'İş emirleri seçilen kişilere atandı ve uygulama içi bildirim gönderildi.' +
+          whatsappDeliveryNotice(result),
       );
     } catch (error) {
       toast(error.message);
