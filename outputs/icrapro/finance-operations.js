@@ -888,6 +888,29 @@ function syncPayoutSources() {
   if (records && Array.isArray(records.clients) && Array.isArray(records.docs)) db = records;
 }
 
+let clientPayoutExtraFilters={debtor:'',identity:'',number:'',type:'',staff:'',minAmount:'',maxAmount:'',minCents:'',maxCents:'',paymentState:''};
+function matchesClientPayoutExtra(d,p,f){
+  return (!f.debtor||normalizeSearch(d.debtor||'').includes(normalizeSearch(f.debtor.trim())))&&
+    (!f.identity||String(d.identity||'').includes(f.identity.trim()))&&
+    (!f.number||normalizeSearch(d.number||'').includes(normalizeSearch(f.number.trim())))&&
+    (!f.type||docType(d)===f.type)&&(!f.staff||(f.staff==='unassigned'?!d.relatedStaff:d.relatedStaff===f.staff))&&
+    (f.minCents===''||p.remaining>=Number(f.minCents))&&(f.maxCents===''||p.remaining<=Number(f.maxCents))&&
+    (!f.paymentState||(f.paymentState==='partial'?p.paid>0:p.paid===0));
+}
+function clientPayoutFilterMarkup(){
+ const f=clientPayoutExtraFilters;
+ const input=(label,name,type='text',value=f[name])=>'<label class="field">'+label+'<input name="'+name+'" type="'+type+'" data-optional="true" value="'+esc(value||'')+'"></label>';
+ const options=(rows,value)=>rows.map(([id,label])=>'<option value="'+esc(id)+'" '+(value===id?'selected':'')+'>'+esc(label)+'</option>').join('');
+ return '<details class="borrower-filter-section" id="clientPayoutFilterSection"'+(document.getElementById('clientPayoutFilterSection')?.open?' open':'')+'><summary>Filtreleme</summary><form id="clientPayoutDateForm" class="formbody"><div class="grid">'+
+ '<label class="field">Müvekkil<select name="client" id="clientPayoutFilter" data-optional="true">'+options([['','Tüm Müvekkiller'],...db.clients.map(c=>[c.id,c.name])],clientPayoutFilter)+'</select></label>'+
+ input('İnfaz Tarihi — Başlangıç','start','date',clientPayoutStart)+input('İnfaz Tarihi — Bitiş','end','date',clientPayoutEnd)+
+ input('Borçlu Adı','debtor')+input('TC Kimlik / Vergi No','identity')+input('Evrak No','number')+
+ '<label class="field">Evrak Türü<select name="type" data-optional="true">'+options([['','Tüm Evrak Türleri'],...Object.keys(documentTypes).map(t=>[t,t])],f.type)+'</select></label>'+
+ '<label class="field">Dosya Sorumlusu<select name="staff" data-optional="true">'+options([['','Tüm Personeller'],['unassigned','Atanmamış'],...personnel.map(p=>[p.id,p.name+(p.active?'':' (pasif)')])],f.staff)+'</select></label>'+
+ input('En Az Ödenecek Tutar (TL)','minAmount')+input('En Çok Ödenecek Tutar (TL)','maxAmount')+
+ '<label class="field">Ödeme Durumu<select name="paymentState" data-optional="true">'+options([['','Ödemesi Bekleyen Tüm Dosyalar'],['unpaid','Hiç Ödeme Yapılmamış'],['partial','Kısmen Ödenmiş']],f.paymentState)+'</select></label>'+
+ '</div><div class="toolbar" style="margin-top:16px"><button type="submit" class="primary">Filtrele</button><button type="button" class="secondary" id="clearPayoutDates">Tüm Filtreleri Temizle</button></div><p>Başlangıç ve bitiş günleri dahildir. Tarih filtresi açıkken infaz tarihi bulunmayan dosyalar gösterilmez.</p></form></details>';
+}
 function clientPayoutPage() {
   try {
     syncPayoutSources();
@@ -901,10 +924,10 @@ function clientPayoutPage() {
         p.eligible &&
         p.remaining > 0 &&
         matchesPayoutDate(d, clientPayoutStart, clientPayoutEnd) &&
-        (!clientPayoutFilter || d.client === clientPayoutFilter),
+        (!clientPayoutFilter || d.client === clientPayoutFilter) && matchesClientPayoutExtra(d,p,clientPayoutExtraFilters),
     );
   $('#content').innerHTML =
-    `<div class="panel"><div class="panelhead"><div><h2>Müvekkil Ödemeleri</h2><p>Yalnızca infaz edilmiş ve müvekkile ödemesi tamamlanmamış dosyalar.</p></div><button type="button" class="secondary" id="backAccounting">← Kasa / Banka</button></div><div class="formbody"><form id="clientPayoutDateForm"><div class="grid"><label class="field">İnfaz Tarihi — Başlangıç<input type="date" name="start" data-optional="true" value="${esc(clientPayoutStart)}"></label><label class="field">İnfaz Tarihi — Bitiş<input type="date" name="end" data-optional="true" value="${esc(clientPayoutEnd)}"></label></div><div class="toolbar" style="margin:14px 0"><button type="submit" class="primary">Tarihe Göre Süz</button><button type="button" class="secondary" id="clearPayoutDates">Tarih Filtresini Temizle</button></div><p>Başlangıç ve bitiş günleri dahildir. Tarih filtresi açıkken infaz tarihi bulunmayan dosyalar gösterilmez.</p></form><label class="field">Müvekkile Göre Süz<select id="clientPayoutFilter"><option value="">Tüm Müvekkiller</option>${db.clients.map((c) => `<option value="${c.id}" ${clientPayoutFilter === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><div class="notice" style="margin-top:18px">Müvekkile anapara iadesi gider değildir. Seçilen hesap bakiyesi azalır; ciro ve kâr değişmez. Yediemin dosyasında anlaşmalı ofis payı ayrılır. Bu ekran ödeme kaydı tutar, bankaya havale talimatı göndermez.</div><p>${list.length} dosya · Toplam ödenecek: <b>${money(list.reduce((s, x) => s + x.p.remaining, 0) / 100)}</b></p></div><div class="overflow"><table><thead><tr><th>DOSYA</th><th>BORÇLU / MÜVEKKİL</th><th>İNFAZ TARİHİ</th><th>ANAPARA</th><th>ÖDENEN</th><th>ÖDENECEK</th><th>İŞLEM</th></tr></thead><tbody>${list.map(({ d, p }) => `<tr><td>${esc(d.number)}<small>${esc(docType(d))}</small></td><td>${esc(d.debtor)}<small>${esc(db.clients.find((c) => c.id === d.client)?.name || '—')}</small></td><td>${esc(displayDate(clientPayoutClosureDate(d)) || '—')}</td><td>${money(p.entitlement / 100)}</td><td>${money(p.paid / 100)}</td><td><b>${money(p.remaining / 100)}</b></td><td><button class="primary" type="button" data-client-payout="${d.id}">Ödeme Kaydet</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">Müvekkile ödemesi bekleyen infaz dosyası bulunmuyor.</td></tr>'}</tbody><tfoot><tr><td colspan="3"><strong>ALT TOPLAM</strong></td><td><strong>${money(list.reduce((sum, x) => sum + x.p.entitlement, 0) / 100)}</strong></td><td><strong>${money(list.reduce((sum, x) => sum + x.p.paid, 0) / 100)}</strong></td><td><strong>${money(list.reduce((sum, x) => sum + x.p.remaining, 0) / 100)}</strong></td><td></td></tr></tfoot></table></div></div>`;
+    `<div class="panel"><div class="panelhead"><div><h2>Müvekkil Ödemeleri</h2><p>Yalnızca infaz edilmiş ve müvekkile ödemesi tamamlanmamış dosyalar.</p></div><button type="button" class="secondary" id="backAccounting">← Kasa / Banka</button></div>${clientPayoutFilterMarkup()}<div class="formbody"><div class="notice" style="margin-top:18px">Müvekkile anapara iadesi gider değildir. Seçilen hesap bakiyesi azalır; ciro ve kâr değişmez. Yediemin dosyasında anlaşmalı ofis payı ayrılır. Bu ekran ödeme kaydı tutar, bankaya havale talimatı göndermez.</div><p>${list.length} dosya · Toplam ödenecek: <b>${money(list.reduce((s, x) => s + x.p.remaining, 0) / 100)}</b></p></div><div class="overflow"><table><thead><tr><th>DOSYA</th><th>BORÇLU / MÜVEKKİL</th><th>İNFAZ TARİHİ</th><th>ANAPARA</th><th>ÖDENEN</th><th>ÖDENECEK</th><th>İŞLEM</th></tr></thead><tbody>${list.map(({ d, p }) => `<tr><td>${esc(d.number)}<small>${esc(docType(d))}</small></td><td>${esc(d.debtor)}<small>${esc(db.clients.find((c) => c.id === d.client)?.name || '—')}</small></td><td>${esc(displayDate(clientPayoutClosureDate(d)) || '—')}</td><td>${money(p.entitlement / 100)}</td><td>${money(p.paid / 100)}</td><td><b>${money(p.remaining / 100)}</b></td><td><button class="primary" type="button" data-client-payout="${d.id}">Ödeme Kaydet</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">Müvekkile ödemesi bekleyen infaz dosyası bulunmuyor.</td></tr>'}</tbody><tfoot><tr><td colspan="3"><strong>ALT TOPLAM</strong></td><td><strong>${money(list.reduce((sum, x) => sum + x.p.entitlement, 0) / 100)}</strong></td><td><strong>${money(list.reduce((sum, x) => sum + x.p.paid, 0) / 100)}</strong></td><td><strong>${money(list.reduce((sum, x) => sum + x.p.remaining, 0) / 100)}</strong></td><td></td></tr></tfoot></table></div></div>`;
   $('#backAccounting').onclick = accountingPage;
   const dateForm = $('#clientPayoutDateForm');
   dateForm.onsubmit = (e) => {
@@ -913,17 +936,24 @@ function clientPayoutPage() {
     const start = dateForm.elements.start.value,
       end = dateForm.elements.end.value;
     if (start && end && start > end) return toast('Başlangıç tarihi bitiş tarihinden sonra olamaz.');
+    const next=Object.fromEntries(new FormData(dateForm));
+    for(const [name,key] of [['minAmount','minCents'],['maxAmount','maxCents']]){
+      const parsed=parseAmountInput(next[name]);
+      if(parsed===null||(parsed!==''&&Number(parsed)<0))return toast('Geçerli, sıfır veya pozitif tutar girin.');
+      next[key]=parsed===''?'':financeCents(parsed);
+    }
+    if(next.minCents!==''&&next.maxCents!==''&&next.minCents>next.maxCents)return toast('En az tutar, en çok tutardan büyük olamaz.');
+    clientPayoutFilter=next.client;
+    clientPayoutExtraFilters=next;
     clientPayoutStart = start;
     clientPayoutEnd = end;
     clientPayoutPage();
   };
   $('#clearPayoutDates').onclick = () => {
+    clientPayoutFilter='';
+    for(const key of Object.keys(clientPayoutExtraFilters))clientPayoutExtraFilters[key]='';
     clientPayoutStart = '';
     clientPayoutEnd = '';
-    clientPayoutPage();
-  };
-  $('#clientPayoutFilter').onchange = (e) => {
-    clientPayoutFilter = e.target.value;
     clientPayoutPage();
   };
   document
