@@ -55,6 +55,7 @@ function businessDate() {
 }
 
 function docFinance(d) {
+  if (d._listFinance) return d._listFinance;
   automaticLegalCharges(d);
   const events = financeEvents.filter((e) => e.documentId === d.id),
     received = events.filter((e) => e.type === 'payment').reduce((s, e) => s + e.amount, 0),
@@ -127,6 +128,8 @@ function aggregateFinance(events, period, date, accountingEntries = []) {
 }
 
 function openDashboardDay(date) {
+  if (window.hanRecordsEnabled && !window.hanWorkspaceComplete)
+    return ensureRecordWorkspace(() => openDashboardDay(date));
   if (!['ceo', 'admin'].includes(hanAuth.role)) return;
   const financeLabels = {
     payment: 'Tahsilat',
@@ -190,17 +193,24 @@ function groupOwnerDashboardFinance() {
   content.append(overview);
 }
 
-function dashboard() {
+function dashboard(remoteBuckets) {
   if (window.hanAuth && !['ceo', 'admin'].includes(hanAuth.role)) return staffDashboard();
-  const buckets = aggregateFinance(financeEvents, dashboardPeriod, dashboardDate, accounting.entries),
+  if (window.hanRecordsEnabled && !remoteBuckets) return loadRecordDashboard();
+  const buckets =
+      remoteBuckets || aggregateFinance(financeEvents, dashboardPeriod, dashboardDate, accounting.entries),
     total = buckets.reduce(
       (a, r) => {
         for (const k of Object.keys(a)) a[k] += r[k];
         return a;
       },
-      { collected: 0, revenue: 0, expenses: 0, profit: 0, closedCount: 0, closedAmount: 0 },
+      Object.fromEntries(
+        ['collected', 'revenue', 'expenses', 'profit', 'closedCount', 'closedAmount'].map((key) => [
+          key,
+          remoteBuckets ? 0n : 0,
+        ]),
+      ),
     );
-  const f = (n) => money(n / 100);
+  const f = (n) => (typeof n === 'bigint' ? recordMoney(n) : money(n / 100));
   $('#content').innerHTML =
     `<div class="panel" style="margin-bottom:22px"><div class="panelhead"><div><h2>Gelir ve Tahsilat Özeti</h2><p>İşlem tarihine göre günlük, aylık ve yıllık takip</p></div><div class="toolbar"><label class="field">Görünüm<select id="dashboardPeriod"><option value="day" ${dashboardPeriod === 'day' ? 'selected' : ''}>Günlük</option><option value="month" ${dashboardPeriod === 'month' ? 'selected' : ''}>Aylık</option><option value="year" ${dashboardPeriod === 'year' ? 'selected' : ''}>Yıllık</option></select></label><label class="field">${dashboardPeriod === 'day' ? 'Gün' : dashboardPeriod === 'month' ? 'Ay' : 'Yıl'}<input id="dashboardDate" type="${dashboardPeriod === 'day' ? 'date' : dashboardPeriod === 'month' ? 'month' : 'number'}" value="${esc(dashboardPeriod === 'day' ? dashboardDate : dashboardPeriod === 'month' ? dashboardDate.slice(0, 7) : dashboardDate.slice(0, 4))}" ${dashboardPeriod === 'year' ? 'min="1900" max="9999"' : ''}></label></div></div></div><div class="stats">${[
       ['Tahsilat', f(total.collected)],

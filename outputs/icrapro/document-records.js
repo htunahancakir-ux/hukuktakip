@@ -555,6 +555,7 @@ function archivedDocuments(offset = 0) {
 }
 
 function docRows() {
+  if (window.hanRecordsEnabled) return queueRecordPage();
   const showClosureDate = debtorStatusFilter === 'İnfaz';
   $('#closureDateHeading').hidden = !showClosureDate;
   $('#debtorColumnStatus').value = debtorStatusFilter;
@@ -599,45 +600,71 @@ function docRows() {
     ' / ' +
     db.docs.filter((d) => debtorStatusFilter === 'Tümü' || debtorStatus(d) === debtorStatusFilter).length +
     ' kayıt gösteriliyor';
+  paintDocumentRows(list, isAdmin, showClosureDate);
+}
+
+function paintDocumentRows(list, isAdmin, showClosureDate) {
+  const action = (id, callback) => (window.hanRecordsEnabled ? recordAction(id, callback) : callback());
   $('#docRows').innerHTML =
     list
       .map(
         (d) =>
-          `<tr class="${debtorStatus(d) === 'İnfaz' ? 'status-closed' : debtorStatus(d) === 'İade' ? 'status-returned' : 'status-pending'}"><td><select ${isAdmin ? '' : 'disabled'} class="row-status" aria-label="${esc(d.debtor)} durumu" data-row-status="${esc(d.id)}">${['Derdest', 'İnfaz', 'İade', 'İcra'].map((status) => `<option ${status === debtorStatus(d) ? 'selected' : ''}>${status}</option>`).join('')}</select></td><td><strong>${esc(d.number)}</strong><small>${esc(docType(d))} · ${esc(db.clients.find((c) => c.id === d.client)?.name)}</small></td><td><button class="link debtor-name" data-debtor="${esc(d.id)}">${esc(d.debtor)}</button><small>${esc(d.status || 'Derdest')}</small></td><td>${borrowerAssignmentMarkup(d, isAdmin)}</td><td><strong>${money(d.amount)}</strong>${isAdmin ? `<small>Toplam alacak: ${money(docFinance(d).target / 100)}</small>` : ''}</td><td>${esc(displayDate(borrowerTrackingDate(d)) || '—')}</td><td>${esc(d.due ? displayDate(d.due) : '—')}</td>${showClosureDate ? '<td>' + esc(displayDate(clientPayoutClosureDate(d)) || '—') + '</td>' : ''}<td><button type="button" class="link" data-edit-debtor="${esc(d.id)}">Düzenle</button><button type="button" class="link" data-add-guarantor="${esc(d.id)}">Kefil Ekle</button><button class="link" data-receipt="${esc(d.id)}">Tutanak Görüntüle ↗</button>${isAdmin ? `<button class="link" data-finance="${esc(d.id)}">Finansal İşlemler</button>` : ''}${hanAuth.canDelete ? `<button type="button" class="link" data-delete-document="${esc(d.id)}">Dosyayı Sil</button>` : ''}${isAdmin && debtorStatus(d) === 'Derdest' ? `<button type="button" class="link" data-move-enforcement="${esc(d.id)}">İcraya Taşı</button>` : ''}</td></tr>`,
+          `<tr class="${debtorStatus(d) === 'İnfaz' ? 'status-closed' : debtorStatus(d) === 'İade' ? 'status-returned' : 'status-pending'}"><td><select ${isAdmin ? '' : 'disabled'} class="row-status" aria-label="${esc(d.debtor)} durumu" data-row-status="${esc(d.id)}">${['Derdest', 'İnfaz', 'İade', 'İcra'].map((status) => `<option ${status === debtorStatus(d) ? 'selected' : ''}>${status}</option>`).join('')}</select></td><td><strong>${esc(d.number)}</strong><small>${esc(docType(d))} · ${esc(d._clientName ?? db.clients.find((c) => c.id === d.client)?.name)}</small></td><td><button class="link debtor-name" data-debtor="${esc(d.id)}">${esc(d.debtor)}</button><small>${esc(d.status || 'Derdest')}</small></td><td>${borrowerAssignmentMarkup(d, isAdmin)}</td><td><strong>${d._principalCents ? recordMoney(d._principalCents) : money(d.amount)}</strong>${isAdmin ? `<small>Toplam alacak: ${d._targetCents ? recordMoney(d._targetCents) : money(docFinance(d).target / 100)}</small>` : ''}</td><td>${esc(displayDate(borrowerTrackingDate(d)) || '—')}</td><td>${esc(d.due ? displayDate(d.due) : '—')}</td>${showClosureDate ? '<td>' + esc(displayDate(clientPayoutClosureDate(d)) || '—') + '</td>' : ''}<td><button type="button" class="link" data-edit-debtor="${esc(d.id)}">Düzenle</button><button type="button" class="link" data-add-guarantor="${esc(d.id)}">Kefil Ekle</button><button class="link" data-receipt="${esc(d.id)}">Tutanak Görüntüle ↗</button>${isAdmin ? `<button class="link" data-finance="${esc(d.id)}">Finansal İşlemler</button>` : ''}${hanAuth.canDelete ? `<button type="button" class="link" data-delete-document="${esc(d.id)}">Dosyayı Sil</button>` : ''}${isAdmin && debtorStatus(d) === 'Derdest' ? `<button type="button" class="link" data-move-enforcement="${esc(d.id)}">İcraya Taşı</button>` : ''}</td></tr>`,
       )
       .join('') ||
     `<tr><td colspan="${showClosureDate ? 9 : 8}" class="empty">Seçili durum ve aramayla eşleşen borçlu bulunamadı.</td></tr>`;
   document
     .querySelectorAll('[data-delete-document]')
-    .forEach((b) => (b.onclick = () => deleteBorrowerDocument(b.dataset.deleteDocument)));
+    .forEach(
+      (b) =>
+        (b.onclick = () =>
+          action(b.dataset.deleteDocument, () => deleteBorrowerDocument(b.dataset.deleteDocument))),
+    );
   document
     .querySelectorAll('[data-move-enforcement]')
-    .forEach((b) => (b.onclick = () => moveBorrowerToEnforcement(b.dataset.moveEnforcement)));
+    .forEach(
+      (b) =>
+        (b.onclick = () =>
+          action(b.dataset.moveEnforcement, () => moveBorrowerToEnforcement(b.dataset.moveEnforcement))),
+    );
   document
     .querySelectorAll('[data-save-assignment]')
-    .forEach((b) => (b.onclick = () => saveBorrowerAssignment(b.dataset.saveAssignment)));
+    .forEach(
+      (b) =>
+        (b.onclick = () =>
+          action(b.dataset.saveAssignment, () => saveBorrowerAssignment(b.dataset.saveAssignment))),
+    );
   document
     .querySelectorAll('[data-edit-debtor]')
-    .forEach((b) => (b.onclick = () => editBorrower(b.dataset.editDebtor)));
+    .forEach(
+      (b) => (b.onclick = () => action(b.dataset.editDebtor, () => editBorrower(b.dataset.editDebtor))),
+    );
   document.querySelectorAll('[data-add-guarantor]').forEach(
     (b) =>
-      (b.onclick = () => {
-        const d = db.docs.find((d) => d.id === b.dataset.addGuarantor);
-        if (d) guarantorForm(d);
-      }),
+      (b.onclick = () =>
+        action(b.dataset.addGuarantor, () => {
+          const d = db.docs.find((d) => d.id === b.dataset.addGuarantor);
+          if (d) guarantorForm(d);
+        })),
   );
   document
     .querySelectorAll('[data-row-status]')
     .forEach(
-      (select) => (select.onchange = () => changeDebtorStatus(select.dataset.rowStatus, select.value)),
+      (select) =>
+        (select.onchange = () =>
+          action(select.dataset.rowStatus, () => changeDebtorStatus(select.dataset.rowStatus, select.value))),
     );
   document
     .querySelectorAll('[data-debtor]')
-    .forEach((b) => (b.onclick = () => borrowerDetail(b.dataset.debtor)));
+    .forEach((b) => (b.onclick = () => action(b.dataset.debtor, () => borrowerDetail(b.dataset.debtor))));
   document
     .querySelectorAll('[data-finance]')
-    .forEach((b) => (b.onclick = () => financialOperations(b.dataset.finance)));
-  document.querySelectorAll('[data-receipt]').forEach((b) => (b.onclick = () => receipt(b.dataset.receipt)));
+    .forEach(
+      (b) => (b.onclick = () => action(b.dataset.finance, () => financialOperations(b.dataset.finance))),
+    );
+  document
+    .querySelectorAll('[data-receipt]')
+    .forEach((b) => (b.onclick = () => action(b.dataset.receipt, () => receipt(b.dataset.receipt))));
 }
 
 function receipt(id) {
@@ -1201,7 +1228,7 @@ function filteredBorrowers(docs, filters, status, query, isAdmin) {
 
 function borrowerFilterMarkup() {
   const f = borrowerFilters;
-  return `<form id="borrowerFilterForm" class="formbody"><div class="grid"><label class="field">Müvekkil<select name="client" data-optional="true"><option value="">Tüm Müvekkiller</option>${db.clients.map((c) => `<option value="${esc(c.id)}" ${f.client === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label class="field">Evrak Türü<select name="type" data-optional="true"><option value="">Tüm Evrak Türleri</option>${Object.keys(
+  return `<form id="borrowerFilterForm" class="formbody"><div class="grid"><label class="field">Müvekkil${window.hanRecordsEnabled && !window.hanWorkspaceComplete ? recordClientFilterMarkup() : `<select name="client" data-optional="true"><option value="">Tüm Müvekkiller</option>${db.clients.map((c) => `<option value="${esc(c.id)}" ${f.client === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>`}</label><label class="field">Evrak Türü<select name="type" data-optional="true"><option value="">Tüm Evrak Türleri</option>${Object.keys(
     documentTypes,
   )
     .map((t) => `<option value="${esc(t)}" ${f.type === t ? 'selected' : ''}>${esc(t)}</option>`)
@@ -1212,6 +1239,7 @@ function borrowerFilterMarkup() {
 
 function bindBorrowerFilters() {
   const form = $('#borrowerFilterForm');
+  if (window.hanRecordsEnabled) bindRecordClientLookup(form);
   for (const name of ['minAmount', 'maxAmount'])
     form.elements[name].oninput = () => form.elements[name].setCustomValidity('');
   form.onsubmit = (e) => {
@@ -1285,7 +1313,10 @@ function moveBorrowerToEnforcement(id) {
 function updateActiveDebtorCount() {
   const badge = document.getElementById('activeDebtorCount');
   if (!badge) return;
-  const count = db.docs.filter((d) => ['Derdest', 'İcra'].includes(debtorStatus(d))).length;
+  const count =
+    window.hanRecordsEnabled && !window.hanWorkspaceComplete
+      ? (window.hanRecordSummary?.activeDocuments ?? '…')
+      : db.docs.filter((d) => ['Derdest', 'İcra'].includes(debtorStatus(d))).length;
   badge.textContent = String(count);
   badge.setAttribute('aria-label', 'Derdest ve icra dosyaları toplamı: ' + count);
   badge.title = 'Derdest + İcra: ' + count;

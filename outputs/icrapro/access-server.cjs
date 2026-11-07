@@ -76,7 +76,7 @@ function createAccess(stateFile, options = {}) {
     state = next;
   }
   function persist(next, actor) {
-    prepareState(state, next, actor);
+    prepareState(state, next, actor, { skipPayroll: options.skipPayroll === true });
     saveState(next);
   }
   const publicUser = (u) => ({

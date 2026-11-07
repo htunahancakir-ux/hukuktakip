@@ -5,6 +5,8 @@ const { createInterface } = require('node:readline/promises');
 const { Writable } = require('node:stream');
 const { decryptState } = require('../lib/backup-service.cjs');
 const { createPool, importState, validateState } = require('../lib/postgres-store.cjs');
+const { inTransaction } = require('../lib/db-transaction.cjs');
+const { restoreAudit, validateAudit } = require('../lib/record-store/backup.cjs');
 
 function authorizeRestore(state, { username, password }) {
   const normalized = String(username || '')
@@ -40,6 +42,9 @@ async function restoreBackup({ file, rawKey, localTarget, credentials }) {
   }
   validateState(state);
   authorizeRestore(state, await credentials());
+  const auditBundle = state._hanBackup;
+  validateAudit(auditBundle);
+  delete state._hanBackup;
   delete state.backupPolicy;
   delete state.whatsappConfig;
   delete state.passwordRecovery;
@@ -53,7 +58,10 @@ async function restoreBackup({ file, rawKey, localTarget, credentials }) {
   if (!localTarget && process.env.DATABASE_URL) {
     const pool = createPool();
     try {
-      await importState(pool, state);
+      await inTransaction(pool, async (db) => {
+        await importState(db, state);
+        await restoreAudit(db, auditBundle);
+      });
     } catch (error) {
       if (error.code === '23505') throw new Error('Hedef veritabanında kayıt var. Boş bir hedef seçin.');
       throw error;
@@ -65,9 +73,22 @@ async function restoreBackup({ file, rawKey, localTarget, credentials }) {
   const target =
     localTarget || process.env.HANHUKUK_STATE_FILE || path.resolve(__dirname, '../work/hanhukuk-state.json');
   await fs.promises.mkdir(path.dirname(target), { recursive: true });
+  const auditTarget = path.join(path.dirname(target), 'audit-events.jsonl');
+  let auditCreated = false;
   try {
+    if (auditBundle) {
+      const rows = auditBundle.audit.map(({ occurred_at, ...row }) =>
+        JSON.stringify({ ...row, at: occurred_at }),
+      );
+      await fs.promises.writeFile(auditTarget, rows.join('\n') + (rows.length ? '\n' : ''), {
+        flag: 'wx',
+        mode: 0o600,
+      });
+      auditCreated = true;
+    }
     await fs.promises.writeFile(target, JSON.stringify(state), { flag: 'wx', mode: 0o600 });
   } catch (error) {
+    if (auditCreated) await fs.promises.unlink(auditTarget);
     if (error.code === 'EEXIST') throw new Error('Hedef dosya zaten var. Yeni bir dosya yolu seçin.');
     throw error;
   }

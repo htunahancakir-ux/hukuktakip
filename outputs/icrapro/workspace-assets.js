@@ -19,6 +19,7 @@ const workspaceScripts = [
   'workspace-scheduled-reminders.js',
   'client-records.js',
   'document-records.js',
+  'workspace-record-list.js',
   'form-inputs.js',
   'workspace-total-tooltips.js',
   'borrower-sheet.js',

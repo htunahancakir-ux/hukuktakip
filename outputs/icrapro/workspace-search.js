@@ -32,6 +32,8 @@ function setupWorkspaceSearch() {
     if (!item) return;
     close();
     input.value = '';
+    if (window.hanRecordsEnabled && item.type === 'document' && hanPageAllowed('documents'))
+      return recordAction(item.id, () => borrowerDetail(item.id));
     try {
       db = authApi('/api/data?key=icrapro-v1');
       if (item.type === 'client' && hanPageAllowed('clients')) {

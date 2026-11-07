@@ -346,6 +346,8 @@ function clientRows() {
 }
 
 function clientModal(id) {
+  if (window.hanRecordsEnabled && !window.hanWorkspaceComplete)
+    return ensureRecordWorkspace(() => clientModal(id));
   let c = db.clients.find((x) => x.id === id) || {};
   kind = c.type || 'Şahıs';
   $('#modal').innerHTML =

@@ -8,7 +8,72 @@ const protectedKeys = new Set([
   'icrapro-cases-v1',
 ]);
 const hanDataVersions = new Map();
+const hanDataBaselines = new Map();
+let hanStartupData = null;
+async function preloadServerData({ complete = false } = {}) {
+  if (window.hanRecordsEnabled && !complete) {
+    const response = await fetch('/api/records/bootstrap', {
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: { 'X-Han-Request': '1' },
+    });
+    const result = await response.json();
+    if (!response.ok) throw Error(result.error || 'Çalışma verileri alınamadı.');
+    if (!result.data || [...protectedKeys].some((key) => !Object.hasOwn(result.data, key)) || !result.summary)
+      throw Error('Çalışma verileri doğrulanamadı.');
+    hanStartupData = new Map([...protectedKeys].map((key) => [key, result.data[key]]));
+    for (const [key, value] of hanStartupData) hanDataBaselines.set(key, structuredClone(value));
+    window.hanRecordSummary = result.summary;
+    window.hanAccountBalances = result.accountBalances;
+    window.hanWorkspaceComplete = false;
+    return;
+  }
+  const rows = await Promise.all(
+    [...protectedKeys].map(async (key) => {
+      const url = '/api/data?key=' + encodeURIComponent(key);
+      const response = await fetch(url, {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { 'X-Han-Request': '1' },
+      });
+      const value = await response.json();
+      if (!response.ok) throw Error(value.error || 'Çalışma verileri alınamadı.');
+      const valid =
+        key === 'icrapro-v1'
+          ? Array.isArray(value?.clients) && Array.isArray(value?.docs)
+          : key === 'hanhukuk-accounting-v1'
+            ? Array.isArray(value?.accounts) && Array.isArray(value?.entries)
+            : key === 'icrapro-settings-v1'
+              ? value && typeof value === 'object' && !Array.isArray(value)
+              : Array.isArray(value);
+      if (!valid) throw Error('Çalışma verileri doğrulanamadı. Sayfayı yeniden yükleyin.');
+      return { key, url, value, version: response.headers.get('ETag') };
+    }),
+  );
+  // A failed read must not turn into an empty editable workspace. Publish the
+  // initial cache only after every required read succeeded.
+  hanStartupData = new Map(rows.map((row) => [row.key, row.value]));
+  for (const row of rows) {
+    hanDataBaselines.set(row.key, structuredClone(row.value));
+    if (row.version) hanDataVersions.set(row.url, row.version);
+  }
+  if (window.hanRecordsEnabled) window.hanWorkspaceComplete = true;
+}
 function authApi(url, method = 'GET', data) {
+  const submittedValue = data?.value;
+  const dataKey = url.startsWith('/api/data?') ? new URL(url, location.origin).searchParams.get('key') : null;
+  if (method === 'PUT' && dataKey && window.HanRecordPatch && hanDataBaselines.has(dataKey)) {
+    const patch = HanRecordPatch.diff(dataKey, hanDataBaselines.get(dataKey), data?.value);
+    if (patch) {
+      url = '/api/data/patch?key=' + encodeURIComponent(dataKey);
+      data = patch;
+    } else if (
+      window.hanRecordsEnabled &&
+      !window.hanWorkspaceComplete &&
+      ['icrapro-v1', 'hanhukuk-finance-v1', 'hanhukuk-accounting-v1', 'icrapro-cases-v1'].includes(dataKey)
+    )
+      throw Error('Bu işlem için tam çalışma verisi gerekir. İlgili bölümü yeniden açın.');
+  }
   const request = new XMLHttpRequest();
   request.open(method, url, false);
   request.setRequestHeader('X-Han-Request', '1');
@@ -39,7 +104,39 @@ function authApi(url, method = 'GET', data) {
   if (request.status < 200 || request.status >= 300)
     throw Object.assign(Error(result.error || 'İşlem yapılamadı.'), { code: result.code });
   const version = request.getResponseHeader('ETag');
+  if (result.accountBalances) window.hanAccountBalances = result.accountBalances;
+  if (method === 'GET' && url === '/api/session') window.hanRecordsEnabled = result.recordStore === true;
   if (version && url.startsWith('/api/data?')) hanDataVersions.set(url, version);
+  if (method === 'GET' && dataKey) hanDataBaselines.set(dataKey, structuredClone(result));
+  if (method === 'PUT' && dataKey) {
+    const saved = structuredClone(submittedValue);
+    const live =
+      dataKey === 'icrapro-v1' && typeof db !== 'undefined'
+        ? db
+        : dataKey === 'hanhukuk-finance-v1' && typeof financeEvents !== 'undefined'
+          ? financeEvents
+          : dataKey === 'hanhukuk-accounting-v1' && typeof accounting !== 'undefined'
+            ? accounting
+            : null;
+    for (const record of result.records || []) {
+      const rows = record.path.reduce((value, part) => value[part], saved);
+      const index = rows.findIndex((row) => row.id === record.id);
+      if (record.value && index >= 0)
+        for (const field of record.preservedFields || [])
+          if (Object.hasOwn(rows[index], field)) record.value[field] = rows[index][field];
+      if (record.value && index >= 0) rows[index] = record.value;
+      else if (record.value) rows.push(record.value);
+      else if (index >= 0) rows.splice(index, 1);
+      const liveRows = live && record.path.reduce((value, part) => value?.[part], live);
+      const current = liveRows?.find((row) => row.id === record.id);
+      if (current && record.value) {
+        for (const field of Object.keys(current))
+          if (!Object.hasOwn(record.value, field)) delete current[field];
+        Object.assign(current, structuredClone(record.value));
+      }
+    }
+    hanDataBaselines.set(dataKey, saved);
+  }
   return result;
 }
 function hanCan(permission) {
@@ -298,6 +395,14 @@ function installServerStorage() {
   const get = Storage.prototype.getItem,
     set = Storage.prototype.setItem;
   Storage.prototype.getItem = function (key) {
+    if (this === localStorage && hanStartupData?.has(key)) return JSON.stringify(hanStartupData.get(key));
+    if (
+      this === localStorage &&
+      window.hanRecordsEnabled &&
+      !window.hanWorkspaceComplete &&
+      hanDataBaselines.has(key)
+    )
+      return JSON.stringify(hanDataBaselines.get(key));
     if (this === localStorage && protectedKeys.has(key))
       return JSON.stringify(authApi('/api/data?key=' + encodeURIComponent(key)));
     return get.call(this, key);
@@ -305,12 +410,21 @@ function installServerStorage() {
   Storage.prototype.setItem = function (key, value) {
     if (this === localStorage && protectedKeys.has(key)) {
       authApi('/api/data?key=' + encodeURIComponent(key), 'PUT', { value: JSON.parse(value) });
+      hanStartupData?.delete(key);
       return;
     }
     return set.call(this, key, value);
   };
 }
 async function launchApplication() {
+  await new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'record-patch.js';
+    script.onload = resolve;
+    script.onerror = reject;
+    document.body.append(script);
+  });
+  await preloadServerData();
   for (const key of protectedKeys) localStorage.removeItem(key);
   installServerStorage();
   for (const file of workspaceScripts)
@@ -321,6 +435,7 @@ async function launchApplication() {
       script.onerror = reject;
       document.body.append(script);
     });
+  hanStartupData = null;
   document.getElementById('authGate')?.remove();
   document.querySelector('aside').hidden = false;
   document.querySelector('.shell').hidden = false;

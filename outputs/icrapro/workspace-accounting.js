@@ -137,6 +137,11 @@ function accountMovements() {
 }
 
 function accountBalance(id) {
+  if (window.hanRecordsEnabled && !window.hanWorkspaceComplete) {
+    const value = Number(window.hanAccountBalances?.[id]);
+    if (!Number.isSafeInteger(value)) throw Error('Hesap bakiyesi doğrulanamadı. Dosyayı yeniden açın.');
+    return value;
+  }
   return accountMovements()
     .filter((e) => e.accountId === id)
     .reduce((sum, e) => sum + e.signed, 0);

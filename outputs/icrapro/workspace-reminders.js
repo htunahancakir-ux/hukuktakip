@@ -125,6 +125,7 @@ function loadPaymentPromisesHome() {
 }
 
 function openPromiseBorrower(id) {
+  if (window.hanRecordsEnabled) return recordAction(id, () => borrowerDetail(id));
   try {
     const context = authApi('/api/payment-promises/context?documentId=' + encodeURIComponent(id)),
       d = db.docs.find((x) => x.id === id);

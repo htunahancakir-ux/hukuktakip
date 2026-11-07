@@ -841,7 +841,8 @@ function setupBorrowerNavigation(dialog, id) {
     button.disabled = index < 0 || !target;
     button.onclick = () => {
       if (!target || blockIncompletePropertyClose(dialog)) return;
-      borrowerDetail(target);
+      if (window.hanRecordsEnabled) recordAction(target, () => borrowerDetail(target));
+      else borrowerDetail(target);
     };
     nav.append(button);
   }
@@ -1058,13 +1059,15 @@ function setupBorrowerChain(dialog, d) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'secondary sheet-chain-button';
-  const count = (d.linkedDocumentIds || []).filter((id) => db.docs.some((x) => x.id === id)).length;
+  const count = (d.linkedDocumentIds || []).length;
   button.textContent = '🔗 Zincir Yap' + (count ? ' (' + count + ')' : '');
   button.onclick = () => openBorrowerChain(d.id);
   dialog.querySelector(':scope > .panelhead').append(button);
 }
 
 function openBorrowerChain(id) {
+  if (window.hanRecordsEnabled && !window.hanWorkspaceComplete)
+    return ensureRecordWorkspace(() => openBorrowerChain(id));
   const d = db.docs.find((d) => d.id === id);
   if (!d) return;
   let dialog = document.getElementById('borrowerChainDialog');

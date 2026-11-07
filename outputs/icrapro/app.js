@@ -148,6 +148,7 @@ function toast(t, scope) {
 
 function stats() {
   updateActiveDebtorCount();
+  if (window.hanRecordsEnabled && !window.hanWorkspaceComplete) return renderRecordStats();
   const scoped = page === 'intake' && selected;
   const docs = scoped ? db.docs.filter((d) => d.client === selected) : db.docs;
   docs.forEach((d) => {
@@ -195,6 +196,13 @@ function stats() {
 }
 
 function render() {
+  if (typeof recordPageNeedsCompatibility === 'function' && recordPageNeedsCompatibility()) {
+    const requestedPage = page;
+    $('#content').textContent = 'Çalışma verileri yükleniyor…';
+    return ensureRecordWorkspace(() => {
+      if (page === requestedPage) render();
+    });
+  }
   document.getElementById('newIntakeDocument')?.remove();
   updateActiveDebtorCount();
   if (window.hanAuth && !hanPageAllowed(page)) page = staffHome();
@@ -296,7 +304,9 @@ if (embeddedIntake) {
   style.textContent =
     'body{display:block;min-height:0}.shell{margin:0;width:100%}.shell main{padding:0;margin:0;max-width:none}aside,.shell>header,.shell .heading,.shell footer,#stats,#clientScopeBar{display:none!important}';
   document.head.append(style);
-  intake(undefined, true);
+  if (window.hanRecordsEnabled && !window.hanWorkspaceComplete)
+    ensureRecordWorkspace(() => intake(undefined, true));
+  else intake(undefined, true);
   const resize = () => {
     if (window.frameElement)
       window.frameElement.style.height =

@@ -28,6 +28,7 @@ async function handleSessionRoutes(ctx) {
       user: u ? publicUser(u) : null,
       employeeTermsRequired: ctx.termsRequired,
       appVersion,
+      recordStore: options.recordStore === true,
     });
     return true;
   }

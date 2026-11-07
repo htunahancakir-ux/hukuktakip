@@ -1,4 +1,5 @@
 const { validateNewClientPayouts, appendClientPayout } = require('../../lib/client-payout.cjs');
+const { apply: applyRecordPatch } = require('./record-patch.js');
 async function handleDataRoutes(ctx) {
   const {
     req,
@@ -73,20 +74,50 @@ async function handleDataRoutes(ctx) {
     send(res, 200, { ok: true });
     return true;
   }
-  if (url.pathname === '/api/data') {
+  if (url.pathname === '/api/data' || url.pathname === '/api/data/patch') {
+    const patchRequest = url.pathname === '/api/data/patch';
     const key = url.searchParams.get('key');
     if (!dataKeys.includes(key)) throw fail(404, 'Veri bulunamadı.');
     res.hanDataKey = key;
-    if (req.method === 'GET') {
+    if (req.method === 'GET' && !patchRequest) {
       res.setHeader('ETag', revision(key));
       send(res, 200, readKey(key, u));
       return true;
     }
     if (req.method !== 'PUT') throw fail(405, 'Yöntem desteklenmiyor.');
-    if (options.requireRevision && !req.headers['if-match']) throw fail(428, 'Önce güncel kaydı yükleyin.');
-    if (req.headers['if-match'] && req.headers['if-match'] !== revision(key))
+    if (!patchRequest && options.requireRevision && !req.headers['if-match'])
+      throw fail(428, 'Önce güncel kaydı yükleyin.');
+    if (!patchRequest && req.headers['if-match'] && req.headers['if-match'] !== revision(key))
       throw fail(409, 'Kayıt başka bir işlemle değişti. Sayfayı yenileyip tekrar deneyin.');
-    const v = await body(req),
+    const incoming = await body(req);
+    const sendSaved = () => {
+      if (!patchRequest || !options.recordStore) return send(res, 200, { ok: true });
+      const current = readKey(key, u),
+        seen = new Set(),
+        records = [];
+      for (const change of incoming.changes) {
+        const identity = JSON.stringify([change.path, change.id]);
+        if (seen.has(identity)) continue;
+        seen.add(identity);
+        const rows = change.path.reduce((value, part) => value?.[part], current);
+        const value = rows.find((row) => row.id === change.id) || null;
+        const preservedFields = [];
+        if (key === 'icrapro-v1' && value)
+          for (const field of ['fileData', 'photoData', 'attachments']) {
+            if (!Object.hasOwn(value, field)) continue;
+            preservedFields.push(field);
+            delete value[field];
+          }
+        records.push({
+          path: change.path,
+          id: change.id,
+          value,
+          preservedFields,
+        });
+      }
+      send(res, 200, { ok: true, records });
+    };
+    const v = patchRequest ? { value: applyRecordPatch(key, readKey(key, u), incoming) } : incoming,
       next = structuredClone(ctx.state);
     if (['ceo', 'admin'].includes(u.role) || (key === 'hanhukuk-finance-v1' && allowed(u, 'documents'))) {
       if (key === 'hanhukuk-accounting-v1') validateNewClientPayouts(ctx.state, v.value, u);
@@ -198,7 +229,7 @@ async function handleDataRoutes(ctx) {
         }
       if (key === 'icrapro-v1') next.data[key].docs.forEach((d) => applyParkingFee(d, parkingToday()));
       persist(next);
-      send(res, 200, { ok: true });
+      sendSaved();
       return true;
     }
     if (key !== 'icrapro-v1') throw fail(403, 'Bu veriyi değiştirme yetkiniz yok.');
@@ -342,7 +373,7 @@ async function handleDataRoutes(ctx) {
       });
     } else if (value.docs.length) throw fail(403, 'Evrak değiştirme yetkiniz yok.');
     persist(next);
-    send(res, 200, { ok: true });
+    sendSaved();
     return true;
   }
   return false;

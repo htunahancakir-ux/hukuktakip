@@ -1,10 +1,14 @@
 const crypto = require('node:crypto');
 const http = require('node:http');
 const { PGlite } = require('@electric-sql/pglite');
+const { pg_trgm } = require('@electric-sql/pglite/contrib/pg_trgm');
 const { migrate } = require('../../lib/postgres-store.cjs');
 const password = 'Synthetic-Postgres-Test-Only';
+// Derive this synthetic credential before opening the WASM database. Reusing it
+// avoids overlapping PostgreSQL memory with a new scrypt allocation per fixture.
+const credentialSalt = crypto.randomBytes(16).toString('hex');
+const credentialHash = crypto.scryptSync(password, credentialSalt, 64).toString('hex');
 function fixture() {
-  const salt = crypto.randomBytes(16).toString('hex');
   return {
     users: [
       {
@@ -14,8 +18,8 @@ function fixture() {
         role: 'ceo',
         active: true,
         permissions: [],
-        salt,
-        hash: crypto.scryptSync(password, salt, 64).toString('hex'),
+        salt: credentialSalt,
+        hash: credentialHash,
       },
     ],
     data: {
@@ -32,7 +36,7 @@ function fixture() {
 // PGlite executes actual PostgreSQL SQL; one local connection is queued here.
 // A separate integration test against Supabase is still required before deployment.
 async function database(migrateSchema = true) {
-  const pg = new PGlite();
+  const pg = new PGlite({ extensions: { pg_trgm } });
   let queue = Promise.resolve();
   const query = async (sql, params) => {
     if (!params && /CREATE (SCHEMA|TABLE)/.test(sql)) {
