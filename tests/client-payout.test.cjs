@@ -118,3 +118,23 @@ test('Accounting save displays the actual rejection and does not change local ba
  const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');const source=fs.readFileSync(path.join(__dirname,'../outputs/icrapro/workspace-accounting.js'),'utf8');const helper=source.slice(source.indexOf('function saveAccounting'),source.indexOf('function accountOptions'));
  let message='';const accounting={entries:[]};const ctx={accounting,localStorage:{setItem(){throw Error('Kayıt başka bir işlemle değişti. Sayfayı yenileyip tekrar deneyin.');}},toast:value=>message=value};vm.createContext(ctx);vm.runInContext(helper,ctx);assert.equal(ctx.saveAccounting({entries:[{amount:100}]}),false);assert.equal(ctx.accounting,accounting);assert(message.includes('Kayıt başka bir işlemle değişti'));
 });
+
+test('Client debtor report shows client entitlement, partial payouts and remaining instead of borrower collections',()=>{
+ const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+ const read=name=>fs.readFileSync(path.join(__dirname,'../outputs/icrapro',name),'utf8');
+ const finance=read('finance-operations.js'), reports=read('workspace-reports.js');
+ const document={id:'d',client:'c',debtor:'Test',amount:1000,status:'İnfaz',created:'2026-01-01'};
+ const ctx={db:{clients:[{id:'c',name:'Test Client'}],docs:[document]},personnel:[],accounting:{accounts:[],entries:[]},
+   financeCents:v=>Math.round(Number(v||0)*100),docFinance:()=>({principal:100000,received:150000,remaining:0}),
+   debtorStatus:d=>d.status,displayDate:v=>v,isParkingDocument:d=>d.docType==='Yediemin Park Ücreti',
+   validParkingRate:d=>Number.isFinite(d.parkingCommissionRate),parkingCommission:(amount,rate)=>Math.round(amount*rate/100)};
+ vm.createContext(ctx);
+ vm.runInContext(finance.slice(finance.indexOf('function clientPayoutTotals(d)'),finance.indexOf('function clientPayoutSection(d)')),ctx);
+ vm.runInContext(reports.slice(0,reports.indexOf('function filterReportRows')),ctx);
+ const check=(expected)=>{const cells=ctx.reportRows('clientDebtorInfo')[0].cells;assert.equal(cells.clientEntitlement,expected[0]);assert.equal(cells.clientPaid,expected[1]);assert.equal(cells.clientRemaining,expected[2]);assert.equal(Object.hasOwn(cells,'received'),false);};
+ check([100000,0,100000]);
+ ctx.accounting.entries.push({id:'p1',type:'clientPayout',documentId:'d',amount:25000});check([100000,25000,75000]);
+ document.clientPaidAmount=100;check([100000,35000,65000]);
+ ctx.accounting.entries.push({id:'p2',type:'clientPayout',documentId:'d',amount:65000});check([100000,100000,0]);
+ Object.assign(document,{docType:'Yediemin Park Ücreti',parkingCommissionRate:20,clientPaidAmount:0});ctx.accounting.entries=[];check([120000,0,120000]);
+});

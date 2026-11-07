@@ -201,3 +201,7 @@ aside > .brand-home { font-size: 19px; line-height: 1.25; gap: 9px; flex-shrink:
 aside > .brand-home strong { min-width: 0; letter-spacing: 0; }
 @media (min-width: 701px) and (max-height: 760px) { aside > .brand-home { font-size: 19px; } }
 @media (min-width: 701px) and (max-width: 1050px) { aside > .brand-home { font-size: 17px; } }
+
+.total-heading-tooltip { position: fixed; inset: auto; margin: 0; max-width: min(360px, calc(100vw - 16px)); padding: 8px 12px; border: 1px solid #355b7b; border-radius: 6px; background: #17354f; color: #fff; font: 600 12px/1.45 'Segoe UI', Arial, sans-serif; text-align: center; white-space: normal; overflow-wrap: anywhere; box-shadow: 0 4px 14px #12273833; pointer-events: none; z-index: 2147483647; }
+.total-heading-tooltip[hidden] { display: none; }
+@media print { .total-heading-tooltip { display: none !important; } }

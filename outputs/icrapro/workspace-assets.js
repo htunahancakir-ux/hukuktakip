@@ -19,6 +19,7 @@ const workspaceScripts = [
   'client-records.js',
   'document-records.js',
   'form-inputs.js',
+  'workspace-total-tooltips.js',
   'borrower-sheet.js',
   'finance-operations.js',
   'workspace-accounting.js',

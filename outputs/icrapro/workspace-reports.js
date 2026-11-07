@@ -167,7 +167,8 @@ function reportRows(type) {
     }
   if (type === 'clientDebtorInfo')
     for (const d of db.docs) {
-      const f = docFinance(d);
+      const f = docFinance(d),
+        payout = clientPayoutTotals(d);
       add(d.due || d.created, d, {
         status: debtorStatus(d),
         debtor: d.debtor,
@@ -184,7 +185,9 @@ function reportRows(type) {
         tapu:
           [d.tapuStatus, d.tapuStatus === 'Var' ? d.tapuDetails : ''].filter(Boolean).join(' · ') ||
           'Belirtilmedi',
-        received: f.received,
+        clientEntitlement: payout.entitlement,
+        clientPaid: payout.paid,
+        clientRemaining: payout.remaining,
         note: (d.conversations || [])
           .filter((c) => c.result === 'Raporlandı')
           .sort((a, b) => (a.date + 'T' + a.time).localeCompare(b.date + 'T' + b.time))
