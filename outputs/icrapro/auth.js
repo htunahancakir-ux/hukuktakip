@@ -139,7 +139,113 @@ function openHeaderNotifications() {
   render();
 }
 
+function openDeletionPanel() {
+  if (!hanAuth.canDelete) return;
+  let dialog = document.getElementById('deleteOperationsDialog');
+  if (!dialog) {
+    dialog = document.createElement('dialog');
+    dialog.id = 'deleteOperationsDialog';
+    document.body.append(dialog);
+  }
+  dialog.innerHTML = `<div class="panelhead"><h2>İşlem Silme</h2><button type="button" class="secondary" data-close>Kapat</button></div>
+    <div class="formbody"><p>Silme yetkisi yalnızca hesabınıza aittir. Silinen kayıtların kopyası arşivde korunur.</p>
+    <form data-search class="grid"><label class="field">Kayıt Türü<select name="type">
+    <option value="accounting">Muhasebe / Müvekkil Ödemeleri</option><option value="finance">Tahsilat / Masraf</option>
+    <option value="conversations">Görüşmeler</option><option value="documents">Borçlu Dosyaları</option>
+    <option value="clients">Müvekkiller</option><option value="accounts">Hesaplar</option>
+    <option value="personnel">Personel</option><option value="cases">İcra İşlemleri</option></select></label>
+    <label class="field">Ara<input name="q" placeholder="Dosya numarası, ad veya açıklama"></label><button class="primary">Listele</button></form>
+    <p data-status role="status"></p><div data-rows></div><div class="actions"><button class="secondary" data-prev>Önceki</button><button class="secondary" data-next>Sonraki</button></div></div>`;
+  let offset = 0,
+    dirty = false;
+  const form = dialog.querySelector('[data-search]'),
+    status = dialog.querySelector('[data-status]');
+  const load = () => {
+    try {
+      const type = form.elements.type.value,
+        q = form.elements.q.value;
+      const result = authApi('/api/operations/delete?' + new URLSearchParams({ type, q, offset }));
+      status.textContent =
+        result.total +
+        ' kayıt · ' +
+        (result.total ? offset + 1 : 0) +
+        '–' +
+        Math.min(offset + 50, result.total);
+      dialog.querySelector('[data-prev]').disabled = offset === 0;
+      dialog.querySelector('[data-next]').disabled = offset + 50 >= result.total;
+      const host = dialog.querySelector('[data-rows]');
+      host.replaceChildren();
+      for (const row of result.items) {
+        const box = document.createElement('div');
+        box.className = 'panel formbody';
+        const label = document.createElement('p');
+        label.textContent = row.label || row.id;
+        const date = document.createElement('small');
+        date.textContent =
+          String(row.date || '') +
+          (Number.isFinite(row.amountTl)
+            ? ' · ' +
+              new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(row.amountTl)
+            : '');
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'secondary';
+        button.textContent = 'Sil';
+        button.onclick = () => {
+          if (!confirm((row.label || row.id) + '\n\nBu kaydı silmek istediğinize emin misiniz?')) return;
+          try {
+            authApi('/api/operations/delete', 'POST', {
+              type,
+              id: row.id,
+              documentId: row.documentId,
+              revision: row.revision,
+            });
+            dirty = true;
+            load();
+            toast('Kayıt silindi; arşiv kopyası korundu.');
+          } catch (error) {
+            status.textContent = error.message;
+          }
+        };
+        box.append(label, date, button);
+        host.append(box);
+      }
+    } catch (error) {
+      status.textContent = error.message;
+    }
+  };
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    offset = 0;
+    load();
+  };
+  form.elements.type.onchange = () => {
+    offset = 0;
+    load();
+  };
+  dialog.querySelector('[data-prev]').onclick = () => {
+    offset = Math.max(0, offset - 50);
+    load();
+  };
+  dialog.querySelector('[data-next]').onclick = () => {
+    offset += 50;
+    load();
+  };
+  dialog.querySelector('[data-close]').onclick = () => dialog.close();
+  dialog.onclose = () => {
+    if (dirty) location.reload();
+  };
+  dialog.showModal();
+  load();
+}
 function accessMenu() {
+  if (hanAuth.canDelete && !document.getElementById('deleteOperationsNavigation')) {
+    const button = document.createElement('button');
+    button.id = 'deleteOperationsNavigation';
+    button.textContent = 'İşlem Silme';
+    button.onclick = openDeletionPanel;
+    document.querySelector('nav').append(button);
+  }
   document
     .querySelectorAll('nav [data-page]')
     .forEach((button) => (button.hidden = !hanPageAllowed(button.dataset.page)));

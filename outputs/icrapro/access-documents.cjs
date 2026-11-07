@@ -1,10 +1,11 @@
 const { activeArchives } = require('../../lib/document-archive.cjs');
+const { canDelete, denied } = require('../../lib/deletion-policy.cjs');
 
 async function handleDocumentRoutes(ctx) {
   const { req, res, url, u, persist, current, allowed, fail, body, send, parkingToday, applyParkingFee } =
     ctx;
   if (url.pathname === '/api/documents/delete' && req.method === 'POST') {
-    if (!['ceo', 'admin'].includes(u.role)) throw fail(403, 'Dosyayı yalnızca CEO ve yönetici silebilir.');
+    if (!canDelete(u)) throw denied();
     const v = await body(req),
       doc = ctx.state.data['icrapro-v1'].docs.find((d) => d.id === v.documentId);
     if (!doc) throw fail(404, 'Dosya bulunamadı.');

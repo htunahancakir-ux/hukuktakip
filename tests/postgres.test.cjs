@@ -544,6 +544,13 @@ test('Audit tracks successful changes and separates login, logout and failed log
   const state = fixture();
   state.users.push(
     { ...state.users[0], id: 'audit-admin', username: 'admin', role: 'admin', name: 'Deneme Yönetici' },
+    {
+      ...state.users[0],
+      id: require('../lib/deletion-policy.cjs').OWNER_ID,
+      username: 'owner',
+      role: 'ceo',
+      name: 'HAN',
+    },
     { ...state.users[0], id: 'audit-staff', username: 'staff', role: 'staff', staffId: 'person-1' },
   );
   state.data['icrapro-personnel-v1'].push({ id: 'person-1', name: 'Personel', active: true });
@@ -598,13 +605,13 @@ test('Audit tracks successful changes and separates login, logout and failed log
     assert.deepEqual(await search('cagdas', staff), ['doc-1']);
     assert.deepEqual(await search('5329876543', staff), ['doc-1']);
     const dataUrl = app.url + '/api/data?key=icrapro-v1';
-    async function update(change, status = 200) {
-      const old = await fetch(dataUrl, { headers: { cookie: admin } });
+    async function update(change, status = 200, cookie = admin) {
+      const old = await fetch(dataUrl, { headers: { cookie } });
       const value = await old.json();
       change(value);
       const next = await fetch(dataUrl, {
         method: 'PUT',
-        headers: { ...mutation, cookie: admin, 'If-Match': old.headers.get('etag') },
+        headers: { ...mutation, cookie, 'If-Match': old.headers.get('etag') },
         body: JSON.stringify({ value }),
       });
       assert.equal(next.status, status);
@@ -615,7 +622,9 @@ test('Audit tracks successful changes and separates login, logout and failed log
     await update((value) => {
       value.docs.find((row) => row.id === 'audit-doc').notes = 'Synthetic private content';
     });
-    assert.equal((await post('/api/documents/delete', { documentId: 'audit-doc' }, admin)).status, 200);
+    assert.equal((await post('/api/documents/delete', { documentId: 'audit-doc' }, admin)).status, 403);
+    const owner = await login('owner');
+    assert.equal((await post('/api/documents/delete', { documentId: 'audit-doc' }, owner)).status, 200);
     assert.equal(
       (await fetch(app.url + '/api/documents/archived', { headers: { cookie: staff } })).status,
       403,
@@ -624,7 +633,7 @@ test('Audit tracks successful changes and separates login, logout and failed log
       await fetch(app.url + '/api/documents/archived', { headers: { cookie: admin } })
     ).json();
     assert.equal(archived.items[0].number, 'EVR-3');
-    assert.equal(archived.items[0].deletedByName, 'Deneme Yönetici');
+    assert.equal(archived.items[0].deletedByName, 'HAN');
     assert.equal((await post('/api/logout', {}, staff)).status, 200);
     const log = async (category, extras = '') => {
       const response = await fetch(app.url + '/api/audit?category=' + category + extras, {
@@ -637,7 +646,7 @@ test('Audit tracks successful changes and separates login, logout and failed log
     };
     assert.deepEqual(
       (await log('login')).map((row) => row.actor_username),
-      ['staff', 'admin'],
+      ['owner', 'staff', 'admin'],
     );
     assert.deepEqual(
       (await log('logout')).map((row) => row.actor_username),
@@ -652,9 +661,9 @@ test('Audit tracks successful changes and separates login, logout and failed log
     );
     assert.deepEqual(
       records.map((row) => row.action),
-      ['delete', 'update', 'create'],
+      ['update', 'create'],
     );
-    assert.ok(records[1].fields.includes('Notlar'));
+    assert.ok(records[0].fields.includes('Notlar'));
     assert.ok(records.every((row) => row.area === 'Evraklar' && row.actor_username === 'admin'));
     assert.ok(records.every((row) => Number.isFinite(Date.parse(row.at))));
     assert.equal(
@@ -666,9 +675,13 @@ test('Audit tracks successful changes and separates login, logout and failed log
     assert.equal(restored.docs.find((row) => row.id === 'audit-doc').notes, 'Synthetic private content');
     assert.ok(!restored.archivedNumbers.includes('EVR-3'));
     assert.equal((await log('changes', '&action=restore'))[0].record_ref, 'EVR-3');
-    await update((value) => {
-      value.docs = value.docs.filter((row) => row.id !== 'doc-2');
-    });
+    await update(
+      (value) => {
+        value.docs = value.docs.filter((row) => row.id !== 'doc-2');
+      },
+      200,
+      owner,
+    );
     const removed = await (
       await fetch(app.url + '/api/documents/archived', { headers: { cookie: admin } })
     ).json();

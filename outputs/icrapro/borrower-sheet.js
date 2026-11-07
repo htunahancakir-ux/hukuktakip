@@ -1461,7 +1461,7 @@ function openCollectionReceipt(eventId) {
 }
 
 function setupBorrowerDeletion(dialog, d) {
-  if (!['ceo', 'admin'].includes(hanAuth.role)) return;
+  if (!hanAuth.canDelete) return;
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'secondary sheet-delete-button';
@@ -1471,7 +1471,7 @@ function setupBorrowerDeletion(dialog, d) {
 }
 
 function deleteBorrowerDocument(id) {
-  if (!['ceo', 'admin'].includes(hanAuth.role)) return;
+  if (!hanAuth.canDelete) return;
   const d = db.docs.find((d) => d.id === id);
   if (
     !d ||

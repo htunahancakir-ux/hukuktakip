@@ -18,6 +18,8 @@ const { handleDocumentRoutes } = require('./access-documents.cjs');
 const { handleCommunicationRoutes } = require('./access-communications.cjs');
 const { handlePersonnelRoutes } = require('./access-personnel.cjs');
 const { handleDataRoutes } = require('./access-data.cjs');
+const { handleDeletionRoutes } = require('./access-deletion.cjs');
+const { canDelete } = require('../../lib/deletion-policy.cjs');
 const { recognizedCollectionRevenue } = require('./profit-rules.js');
 const { syncPayrollPeriods } = require('./payroll-periods.cjs');
 const { isCallcenter, calculateCallcenterBonus } = require('./personnel-bonus.cjs');
@@ -76,6 +78,7 @@ function createAccess(stateFile, options = {}) {
     staffId: u.staffId || '',
     permissions: ['ceo', 'admin'].includes(u.role) ? permissions : u.permissions,
     active: u.active,
+    canDelete: canDelete(u),
   });
   function userEnabled(u) {
     if (options.userEnabled) return options.userEnabled(u);
@@ -333,6 +336,7 @@ function createAccess(stateFile, options = {}) {
         return true;
       }
       if (await handleWorkflowRoutes(ctx)) return true;
+      if (await handleDeletionRoutes(ctx)) return true;
       if (await handleDocumentRoutes(ctx)) return true;
       if (await handleCommunicationRoutes(ctx)) return true;
       if (await handlePersonnelRoutes(ctx)) return true;
