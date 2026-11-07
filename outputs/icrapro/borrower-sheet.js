@@ -581,8 +581,10 @@ function layoutBorrowerSheet(dialog, d, f, client) {
   const head = dialog.querySelector(':scope > .panelhead'),
     body = dialog.querySelector(':scope > .formbody');
   head.querySelector('h2').textContent = 'Borçlu Föyü · ' + d.number;
-  const field = (label, value) =>
-    '<div class="sheet-meta-field"><small>' +
+  const field = (label, value, className = '') =>
+    '<div class="sheet-meta-field' +
+    (className ? ' ' + className : '') +
+    '"><small>' +
     label +
     '</small><strong>' +
     esc(value || '—') +
@@ -607,7 +609,7 @@ function layoutBorrowerSheet(dialog, d, f, client) {
       : '<strong>—</strong>') +
     '</div>' +
     field('Vade Tarihi', isParkingDocument(d) ? '—' : displayDate(d.due)) +
-    field('Borçlu', d.debtor) +
+    field('Borçlu', d.debtor, 'sheet-debtor-name') +
     field('TC / Vergi No', d.identity) +
     field('Telefon', d.phone1) +
     field('İl / İlçe', [d.city, d.district].filter(Boolean).join(' / ')) +
