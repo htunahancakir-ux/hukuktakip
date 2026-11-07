@@ -16,7 +16,7 @@ function borrowerDetail(id, savedForm) {
   const value = (label, v) =>
     `<div class="detail-field"><small>${label}</small><div>${esc(displayDate(v) || '—')}</div></div>`;
   const address = (label, a, district, city) => value(label, [a, district, city].filter(Boolean).join(' / '));
-  dialog.innerHTML = `<div class="panelhead"><div><h2>Borçlu Detayı · <span class="debtor-name-emphasis">${esc(d.debtor)}</span></h2><p>${esc(d.number)} · ${esc(type)} · ${esc(client?.name || '')}</p><p><b>Dosya Sorumlusu:</b> ${esc(personnel.find((p) => p.id === d.relatedStaff)?.name || d.relatedStaffName || 'Atanmad?')}</p></div><div class="toolbar">${(Array.isArray(d.guarantors) ? d.guarantors : []).map((g, index) => `<button type="button" class="primary guarantor-top-button" data-top-guarantor="${esc(g.id)}" title="${esc(g.name)}" aria-label="Kefil ${index + 1}: ${esc(g.name)}">♙ Kefil ${index + 1}</button>`).join('')}<button class="secondary" id="closeBorrower">Kapat</button></div></div><div class="formbody"><div class="settings-tabs borrower-tabs" role="tablist" aria-label="Borçlu föyü bölümleri">${borrowerSheetTabs.map(([key, label]) => `<button type="button" role="tab" id="borrower-tab-${key}" aria-controls="borrower-panel-${key}" data-borrower-tab="${key}">${label}</button>`).join('')}</div><section role="tabpanel" id="borrower-panel-personal" aria-labelledby="borrower-tab-personal" data-borrower-panel="personal"><h3 class="sectiontitle">Borçlu Bilgileri</h3><div class="grid"><div class="detail-field"><small>Ad Soyad / Unvan</small><div class="borrower-sheet-name">${esc(d.debtor || '—')}</div></div>${value('Takip Tarihi', borrowerTrackingDate(d))}${value('TC Kimlik / Vergi No', d.identity)}${value('Tel-1', d.phone1)}${value('Tel-2', d.phone2)}${value('Ref. Tel-1', d.referencePhone1)}${value('Ref. Tel-2', d.referencePhone2)}${value('Ofis Tel-1', d.officePhone1)}${value('Ofis Tel-2', d.officePhone2)}${address('Borçlu Adres-1', d.address, d.district, d.city)}${address('Borçlu Adres-2', d.address2, d.address2District, d.address2City)}${address('Borçlu Adres (Ofis)-3', d.officeAddress3, d.officeAddress3District, d.officeAddress3City)}${(d.additionalPhones || []).map((phone, i) => value('Ek Telefon ' + (i + 1), phone)).join('')}${(d.additionalAddresses || []).map((a, i) => address('Ek Adres ' + (i + 1), a.address, a.district, a.city)).join('')}${value('Dosya Sorumlusu', personnel.find((p) => p.id === d.relatedStaff)?.name || d.relatedStaffName)}</div></section><section role="tabpanel" id="borrower-panel-assets" aria-labelledby="borrower-tab-assets" data-borrower-panel="assets" hidden>${propertySummary(d)}</section><section role="tabpanel" id="borrower-panel-guarantors" aria-labelledby="borrower-tab-guarantors" data-borrower-panel="guarantors" hidden>${guarantorSection(d)}</section><section role="tabpanel" id="borrower-panel-conversations" aria-labelledby="borrower-tab-conversations" data-borrower-panel="conversations" hidden>${borrowerConversationsMarkup(d)}</section><section role="tabpanel" id="borrower-panel-payout" aria-labelledby="borrower-tab-payout" data-borrower-panel="payout" hidden>${clientPayoutSection(d)}</section><section role="tabpanel" id="borrower-panel-finance" aria-labelledby="borrower-tab-finance" data-borrower-panel="finance" hidden><h3 class="sectiontitle" style="margin-top:30px">Finansal Bilgiler</h3><form id="borrowerStatusForm"><div class="grid"><label class="field">Durum<select name="status">${['Derdest', 'İade', 'İnfaz', 'İcra'].map((s) => `<option ${s === (d.status || 'Derdest') ? 'selected' : ''}>${s}</option>`).join('')}</select></label>${debtorStatus(d) === 'İnfaz' ? value('İnfaz Tarihi', clientPayoutClosureDate(d)) : ''}<div class="detail-status-action"><button class="primary">Durumu Kaydet</button></div></div></form><div class="stats" style="margin-top:20px">${[
+  dialog.innerHTML = `<div class="panelhead"><div><h2>Borçlu Detayı · <span class="debtor-name-emphasis">${esc(d.debtor)}</span></h2><p>${esc(d.number)} · ${esc(type)} · ${esc(client?.name || '')}</p><p><b>Dosya Sorumlusu:</b> ${esc(personnel.find((p) => p.id === d.relatedStaff)?.name || d.relatedStaffName || 'Atanmad?')}</p></div><div class="toolbar">${(Array.isArray(d.guarantors) ? d.guarantors : []).map((g, index) => `<button type="button" class="primary guarantor-top-button" data-top-guarantor="${esc(g.id)}" title="${esc(g.name)}" aria-label="Kefil ${index + 1}: ${esc(g.name)}">♙ Kefil ${index + 1}</button>`).join('')}<button class="secondary" id="closeBorrower">Kapat</button></div></div><div class="formbody"><div class="settings-tabs borrower-tabs" role="tablist" aria-label="Borçlu föyü bölümleri">${borrowerSheetTabs.map(([key, label]) => `<button type="button" role="tab" id="borrower-tab-${key}" aria-controls="borrower-panel-${key}" data-borrower-tab="${key}">${label}</button>`).join('')}</div><section role="tabpanel" id="borrower-panel-personal" aria-labelledby="borrower-tab-personal" data-borrower-panel="personal"><h3 class="sectiontitle">Borçlu Bilgileri</h3><div class="grid"><div class="detail-field"><small>Ad Soyad / Unvan</small><div class="borrower-sheet-name">${esc(d.debtor || '—')}</div></div>${value('Takip Tarihi', borrowerTrackingDate(d))}${value('TC Kimlik / Vergi No', d.identity)}${value('Tel-1', d.phone1)}${value('Tel-2', d.phone2)}${value('Ref. Tel-1', d.referencePhone1)}${value('Ref. Tel-2', d.referencePhone2)}${value('Ofis Tel-1', d.officePhone1)}${value('Ofis Tel-2', d.officePhone2)}${address('Borçlu Adres-1', d.address, d.district, d.city)}${address('Borçlu Adres-2', d.address2, d.address2District, d.address2City)}${address('Borçlu Adres (Ofis)-3', d.officeAddress3, d.officeAddress3District, d.officeAddress3City)}${(d.additionalPhones || []).map((phone, i) => value('Ek Telefon ' + (i + 1), phone)).join('')}${(d.additionalAddresses || []).map((a, i) => address('Ek Adres ' + (i + 1), a.address, a.district, a.city)).join('')}${value('Dosya Sorumlusu', personnel.find((p) => p.id === d.relatedStaff)?.name || d.relatedStaffName)}</div></section><section role="tabpanel" id="borrower-panel-assets" aria-labelledby="borrower-tab-assets" data-borrower-panel="assets" hidden>${propertySummary(d)}</section><section role="tabpanel" id="borrower-panel-guarantors" aria-labelledby="borrower-tab-guarantors" data-borrower-panel="guarantors" hidden>${guarantorSection(d)}</section><section role="tabpanel" id="borrower-panel-conversations" aria-labelledby="borrower-tab-conversations" data-borrower-panel="conversations" hidden>${borrowerConversationsMarkup(d)}</section><section role="tabpanel" id="borrower-panel-financial" aria-labelledby="borrower-tab-financial" data-borrower-panel="financial" hidden>${borrowerFinanceOverview(d, f)}</section><section role="tabpanel" id="borrower-panel-payout" aria-labelledby="borrower-tab-payout" data-borrower-panel="payout" hidden>${clientPayoutSection(d)}</section><section role="tabpanel" id="borrower-panel-finance" aria-labelledby="borrower-tab-finance" data-borrower-panel="finance" hidden><h3 class="sectiontitle" style="margin-top:30px">Finansal Bilgiler</h3><form id="borrowerStatusForm"><div class="grid"><label class="field">Durum<select name="status">${['Derdest', 'İade', 'İnfaz', 'İcra'].map((s) => `<option ${s === (d.status || 'Derdest') ? 'selected' : ''}>${s}</option>`).join('')}</select></label>${debtorStatus(d) === 'İnfaz' ? value('İnfaz Tarihi', clientPayoutClosureDate(d)) : ''}<div class="detail-status-action"><button class="primary">Durumu Kaydet</button></div></div></form><div class="stats" style="margin-top:20px">${[
     ['Anapara', f.principal],
     ['Faiz', isParkingDocument(d) ? 0 : financeCents(d.financeInterest)],
     ['Avukatlık / Hizmet Ücreti', isParkingDocument(d) ? 0 : financeCents(d.financeFee)],
@@ -46,6 +46,9 @@ function borrowerDetail(id, savedForm) {
   setupBorrowerDeletion(dialog, d);
   setupBorrowerNavigation(dialog, id);
   bindBorrowerSheetTabs(dialog, id);
+  dialog.querySelectorAll('[data-sheet-collection-receipt]').forEach((button) => {
+    button.onclick = () => openCollectionReceipt(button.dataset.sheetCollectionReceipt);
+  });
   bindGuarantors(d);
   dialog
     .querySelectorAll('[data-top-guarantor]')
@@ -102,6 +105,34 @@ function borrowerDetail(id, savedForm) {
     if (document.querySelector('.pinned-borrower-sheet')) dialog.show();
     else dialog.showModal();
   }
+}
+
+function borrowerFinanceOverview(d, f) {
+  const payments = financeEvents
+    .filter((event) => event.documentId === d.id && event.type === 'payment')
+    .sort(
+      (a, b) =>
+        String(b.date || '').localeCompare(String(a.date || '')) ||
+        String(b.createdAt || '').localeCompare(String(a.createdAt || '')),
+    );
+  const cards = [
+    ['Evrak Tutarı', financeCents(d.originalAmount ?? d.amount)],
+    ['Takip Öncesi Ödeme', financeCents(d.preTrackingPayment)],
+    ['Anapara', f.principal],
+    ['Faiz', isParkingDocument(d) ? 0 : financeCents(d.financeInterest)],
+    ['Avukatlık / Hizmet Ücreti', isParkingDocument(d) ? 0 : financeCents(d.financeFee)],
+    ['Borçluya Eklenen Masraf', f.expenses],
+    ['Yapılandırma İndirimi', f.discount],
+    ['Toplam Alacak', f.target],
+    ['Tahsil Edilen', f.received],
+    ['Kalan Borç', f.remaining],
+  ];
+  return `<h3 class="sectiontitle">Borçlu Finansal Durumu</h3><p>Dosya Durumu: <b>${esc(debtorStatus(d))}</b></p>
+    <div class="stats borrower-financial-stats">${cards.map(([label, amount]) => `<div class="stat"><div><small>${label}</small><strong>${money(amount / 100)}</strong></div></div>`).join('')}</div>
+    <h3 class="sectiontitle">Borçlu Ödeme Geçmişi (${payments.length})</h3>
+    <div class="overflow"><table class="borrower-payment-history"><thead><tr><th>TARİH</th><th>ÖDENEN TUTAR</th><th>KASA / BANKA</th><th>İŞLEMİ YAPAN</th><th>AÇIKLAMA</th><th>MAKBUZ</th></tr></thead>
+    <tbody>${payments.map((event) => `<tr><td>${esc(displayDate(event.date))}</td><td>${money(event.amount / 100)}</td><td>${esc(event.accountName || accounting.accounts.find((account) => account.id === event.accountId)?.name || 'Belirtilmedi')}</td><td>${esc(event.operatorName || 'Belirtilmedi')}</td><td class="conversation-note">${esc(event.note || '—')}</td><td><button type="button" class="link" data-sheet-collection-receipt="${esc(event.id)}">Tahsilat Makbuzu</button></td></tr>`).join('') || '<tr><td colspan="6" class="empty">Henüz borçlu ödemesi kaydedilmedi.</td></tr>'}</tbody>
+    <tfoot><tr><td>TOPLAM</td><td><strong>${money(payments.reduce((sum, event) => sum + event.amount, 0) / 100)}</strong></td><td colspan="4">${payments.length} ödeme</td></tr></tfoot></table></div>`;
 }
 
 function guarantorSection(d) {

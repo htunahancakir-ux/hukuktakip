@@ -295,6 +295,7 @@ const borrowerSheetTabs = [
   ['assets', 'Tapu / Araç / SGK'],
   ['guarantors', 'Kefiller'],
   ['conversations', 'Görüşmeler'],
+  ['financial', 'Finansal İşlemler'],
   ['document', 'Evrak Bilgileri'],
   ['payout', 'Müvekkile Ödeme'],
 ];
