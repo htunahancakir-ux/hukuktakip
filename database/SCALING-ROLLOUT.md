@@ -76,10 +76,17 @@ testi de geçti.
 
 ## Canlı geçiş sırası
 
-`HAN_RECORD_STORE` canlıda açılmadı. SQL henüz canlıya uygulanmadı.
-Yerel `.env.local` dosyasında `DATABASE_URL` bulunmadığı için doğrudan bağlantı
-üzerinden canlı import ve entegrasyon doğrulaması bekliyor. Vercel'deki gizli
-değer geri okunamadı; bağlantı bilgisi sohbete yazılmamalıdır.
+8 Kasım 2026 tarihinde doğrudan Supabase bağlantısı TLS sertifika doğrulamasıyla
+kuruldu. Ek şema ve migration checksum kaydı uygulandı; kaynak 11897 sürümünün
+41 müvekkili, 68 aktif/2 arşiv dosyası hazırlık tablolarına kayıpsız aktarıldı.
+Gerçek PostgreSQL üzerinde 50+18 sayfalama ve dört mali toplam kaynakla eşleşti;
+özel şema anonim/standart API rollerine kapalıdır. Güncel yedek R2'den geri okunup
+boş hedefte ileri/geri aktarım provasıyla doğrulandı.
+
+Canlı kaynağın seçimi `HAN_RECORD_STORE=1` ve `han_data.control.mode='active'`
+ile birlikte yapılır. Tek başına SQL uygulanması veya `prepare` canlı kaynağı
+değiştirmez. Bağlantı bilgileri yalnız Git dışında tutulan `.env.local` ve
+Vercel gizli değişkenlerinde bulunmalıdır.
 
 1. Güncel kodu, canlı sürümü, şemayı ve advisor sonuçlarını karşılaştır.
 2. Geçiş anında yeni şifreli yedek al ve geri yüklenebilirliğini doğrula.
