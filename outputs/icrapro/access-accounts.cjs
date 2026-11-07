@@ -117,7 +117,13 @@ async function handleAccountRoutes(ctx) {
     const activeAfter = Date.now() - 3 * 60 * 1000;
     const active = new Map();
     for (const session of sessions.values()) {
-      if (session.until < Date.now() || session.seenAt < activeAfter) continue;
+      if (
+        session.until < Date.now() ||
+        !Number.isFinite(session.seenAt) ||
+        !Number.isFinite(new Date(session.seenAt).getTime()) ||
+        session.seenAt < activeAfter
+      )
+        continue;
       const account = ctx.state.users.find((user) => user.id === session.id && userEnabled(user));
       if (!account) continue;
       const previous = active.get(account.id);

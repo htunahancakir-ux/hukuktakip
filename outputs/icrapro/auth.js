@@ -245,7 +245,7 @@ async function showOnlineUsers() {
         ? `<div class="online-users-list">${active
             .map(
               (user) =>
-                `<div><b>${esc(user.name)}</b><small>${user.role === 'ceo' ? 'CEO' : user.role === 'admin' ? 'Yönetici' : 'Personel'} · Son etkinlik: ${new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', timeStyle: 'short' }).format(new Date(user.lastSeenAt))}</small></div>`,
+                `<div><b>${esc(user.name)}</b><small>${user.role === 'ceo' ? 'CEO' : user.role === 'admin' ? 'Yönetici' : 'Personel'} · Son etkinlik: ${formatPresenceTime(user.lastSeenAt)}</small></div>`,
             )
             .join('')}</div>`
         : '<p>Şu anda etkin kullanıcı görünmüyor.</p>'
@@ -256,6 +256,13 @@ async function showOnlineUsers() {
   } catch (error) {
     toast(error.message);
   }
+}
+
+function formatPresenceTime(value) {
+  if (!Number.isFinite(value)) return 'bilgi yok';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return 'bilgi yok';
+  return new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', timeStyle: 'short' }).format(date);
 }
 
 function startPresenceHeartbeat() {

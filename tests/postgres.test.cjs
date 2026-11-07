@@ -199,8 +199,20 @@ test('Only the CEO can see active users, while every signed-in user refreshes th
     role: 'staff',
     permissions: [],
   });
+  state.users.push({
+    ...state.users[0],
+    id: 'legacy-staff',
+    username: 'legacy',
+    name: 'Eski Oturum',
+    role: 'staff',
+    permissions: [],
+  });
   await importState(pool, state);
   const store = createStore(pool);
+  await store.transaction(async (tx) => {
+    tx.sessions.set('legacy-session', { id: 'legacy-staff', until: Date.now() + 60000 });
+    tx.sessions.set('invalid-session', { id: 'legacy-staff', until: Date.now() + 60000, seenAt: 'invalid' });
+  });
   await store.updatePolicy((policy) => {
     const now = new Date().toISOString();
     Object.assign(policy, { enabled: true, intervalDays: 1, lastSuccessAt: now, lastR2At: now });
