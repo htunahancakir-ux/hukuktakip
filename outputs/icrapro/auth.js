@@ -238,7 +238,17 @@ function openDeletionPanel() {
   dialog.showModal();
   load();
 }
+function returnToMainMenu(event) {
+  if (hanAuth && typeof render === 'function' && typeof page !== 'undefined') {
+    event.preventDefault();
+    page = 'home';
+    render();
+  }
+}
 function accessMenu() {
+  document.querySelectorAll('aside .brand-home').forEach((link) => {
+    link.onclick = returnToMainMenu;
+  });
   if (hanAuth.canDelete && !document.getElementById('deleteOperationsNavigation')) {
     const button = document.createElement('button');
     button.id = 'deleteOperationsNavigation';
@@ -413,7 +423,7 @@ function installPasswordVisibility(form) {
 }
 function authGate(setup) {
   loginFrame(`<form id="loginForm" class="panel" aria-labelledby="loginTitle">
-    <div class="login-heading"><h1 id="loginTitle">${setup ? 'İlk adımı atın.' : 'Hoş geldiniz.'}</h1>
+    <div class="login-heading"><h1 id="loginTitle">${setup ? 'İlk adımı atın.' : '<a class="brand-home" href="/">HAN (PATAN) HUKUK</a>'}</h1>
       <p>${setup ? 'Han Hukuk çalışma alanınız için ilk yönetici hesabını oluşturun.' : 'Çalışma alanınıza erişmek için<br>hesap bilgilerinizle giriş yapın.'}</p></div>
     <div class="login-fields">
       ${setup ? '<label class="field" for="login-name">Ad soyad<input id="login-name" name="name" required autocomplete="name" placeholder="Adınız ve soyadınız"></label>' : ''}
