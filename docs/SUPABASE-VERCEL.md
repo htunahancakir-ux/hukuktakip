@@ -2,7 +2,7 @@
 
 ## Bu aşamada yapılanlar
 
-6 Kasım 2026 yedeğindeki program esas alınır. İlk geçişte mevcut veri şekli PostgreSQL JSONB içinde korunur; ilişkisel tablolara ayrıştırma bu değişikliğin kapsamı değildir. Tüm API işlemleri `han_private.han_state` satırını transaction içinde kilitleyerek okur/yazar. Bu, küçük kurulumlar için geçiş tasarımıdır; yoğun kullanımda kayıt bazlı tablolara ayrıştırılmalıdır.
+Mevcut iş verileri PostgreSQL JSONB içinde korunur. İlk performans aşamasında GET okumaları ortak yazma kilidinden ayrılmıştır; oturumlar, giriş deneme sayaçları ve bildirim okuma modeli ayrı tablolardadır. İş verisi değişiklikleri hâlâ `han_private.han_state` üzerinde transaction kullanır. Yeni kayıt bazlı model `database/next` altında pilottur ve otomatik migration kapsamına dahil değildir.
 
 Kullanıcılar, salt ve parola hashleri değişmeden aktarılır. Supabase Auth kullanılmaz. Oturumlar yalnızca token hashleriyle ve giriş denemeleri süreli kayıtlarla PostgreSQL'de tutulur. Web üzerinden yönetici kurulumu bulut sürümünde kapalıdır. Veritabanı boşsa veya yapılandırma eksikse API 503 döndürür.
 
@@ -31,7 +31,7 @@ Bağlantı bilgisini git tarafından dışlanan `.env.local` dosyasına veya ter
 
 ## Vercel
 
-- GitHub deposu: `htunahancakir-ux/hukuktakip`; hazırlık dalı: `hazirlik/postgresql-vercel`.
+- GitHub deposu: `htunahancakir-ux/hukuktakip`; yayın dalı: `main`.
 - Framework preset: Other. Root directory: depo kökü. Node.js: 24.x.
 - Build command: `npm run build`. Output directory: `public`.
 - Sunucu tarafı environment: `DATABASE_URL` (transaction pooler), `APP_ORIGIN` (tam HTTPS origin, son slash yok).
@@ -42,7 +42,7 @@ Bağlantı bilgisini git tarafından dışlanan `.env.local` dosyasına veya ter
 ## Canlı öncesi kalan sınırlar
 
 - Vercel fonksiyonlarının gövde limiti nedeniyle bu uygulama API istek/yanıtlarını 4 MiB ile sınırlar. Büyük dosyalar ve büyüyen toplu liste yanıtları için özel Supabase Storage yüklemesi, yetkili indirme ve sayfalama sonraki aşamadır. Bu tamamlanmadan büyük evraklı üretim kullanımı açılmamalıdır.
-- Yerel 60 saniyelik otomasyon zamanlayıcısı bulutta çalışmaz. Otomasyonlar giriş yapmış kullanıcının isteklerinde yürür; kullanıcı yokken zamanında işlem gerekiyorsa kimlik doğrulamalı cron ayrı kurulmalıdır.
+- Bulutta bakım işi bildirim yoklamasından arka planda tetiklenir ve veritabanında en fazla dakikada bir sahiplenilir. Kullanıcı yokken zamanında işlem gerekiyorsa kimlik doğrulamalı cron ayrı kurulmalıdır.
 - JSONB geçişi ayrıntılı finansal SQL tablolarının yerine geçmez. Toplu veri PUT işlemlerinde ETag/If-Match eski verinin üzerine yazılmasını reddeder; kullanıcı çakışmada sayfayı yeniler.
 - Yedekleme, geri yükleme denemesi, erişim yetkileri incelemesi ve gerçek Supabase üzerinde entegrasyon testi tamamlanmadan canlı kabulü verilmemelidir.
 - Yerel PGlite testleri gerçek PostgreSQL motoruyla sorguları sınar; Supabase ağ/TLS/pooler bağlantısını veya ayrı PostgreSQL bağlantılarındaki kilit davranışını doğrulamaz.

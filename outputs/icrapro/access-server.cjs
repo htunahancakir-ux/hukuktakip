@@ -2,13 +2,17 @@ const { handleSessionRoutes, handleAccountRoutes } = require('./access-accounts.
 const { handleEmployeeTermsRoutes } = require('./access-employee-terms.cjs');
 const { handleScheduledReminderRoutes } = require('./access-scheduled-reminders.cjs');
 const { requiresEmployeeTerms, REQUIRED_MESSAGE } = require('../../lib/employee-terms.cjs');
-const { searchWorkspace } = require('../../lib/workspace-search.cjs');
-const { handleWhatsAppRoutes } = require('./access-whatsapp.cjs');
+const { sessionKey, requestDeviceType, sessionIsValid } = require('../../lib/session-policy.cjs');
 const {
-  activeArchives,
-  archiveRemovedDocuments,
-  preventArchivedNumberReuse,
-} = require('../../lib/document-archive.cjs');
+  hashPassword: hash,
+  verifyPassword: passwordOK,
+  passwordValid,
+} = require('../../lib/password-policy.cjs');
+const { searchWorkspace } = require('../../lib/workspace-search.cjs');
+const { notificationSummary } = require('../../lib/notification-summary.cjs');
+const { handleWhatsAppRoutes } = require('./access-whatsapp.cjs');
+const { activeArchives } = require('../../lib/document-archive.cjs');
+const { prepareState } = require('../../lib/state-invariants.cjs');
 const { handleWorkflowRoutes } = require('./access-workflow.cjs');
 const { handleDocumentRoutes } = require('./access-documents.cjs');
 const { handleCommunicationRoutes } = require('./access-communications.cjs');
@@ -16,13 +20,10 @@ const { handlePersonnelRoutes } = require('./access-personnel.cjs');
 const { handleDataRoutes } = require('./access-data.cjs');
 const { recognizedCollectionRevenue } = require('./profit-rules.js');
 const { syncPayrollPeriods } = require('./payroll-periods.cjs');
-const { normalizePhoneRecords } = require('./phone-format.js');
-const { applyAutomaticLegalCharges } = require('./legal-charges.cjs');
 const { isCallcenter, calculateCallcenterBonus } = require('./personnel-bonus.cjs');
-const { duplicateIdentityError } = require('./identity-validation.cjs');
 const { runWorkflowAutomation, promiseOutstanding } = require('./workflow-automation.cjs');
 const { applyParkingFee } = require('./parking-fees.js');
-const parkingToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(new Date());
+const { businessDate: parkingToday } = require('../../lib/business-time.cjs');
 const fs = require('node:fs'),
   path = require('node:path'),
   crypto = require('node:crypto');
@@ -43,6 +44,7 @@ const defaults = {
   'hanhukuk-accounting-v1': { accounts: [{ id: 'cash', name: 'Nakit Kasa', type: 'cash' }], entries: [] },
   'icrapro-cases-v1': [],
 };
+
 function createAccess(stateFile, options = {}) {
   let state = options.initialState || { users: [], data: structuredClone(defaults) };
   if (!options.initialState && stateFile && fs.existsSync(stateFile))
@@ -53,6 +55,7 @@ function createAccess(stateFile, options = {}) {
   const revision = (key) =>
     '\"' + crypto.createHash('sha256').update(JSON.stringify(state.data[key])).digest('hex') + '\"';
   function saveState(next) {
+    if (options.readOnly) throw new Error('Read-only request attempted a state mutation');
     if (options.saveState) options.saveState(next);
     else {
       fs.mkdirSync(path.dirname(stateFile), { recursive: true });
@@ -62,66 +65,7 @@ function createAccess(stateFile, options = {}) {
     state = next;
   }
   function persist(next, actor) {
-    if (actor) archiveRemovedDocuments(state, next, actor);
-    delete next.data['icrapro-v1'].archivedNumbers;
-    preventArchivedNumberReuse(state, next);
-    normalizePhoneRecords(next.data);
-    syncPayrollPeriods(next, parkingToday());
-    for (const d of next.data['icrapro-v1'].docs) {
-      if (
-        ['Senet', 'Diğer'].includes(d.docType) &&
-        (d.originalAmount != null || d.preTrackingPayment != null)
-      ) {
-        const [total, paid, principal] = [d.originalAmount, d.preTrackingPayment, d.amount].map((value) =>
-          Math.round(Number(value) * 100),
-        );
-        if (
-          ![total, paid, principal].every(Number.isSafeInteger) ||
-          paid < 0 ||
-          principal < 0 ||
-          total - paid !== principal
-        ) {
-          throw Object.assign(new Error('Evrak tutarı ve takip öncesi ödeme uyumsuz.'), { code: 400 });
-        }
-      }
-      applyAutomaticLegalCharges(d, next.data['hanhukuk-finance-v1'], parkingToday());
-      const previous = state.data['icrapro-v1'].docs.find((x) => x.id === d.id);
-      const stamp = previous?.created ? new Date(previous.created) : null;
-      d.trackingDate =
-        previous?.trackingDate ||
-        (stamp && Number.isFinite(stamp.getTime())
-          ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(stamp)
-          : parkingToday());
-      const payments = next.data['hanhukuk-finance-v1'].filter(
-          (e) => e.documentId === d.id && e.type === 'payment',
-        ),
-        received = payments.reduce((sum, e) => sum + Number(e.amount || 0), 0),
-        parking = d.docType === 'Yediemin Park Ücreti',
-        total = Math.max(
-          0,
-          Math.round(Number(d.amount || 0) * 100) +
-            (parking
-              ? 0
-              : Math.round(Number(d.financeInterest || 0) * 100) +
-                Math.round(Number(d.financeFee || 0) * 100) +
-                next.data['hanhukuk-finance-v1']
-                  .filter((e) => e.documentId === d.id && e.type === 'expense')
-                  .reduce((sum, e) => sum + Number(e.amount || 0), 0)) -
-            Number(d.debtDiscountCents || 0),
-        );
-      if (total > 0 && received >= total) {
-        d.status = 'İnfaz';
-        d.closedDate =
-          d.closedDate ||
-          payments
-            .map((e) => e.date)
-            .sort()
-            .at(-1);
-      } else if (String(d.enforcementFileNumber || '').trim() && (!d.status || d.status === 'Derdest'))
-        d.status = 'İcra';
-    }
-    const duplicate = duplicateIdentityError(next.data['icrapro-v1'], state.data['icrapro-v1']);
-    if (duplicate) throw Object.assign(Error(duplicate), { code: 409 });
+    prepareState(state, next, actor);
     saveState(next);
   }
   const publicUser = (u) => ({
@@ -133,16 +77,8 @@ function createAccess(stateFile, options = {}) {
     permissions: ['ceo', 'admin'].includes(u.role) ? permissions : u.permissions,
     active: u.active,
   });
-  function hash(password, salt) {
-    return crypto.scryptSync(password, salt, 64).toString('hex');
-  }
-  function passwordOK(password, u) {
-    return (
-      typeof password === 'string' &&
-      crypto.timingSafeEqual(Buffer.from(hash(password, u.salt), 'hex'), Buffer.from(u.hash, 'hex'))
-    );
-  }
   function userEnabled(u) {
+    if (options.userEnabled) return options.userEnabled(u);
     return (
       !!u &&
       u.active &&
@@ -150,29 +86,36 @@ function createAccess(stateFile, options = {}) {
     );
   }
   function current(req) {
-    const token = (req.headers.cookie || '')
-        .split(';')
-        .map((s) => s.trim())
-        .find((s) => s.startsWith('han_session='))
-        ?.slice(12),
-      session = sessions.get(token ? crypto.createHash('sha256').update(token).digest('hex') : '');
-    if (!session || session.until < Date.now()) return null;
-    session.seenAt = Date.now();
+    const session = sessions.get(sessionKey(req));
+    const now = Date.now();
+    if (!sessionIsValid(session, now)) return null;
+    session.seenAt = now;
     return state.users.find((u) => u.id === session.id && userEnabled(u)) || null;
   }
-  function login(res, u, { remember = false } = {}) {
+  function login(req, res, u, { remember = false, replaceSessions = false } = {}) {
+    const deviceType = requestDeviceType(req);
+    const now = Date.now();
+    if (!replaceSessions) {
+      for (const session of sessions.values()) {
+        if (session.id === u.id && session.deviceType === deviceType && sessionIsValid(session, now))
+          return false;
+      }
+    }
     const token = crypto.randomBytes(32).toString('hex');
     const lifetime = remember ? 14 * 24 * 3600000 : 8 * 3600000;
+    if (replaceSessions) invalidate(u.id);
     sessions.set(crypto.createHash('sha256').update(token).digest('hex'), {
       id: u.id,
-      until: Date.now() + lifetime,
-      seenAt: Date.now(),
+      deviceType,
+      until: now + lifetime,
+      seenAt: now,
     });
     const maxAge = remember ? '; Max-Age=' + lifetime / 1000 : '';
     res.setHeader(
       'Set-Cookie',
       'han_session=' + token + '; HttpOnly; SameSite=Strict; Path=/' + maxAge + secure,
     );
+    return true;
   }
   function invalidate(id) {
     for (const [key, s] of sessions) if (s.id === id) sessions.delete(key);
@@ -200,18 +143,12 @@ function createAccess(stateFile, options = {}) {
     res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify(value));
   }
-  function newUser(v) {
+  async function newUser(v) {
     const username = String(v.username || '')
         .trim()
         .toLocaleLowerCase('tr'),
       name = String(v.name || '').trim();
-    if (
-      !name ||
-      !username ||
-      username.length > 60 ||
-      typeof v.password !== 'string' ||
-      v.password.length < 10
-    )
+    if (!name || !username || username.length > 60 || !passwordValid(v.password))
       throw fail(400, 'Ad, kullanıcı adı ve en az 10 karakterli şifre girin.');
     if (state.users.some((u) => u.username === username)) throw fail(400, 'Kullanıcı adı kullanılıyor.');
     const salt = crypto.randomBytes(16).toString('hex');
@@ -220,7 +157,7 @@ function createAccess(stateFile, options = {}) {
       username,
       name,
       salt,
-      hash: hash(v.password, salt),
+      hash: await hash(v.password, salt),
       role: ['ceo', 'admin'].includes(v.role) ? v.role : 'staff',
       staffId: v.staffId || '',
       permissions: (v.permissions || []).filter((p) => permissions.includes(p)),
@@ -313,10 +250,13 @@ function createAccess(stateFile, options = {}) {
       )
         throw fail(403, 'İstek kaynağı doğrulanamadı.');
       const u = current(req);
-      const termsRequired = requiresEmployeeTerms(state, u);
+      const termsRequired = options.employeeTermsRequired
+        ? options.employeeTermsRequired(u)
+        : requiresEmployeeTerms(state, u);
       if (
         u &&
         !termsRequired &&
+        !options.skipAutomations &&
         url.pathname !== '/api/search' &&
         url.pathname !== '/api/scheduled-reminders' &&
         !url.pathname.startsWith('/api/employee-terms/')
@@ -334,6 +274,7 @@ function createAccess(stateFile, options = {}) {
         url,
         u,
         options,
+        termsRequired,
         sessions,
         attempts,
         persist: (next) => persist(next, u),
@@ -343,6 +284,7 @@ function createAccess(stateFile, options = {}) {
         passwordOK,
         userEnabled,
         login,
+        sessionIsValid,
         fail,
         body,
         send,
@@ -381,6 +323,10 @@ function createAccess(stateFile, options = {}) {
       }
       if (await handleWhatsAppRoutes(ctx)) return true;
       if (!u) throw fail(401, 'Giriş yapın.');
+      if (url.pathname === '/api/notifications' && req.method === 'GET') {
+        send(res, 200, notificationSummary(state, u, url.searchParams.get('after')));
+        return true;
+      }
       if (await handleScheduledReminderRoutes(ctx)) return true;
       if (url.pathname === '/api/search' && req.method === 'GET') {
         send(res, 200, { items: searchWorkspace(state, u, url.searchParams.get('q')) });
@@ -399,6 +345,13 @@ function createAccess(stateFile, options = {}) {
     return true;
   }
   access.metadataTransaction = (work) => work({ state: structuredClone(state), saveState });
+  access.runMaintenance = () => {
+    const next = structuredClone(state);
+    const payrollChanged = syncPayrollPeriods(next, parkingToday());
+    const workflowChanged = runWorkflowAutomation(next, parkingToday());
+    if (payrollChanged || workflowChanged) persist(next);
+    return payrollChanged || workflowChanged;
+  };
   return access;
 }
 module.exports = { createAccess };

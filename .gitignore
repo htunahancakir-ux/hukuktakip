@@ -19,5 +19,7 @@ audit-events.jsonl
 *.exe
 public/
 .vercel/
+supabase/.temp/
+work/release/
 work/backup-settings.json
 work/backups/

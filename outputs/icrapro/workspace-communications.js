@@ -146,39 +146,27 @@ function openMessage(message) {
   dialog.showModal();
 }
 
-async function updateMessageBadge() {
-  if (!hanAuth) return;
-  try {
-    const response = await fetch('/api/messages/summary', { headers: { 'X-Han-Request': '1' } });
-    if (response.status === 401) {
-      hanAuth = null;
-      location.reload();
-      return;
-    }
-    if (!response.ok) return;
-    const result = await response.json(),
-      previous = messageKnownUnread,
-      badge = document.getElementById('messageUnreadCount');
-    messageKnownUnread = result.unread;
-    if (badge) {
-      badge.textContent = result.unread + Number(result.pendingWorkOrders || 0) || '';
-      badge.setAttribute(
-        'aria-label',
-        result.unread + ' okunmamış mesaj, ' + Number(result.pendingWorkOrders || 0) + ' bekleyen iş emri',
-      );
-    }
-    if (typeof updateHeaderNotifications === 'function')
-      updateHeaderNotifications({
-        unread: Number(result.unread || 0),
-        pendingWorkOrders: Number(result.pendingWorkOrders || 0),
-      });
-  } catch {}
+function applyMessageSummary(result) {
+  const badge = document.getElementById('messageUnreadCount');
+  messageKnownUnread = result.unread;
+  if (badge) {
+    badge.textContent = result.unread + Number(result.pendingWorkOrders || 0) || '';
+    badge.setAttribute(
+      'aria-label',
+      result.unread + ' okunmamış mesaj, ' + Number(result.pendingWorkOrders || 0) + ' bekleyen iş emri',
+    );
+  }
+  if (typeof updateHeaderNotifications === 'function')
+    updateHeaderNotifications({
+      unread: Number(result.unread || 0),
+      pendingWorkOrders: Number(result.pendingWorkOrders || 0),
+    });
 }
-
+function updateMessageBadge() {
+  return pollWorkspaceNotifications();
+}
 function startMessageNotifications() {
-  updateMessageBadge();
-  if (messageNoticeTimer) clearInterval(messageNoticeTimer);
-  messageNoticeTimer = setInterval(updateMessageBadge, 15000);
+  return startWorkspaceNotifications();
 }
 
 function communicationTabsMarkup() {

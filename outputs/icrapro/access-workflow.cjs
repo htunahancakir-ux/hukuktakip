@@ -1,3 +1,4 @@
+const { collectionSummary } = require('../../lib/notification-summary.cjs');
 async function handleWorkflowRoutes(ctx) {
   const { req, res, url, u, persist, allowed, fail, body, send, crypto, parkingToday, promiseOutstanding } =
     ctx;
@@ -323,16 +324,7 @@ async function handleWorkflowRoutes(ctx) {
     return true;
   }
   if (url.pathname === '/api/collection-notices' && req.method === 'GET') {
-    const cursor = Number(ctx.state.collectionNoticeSequence || 0),
-      raw = url.searchParams.get('after');
-    if (raw === null) {
-      send(res, 200, { cursor, notices: [] });
-      return true;
-    }
-    const after = Number(raw);
-    if (!Number.isSafeInteger(after) || after < 0) throw fail(400, 'Geçersiz bildirim sırası.');
-    const notices = (ctx.state.collectionNotices || []).filter((n) => n.sequence > after).slice(0, 100);
-    send(res, 200, { cursor: notices.length ? notices.at(-1).sequence : cursor, notices });
+    send(res, 200, collectionSummary(ctx.state, url.searchParams.get('after')));
     return true;
   }
   return false;

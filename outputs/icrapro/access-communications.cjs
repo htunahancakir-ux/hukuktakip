@@ -1,4 +1,5 @@
 const { queue: queueWhatsApp } = require('../../lib/whatsapp.cjs');
+const { messageSummary } = require('../../lib/notification-summary.cjs');
 
 async function handleCommunicationRoutes(ctx) {
   const { req, res, url, u, persist, userEnabled, fail, body, send, crypto } = ctx;
@@ -127,13 +128,7 @@ async function handleCommunicationRoutes(ctx) {
     return true;
   }
   if (url.pathname === '/api/messages/summary' && req.method === 'GET') {
-    send(res, 200, {
-      pendingWorkOrders: (ctx.state.workOrders || []).filter(
-        (w) => w.assigneeId === u.id && w.status === 'pending',
-      ).length,
-      unread: (ctx.state.messages || []).filter((m) => m.recipientIds.includes(u.id) && !m.readBy?.[u.id])
-        .length,
-    });
+    send(res, 200, messageSummary(ctx.state, u));
     return true;
   }
   if (url.pathname === '/api/messages/read' && req.method === 'POST') {

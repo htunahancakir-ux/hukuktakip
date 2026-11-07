@@ -15,70 +15,7 @@ const { restoreBackup } = require('../scripts/restore-backup.cjs');
 const workspaceScripts = require('../outputs/icrapro/workspace-assets.js');
 const { reserveReset } = require('../lib/whatsapp.cjs');
 
-const password = 'Synthetic-Postgres-Test-Only';
-function fixture() {
-  const salt = crypto.randomBytes(16).toString('hex');
-  return {
-    users: [
-      {
-        id: 'test-ceo',
-        name: 'Test',
-        username: 'test',
-        role: 'ceo',
-        active: true,
-        permissions: [],
-        salt,
-        hash: crypto.scryptSync(password, salt, 64).toString('hex'),
-      },
-    ],
-    data: {
-      'icrapro-v1': { clients: [], docs: [] },
-      'icrapro-personnel-v1': [],
-      'icrapro-settings-v1': {},
-      'hanhukuk-finance-v1': [],
-      'hanhukuk-accounting-v1': { accounts: [], entries: [] },
-      'icrapro-cases-v1': [],
-    },
-  };
-}
-
-// PGlite executes actual PostgreSQL SQL; one local connection is queued here.
-// A separate integration test against Supabase is still required before deployment.
-async function database() {
-  const pg = new PGlite();
-  let queue = Promise.resolve();
-  const query = async (sql, params) => {
-    if (!params && /CREATE (SCHEMA|TABLE)/.test(sql)) {
-      await pg.exec(sql);
-      return { rows: [] };
-    }
-    return pg.query(sql, params);
-  };
-  const pool = {
-    query,
-    async connect() {
-      const previous = queue;
-      let release;
-      queue = new Promise((r) => (release = r));
-      await previous;
-      return { query, release };
-    },
-  };
-  await migrate(pool);
-  return { pg, pool };
-}
-
-async function serve(handler) {
-  const server = http.createServer(handler);
-  await new Promise((r) => server.listen(0, '127.0.0.1', r));
-  return {
-    url: 'http://127.0.0.1:' + server.address().port,
-    async close() {
-      server.closeAllConnections();
-      await new Promise((r) => server.close(r));
-    },
-  };
-}
+const { password, fixture, database, serve } = require('./support/postgres.cjs');
 
 test('PostgreSQL import preserves all fields and refuses overwrite', async () => {
   const { pg, pool } = await database();
@@ -113,8 +50,9 @@ test('Two application instances share sessions, reject stale writes, persist log
     });
     assert.equal(login.status, 200);
     const cookie = login.headers.get('set-cookie').split(';')[0];
-    const stored = (await pool.query('SELECT sessions FROM han_private.han_state')).rows[0].sessions;
-    assert.ok(!Object.hasOwn(stored, cookie.split('=')[1]), 'Only token hashes are stored');
+    const stored = (await pool.query('SELECT token_hash FROM han_private.han_sessions')).rows;
+    assert.equal(stored.length, 1);
+    assert.notEqual(stored[0].token_hash, cookie.split('=')[1], 'Only token hashes are stored');
     const session = await (await fetch(two.url + '/api/session', { headers: { cookie } })).json();
     assert.equal(session.user.id, 'test-ceo');
     const url = '/api/data?key=icrapro-settings-v1';
@@ -210,8 +148,17 @@ test('Only the CEO can see active users, while every signed-in user refreshes th
   await importState(pool, state);
   const store = createStore(pool);
   await store.transaction(async (tx) => {
-    tx.sessions.set('legacy-session', { id: 'legacy-staff', until: Date.now() + 60000 });
-    tx.sessions.set('invalid-session', { id: 'legacy-staff', until: Date.now() + 60000, seenAt: 'invalid' });
+    tx.sessions.set('legacy-session', {
+      id: 'legacy-staff',
+      deviceType: 'desktop',
+      until: Date.now() + 60000,
+    });
+    tx.sessions.set('invalid-session', {
+      id: 'legacy-staff',
+      deviceType: 'mobile',
+      until: Date.now() + 60000,
+      seenAt: 'invalid',
+    });
   });
   await store.updatePolicy((policy) => {
     const now = new Date().toISOString();
@@ -253,23 +200,86 @@ test('Only the CEO can see active users, while every signed-in user refreshes th
   }
 });
 
+test('Desktop and mobile can coexist, but a second session of either type requires replacing all sessions', async () => {
+  const { pg, pool } = await database();
+  await importState(pool, fixture());
+  const store = createStore(pool);
+  const one = await serve(createApplication({ store }));
+  const two = await serve(createApplication({ store }));
+  try {
+    const legacyToken = crypto.randomBytes(32).toString('hex');
+    await store.transaction(async ({ sessions }) => {
+      sessions.set(crypto.createHash('sha256').update(legacyToken).digest('hex'), {
+        id: 'test-ceo',
+        until: Date.now() + 60000,
+      });
+    });
+    const sessionUser = async (app, cookie) =>
+      (await (await fetch(app.url + '/api/session', { headers: { cookie } })).json()).user;
+    assert.equal(await sessionUser(one, 'han_session=' + legacyToken), null);
+
+    const login = (app, userAgent, data = {}) =>
+      fetch(app.url + '/api/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Han-Request': '1',
+          'User-Agent': userAgent,
+        },
+        body: JSON.stringify({ username: 'test', password, ...data }),
+      });
+    const desktopAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)';
+    const androidAgent = 'Mozilla/5.0 (Linux; Android 14) Mobile';
+    const iphoneAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)';
+    const getCookie = (response) => response.headers.get('set-cookie').split(';')[0];
+    const competing = await Promise.all([login(one, desktopAgent), login(two, desktopAgent)]);
+    assert.deepEqual(competing.map((response) => response.status).sort(), [200, 409]);
+    const conflict = competing.find((response) => response.status === 409);
+    assert.equal(conflict.headers.get('set-cookie'), null);
+    const warning = await conflict.json();
+    assert.equal(warning.code, 'session_replacement_required');
+    assert.match(warning.error, /Tüm cihazlardan çıkılacaktır/);
+    const desktopCookie = getCookie(competing.find((response) => response.status === 200));
+
+    const phone = await login(two, androidAgent);
+    assert.equal(phone.status, 200);
+    const mobileCookie = getCookie(phone);
+    assert.equal((await login(one, iphoneAgent)).status, 409);
+    assert.equal((await login(two, desktopAgent, { replaceSessions: true, password: 'wrong' })).status, 401);
+    assert.equal((await sessionUser(two, desktopCookie)).id, 'test-ceo');
+    assert.equal((await sessionUser(one, mobileCookie)).id, 'test-ceo');
+
+    const confirmed = await login(two, desktopAgent, { replaceSessions: true });
+    assert.equal(confirmed.status, 200);
+    assert.equal(await sessionUser(one, desktopCookie), null);
+    assert.equal(await sessionUser(two, mobileCookie), null);
+    assert.equal((await sessionUser(one, getCookie(confirmed))).id, 'test-ceo');
+    assert.equal((await login(two, androidAgent)).status, 200);
+  } finally {
+    await one.close();
+    await two.close();
+    await pg.close();
+  }
+});
+
 test('The account owner can change only their own password and choose a persistent sign-in', async () => {
   const { pg, pool } = await database();
   await importState(pool, fixture());
   const app = await serve(createApplication({ store: createStore(pool) }));
   try {
     const headers = { 'Content-Type': 'application/json', 'X-Han-Request': '1' };
-    const login = async (remember = false, secret = password) =>
+    const mobileHeaders = { ...headers, 'Sec-CH-UA-Mobile': '?1' };
+    const login = async (remember = false, secret = password, requestHeaders = headers) =>
       fetch(app.url + '/api/login', {
         method: 'POST',
-        headers,
+        headers: requestHeaders,
         body: JSON.stringify({ username: 'test', password: secret, ...(remember && { remember: true }) }),
       });
     const temporary = await login();
     assert.equal(temporary.status, 200);
     assert.doesNotMatch(temporary.headers.get('set-cookie'), /Max-Age=/);
 
-    const remembered = await login(true);
+    const remembered = await login(true, password, mobileHeaders);
     assert.equal(remembered.status, 200);
     assert.match(remembered.headers.get('set-cookie'), /Max-Age=1209600/);
     const cookie = remembered.headers.get('set-cookie').split(';')[0];
@@ -284,7 +294,7 @@ test('The account owner can change only their own password and choose a persiste
     const changedPassword = 'New-Synthetic-Password';
     const changed = await fetch(app.url + '/api/account/password', {
       method: 'POST',
-      headers: { ...headers, cookie },
+      headers: { ...mobileHeaders, cookie },
       body: JSON.stringify({ currentPassword: password, password: changedPassword }),
     });
     assert.equal(changed.status, 200);
@@ -316,12 +326,19 @@ test('Transaction failure rolls back state; buffered response prevents false suc
       ],
       {},
     );
-    const broken = {
-      transaction: async (work) => {
-        await store.transaction(work);
-        throw Error('Synthetic commit failure');
+    const broken = createStore({
+      query: (...args) => pool.query(...args),
+      async connect() {
+        const db = await pool.connect();
+        return {
+          release: db.release,
+          query(sql, params) {
+            if (sql === 'COMMIT') throw Error('Synthetic commit failure');
+            return db.query(sql, params);
+          },
+        };
       },
-    };
+    });
     const app = await serve(createApplication({ store: broken }));
     try {
       const response = await fetch(app.url + '/api/login', {
@@ -331,6 +348,10 @@ test('Transaction failure rolls back state; buffered response prevents false suc
       });
       assert.equal(response.status, 503);
       assert.equal(response.headers.get('set-cookie'), null);
+      assert.equal(
+        (await pool.query('SELECT count(*)::int AS n FROM han_private.han_sessions')).rows[0].n,
+        0,
+      );
     } finally {
       await app.close();
     }

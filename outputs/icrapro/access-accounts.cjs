@@ -1,5 +1,5 @@
-const { requiresEmployeeTerms } = require('../../lib/employee-terms.cjs');
 const { version: appVersion } = require('../../package.json');
+const { attemptKey } = require('../../lib/session-policy.cjs');
 
 async function handleSessionRoutes(ctx) {
   const {
@@ -22,10 +22,11 @@ async function handleSessionRoutes(ctx) {
     dataKeys,
   } = ctx;
   if (url.pathname === '/api/session') {
+    if (req.method !== 'GET') throw fail(405, 'İşlem desteklenmiyor.');
     send(res, 200, {
-      setup: ctx.state.users.length === 0,
+      setup: options.allowSetup !== false && ctx.state.users.length === 0,
       user: u ? publicUser(u) : null,
-      employeeTermsRequired: requiresEmployeeTerms(ctx.state, u),
+      employeeTermsRequired: ctx.termsRequired,
       appVersion,
     });
     return true;
@@ -35,7 +36,7 @@ async function handleSessionRoutes(ctx) {
       throw fail(403, 'Yönetici kurulumu tamamlandı.');
     const v = await body(req);
     if (ctx.state.users.length) throw fail(403, 'Yönetici kurulumu tamamlandı.');
-    const user = newUser({ ...v, role: 'ceo' }),
+    const user = await newUser({ ...v, role: 'ceo' }),
       next = structuredClone(ctx.state);
     next.users.push(user);
     for (const key of dataKeys) {
@@ -43,21 +44,12 @@ async function handleSessionRoutes(ctx) {
       if (old !== undefined) next.data[key] = old;
     }
     persist(next);
-    login(res, user);
+    login(req, res, user);
     send(res, 200, publicUser(user));
     return true;
   }
   if (url.pathname === '/api/login' && req.method === 'POST') {
-    const key = crypto
-        .createHash('sha256')
-        .update(
-          String(
-            options.secureCookies
-              ? req.headers['x-vercel-forwarded-for'] || req.socket?.remoteAddress || 'unknown'
-              : req.socket?.remoteAddress || 'unknown',
-          ),
-        )
-        .digest('hex'),
+    const key = attemptKey(req, options.secureCookies),
       rate = attempts.get(key) || { count: 0, until: Date.now() + 900000 };
     if (rate.until < Date.now()) {
       rate.count = 0;
@@ -72,13 +64,25 @@ async function handleSessionRoutes(ctx) {
               .trim()
               .toLocaleLowerCase('tr') && userEnabled(u),
       );
-    if (!user || !passwordOK(v.password, user)) {
+    if (!user || !(await passwordOK(v.password, user))) {
       rate.count++;
       attempts.set(key, rate);
       throw fail(401, 'Kullanıcı adı veya şifre yanlış.');
     }
     attempts.delete(key);
-    login(res, user, { remember: v.remember === true || v.remember === 'on' });
+    if (
+      !login(req, res, user, {
+        remember: v.remember === true || v.remember === 'on',
+        replaceSessions: v.replaceSessions === true,
+      })
+    ) {
+      send(res, 409, {
+        code: 'session_replacement_required',
+        error:
+          'Bu hesapla aynı türde bir cihazda oturum açık. Tüm cihazlardan çıkılacaktır. Girişe devam etmek istiyor musunuz?',
+      });
+      return true;
+    }
     send(res, 200, publicUser(user));
     return true;
   }
@@ -99,6 +103,7 @@ async function handleAccountRoutes(ctx) {
     passwordOK,
     invalidate,
     login,
+    sessionIsValid,
     fail,
     body,
     send,
@@ -114,11 +119,12 @@ async function handleAccountRoutes(ctx) {
     }
     if (req.method !== 'GET') throw fail(405, 'İşlem desteklenmiyor.');
     if (u.role !== 'ceo') throw fail(403, 'Aktif kullanıcı listesi yalnızca CEO içindir.');
-    const activeAfter = Date.now() - 3 * 60 * 1000;
+    const now = Date.now();
+    const activeAfter = now - 3 * 60 * 1000;
     const active = new Map();
     for (const session of sessions.values()) {
       if (
-        session.until < Date.now() ||
+        !sessionIsValid(session, now) ||
         !Number.isFinite(session.seenAt) ||
         !Number.isFinite(new Date(session.seenAt).getTime()) ||
         session.seenAt < activeAfter
@@ -145,18 +151,18 @@ async function handleAccountRoutes(ctx) {
   }
   if (url.pathname === '/api/account/password' && req.method === 'POST') {
     const v = await body(req);
-    if (!passwordOK(v.currentPassword, u)) throw fail(400, 'Mevcut şifreniz yanlış.');
+    if (!(await passwordOK(v.currentPassword, u))) throw fail(400, 'Mevcut şifreniz yanlış.');
     if (typeof v.password !== 'string' || v.password.length < 10 || v.password.length > 128)
       throw fail(400, 'Yeni şifre 10–128 karakter olmalı.');
     const next = structuredClone(ctx.state);
     const account = next.users.find((user) => user.id === u.id);
     account.salt = crypto.randomBytes(16).toString('hex');
-    account.hash = hash(v.password, account.salt);
+    account.hash = await hash(v.password, account.salt);
     account.passwordChangedAt = new Date().toISOString();
     account.passwordChangedBy = u.id;
     persist(next);
     invalidate(u.id);
-    login(res, account);
+    login(req, res, account);
     send(res, 200, { ok: true });
     return true;
   }
@@ -173,7 +179,7 @@ async function handleAccountRoutes(ctx) {
     const next = structuredClone(ctx.state),
       account = next.users.find((x) => x.id === target.id);
     account.salt = crypto.randomBytes(16).toString('hex');
-    account.hash = hash(v.password, account.salt);
+    account.hash = await hash(v.password, account.salt);
     account.passwordChangedAt = new Date().toISOString();
     account.passwordChangedBy = u.id;
     persist(next);
@@ -185,7 +191,7 @@ async function handleAccountRoutes(ctx) {
   }
   if (url.pathname === '/api/logout' && req.method === 'POST') {
     invalidate(u.id);
-    res.setHeader('Set-Cookie', 'han_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
+    res.setHeader('Set-Cookie', 'han_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' + secure);
     send(res, 200, { ok: true });
     return true;
   }
@@ -195,6 +201,7 @@ async function handleAccountRoutes(ctx) {
       send(res, 200, ctx.state.users.map(publicUser));
       return true;
     }
+    if (req.method !== 'POST') throw fail(405, 'İşlem desteklenmiyor.');
     const v = await body(req),
       next = structuredClone(ctx.state);
     if (v.role === 'ceo' && u.role !== 'ceo') throw fail(403, 'CEO yetkisini yalnızca CEO verebilir.');
@@ -213,11 +220,12 @@ async function handleAccountRoutes(ctx) {
       user.active = v.active !== false;
       user.staffId = user.role === 'ceo' ? '' : v.staffId || '';
       if (v.password) {
-        if (v.password.length < 10) throw fail(400, 'Şifre en az 10 karakter olmalı.');
+        if (typeof v.password !== 'string' || v.password.length < 10 || v.password.length > 128)
+          throw fail(400, 'Şifre 10–128 karakter olmalı.');
         user.salt = crypto.randomBytes(16).toString('hex');
-        user.hash = hash(v.password, user.salt);
+        user.hash = await hash(v.password, user.salt);
       }
-    } else next.users.push(newUser(v));
+    } else next.users.push(await newUser(v));
     persist(next);
     if (v.id && v.id !== u.id) invalidate(v.id);
     send(res, 200, ctx.state.users.map(publicUser));

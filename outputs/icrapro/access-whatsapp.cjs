@@ -3,6 +3,7 @@ const wa = require('../../lib/whatsapp.cjs');
 const manager = (user) => ['ceo', 'admin'].includes(user?.role);
 
 function throttle(ctx, bucket, maximum) {
+  if (ctx.options.rateChecked) return;
   const address = ctx.options.secureCookies
     ? ctx.req.headers['x-vercel-forwarded-for'] || ctx.req.socket?.remoteAddress
     : ctx.req.socket?.remoteAddress;
@@ -189,7 +190,7 @@ async function handleWhatsAppRoutes(ctx) {
       throw fail(400, 'Bağlantı geçersiz veya süresi dolmuş. Yeni bağlantı isteyin.');
     match.row.expires = Date.now();
     match.user.salt = ctx.crypto.randomBytes(16).toString('hex');
-    match.user.hash = ctx.hash(password, match.user.salt);
+    match.user.hash = await ctx.hash(password, match.user.salt);
     ctx.invalidate(match.user.id);
     res.hanAuditActor = { id: match.user.id, name: match.user.name, username: match.user.username };
     ctx.persist(next);

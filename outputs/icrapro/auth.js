@@ -30,7 +30,8 @@ function authApi(url, method = 'GET', data) {
     location.reload();
     throw Error(result.error);
   }
-  if (request.status < 200 || request.status >= 300) throw Error(result.error || 'İşlem yapılamadı.');
+  if (request.status < 200 || request.status >= 300)
+    throw Object.assign(Error(result.error || 'İşlem yapılamadı.'), { code: result.code });
   const version = request.getResponseHeader('ETag');
   if (version && url.startsWith('/api/data?')) hanDataVersions.set(url, version);
   return result;
@@ -218,6 +219,7 @@ async function presenceRequest(method) {
     credentials: 'same-origin',
     cache: 'no-store',
   });
+  if (response.status === 401 && hanAuth) location.reload();
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw Error(result.error || 'Aktif kullanıcı bilgisi alınamadı.');
   return result;
@@ -364,11 +366,19 @@ function authGate(setup) {
             } catch {}
         }
       }
-      hanAuth = authApi(setup ? '/api/setup' : '/api/login', 'POST', data);
+      const url = setup ? '/api/setup' : '/api/login';
+      try {
+        hanAuth = authApi(url, 'POST', data);
+      } catch (error) {
+        if (setup || error.code !== 'session_replacement_required') throw error;
+        if (!window.confirm(error.message)) return;
+        hanAuth = authApi(url, 'POST', { ...data, replaceSessions: true });
+      }
       await enterWorkspace();
     } catch (error) {
       const output = document.getElementById('authError');
       if (output) output.textContent = error.message || 'Uygulama yüklenemedi.';
+    } finally {
       button.disabled = false;
     }
   };

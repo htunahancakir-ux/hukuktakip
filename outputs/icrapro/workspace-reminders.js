@@ -1,32 +1,8 @@
-async function startCollectionNotices() {
-  if (collectionNoticeTimer) clearInterval(collectionNoticeTimer);
-  collectionNoticeCursor = null;
-  await pollCollectionNotices();
-  collectionNoticeTimer = setInterval(pollCollectionNotices, 2000);
+function startCollectionNotices() {
+  return startWorkspaceNotifications();
 }
-
-async function pollCollectionNotices() {
-  if (!hanAuth || collectionNoticeBusy) return;
-  collectionNoticeBusy = true;
-  try {
-    const response = await fetch(
-      '/api/collection-notices' + (collectionNoticeCursor === null ? '' : '?after=' + collectionNoticeCursor),
-      { headers: { 'X-Han-Request': '1' } },
-    );
-    if (response.status === 401) {
-      hanAuth = null;
-      location.reload();
-      return;
-    }
-    if (!response.ok) return;
-    const result = await response.json();
-    collectionNoticeCursor = result.cursor;
-    collectionNoticeQueue.push(...result.notices);
-    showNextCollectionNotice();
-  } catch {
-  } finally {
-    collectionNoticeBusy = false;
-  }
+function pollCollectionNotices() {
+  return pollWorkspaceNotifications();
 }
 
 function showNextCollectionNotice() {
@@ -161,33 +137,10 @@ function openPromiseBorrower(id) {
 }
 
 function startWorkflowNotices() {
-  if (workflowNoticeTimer) clearInterval(workflowNoticeTimer);
-  pollWorkflowNotices();
-  workflowNoticeTimer = setInterval(pollWorkflowNotices, 5000);
+  return startWorkspaceNotifications();
 }
-
-async function pollWorkflowNotices() {
-  if (!hanAuth || workflowNoticeBusy) return;
-  workflowNoticeBusy = true;
-  try {
-    const response = await fetch('/api/workflow-notices', { headers: { 'X-Han-Request': '1' } });
-    if (response.status === 401) {
-      hanAuth = null;
-      location.reload();
-      return;
-    }
-    if (!response.ok) return;
-    const result = await response.json();
-    for (const notice of result.notices) {
-      if (queuedWorkflowNotices.has(notice.id)) continue;
-      queuedWorkflowNotices.add(notice.id);
-      collectionNoticeQueue.push({ ...notice, workflow: true });
-    }
-    showNextCollectionNotice();
-  } catch {
-  } finally {
-    workflowNoticeBusy = false;
-  }
+function pollWorkflowNotices() {
+  return pollWorkspaceNotifications();
 }
 
 function showWorkflowReceipt(notice) {

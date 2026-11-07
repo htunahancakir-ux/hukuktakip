@@ -22,21 +22,13 @@ function scheduledReminderBadge(count) {
 }
 
 function startScheduledReminderNotices() {
-  const poll = async () => {
-    if (document.hidden) return;
-    try {
-      const response = await fetch('/api/scheduled-reminders?summary', { cache: 'no-store' });
-      if (!response.ok) return;
-      const { dueCount } = await response.json();
-      scheduledReminderBadge(dueCount);
-      if (dueCount > previousDueCount && !document.querySelector('dialog[open]'))
-        toast(dueCount + ' hatırlatmanın zamanı geldi.');
-      previousDueCount = dueCount;
-    } catch {}
-  };
-  poll();
-  setInterval(poll, 45000);
-  document.addEventListener('visibilitychange', poll);
+  return startWorkspaceNotifications();
+}
+function applyReminderSummary({ dueCount }) {
+  scheduledReminderBadge(dueCount);
+  if (dueCount > previousDueCount && !document.querySelector('dialog[open]'))
+    toast(dueCount + ' hatırlatmanın zamanı geldi.');
+  previousDueCount = dueCount;
 }
 
 function scheduledRemindersPage() {

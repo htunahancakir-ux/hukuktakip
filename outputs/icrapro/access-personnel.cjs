@@ -260,13 +260,17 @@ async function handlePersonnelRoutes(ctx) {
           user.role = desiredRole;
         }
         if (account.password) {
-          if (typeof account.password !== 'string' || account.password.length < 10)
+          if (
+            typeof account.password !== 'string' ||
+            account.password.length < 10 ||
+            account.password.length > 128
+          )
             throw fail(400, 'Şifre en az 10 karakter olmalı.');
           user.salt = crypto.randomBytes(16).toString('hex');
-          user.hash = hash(account.password, user.salt);
+          user.hash = await hash(account.password, user.salt);
         }
       } else {
-        user = newUser({
+        user = await newUser({
           name: record.name,
           username,
           password: account.password,
