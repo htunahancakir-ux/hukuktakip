@@ -168,6 +168,124 @@ test('Two application instances share sessions, reject stale writes, persist log
   }
 });
 
+test('Only the CEO can see active users, while every signed-in user refreshes their own presence', async (t) => {
+  const keys = [
+    'R2_ACCOUNT_ID',
+    'R2_ACCESS_KEY_ID',
+    'R2_SECRET_ACCESS_KEY',
+    'R2_BUCKET_NAME',
+    'BACKUP_ENCRYPTION_KEY',
+  ];
+  const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  Object.assign(process.env, {
+    R2_ACCOUNT_ID: 'test-account',
+    R2_ACCESS_KEY_ID: 'test-access',
+    R2_SECRET_ACCESS_KEY: 'test-secret',
+    R2_BUCKET_NAME: 'test-bucket',
+    BACKUP_ENCRYPTION_KEY: crypto.randomBytes(32).toString('hex'),
+  });
+  t.after(() => {
+    for (const key of keys)
+      if (previous[key] === undefined) delete process.env[key];
+      else process.env[key] = previous[key];
+  });
+  const { pg, pool } = await database();
+  const state = fixture();
+  state.users.push({
+    ...state.users[0],
+    id: 'test-staff',
+    username: 'staff',
+    name: 'Test Personel',
+    role: 'staff',
+    permissions: [],
+  });
+  await importState(pool, state);
+  const store = createStore(pool);
+  await store.updatePolicy((policy) => {
+    const now = new Date().toISOString();
+    Object.assign(policy, { enabled: true, intervalDays: 1, lastSuccessAt: now, lastR2At: now });
+    return true;
+  });
+  const app = await serve(createApplication({ store }));
+  try {
+    const headers = { 'Content-Type': 'application/json', 'X-Han-Request': '1' };
+    const login = async (username) => {
+      const response = await fetch(app.url + '/api/login', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ username, password }),
+      });
+      assert.equal(response.status, 200);
+      return response.headers.get('set-cookie').split(';')[0];
+    };
+    const ceo = await login('test');
+    const staff = await login('staff');
+    assert.equal((await fetch(app.url + '/api/presence')).status, 401);
+    assert.equal((await fetch(app.url + '/api/presence', { headers: { cookie: staff } })).status, 403);
+    assert.equal(
+      (
+        await fetch(app.url + '/api/presence', {
+          method: 'POST',
+          headers: { 'X-Han-Request': '1', cookie: staff },
+        })
+      ).status,
+      200,
+    );
+    const result = await (await fetch(app.url + '/api/presence', { headers: { cookie: ceo } })).json();
+    assert.equal(result.windowMinutes, 3);
+    assert.deepEqual(new Set(result.active.map((user) => user.id)), new Set(['test-ceo', 'test-staff']));
+    assert.deepEqual(Object.keys(result.active[0]).sort(), ['id', 'lastSeenAt', 'name', 'role']);
+  } finally {
+    await app.close();
+    await pg.close();
+  }
+});
+
+test('The account owner can change only their own password and choose a persistent sign-in', async () => {
+  const { pg, pool } = await database();
+  await importState(pool, fixture());
+  const app = await serve(createApplication({ store: createStore(pool) }));
+  try {
+    const headers = { 'Content-Type': 'application/json', 'X-Han-Request': '1' };
+    const login = async (remember = false, secret = password) =>
+      fetch(app.url + '/api/login', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ username: 'test', password: secret, ...(remember && { remember: true }) }),
+      });
+    const temporary = await login();
+    assert.equal(temporary.status, 200);
+    assert.doesNotMatch(temporary.headers.get('set-cookie'), /Max-Age=/);
+
+    const remembered = await login(true);
+    assert.equal(remembered.status, 200);
+    assert.match(remembered.headers.get('set-cookie'), /Max-Age=1209600/);
+    const cookie = remembered.headers.get('set-cookie').split(';')[0];
+
+    const wrong = await fetch(app.url + '/api/account/password', {
+      method: 'POST',
+      headers: { ...headers, cookie },
+      body: JSON.stringify({ currentPassword: 'wrong-password', password: 'New-Synthetic-Password' }),
+    });
+    assert.equal(wrong.status, 400);
+
+    const changedPassword = 'New-Synthetic-Password';
+    const changed = await fetch(app.url + '/api/account/password', {
+      method: 'POST',
+      headers: { ...headers, cookie },
+      body: JSON.stringify({ currentPassword: password, password: changedPassword }),
+    });
+    assert.equal(changed.status, 200);
+    assert.doesNotMatch(changed.headers.get('set-cookie'), /Max-Age=/);
+    assert.equal((await (await fetch(app.url + '/api/session', { headers: { cookie } })).json()).user, null);
+    assert.equal((await login(false, password)).status, 401);
+    assert.equal((await login(false, changedPassword)).status, 200);
+  } finally {
+    await app.close();
+    await pg.close();
+  }
+});
+
 test('Transaction failure rolls back state; buffered response prevents false success', async () => {
   const { pg, pool } = await database();
   await importState(pool, fixture());

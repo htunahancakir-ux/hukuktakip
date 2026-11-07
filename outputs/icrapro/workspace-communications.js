@@ -167,6 +167,11 @@ async function updateMessageBadge() {
         result.unread + ' okunmamış mesaj, ' + Number(result.pendingWorkOrders || 0) + ' bekleyen iş emri',
       );
     }
+    if (typeof updateHeaderNotifications === 'function')
+      updateHeaderNotifications({
+        unread: Number(result.unread || 0),
+        pendingWorkOrders: Number(result.pendingWorkOrders || 0),
+      });
   } catch {}
 }
 

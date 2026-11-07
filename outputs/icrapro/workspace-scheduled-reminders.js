@@ -13,8 +13,12 @@ let previousDueCount = 0;
 
 function scheduledReminderBadge(count) {
   const badge = document.getElementById('scheduledReminderCount');
-  badge.textContent = count || '';
-  badge.title = count ? count + ' zamanı gelen hatırlatma' : '';
+  if (badge) {
+    badge.textContent = count || '';
+    badge.title = count ? count + ' zamanı gelen hatırlatma' : '';
+  }
+  if (typeof updateHeaderNotifications === 'function')
+    updateHeaderNotifications({ dueReminders: Number(count || 0) });
 }
 
 function startScheduledReminderNotices() {

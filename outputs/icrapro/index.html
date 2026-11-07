@@ -11,7 +11,8 @@
   <body>
     <aside hidden>
       <div class="brand">
-        ⚖ <strong>han<span>hukuk</span></strong>
+        <img class="sidebar-brand-mark" src="brand-scales.png" width="30" height="30" alt="" />
+        <strong>han<span>hukuk</span></strong>
       </div>
       <small>HUKUK VE TAHSİLAT YÖNETİMİ</small>
       <div class="workspace">Çalışma alanı<br /><b>Hukuk Bürosu</b><span class="dot">●</span></div>
@@ -29,8 +30,17 @@
         ><button data-page="settings">⚙ &nbsp; Ayarlar</button>
       </nav>
       <div class="sidebottom">
+        <small id="backupIndicator" class="backup-indicator" aria-live="polite"
+          >Yedekleme durumu kontrol ediliyor.</small
+        >
         <span class="avatar">HB</span>
-        <div><b>Hukuk Bürosu</b><br /><small>Prototip çalışma alanı</small></div>
+        <div class="sidebar-identity">
+          <button id="onlineUsersButton" class="online-users" type="button" hidden aria-haspopup="dialog">
+            <span class="online-users-dot" aria-hidden="true"></span><span id="onlineUserCount">0</span> aktif
+            kullanıcı
+          </button>
+          <b>Han Hukuk</b><small>Operasyon merkezi</small>
+        </div>
       </div>
     </aside>
     <div class="shell" hidden>
@@ -61,9 +71,28 @@
             hidden
           ></div>
         </form>
-        <label class="operator-picker"
-          >İşlem Yapan Personel<select id="activeOperator" aria-label="İşlem yapan personel"></select></label
-        ><span class="demo" id="appVersion"></span>
+        <div class="header-actions">
+          <button
+            id="notificationBell"
+            class="notification-bell"
+            type="button"
+            aria-label="Bildirimler"
+            title="Bildirimler"
+          >
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+              <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+              <path d="M10 21h4" />
+            </svg>
+            <span id="notificationCount" class="notification-count" hidden>0</span>
+          </button>
+          <div id="accountSlot" class="account-slot">
+            <label class="operator-picker"
+              >Hesabım<select id="activeOperator" aria-label="Hesap seçenekleri"></select
+            ></label>
+          </div>
+          <span class="demo" id="appVersion"></span>
+          <button id="signOut" class="secondary header-sign-out" type="button">Çıkış</button>
+        </div>
       </header>
       <main>
         <div class="heading">
@@ -82,9 +111,8 @@
         <div id="clientSearchBar" class="panel" style="margin-bottom: 22px" hidden></div>
         <div id="stats" class="stats"></div>
         <div id="content"></div>
-        <footer>
-          ◈ &nbsp; Prototip ortamı · Yalnızca örnek veriler kullanın. Kayıtlar bu bilgisayardaki uygulama
-          sunucusunda saklanır.
+        <footer id="backupAssurance" class="backup-assurance" aria-live="polite">
+          ◈ &nbsp; Yedekleme durumu kontrol ediliyor.
         </footer>
       </main>
     </div>

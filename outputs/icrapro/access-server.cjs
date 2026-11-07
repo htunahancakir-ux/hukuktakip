@@ -157,17 +157,21 @@ function createAccess(stateFile, options = {}) {
         ?.slice(12),
       session = sessions.get(token ? crypto.createHash('sha256').update(token).digest('hex') : '');
     if (!session || session.until < Date.now()) return null;
+    session.seenAt = Date.now();
     return state.users.find((u) => u.id === session.id && userEnabled(u)) || null;
   }
-  function login(res, u) {
+  function login(res, u, { remember = false } = {}) {
     const token = crypto.randomBytes(32).toString('hex');
+    const lifetime = remember ? 14 * 24 * 3600000 : 8 * 3600000;
     sessions.set(crypto.createHash('sha256').update(token).digest('hex'), {
       id: u.id,
-      until: Date.now() + 8 * 3600000,
+      until: Date.now() + lifetime,
+      seenAt: Date.now(),
     });
+    const maxAge = remember ? '; Max-Age=' + lifetime / 1000 : '';
     res.setHeader(
       'Set-Cookie',
-      'han_session=' + token + '; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800' + secure,
+      'han_session=' + token + '; HttpOnly; SameSite=Strict; Path=/' + maxAge + secure,
     );
   }
   function invalidate(id) {
@@ -330,6 +334,7 @@ function createAccess(stateFile, options = {}) {
         url,
         u,
         options,
+        sessions,
         attempts,
         persist: (next) => persist(next, u),
         persistEmployeeTerms: saveState,

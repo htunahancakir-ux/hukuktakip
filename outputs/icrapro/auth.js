@@ -55,6 +55,89 @@ function hanPageAllowed(p) {
 function staffHome() {
   return 'home';
 }
+
+const headerNotificationState = { unread: 0, pendingWorkOrders: 0, dueReminders: 0 };
+
+function updateHeaderNotifications(next = {}) {
+  Object.assign(headerNotificationState, next);
+  const bell = document.getElementById('notificationBell');
+  const count = document.getElementById('notificationCount');
+  if (!bell || !count) return;
+  const total = Object.values(headerNotificationState).reduce((sum, value) => sum + Number(value || 0), 0);
+  count.textContent = total > 99 ? '99+' : total;
+  count.hidden = total < 1;
+  bell.classList.toggle('has-notifications', total > 0);
+  bell.title = total
+    ? `${headerNotificationState.unread} okunmamış mesaj, ${headerNotificationState.pendingWorkOrders} bekleyen iş emri, ${headerNotificationState.dueReminders} zamanı gelen hatırlatma`
+    : 'Bildirim yok';
+}
+
+function accountRoleLabel(role) {
+  return role === 'ceo' ? 'CEO' : role === 'admin' ? 'Yönetici' : 'Personel';
+}
+
+function accountInitials(name) {
+  return String(name || 'H')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join('')
+    .toLocaleUpperCase('tr');
+}
+
+function showAccountPanel() {
+  const modal = document.getElementById('modal');
+  const user = hanAuth;
+  modal.innerHTML = `<form id="accountSettingsForm" aria-labelledby="accountSettingsTitle">
+    <div class="panelhead"><div><h2 id="accountSettingsTitle">Hesabım</h2><p>${esc(user.name)} · ${accountRoleLabel(user.role)}</p></div><button type="button" class="secondary" id="closeAccountSettings">Kapat</button></div>
+    <div class="formbody account-settings-form">
+      <div class="account-identity"><span>${esc(accountInitials(user.name))}</span><div><strong>${esc(user.name)}</strong><small>${esc(user.username)} · ${accountRoleLabel(user.role)}</small></div></div>
+      <section><h3>Şifre değiştir</h3><p class="account-help">Güvenliğiniz için önce mevcut şifrenizi doğrulayın. Şifre değiştiğinde diğer açık oturumlar kapatılır.</p>
+        <label class="field">Mevcut şifre<input name="currentPassword" type="password" autocomplete="current-password" minlength="10" maxlength="128" required></label>
+        <label class="field">Yeni şifre<input name="password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required></label>
+        <label class="field">Yeni şifre tekrar<input name="confirmPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" required></label>
+        <p id="accountPasswordStatus" class="account-password-status" role="status"></p>
+      </section>
+    </div>
+    <div class="actions"><button type="button" class="secondary" id="openAccountTerms">Sözleşme geçmişim</button><span><button type="button" class="secondary" id="cancelAccountSettings">Vazgeç</button><button type="submit" class="primary">Şifreyi değiştir</button></span></div>
+  </form>`;
+  const form = document.getElementById('accountSettingsForm');
+  installPasswordVisibility(form);
+  const close = () => modal.close();
+  document.getElementById('closeAccountSettings').onclick = close;
+  document.getElementById('cancelAccountSettings').onclick = close;
+  document.getElementById('openAccountTerms').onclick = () => {
+    modal.close();
+    showMyEmployeeTerms();
+  };
+  form.onsubmit = (event) => {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(form));
+    const status = document.getElementById('accountPasswordStatus');
+    if (values.password !== values.confirmPassword) {
+      status.textContent = 'Yeni şifreler aynı olmalıdır.';
+      return;
+    }
+    try {
+      authApi('/api/account/password', 'POST', values);
+      form.reset();
+      window.modalFormSaved?.(form);
+      status.textContent = 'Şifreniz değiştirildi. Diğer açık oturumlar kapatıldı.';
+      toast('Şifreniz güncellendi.');
+    } catch (error) {
+      status.textContent = error.message;
+    }
+  };
+  modal.showModal();
+}
+
+function openHeaderNotifications() {
+  if (typeof page === 'undefined') return;
+  page = headerNotificationState.dueReminders ? 'reminders' : 'messages';
+  render();
+}
+
 function accessMenu() {
   document
     .querySelectorAll('nav [data-page]')
@@ -70,26 +153,21 @@ function accessMenu() {
     };
     nav.append(button);
   }
-  const op = document.getElementById('activeOperator');
-  if (op) {
-    op.outerHTML =
-      '<button type="button" class="link" id="signedInUser" title="Hesabım · Sözleşme geçmişi"></button>';
-    const account = document.getElementById('signedInUser');
-    account.textContent = hanAuth.name + (hanAuth.role === 'ceo' ? ' · CEO' : '') + ' · Hesabım';
-    account.setAttribute('aria-label', 'Hesabım · ' + hanAuth.name);
-    account.onclick = showMyEmployeeTerms;
+  const slot = document.getElementById('accountSlot');
+  if (slot) {
+    slot.innerHTML = `<button type="button" class="account-menu-trigger" id="signedInUser" aria-haspopup="dialog" title="Hesabım">
+      <span class="account-menu-avatar">${esc(accountInitials(hanAuth.name))}</span><span class="account-menu-copy"><small>${accountRoleLabel(hanAuth.role)}</small><strong>${esc(hanAuth.name)}</strong></span><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+    </button>`;
+    document.getElementById('signedInUser').onclick = showAccountPanel;
   }
-  if (!document.getElementById('signOut')) {
-    const b = document.createElement('button');
-    b.id = 'signOut';
-    b.className = 'secondary';
-    b.textContent = 'Çıkış';
-    b.onclick = () => {
+  const bell = document.getElementById('notificationBell');
+  if (bell) bell.onclick = openHeaderNotifications;
+  const signOut = document.getElementById('signOut');
+  if (signOut)
+    signOut.onclick = () => {
       authApi('/api/logout', 'POST', {});
       location.reload();
     };
-    document.querySelector('header').append(b);
-  }
 }
 function installServerStorage() {
   const get = Storage.prototype.getItem,
@@ -122,6 +200,8 @@ async function launchApplication() {
   document.querySelector('aside').hidden = false;
   document.querySelector('.shell').hidden = false;
   accessMenu();
+  refreshBackupIndicator();
+  startPresenceHeartbeat();
   if (embeddedIntake) return;
   setupWorkspaceSearch();
   startMessageNotifications();
@@ -130,6 +210,66 @@ async function launchApplication() {
   startScheduledReminderNotices();
   showPendingWorkOrders();
 }
+
+async function presenceRequest(method) {
+  const response = await fetch('/api/presence', {
+    method,
+    headers: { 'X-Han-Request': '1' },
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw Error(result.error || 'Aktif kullanıcı bilgisi alınamadı.');
+  return result;
+}
+
+async function refreshOnlineUsersButton() {
+  const button = document.getElementById('onlineUsersButton');
+  if (!button || hanAuth?.role !== 'ceo') return;
+  try {
+    const { active, windowMinutes } = await presenceRequest('GET');
+    document.getElementById('onlineUserCount').textContent = active.length;
+    button.title = `Son ${windowMinutes} dakika içinde etkin olan kullanıcılar`;
+    button.hidden = false;
+  } catch {
+    button.hidden = true;
+  }
+}
+
+async function showOnlineUsers() {
+  try {
+    const { active, windowMinutes } = await presenceRequest('GET');
+    const modal = document.getElementById('modal');
+    modal.innerHTML = `<div class="panelhead"><div><h2>Aktif kullanıcılar</h2><p>Son ${windowMinutes} dakika içinde etkin olan hesaplar.</p></div><button type="button" class="secondary" id="closeOnlineUsers">Kapat</button></div><div class="formbody"><p><b>${active.length}</b> aktif kullanıcı</p>${
+      active.length
+        ? `<div class="online-users-list">${active
+            .map(
+              (user) =>
+                `<div><b>${esc(user.name)}</b><small>${user.role === 'ceo' ? 'CEO' : user.role === 'admin' ? 'Yönetici' : 'Personel'} · Son etkinlik: ${new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', timeStyle: 'short' }).format(new Date(user.lastSeenAt))}</small></div>`,
+            )
+            .join('')}</div>`
+        : '<p>Şu anda etkin kullanıcı görünmüyor.</p>'
+    }</div><div class="actions"><button type="button" class="secondary" id="refreshOnlineUsers">Yenile</button></div>`;
+    document.getElementById('closeOnlineUsers').onclick = () => modal.close();
+    document.getElementById('refreshOnlineUsers').onclick = showOnlineUsers;
+    if (!modal.open) modal.showModal();
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
+function startPresenceHeartbeat() {
+  const button = document.getElementById('onlineUsersButton');
+  if (hanAuth?.role === 'ceo' && button) button.onclick = showOnlineUsers;
+  const heartbeat = () => {
+    if (document.visibilityState === 'visible') presenceRequest('POST').catch(() => {});
+    refreshOnlineUsersButton();
+  };
+  heartbeat();
+  setInterval(heartbeat, 60000);
+  document.addEventListener('visibilitychange', heartbeat);
+}
+
 function installPasswordVisibility(form) {
   form.querySelectorAll('input[type="password"]').forEach((input, index) => {
     const wrapper = document.createElement('span');
@@ -167,8 +307,9 @@ function authGate(setup) {
       </label>
       <div class="field"><div class="login-field-label"><label for="login-password">Şifre</label>
         ${setup ? '' : '<button type="button" class="login-link" id="forgotPassword">Şifremi unuttum</button>'}</div>
-        <div class="login-control">${loginIcon('lock')}<input id="login-password" name="password" type="password" required ${setup ? 'minlength="10"' : ''} autocomplete="${setup ? 'new-password' : 'current-password'}" placeholder="Şifrenizi girin" aria-describedby="authError"></div>
+        <div class="login-control">${loginIcon('lock')}<input id="login-password" name="password" type="password" required ${setup ? 'minlength="10"' : ''} autocomplete="${setup ? 'new-password' : 'off'}" placeholder="Şifrenizi girin" aria-describedby="authError"></div>
       </div>
+      ${setup ? '' : '<label class="login-remember"><input id="rememberLogin" name="remember" type="checkbox" autocomplete="off"><span><strong>Beni hatırla</strong><small>Bu seçeneği yalnızca kişisel ve güvenilir cihazlarda kullanın.</small></span></label>'}
       ${setup ? '<label class="field" for="login-confirm">Şifre tekrar<input id="login-confirm" name="confirm" type="password" required minlength="10" autocomplete="new-password" placeholder="Şifrenizi tekrar girin"></label><p class="login-note">Şifreniz en az 10 karakter olmalı. Bu tarayıcıdaki mevcut kayıtlar yönetici kurulumunda sunucuya taşınır.</p>' : ''}
     </div>
     <p id="authError" class="login-status" role="alert"></p>
@@ -182,6 +323,21 @@ function authGate(setup) {
       passwordRecoveryGate();
       document.getElementById('recovery-account').focus({ preventScroll: true });
     };
+    const remember = document.getElementById('rememberLogin');
+    const password = document.getElementById('login-password');
+    const syncPasswordAutocomplete = () => {
+      password.autocomplete = remember.checked ? 'current-password' : 'off';
+    };
+    remember.onchange = syncPasswordAutocomplete;
+    syncPasswordAutocomplete();
+    // Browsers may ignore autocomplete="off" on sign-in forms. Until the user
+    // explicitly opts in, clear any password manager fill that occurs on render.
+    const clearUnselectedAutofill = () => {
+      if (!remember.checked) password.value = '';
+    };
+    clearUnselectedAutofill();
+    requestAnimationFrame(() => requestAnimationFrame(clearUnselectedAutofill));
+    setTimeout(clearUnselectedAutofill, 150);
   }
   installPasswordVisibility(loginForm);
   loginForm.onsubmit = async (event) => {

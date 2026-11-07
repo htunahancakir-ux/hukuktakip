@@ -78,7 +78,7 @@ async function handleSessionRoutes(ctx) {
       throw fail(401, 'Kullanıcı adı veya şifre yanlış.');
     }
     attempts.delete(key);
-    login(res, user);
+    login(res, user, { remember: v.remember === true || v.remember === 'on' });
     send(res, 200, publicUser(user));
     return true;
   }
@@ -94,15 +94,66 @@ async function handleAccountRoutes(ctx) {
     secure,
     persist,
     publicUser,
+    userEnabled,
     hash,
+    passwordOK,
     invalidate,
+    login,
     fail,
     body,
     send,
     newUser,
     crypto,
     permissions,
+    sessions,
   } = ctx;
+  if (url.pathname === '/api/presence') {
+    if (req.method === 'POST') {
+      send(res, 200, { ok: true });
+      return true;
+    }
+    if (req.method !== 'GET') throw fail(405, 'İşlem desteklenmiyor.');
+    if (u.role !== 'ceo') throw fail(403, 'Aktif kullanıcı listesi yalnızca CEO içindir.');
+    const activeAfter = Date.now() - 3 * 60 * 1000;
+    const active = new Map();
+    for (const session of sessions.values()) {
+      if (session.until < Date.now() || session.seenAt < activeAfter) continue;
+      const account = ctx.state.users.find((user) => user.id === session.id && userEnabled(user));
+      if (!account) continue;
+      const previous = active.get(account.id);
+      if (!previous || previous.lastSeenAt < session.seenAt)
+        active.set(account.id, {
+          id: account.id,
+          name: account.name,
+          role: account.role,
+          lastSeenAt: session.seenAt,
+        });
+    }
+    send(res, 200, {
+      active: [...active.values()].sort(
+        (a, b) => b.lastSeenAt - a.lastSeenAt || a.name.localeCompare(b.name, 'tr'),
+      ),
+      windowMinutes: 3,
+    });
+    return true;
+  }
+  if (url.pathname === '/api/account/password' && req.method === 'POST') {
+    const v = await body(req);
+    if (!passwordOK(v.currentPassword, u)) throw fail(400, 'Mevcut şifreniz yanlış.');
+    if (typeof v.password !== 'string' || v.password.length < 10 || v.password.length > 128)
+      throw fail(400, 'Yeni şifre 10–128 karakter olmalı.');
+    const next = structuredClone(ctx.state);
+    const account = next.users.find((user) => user.id === u.id);
+    account.salt = crypto.randomBytes(16).toString('hex');
+    account.hash = hash(v.password, account.salt);
+    account.passwordChangedAt = new Date().toISOString();
+    account.passwordChangedBy = u.id;
+    persist(next);
+    invalidate(u.id);
+    login(res, account);
+    send(res, 200, { ok: true });
+    return true;
+  }
   if (url.pathname === '/api/users/password' && req.method === 'POST') {
     if (!['ceo', 'admin'].includes(u.role))
       throw fail(403, 'Şifre sıfırlamak için yönetici yetkisi gerekli.');

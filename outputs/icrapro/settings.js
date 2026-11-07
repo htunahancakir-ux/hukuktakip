@@ -21,7 +21,7 @@ let settingsTab = 'firm',
   settingsDraft = null;
 function applySettings() {
   document
-    .querySelectorAll('.workspace b,.sidebottom b')
+    .querySelectorAll('.workspace b')
     .forEach((e) => (e.textContent = config.firm.name || 'Hukuk Bürosu'));
   document.querySelector('.avatar').textContent = (config.firm.name || 'HB')
     .split(/\s+/)
@@ -29,6 +29,32 @@ function applySettings() {
     .map((s) => s[0])
     .join('')
     .toLocaleUpperCase('tr');
+}
+
+function refreshBackupIndicator() {
+  const indicator = document.getElementById('backupIndicator');
+  const assurance = document.getElementById('backupAssurance');
+  if (!indicator || !assurance || !window.hanAuth) return;
+  try {
+    const status = authApi('/api/backup-indicator');
+    const date = backupDate(status.lastSuccessAt);
+    if (status.protected) {
+      indicator.textContent = `Son yedek: ${date} · Veriler güvende`;
+      indicator.dataset.state = 'safe';
+      assurance.textContent =
+        '◈ Verileriniz ana sistemde ve şifreli yedek kopyasında iki ayrı güvenli konumda korunur.';
+      return;
+    }
+    indicator.textContent = status.lastSuccessAt
+      ? `Son yedek: ${date} · Yedekleme kontrolü gerekiyor`
+      : 'Henüz doğrulanmış yedek bulunmuyor';
+    indicator.dataset.state = 'attention';
+    assurance.textContent = '◈ Yedekleme durumu henüz doğrulanmadı.';
+  } catch {
+    indicator.textContent = 'Yedekleme durumu doğrulanamadı';
+    indicator.dataset.state = 'attention';
+    assurance.textContent = '◈ Yedekleme durumu henüz doğrulanmadı.';
+  }
 }
 function firmReceipt() {
   return `<div style="border-bottom:1px solid #ddd;padding-bottom:15px;margin-bottom:20px"><b>${esc(config.firm.legalName || config.firm.name)}</b>${config.preferences.showContact ? `<div style="font-size:12px">${[config.contact.address, [config.contact.district, config.contact.city].filter(Boolean).join(' / '), config.contact.phone, config.contact.email].filter(Boolean).map(esc).join('<br>')}</div>` : ''}</div>`;
@@ -282,6 +308,7 @@ function backupSettingsPage() {
         enabled: form.elements.enabled.checked,
         intervalDays: Number(form.elements.intervalDays.value),
       });
+      refreshBackupIndicator();
       settings();
       toast('Yedekleme ayarları kaydedildi.');
     } catch (error) {
@@ -300,6 +327,7 @@ function backupSettingsPage() {
       });
       const result = await response.json();
       if (!response.ok) throw Error(result.error || 'Yedekleme başarısız.');
+      refreshBackupIndicator();
       settings();
       toast(result.ok ? 'Şifreli yedek Cloudflare R2’ye kaydedildi.' : result.skipped);
     } catch (error) {

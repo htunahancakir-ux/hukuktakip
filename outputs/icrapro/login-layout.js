@@ -1,5 +1,9 @@
+function loginBrandMark() {
+  return '<img src="brand-scales.png" width="43" height="43" alt="" aria-hidden="true">';
+}
+
 function loginBrand() {
-  return '<div class="login-brand"><div class="brand"><span class="login-brand-mark" aria-hidden="true">⚖</span> <strong>han<span>hukuk</span></strong></div><small>HUKUK VE TAHSİLAT YÖNETİMİ</small></div>';
+  return `<div class="login-brand"><div class="brand"><span class="login-brand-mark">${loginBrandMark()}</span><strong>han<span>hukuk</span></strong></div><small>HUKUK VE TAHSİLAT YÖNETİMİ</small></div>`;
 }
 
 function loginIcon(kind) {
@@ -28,15 +32,17 @@ function loginFrame(content) {
         <h2>Her dosyada özen.</h2>
         <p>Hukuk ve tahsilat yönetiminiz, tek bir çalışma alanında.</p>
       </div>
-      <span class="login-story-domain">hanhukuktakip.com</span>
+      <div class="login-story-footer">
+        <span class="login-story-domain">hanhukuktakip.com</span>
+        <a class="login-story-credit" href="https://www.emlakerp.com/" target="_blank" rel="noopener noreferrer">www.emlakerp.com</a>
+      </div>
     </section>
     <section class="login-entry" aria-label="Hesap erişimi">
       <div class="login-entry-top">
         <div class="login-mobile-brand">${loginBrand()}</div>
-        <span class="login-access-label">${loginIcon('lock')} Kurumsal giriş</span>
       </div>
       <div class="login-card"></div>
-      <div class="login-entry-footer"><span>Han Hukuk</span><span data-login-version></span></div>
+      <div class="login-entry-footer"><span>Han Hukuk</span><span data-login-version></span><a class="login-mobile-credit" href="https://www.emlakerp.com/" target="_blank" rel="noopener noreferrer">www.emlakerp.com</a></div>
     </section>`;
   gate.querySelector('.login-card').innerHTML = content;
   const version = document.getElementById('appVersion')?.textContent.replace(/^●\s*/, '').trim();
