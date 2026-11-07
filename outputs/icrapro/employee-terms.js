@@ -51,6 +51,20 @@ function bindTermsNotice(root, notice) {
 
 async function enterWorkspace() {
   const status = authApi('/api/employee-terms/current');
+  if (hanAuth?.activeBreak) {
+    window.staffBreakGateOnly = true;
+    document.getElementById('authGate')?.remove();
+    if (typeof setupStaffBreakButton !== 'function')
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'workspace-breaks.js';
+        script.onload = resolve;
+        script.onerror = reject;
+        document.body.append(script);
+      });
+    setupStaffBreakButton();
+    return;
+  }
   if (!status.required && !status.reminder) return launchApplication();
   showEmployeeTermsGate(status);
 }

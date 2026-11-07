@@ -6,6 +6,12 @@ async function recoveryApi(path, data) {
     cache: 'no-store',
   });
   const result = await response.json().catch(() => ({}));
+  if (
+    response.status === 423 &&
+    result.code === 'staff_on_break' &&
+    typeof applyStaffBreakStatus === 'function'
+  )
+    applyStaffBreakStatus(result.activeBreak);
   if (!response.ok) throw Error(result.error || 'İşlem tamamlanamadı. Daha sonra tekrar deneyin.');
   return result;
 }

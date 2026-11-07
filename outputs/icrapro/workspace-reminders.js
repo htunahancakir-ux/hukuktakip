@@ -6,6 +6,7 @@ function pollCollectionNotices() {
 }
 
 function showNextCollectionNotice() {
+  if (hanAuth?.activeBreak) return;
   if (collectionNoticeShowing || !collectionNoticeQueue.length) return;
   collectionNoticeShowing = true;
   const notice = collectionNoticeQueue.shift();

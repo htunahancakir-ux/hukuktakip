@@ -237,3 +237,12 @@ aside > .brand-home strong { min-width: 0; letter-spacing: 0; }
 #staffBreakStatus:empty { display: none; }
 .workflow-breakStarted { background: #dbeafe; color: #1e40af; }
 .workflow-breakEnded { background: #dcfce7; color: #166534; }
+
+#staffBreakLock { width: min(460px, 94vw); text-align: center; }
+#staffBreakLock::backdrop { background: #102536d9; }
+#staffBreakLock .formbody { padding: 30px 24px; }
+#staffBreakLock h2 { color: #744b00; margin-bottom: 14px; }
+#staffBreakLockTime { display: block; color: #744b00; font-size: 20px; margin-top: 18px; }
+#staffBreakLock .actions { justify-content: center; }
+
+#staffBreakLock .staff-break-unlock { margin-top: 20px; text-align: left; }

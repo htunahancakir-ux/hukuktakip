@@ -8,7 +8,15 @@ async function handleBreakRoutes(ctx) {
     return true;
   }
   if (req.method !== 'POST') throw fail(405, 'Yöntem desteklenmiyor.');
-  const result = changeStaffBreak(ctx.state, u, await body(req), { userEnabled });
+  const input = await body(req);
+  if (
+    input?.action === 'end' &&
+    u.activeBreak &&
+    input.breakId === u.activeBreak.id &&
+    !(await ctx.passwordOK(input.password, u))
+  )
+    throw fail(403, 'Molayı bitirmek için giriş şifrenizi doğru girin.');
+  const result = changeStaffBreak(ctx.state, u, input, { userEnabled });
   if (result.next) (ctx.persistMetadata || persist)(result.next);
   send(res, 200, result.status);
   return true;

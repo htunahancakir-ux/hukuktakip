@@ -257,6 +257,25 @@ function createAccess(stateFile, options = {}) {
     try {
       if (!mutationSourceAllowed(req, options)) throw fail(403, 'İstek kaynağı doğrulanamadı.');
       const u = current(req);
+      if (
+        u?.activeBreak &&
+        ![
+          '/api/staff-breaks',
+          '/api/logout',
+          '/api/login',
+          '/api/presence',
+          '/api/session',
+          '/api/notifications',
+          '/api/employee-terms/current',
+        ].includes(url.pathname)
+      ) {
+        send(res, 423, {
+          error: 'Moladasınız. İşlem yapabilmek için önce molayı bitirin.',
+          code: 'staff_on_break',
+          activeBreak: u.activeBreak,
+        });
+        return true;
+      }
       const termsRequired = options.employeeTermsRequired
         ? options.employeeTermsRequired(u)
         : requiresEmployeeTerms(state, u);
@@ -318,6 +337,8 @@ function createAccess(stateFile, options = {}) {
         },
       };
       if (await handleSessionRoutes(ctx)) return true;
+      if (u?.activeBreak && url.pathname === '/api/staff-breaks' && (await handleBreakRoutes(ctx)))
+        return true;
       if (await handleEmployeeTermsRoutes(ctx)) return true;
       if (
         ['/api/password-reset/request', '/api/password-reset/complete'].includes(url.pathname) &&

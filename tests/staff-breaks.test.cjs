@@ -111,19 +111,25 @@ test('PostgreSQL: concurrent starts and ends, refresh and fast notifications ret
     await importState(pool, state);
     const store = createStore(pool);
     app = await serve(createApplication({ store }));
-    const post = (url, value, cookie) =>
+    const post = (url, value, cookie, extraHeaders = {}) =>
       fetch(app.url + url, {
         method: 'POST',
-        headers: { 'X-Han-Request': '1', 'Content-Type': 'application/json', ...(cookie ? { cookie } : {}) },
+        headers: {
+          'X-Han-Request': '1',
+          'Content-Type': 'application/json',
+          ...(cookie ? { cookie } : {}),
+          ...extraHeaders,
+        },
         body: JSON.stringify(value),
       });
-    const login = async (username) => {
-      const res = await post('/api/login', { username, password });
+    const login = async (username, extraHeaders) => {
+      const res = await post('/api/login', { username, password }, null, extraHeaders);
       assert.equal(res.status, 200);
       return res.headers.get('set-cookie').split(';')[0];
     };
-    const employee = await login('staff'),
-      manager = await login('test');
+    let employee = await login('staff');
+    const manager = await login('test');
+    const mobile = await login('staff', { 'user-agent': 'Mobile Test Browser' });
     const requests = await Promise.all(
       ['one', 'two'].map((requestId) => post('/api/staff-breaks', { action: 'start', requestId }, employee)),
     );
@@ -139,6 +145,64 @@ test('PostgreSQL: concurrent starts and ends, refresh and fast notifications ret
     };
     assert.equal((await get('/api/session', employee)).user.activeBreak.id, active.id);
     assert.equal((await get('/api/notifications', employee)).staffBreak.id, active.id);
+    assert.equal((await get('/api/session', mobile)).user.activeBreak.id, active.id);
+    for (const cookie of [employee, mobile]) {
+      assert.equal((await fetch(app.url + '/api/data?key=icrapro-v1', { headers: { cookie } })).status, 423);
+      const blocked = await post(
+        '/api/messages',
+        { recipientIds: ['test-ceo'], subject: 'Blocked', text: 'Do not save' },
+        cookie,
+      );
+      assert.equal(blocked.status, 423);
+      assert.equal((await blocked.json()).code, 'staff_on_break');
+      const write = await fetch(app.url + '/api/data?key=hanhukuk-finance-v1', {
+        method: 'PUT',
+        headers: { 'X-Han-Request': '1', 'Content-Type': 'application/json', cookie },
+        body: JSON.stringify({ value: [] }),
+      });
+      assert.equal(write.status, 423);
+    }
+    assert.equal(
+      (
+        await post(
+          '/api/account/password',
+          { currentPassword: password, password: 'NoChange-Synthetic' },
+          employee,
+        )
+      ).status,
+      423,
+    );
+    assert.equal(
+      (await post('/api/staff-breaks', { action: 'end', breakId: active.id }, employee)).status,
+      403,
+    );
+    assert.equal(
+      (
+        await post(
+          '/api/staff-breaks',
+          { action: 'end', breakId: active.id, password: 'wrong-synthetic' },
+          employee,
+        )
+      ).status,
+      403,
+    );
+    assert.equal(
+      (await post('/api/work-orders', { assigneeId: 'missing', title: 'Test' }, manager)).status,
+      400,
+    );
+    assert.equal((await post('/api/logout', {}, mobile)).status, 200);
+    assert.equal(
+      (
+        await post(
+          '/api/messages',
+          { recipientIds: ['test-ceo'], subject: 'Old session', text: 'Blocked' },
+          employee,
+        )
+      ).status,
+      401,
+    );
+    employee = await login('staff');
+    assert.equal((await get('/api/session', employee)).user.activeBreak.id, active.id);
     const notices = await get('/api/notifications', manager);
     assert.equal(notices.messages.unread, 1);
     assert.equal(notices.workflow.notices[0].type, 'breakStarted');
@@ -147,7 +211,7 @@ test('PostgreSQL: concurrent starts and ends, refresh and fast notifications ret
       403,
     );
     const ends = await Promise.all(
-      [1, 2].map(() => post('/api/staff-breaks', { action: 'end', breakId: active.id }, employee)),
+      [1, 2].map(() => post('/api/staff-breaks', { action: 'end', breakId: active.id, password }, employee)),
     );
     assert.deepEqual(
       ends.map((r) => r.status),
@@ -158,11 +222,22 @@ test('PostgreSQL: concurrent starts and ends, refresh and fast notifications ret
     assert.equal(snapshot.staffBreaks.length, 1);
     assert.equal(snapshot.messages.length, 2);
     assert(snapshot.staffBreaks[0].durationSeconds >= 0);
+    assert(!JSON.stringify(snapshot).includes(password));
     const final = await get('/api/notifications', manager);
     assert.equal(final.messages.unread, 2);
     assert.deepEqual(
       final.workflow.notices.map((n) => n.type),
       ['breakStarted', 'breakEnded'],
+    );
+    assert.equal(
+      (
+        await post(
+          '/api/messages',
+          { recipientIds: ['test-ceo'], subject: 'Resumed', text: 'Allowed after break' },
+          employee,
+        )
+      ).status,
+      201,
     );
   } finally {
     if (app) await app.close();

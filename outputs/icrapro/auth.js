@@ -30,6 +30,12 @@ function authApi(url, method = 'GET', data) {
     location.reload();
     throw Error(result.error);
   }
+  if (
+    request.status === 423 &&
+    result.code === 'staff_on_break' &&
+    typeof applyStaffBreakStatus === 'function'
+  )
+    applyStaffBreakStatus(result.activeBreak);
   if (request.status < 200 || request.status >= 300)
     throw Object.assign(Error(result.error || 'İşlem yapılamadı.'), { code: result.code });
   const version = request.getResponseHeader('ETag');
