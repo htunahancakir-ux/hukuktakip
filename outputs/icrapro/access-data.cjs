@@ -1,4 +1,4 @@
-const { validateNewClientPayouts } = require('../../lib/client-payout.cjs');
+const { validateNewClientPayouts, appendClientPayout } = require('../../lib/client-payout.cjs');
 async function handleDataRoutes(ctx) {
   const {
     req,
@@ -20,6 +20,12 @@ async function handleDataRoutes(ctx) {
     parkingToday,
     applyParkingFee,
   } = ctx;
+  if (url.pathname === '/api/client-payout' && req.method === 'POST') {
+    const next = appendClientPayout(ctx.state, await body(req), u);
+    if (next) persist(next);
+    send(res, 200, { ok: true });
+    return true;
+  }
   if (url.pathname === '/api/cash-entry' && req.method === 'POST') {
     const v = await body(req);
     const external = v.type === 'external';

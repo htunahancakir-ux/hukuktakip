@@ -602,7 +602,7 @@ function openLegalCalculator(id) {
     $('#legalCalculationOutput').innerHTML = '';
   };
   form.onchange = form.oninput;
-  form.onsubmit = (e) => {
+    form.onsubmit = (e) => {
     e.preventDefault();
     result = null;
     try {
@@ -998,6 +998,7 @@ function clientPayoutForm(id) {
   const updateRemaining=()=>{const amount=financeCents(form.elements.amount.value);$('#clientPayoutRemainingPreview').textContent=Number.isSafeInteger(amount)&&amount>0&&amount<=p.remaining?'Bu ödeme sonrası kalan: '+money((p.remaining-amount)/100):'0’dan büyük ve kalan tutarı aşmayan bir ödeme girin.';};
   configureClientPayoutAmount(form,p.remaining,updateRemaining);
   form.elements.amount.addEventListener('input',updateRemaining);form.elements.amount.addEventListener('change',updateRemaining);updateRemaining();
+  const paymentRequestId = crypto.randomUUID();
   form.onsubmit = (e) => {
     e.preventDefault();
     try {
@@ -1022,9 +1023,8 @@ function clientPayoutForm(id) {
         throw Error('Ödeme tarihi infaz tarihinden önce olamaz.');
       if (!v.note.trim()) throw Error('Ödeme açıklamasını girin.');
       if (accountBalance(account.id) < paymentAmount) throw Error('Seçilen hesapta yeterli bakiye yok.');
-      const next = structuredClone(accounting);
-      next.entries.push({
-        id: crypto.randomUUID(),
+        authApi('/api/client-payout', 'POST', {
+          id: paymentRequestId,
         type: 'clientPayout',
         documentId: current.id,
         clientId: current.client,
@@ -1037,8 +1037,8 @@ function clientPayoutForm(id) {
         note: v.note.trim(),
         createdAt: new Date().toISOString(),
       });
-      if (!saveAccounting(next)) return;
       dialog.close();
+        try { syncPayoutSources(); } catch { toast('Ödeme kaydedildi. Güncel bakiyeyi görmek için sayfayı yenileyin.'); return; }
       const borrower = document.getElementById('borrowerDetail');
       if (borrower?.open) borrowerDetail(id);
       if (page === 'accounting') clientPayoutPage();

@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { validateNewClientPayouts } = require('../lib/client-payout.cjs');
+const { validateNewClientPayouts, appendClientPayout } = require('../lib/client-payout.cjs');
 const { handleDataRoutes } = require('../outputs/icrapro/access-data.cjs');
 const actor = { id: 'ceo', name: 'Test', role: 'ceo' };
 function fixture() {
@@ -69,6 +69,34 @@ test('Accounting route validates partial payout and rejects stale ETag', async (
   await assert.rejects(request(ledger(state,payment(20000,'b')),'1'),{code:409});
   await assert.rejects(request(ledger(state,payment(70001,'b')),'2'),{code:400});
   assert.equal(persisted,1);
+});
+
+test('Atomic payout preserves intervening ledger changes and retries only once', async () => {
+  let state=fixture(), writes=0;
+  state.data['hanhukuk-accounting-v1'].entries.push({id:'intervening',type:'in',accountId:'cash',amount:100});
+  const request=async(input,user=actor)=>{
+    const ctx={state,u:user,req:{method:'POST',headers:{'if-match':'obsolete'}},res:{},url:new URL('http://localhost/api/client-payout'),body:async()=>input,persist:next=>{state=next;writes++;},send:(res,status)=>{res.status=status;}};
+    await handleDataRoutes(ctx);return ctx.res.status;
+  };
+  const original=structuredClone(state);
+  await assert.rejects(request(payment(60000),{...actor,role:'staff'}),{code:403});
+  assert.deepEqual(state,original);
+  assert.equal(await request(payment(60000)),200);
+  assert.equal(await request(payment(60000)),200);
+  assert.equal(writes,1);
+  assert.deepEqual(state.data['hanhukuk-accounting-v1'].entries.slice(0,2),original.data['hanhukuk-accounting-v1'].entries);
+  await assert.rejects(request(payment(50000,'second')),{code:400});
+  await assert.rejects(request(payment(50000)),{code:409});
+  assert.equal(writes,1);
+  assert.equal(await request(payment(40000,'final')),200);
+  assert.equal(writes,2);
+});
+
+test('Payout checks account balance after excluded finance events',()=>{
+  const state=fixture();state.data['hanhukuk-accounting-v1'].entries=[];
+  state.data['hanhukuk-finance-v1'][0].accountId='cash';
+  state.data['hanhukuk-accounting-v1'].excludedFinanceIds=['collection'];
+  assert.throws(()=>appendClientPayout(state,payment(100),actor),{code:400});
 });
 
 test('Full payout selection fills remaining amount and restores typed partial amount', () => {
