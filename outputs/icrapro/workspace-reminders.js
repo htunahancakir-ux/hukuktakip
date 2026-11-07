@@ -411,6 +411,13 @@ function loadDueInstallmentsHome() {
     host.className = 'panel due-installments-home';
     document.getElementById('content').prepend(host);
   }
+  if (hanAuth?.id === 'ef14702a-dcc8-49a6-b88e-ae8311fb5a77') {
+    const overview = document.getElementById('dashboardFinanceOverview');
+    if (overview) {
+      overview.after(host);
+      host.style.marginTop = '22px';
+    }
+  }
   const manager = ['ceo', 'admin'].includes(hanAuth.role);
   host.innerHTML =
     '<div class="panelhead"><div><h2>Vadesi Gelen Taksitler (' +

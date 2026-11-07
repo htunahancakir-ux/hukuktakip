@@ -180,6 +180,16 @@ function openDashboardDay(date) {
   dialog.showModal();
 }
 
+function groupOwnerDashboardFinance() {
+  if (hanAuth?.id !== 'ef14702a-dcc8-49a6-b88e-ae8311fb5a77') return;
+  const content = document.getElementById('content');
+  if (!content || document.getElementById('dashboardFinanceOverview')) return;
+  const overview = document.createElement('section');
+  overview.id = 'dashboardFinanceOverview';
+  overview.append(...content.childNodes);
+  content.append(overview);
+}
+
 function dashboard() {
   if (window.hanAuth && !['ceo', 'admin'].includes(hanAuth.role)) return staffDashboard();
   const buckets = aggregateFinance(financeEvents, dashboardPeriod, dashboardDate, accounting.entries),
@@ -223,6 +233,7 @@ function dashboard() {
     } else dashboardDate = dashboardPeriod === 'month' ? value + '-01' : value;
     dashboard();
   };
+  groupOwnerDashboardFinance();
   loadPaymentPromisesHome();
 }
 
