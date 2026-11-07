@@ -171,3 +171,25 @@
 
 /* Borçlu listesindeki işlem düğmelerini görünür tut. */
 .borrower-records-table{table-layout:fixed;width:100%;min-width:0}.borrower-records-table th,.borrower-records-table td{padding:10px 8px;white-space:normal;overflow-wrap:anywhere;vertical-align:top}.borrower-records-table th{letter-spacing:0}.borrower-records-table th:first-child{width:10%}.borrower-records-table th:nth-child(2){width:15%}.borrower-records-table th:nth-child(3){width:17%}.borrower-records-table th:nth-child(4){width:15%}.borrower-records-table th:last-child{width:140px}.borrower-records-table input,.borrower-records-table select{width:100%;min-width:0;max-width:100%;box-sizing:border-box}.borrower-records-table td .link{max-width:100%;padding:6px 4px;white-space:normal;text-align:left}.borrower-records-table td:last-child{position:sticky;right:0;z-index:1;background:#fff;box-shadow:-3px 0 6px #173b5c12}.borrower-records-table th:last-child{position:sticky;right:0;z-index:2;background:#fafbfc}.borrower-records-table td:last-child>.link{display:block;width:100%}.borrower-records-scroll{max-width:100%}@media(max-width:850px){.borrower-records-table{min-width:760px}.borrower-records-table th:last-child{width:125px}}
+
+/* Keep every navigation action reachable on shorter screens. */
+@media (min-width: 701px) {
+  aside:not([hidden]) { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow-y: auto; padding-top: 18px; padding-bottom: 16px; }
+  aside > .brand, aside > small, aside > .workspace, aside > .navlabel, aside > .sidebottom { flex-shrink: 0; }
+  aside > small { margin-bottom: 14px; }
+  aside > .navlabel { margin-top: 14px; }
+  aside > nav { flex: 1 1 auto; min-height: 90px; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: #718b9e #122738; scrollbar-gutter: stable; overscroll-behavior-y: contain; }
+  aside > nav button { padding: 9px 10px; margin: 2px 0; overflow-wrap: anywhere; }
+  aside > .sidebottom { position: static; margin-top: 12px; padding-top: 10px; border-top: 1px solid #ffffff18; }
+}
+@media (min-width: 701px) and (max-height: 760px) {
+  aside > .brand { font-size: 25px; }
+  aside > small { margin-top: 6px; margin-bottom: 10px; }
+  aside > .workspace { padding: 7px 12px; line-height: 18px; }
+  aside > .navlabel { margin-top: 10px; margin-bottom: 4px; }
+  aside > nav button { padding-top: 7px; padding-bottom: 7px; font-size: 12px; }
+}
+@media (max-width: 700px) {
+  aside > nav { overflow-x: auto; overscroll-behavior-x: contain; }
+  aside > nav button { flex: 0 0 auto; width: auto; white-space: nowrap; }
+}
