@@ -185,7 +185,7 @@ function renderClientSuggestions(query, list) {
   box.querySelectorAll('[data-client-suggestion]').forEach(
     (button) =>
       (button.onclick = () => {
-        const client = db.clients.find((c) => c.id === button.dataset.clientSuggestion);
+        const client = list.find((c) => c.id === button.dataset.clientSuggestion);
         input.value = client.name;
         clientRows();
         box.hidden = true;
@@ -319,21 +319,26 @@ function clientDocumentTotals(docs) {
   };
 }
 
-function clientRows() {
+function clientRows(event) {
+  if (window.hanRecordsEnabled) return event ? scheduleRecordClientPage() : loadRecordClientPage();
   const q = normalizeSearch($('#search').value);
   const list = db.clients.filter((c) =>
     [c.name, c.fullName, c.tradeName, c.identity].some((value) => normalizeSearch(value).includes(q)),
   );
   renderClientSuggestions(q, list);
+  paintClientRows(list);
+  $('#total').textContent = `${list.length} müvekkil gösteriliyor`;
+}
+
+function paintClientRows(list, remote = false) {
   $('#rows').innerHTML =
     list
       .map(
         (c) =>
-          `<tr><td><div class="rowname"><span class="initial">${esc(c.name.slice(0, 2).toLocaleUpperCase('tr'))}</span><div><button type="button" class="link client-name-link" data-edit="${esc(c.id)}">${esc(c.name)}</button><small>${esc(c.identity || 'Kimlik bilgisi eklenmedi')}</small></div></div></td><td><span class="badge">${esc(c.type)}</span></td><td>${esc(c.phone || '—')}<small>${esc(c.email || c.address || '—')}</small></td><td>${db.docs.filter((d) => d.client === c.id).length} evrak</td><td><button class="link" data-edit="${esc(c.id)}">Düzenle</button><button class="link" data-intake="${esc(c.id)}">＋ Evrak</button></td></tr>`,
+          `<tr><td><div class="rowname"><span class="initial">${esc((c.name || '').slice(0, 2).toLocaleUpperCase('tr'))}</span><div><button type="button" class="link client-name-link" data-edit="${esc(c.id)}">${esc(c.name)}</button><small>${esc(c.identity || 'Kimlik bilgisi eklenmedi')}</small></div></div></td><td><span class="badge">${esc(c.type)}</span></td><td>${esc(c.phone || '—')}<small>${esc(c.email || c.address || '—')}</small></td><td>${esc(remote ? c.documentCount : db.docs.filter((d) => d.client === c.id).length)} evrak</td><td><button class="link" data-edit="${esc(c.id)}">Düzenle</button><button class="link" data-intake="${esc(c.id)}">＋ Evrak</button></td></tr>`,
       )
       .join('') ||
     '<tr><td colspan="5" class="empty">Müvekkil bulunamadı. Yeni bir kayıt ekleyebilirsiniz.</td></tr>';
-  $('#total').textContent = `${list.length} müvekkil gösteriliyor`;
   document.querySelectorAll('[data-edit]').forEach((b) => (b.onclick = () => clientModal(b.dataset.edit)));
   document.querySelectorAll('[data-intake]').forEach(
     (b) =>
@@ -345,10 +350,9 @@ function clientRows() {
   );
 }
 
-function clientModal(id) {
-  if (window.hanRecordsEnabled && !window.hanWorkspaceComplete)
-    return ensureRecordWorkspace(() => clientModal(id));
-  let c = db.clients.find((x) => x.id === id) || {};
+function clientModal(id, loadedRecord) {
+  if (window.hanRecordsEnabled && id && !loadedRecord) return openRecordClient(id);
+  let c = loadedRecord || db.clients.find((x) => x.id === id) || {};
   kind = c.type || 'Şahıs';
   $('#modal').innerHTML =
     `<form id="clientForm"><div class="panelhead"><div><h2>${id ? 'Müvekkili Düzenle' : 'Yeni Müvekkil Kaydı'}</h2><p>Kimlik, iletişim ve adres bilgileri</p></div><button class="link" type="button" id="close">✕</button></div><div class="formbody"><div class="segments">${['Şahıs', 'Şirket', 'Şahıs Şirketi'].map((t) => `<button type="button" class="${kind === t ? 'selected' : ''}" data-kind="${t}">${t}</button>`).join('')}</div><label class="field" style="margin-bottom:23px">Müvekkil Türü<select name="clientCategory" required><option value="">Müvekkil türü seçin</option>${['Mağaza', 'Yediemin', 'Diğer'].map((category) => `<option value="${category}" ${c.clientCategory === category ? 'selected' : ''}>${category}</option>`).join('')}</select></label><h3 class="sectiontitle">01 &nbsp; Müvekkil bilgileri</h3><div class="grid">${field('Ticari Unvan', 'tradeName', 'text', c.tradeName ?? (c.type && c.type !== 'Şahıs' ? c.name : ''), false).replace('<input ', '<input data-optional="true" ')}${field('Ad Soyad', 'fullName', 'text', c.fullName ?? (!c.type || c.type === 'Şahıs' ? c.name : ''), false).replace('<input ', '<input data-optional="true" ')}${field('TC Kimlik / Vergi Numarası', 'identity', 'text', c.identity)}${field('Telefon', 'phone', 'tel', c.phone)}${field('E-posta', 'email', 'email', c.email, false, true)}${clientCityField(c)}<label class="field full">Açık Adres<textarea name="address" rows="2">${esc(c.address || '')}</textarea></label>${field('Referans', 'reference', 'text', c.reference, false, true)}${staffSelect('Evrak Alan Personel', 'documentStaff', c.documentStaff)}${staffSelect('Evrak Kaydeden *', 'recordedBy', c.recordedBy).replace('<select ', '<select required ')}${staffSelect('Tahsilat Uzmanı Personel', 'collectionStaff', c.collectionStaff).replace('<select name="collectionStaff"', '<select data-optional="true" name="collectionStaff"')}<h3 class="sectiontitle full">Banka Bilgileri</h3>${field('Banka Adı', 'bankName', 'text', c.bankName)}${field('Şube', 'bankBranch', 'text', c.bankBranch)}${field('Hesap Sahibi', 'accountHolder', 'text', c.accountHolder, false, true)}<label class="field full">IBAN (isteğe bağlı)<input name="iban" data-optional="true" type="text" value="${esc(c.iban || '')}" placeholder="TR00 0000 0000 0000 0000 0000 00" maxlength="32" autocomplete="off"></label>${clientAttachmentFields(c)}<label class="field full">Notlar<textarea name="notes" rows="2" data-optional="true">${esc(c.notes || '')}</textarea></label></div></div><div class="actions"><button type="button" class="secondary" id="cancel">Vazgeç</button><button class="primary">Müvekkili Kaydet</button></div></form>`;
@@ -373,7 +377,7 @@ function clientModal(id) {
   );
   $('#clientForm').onsubmit = async (e) => {
     e.preventDefault();
-    let v = Object.fromEntries(new FormData(e.target));
+    let v = { ...c, ...Object.fromEntries(new FormData(e.target)) };
     Object.assign(v, readExtraContacts(e.target));
     const city = turkeyCities.find(
       (city) => city.toLocaleLowerCase('tr') === v.city.trim().toLocaleLowerCase('tr'),
@@ -406,9 +410,14 @@ function clientModal(id) {
     v.fullName = String(v.fullName || '').trim();
     v.name = kind === 'Şahıs' ? v.fullName || v.tradeName : v.tradeName || v.fullName;
     if (!v.name) return toast('Ticari unvan veya ad soyad girin.');
-    const duplicate = clientDebtorIdentityConflict('client', id, v.identity, v.name);
+    const duplicate =
+      !window.hanRecordsEnabled && clientDebtorIdentityConflict('client', id, v.identity, v.name);
     if (duplicate) return toast(duplicate);
-    if (v.identity && db.clients.some((x) => x.id !== id && x.identity === v.identity))
+    if (
+      !window.hanRecordsEnabled &&
+      v.identity &&
+      db.clients.some((x) => x.id !== id && x.identity === v.identity)
+    )
       return toast('Bu kimlik / vergi numarası zaten kayıtlı.');
     v.iban = v.iban.replace(/\s/g, '').toUpperCase();
     if (!validClientIban(v.iban)) {
@@ -427,14 +436,17 @@ function clientModal(id) {
         type: kind,
         createdAt: id ? c.createdAt : new Date().toISOString(),
       });
-      const before = db.clients.slice();
-      if (id) db.clients[db.clients.findIndex((x) => x.id === id)] = v;
-      else db.clients.push(v);
-      try {
-        save();
-      } catch (error) {
-        db.clients = before;
-        throw error;
+      if (window.hanRecordsEnabled) await saveRecordClient(id ? c : null, v);
+      else {
+        const before = db.clients.slice();
+        if (id) db.clients[db.clients.findIndex((x) => x.id === id)] = v;
+        else db.clients.push(v);
+        try {
+          save();
+        } catch (error) {
+          db.clients = before;
+          throw error;
+        }
       }
       $('#modal').close();
       render();

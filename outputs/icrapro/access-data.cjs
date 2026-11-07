@@ -90,6 +90,13 @@ async function handleDataRoutes(ctx) {
     if (!patchRequest && req.headers['if-match'] && req.headers['if-match'] !== revision(key))
       throw fail(409, 'Kayıt başka bir işlemle değişti. Sayfayı yenileyip tekrar deneyin.');
     const incoming = await body(req);
+    if (
+      patchRequest &&
+      key === 'icrapro-v1' &&
+      incoming?.changes?.some((change) => change.path?.[0] === 'clients') &&
+      !allowed(u, 'clients')
+    )
+      throw fail(403, 'Müvekkil kayıtlarını değiştirme yetkiniz yok.');
     const sendSaved = () => {
       if (!patchRequest || !options.recordStore) return send(res, 200, { ok: true });
       const current = readKey(key, u),

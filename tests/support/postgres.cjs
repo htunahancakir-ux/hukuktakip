@@ -39,7 +39,7 @@ async function database(migrateSchema = true) {
   const pg = new PGlite({ extensions: { pg_trgm } });
   let queue = Promise.resolve();
   const query = async (sql, params) => {
-    if (!params && /CREATE (SCHEMA|TABLE)/.test(sql)) {
+    if (!params && /CREATE (SCHEMA|TABLE|INDEX)/.test(sql)) {
       await pg.exec(sql);
       return { rows: [] };
     }

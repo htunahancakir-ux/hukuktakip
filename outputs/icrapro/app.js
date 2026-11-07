@@ -148,6 +148,7 @@ function toast(t, scope) {
 
 function stats() {
   updateActiveDebtorCount();
+  if (window.hanRecordsEnabled && page === 'clients') return renderRecordClientStats(null);
   if (window.hanRecordsEnabled && !window.hanWorkspaceComplete) return renderRecordStats();
   const scoped = page === 'intake' && selected;
   const docs = scoped ? db.docs.filter((d) => d.client === selected) : db.docs;
@@ -250,6 +251,7 @@ function render() {
     $('#content').innerHTML =
       `<div class="panel"><div class="panelhead"><div><h2>Müvekkil kayıtları</h2><p>Tüm müvekkiller ve iletişim bilgileri</p></div><div class="client-search-wrap"><input class="search" id="search" placeholder="İsim, unvan veya kimlik numarasının başlangıcını yazın…" aria-label="Müvekkil ara" autocomplete="off" aria-controls="clientSuggestions" aria-expanded="false"><div id="clientSuggestions" class="client-suggestions" hidden></div></div></div><div class="overflow"><table><thead><tr><th>MÜVEKKİL / UNVAN</th><th>TÜR</th><th>İLETİŞİM</th><th>EVRAK</th><th>İŞLEMLER</th></tr></thead><tbody id="rows"></tbody></table></div><div class="tablefoot" id="total"></div></div>`;
     $('#clientSearchBar').append($('#content .panelhead'));
+    if (window.hanRecordsEnabled) $('#search').value = recordClientList.q;
     clientRows();
     $('#search').oninput = clientRows;
   } else if (page === 'messages') messagesPage();

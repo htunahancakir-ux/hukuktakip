@@ -20,6 +20,7 @@ const workspaceScripts = [
   'client-records.js',
   'document-records.js',
   'workspace-record-list.js',
+  'workspace-client-list.js',
   'form-inputs.js',
   'workspace-total-tooltips.js',
   'borrower-sheet.js',
