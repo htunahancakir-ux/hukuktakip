@@ -19,6 +19,7 @@ function pollWorkspaceNotifications() {
   workspaceNotificationFlight = (async () => {
     try {
       const suffix = collectionNoticeCursor === null ? '' : '?after=' + collectionNoticeCursor;
+      const notificationStartedAt = Date.now();
       const response = await fetch('/api/notifications' + suffix, {
         cache: 'no-store',
         signal: AbortSignal.timeout(15000),
@@ -30,6 +31,8 @@ function pollWorkspaceNotifications() {
       }
       if (!response.ok) throw new Error('Bildirimler alınamadı.');
       const result = await response.json();
+      if (Object.hasOwn(result, 'staffBreak') && typeof applyStaffBreakStatus === 'function')
+        applyStaffBreakStatus(result.staffBreak, notificationStartedAt);
       applyMessageSummary(result.messages);
       applyReminderSummary(result.reminders);
       collectionNoticeCursor = result.collections.cursor;

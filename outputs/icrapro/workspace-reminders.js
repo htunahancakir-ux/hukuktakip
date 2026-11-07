@@ -148,7 +148,8 @@ function showWorkflowReceipt(notice) {
   host.className = 'collection-receipt workflow-receipt workflow-' + notice.type;
   host.setAttribute('role', 'status');
   host.setAttribute('aria-live', 'polite');
-  host.innerHTML = `<div class="receipt-brand">HANHUKUK · DOSYA BİLDİRİMİ</div><div class="receipt-rule"></div><strong>${notice.type === 'noCallWarning' ? 'ARAMA HATIRLATMASI' : notice.type === 'fileWon' ? 'YENİ DOSYA' : notice.type === 'fileLost' ? 'DOSYA DEVRİ' : 'SORUMLU DEĞİŞİKLİĞİ'}</strong><p>${esc(notice.text)}</p>${notice.type !== 'fileLost' ? '<button type="button" class="secondary" data-workflow-open>Föyü Aç</button>' : ''}<small>${messageTimestamp(notice.createdAt)}</small><div class="receipt-rule"></div><div class="receipt-barcode">▌▏▎▍▌▎▏▌▍▎▌▏▎▍▌</div>`;
+  const breakNotice = ['breakStarted', 'breakEnded'].includes(notice.type);
+  host.innerHTML = `<div class="receipt-brand">HANHUKUK · ${breakNotice ? 'MOLA BİLDİRİMİ' : 'DOSYA BİLDİRİMİ'}</div><div class="receipt-rule"></div><strong>${notice.type === 'breakStarted' ? 'MOLAYA ÇIKTI' : notice.type === 'breakEnded' ? 'MOLA BİTTİ' : notice.type === 'noCallWarning' ? 'ARAMA HATIRLATMASI' : notice.type === 'fileWon' ? 'YENİ DOSYA' : notice.type === 'fileLost' ? 'DOSYA DEVRİ' : 'SORUMLU DEĞİŞİKLİĞİ'}</strong><p>${esc(notice.text)}</p>${!breakNotice && notice.type !== 'fileLost' ? '<button type="button" class="secondary" data-workflow-open>Föyü Aç</button>' : ''}<small>${messageTimestamp(notice.createdAt)}</small><div class="receipt-rule"></div><div class="receipt-barcode">▌▏▎▍▌▎▏▌▍▎▌▏▎▍▌</div>`;
   document.body.append(host);
   if (host.showPopover)
     try {

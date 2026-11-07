@@ -229,3 +229,11 @@ aside > .brand-home strong { min-width: 0; letter-spacing: 0; }
 .compact-borrower-sheet .sheet-enforcement-form .field, .compact-borrower-sheet .sheet-enforcement-form input { min-width: 0; }
 .compact-borrower-sheet .sheet-folio-number > strong { font-size: 18px !important; line-height: 1.3; }
 .compact-borrower-sheet h2 .sheet-folio-number { font-size: 18px; }
+
+.staff-break-controls { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 0 0 auto; }
+.staff-break-controls #staffBreakButton { padding: 8px 12px; white-space: nowrap; }
+#staffBreakButton[data-on-break="true"] { background: #fff0cc; border-color: #d4a647; color: #744b00; }
+#staffBreakStatus { color: #744b00; font-size: 10px; white-space: nowrap; }
+#staffBreakStatus:empty { display: none; }
+.workflow-breakStarted { background: #dbeafe; color: #1e40af; }
+.workflow-breakEnded { background: #dcfce7; color: #166534; }

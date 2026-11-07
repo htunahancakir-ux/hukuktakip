@@ -246,6 +246,8 @@ function returnToMainMenu(event) {
   }
 }
 function accessMenu() {
+  if (typeof setupStaffBreakButton === 'function') setupStaffBreakButton();
+
   document.querySelectorAll('aside .brand-home').forEach((link) => {
     link.onclick = returnToMainMenu;
   });

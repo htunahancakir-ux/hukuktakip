@@ -13,6 +13,7 @@ const workspaceScripts = [
   'districts.js',
   'workspace-access.js',
   'workspace-notifications.js',
+  'workspace-breaks.js',
   'workspace-communications.js',
   'workspace-reminders.js',
   'workspace-scheduled-reminders.js',

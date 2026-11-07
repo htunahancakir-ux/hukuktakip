@@ -23,6 +23,7 @@ const { handleWorkflowRoutes } = require('./access-workflow.cjs');
 const { handleDocumentRoutes } = require('./access-documents.cjs');
 const { handleCommunicationRoutes } = require('./access-communications.cjs');
 const { handlePersonnelRoutes } = require('./access-personnel.cjs');
+const { handleBreakRoutes } = require('./access-breaks.cjs');
 const { handleDataRoutes } = require('./access-data.cjs');
 const { handleDeletionRoutes } = require('./access-deletion.cjs');
 const { canDelete } = require('../../lib/deletion-policy.cjs');
@@ -87,6 +88,7 @@ function createAccess(stateFile, options = {}) {
     permissions: ['ceo', 'admin'].includes(u.role) ? permissions : u.permissions,
     active: u.active,
     canDelete: canDelete(u),
+    activeBreak: u.activeBreak || null,
   });
   function userEnabled(u) {
     if (options.userEnabled) return options.userEnabled(u);
@@ -341,6 +343,7 @@ function createAccess(stateFile, options = {}) {
       if (await handleDeletionRoutes(ctx)) return true;
       if (await handleDocumentRoutes(ctx)) return true;
       if (await handleCommunicationRoutes(ctx)) return true;
+      if (await handleBreakRoutes(ctx)) return true;
       if (await handlePersonnelRoutes(ctx)) return true;
       if (await handleAccountRoutes(ctx)) return true;
       if (await handleDataRoutes(ctx)) return true;
