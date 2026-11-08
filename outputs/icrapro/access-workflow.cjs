@@ -1,5 +1,5 @@
 const { collectionSummary } = require('../../lib/notification-summary.cjs');
-const { currentReport, generateReport } = require('../../lib/conversation-report.cjs');
+const { currentReport, generateReport, fingerprint } = require('../../lib/conversation-report.cjs');
 async function handleWorkflowRoutes(ctx) {
   const { req, res, url, u, persist, allowed, fail, body, send, crypto, parkingToday, promiseOutstanding } =
     ctx;
@@ -126,7 +126,13 @@ async function handleWorkflowRoutes(ctx) {
       throw fail(403, 'Bu dosyanın görüşme raporuna erişilemiyor.');
     let report = v.force ? null : currentReport(d, ctx.state.aiConfig);
     if (!report) {
-      report = await generateReport(d.conversations || [], { aiConfig: ctx.state.aiConfig });
+      const reportKey = d.id + ':' + fingerprint(d.conversations || []);
+      const cache = req.hanConversationReportCache;
+      report = cache?.get(reportKey);
+      if (!report || report.configHash !== require('../../lib/ai-settings.cjs').configFingerprint(ctx.state.aiConfig)) {
+        report = await generateReport(d.conversations || [], { aiConfig: ctx.state.aiConfig });
+        cache?.set(reportKey, report);
+      }
       const next = structuredClone(ctx.state);
       next.data['icrapro-v1'].docs.find((x) => x.id === d.id).conversationReport = report;
       if (report.aiUsage)
