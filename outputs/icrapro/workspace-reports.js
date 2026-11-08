@@ -324,6 +324,7 @@ function filterReportRows(rows, f) {
 
 function reportCell(row, col) {
   const value = row.cells[col[0]];
+  if (col[2] === 'money' && typeof value === 'string' && /^-?\d+$/.test(value)) return recordMoney(value);
   return col[2] === 'money' ? money(Number(value || 0) / 100) : String(value ?? '—');
 }
 
@@ -338,7 +339,7 @@ function renderReportsPage() {
       )
       .join(
         '',
-      )}</select></label>${field('Başlangıç Tarihi', 'reportFrom', 'date', reportFilters.from)}${field('Bitiş Tarihi', 'reportTo', 'date', reportFilters.to)}<label class="field">Müvekkil<select id="reportClient"><option value="">Tümü</option>${db.clients.map((c) => `<option value="${esc(c.id)}" ${reportFilters.client === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label class="field">Personel<select id="reportStaff"><option value="">Tümü</option>${personnel.map((p) => `<option value="${esc(p.id)}" ${reportFilters.staff === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label><label class="field">Durum<select id="reportStatus"><option value="">Tümü</option>${(reportFilters.type === 'personnel' ? ['Aktif', 'Pasif'] : reportFilters.type === 'installments' ? ['Ödendi', 'Kısmi Ödendi', 'Bekliyor', 'Gecikmiş'] : ['Derdest', 'İnfaz', 'İade', 'İcra']).map((s) => `<option ${reportFilters.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label><label class="field">Kasa / Banka<select id="reportAccount"><option value="">Tümü</option>${accounting.accounts.map((a) => `<option value="${esc(a.id)}" ${reportFilters.account === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></label><label class="field full">Raporda Ara<input type="search" id="reportQuery" value="${esc(reportFilters.query)}" placeholder="İsim, evrak no, açıklama…"></label><label class="settings-check full"><input type="checkbox" id="reportUndated" ${reportFilters.undated ? 'checked' : ''}> Kayıt tarihi bulunmayan eski kayıtları da göster</label><button class="secondary" id="clearReportFilters">Süzgeçleri Temizle</button></div></div><div id="reportResult" style="margin-top:22px"></div>`;
+      )}</select></label>${field('Başlangıç Tarihi', 'reportFrom', 'date', reportFilters.from)}${field('Bitiş Tarihi', 'reportTo', 'date', reportFilters.to)}<label class="field">Müvekkil<select id="reportClient"><option value="">Tümü</option>${(window.hanRecordsEnabled ? recordReportClients() : db.clients).map((c) => `<option value="${esc(c.id)}" ${reportFilters.client === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label class="field">Personel<select id="reportStaff"><option value="">Tümü</option>${personnel.map((p) => `<option value="${esc(p.id)}" ${reportFilters.staff === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label><label class="field">Durum<select id="reportStatus"><option value="">Tümü</option>${(reportFilters.type === 'personnel' ? ['Aktif', 'Pasif'] : reportFilters.type === 'installments' ? ['Ödendi', 'Kısmi Ödendi', 'Bekliyor', 'Gecikmiş'] : ['Derdest', 'İnfaz', 'İade', 'İcra']).map((s) => `<option ${reportFilters.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label><label class="field">Kasa / Banka<select id="reportAccount"><option value="">Tümü</option>${accounting.accounts.map((a) => `<option value="${esc(a.id)}" ${reportFilters.account === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></label><label class="field full">Raporda Ara<input type="search" id="reportQuery" value="${esc(reportFilters.query)}" placeholder="İsim, evrak no, açıklama…"></label><label class="settings-check full"><input type="checkbox" id="reportUndated" ${reportFilters.undated ? 'checked' : ''}> Kayıt tarihi bulunmayan eski kayıtları da göster</label><button class="secondary" id="clearReportFilters">Süzgeçleri Temizle</button></div></div><div id="reportResult" style="margin-top:22px"></div>`;
   function refresh() {
     const from = document.querySelector('[name="reportFrom"]').value,
       to = document.querySelector('[name="reportTo"]').value;
@@ -413,7 +414,11 @@ function buildCurrentReport() {
   };
 }
 
-function reportTable(def, rows, openableDocuments) {
+function reportTable(def, rows, openableDocuments, totals) {
+  const total = (key) =>
+    totals
+      ? recordMoney(totals[key] || '0')
+      : money(rows.reduce((sum, r) => sum + Number(r.cells[key] || 0), 0) / 100);
   const renderCell = (row, column) => {
     const value = esc(reportCell(row, column));
     if (column[0] === 'debtor' && openableDocuments?.has(row.documentId)) {
@@ -444,23 +449,15 @@ function reportTable(def, rows, openableDocuments) {
         .join('') +
       '</tbody><tfoot><tr>' +
       def.columns
-        .map(
-          (c, i) =>
-            '<td>' +
-            (i === 0
-              ? 'TOPLAM'
-              : c[2] === 'money'
-                ? money(rows.reduce((sum, r) => sum + Number(r.cells[c[0]] || 0), 0) / 100)
-                : '') +
-            '</td>',
-        )
+        .map((c, i) => '<td>' + (i === 0 ? 'TOPLAM' : c[2] === 'money' ? total(c[0]) : '') + '</td>')
         .join('') +
       '</tr></tfoot></table></div>'
     );
-  return `<div class="overflow"><table><thead><tr><th>TARİH</th>${def.columns.map((c) => `<th>${esc(c[1])}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.date ? displayDate(r.date) : 'Tarih yok')}</td>${def.columns.map((c) => `<td>${renderCell(r, c)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${def.columns.length + 1}" class="empty">Bu seçimle eşleşen kayıt yok.</td></tr>`}</tbody><tfoot><tr><td><b>TOPLAM</b></td>${def.columns.map((c) => `<td>${c[2] === 'money' ? '<b>' + money(rows.reduce((s, r) => s + Number(r.cells[c[0]] || 0), 0) / 100) + '</b>' : ''}</td>`).join('')}</tr></tfoot></table></div>`;
+  return `<div class="overflow"><table><thead><tr><th>TARİH</th>${def.columns.map((c) => `<th>${esc(c[1])}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.date ? displayDate(r.date) : 'Tarih yok')}</td>${def.columns.map((c) => `<td>${renderCell(r, c)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${def.columns.length + 1}" class="empty">Bu seçimle eşleşen kayıt yok.</td></tr>`}</tbody><tfoot><tr><td><b>TOPLAM</b></td>${def.columns.map((c) => `<td>${c[2] === 'money' ? '<b>' + total(c[0]) + '</b>' : ''}</td>`).join('')}</tr></tfoot></table></div>`;
 }
 
 function renderReportResult() {
+  if (window.hanRecordsEnabled) return loadRecordReport();
   try {
     const { definition, rows } = currentReport();
     const result = $('#reportResult');
@@ -482,6 +479,7 @@ function safeCsvCell(value) {
 }
 
 function exportReport() {
+  if (window.hanRecordsEnabled) return exportRecordReport('csv');
   try {
     const { definition, rows } = currentReport(),
       lines = [
@@ -517,6 +515,7 @@ function exportReport() {
 }
 
 function printReport() {
+  if (window.hanRecordsEnabled) return exportRecordReport('html');
   try {
     const { definition, rows } = currentReport(),
       frame = document.createElement('iframe');
@@ -577,10 +576,12 @@ function insPersonnelRows(events, staff, docs, period, date, endDate) {
     .sort((a, b) => b.collected - a.collected || a.name.localeCompare(b.name, 'tr'));
 }
 
-function renderInsReportPage() {
+function renderInsReportPage(remoteRows) {
   insDate = insDate || businessDate();
   insEndDate = insEndDate || insDate;
-  const rows = insPersonnelRows(financeEvents, personnel, db.docs, insPeriod, insDate, insEndDate).sort(
+  const rows = (
+      remoteRows || insPersonnelRows(financeEvents, personnel, db.docs, insPeriod, insDate, insEndDate)
+    ).sort(
       (a, b) => b[insSort] - a[insSort] || b.collected - a.collected || a.name.localeCompare(b.name, 'tr'),
     ),
     total = rows.reduce(
@@ -806,6 +807,14 @@ function withReportData(callback) {
 }
 
 function reportsPage() {
+  if (window.hanRecordsEnabled) {
+    recordReportScreen = 'reports';
+    recordInsRequest?.abort();
+    recordPayrollRequest?.abort();
+    renderReportsPage();
+    bindReportClientLookup();
+    return;
+  }
   if (!['ceo', 'admin'].includes(hanAuth.role)) {
     try {
       reportDataSnapshot = authApi('/api/report-data');
@@ -821,19 +830,50 @@ function currentReport() {
 }
 
 function insReportPage() {
+  if (window.hanRecordsEnabled) return loadRecordInsReport();
   return withReportData(renderInsReportPage);
 }
 
 function clientListReportPage() {
+  if (window.hanRecordsEnabled) {
+    reportFilters = {
+      type: 'clientList',
+      from: '',
+      to: '',
+      client: '',
+      staff: '',
+      status: '',
+      account: '',
+      query: '',
+      undated: true,
+    };
+    return reportsPage();
+  }
   return withReportData(renderClientListReportPage);
 }
 
-function monthlyPayrollReportPage() {
+async function monthlyPayrollReportPage() {
   monthlyPayrollReportMonth = monthlyPayrollReportMonth || businessDate().slice(0, 7);
+  let request;
+  if (window.hanRecordsEnabled) {
+    recordReportScreen = 'payroll';
+    recordInsRequest?.abort();
+    recordReportState.request?.abort();
+    recordPayrollRequest?.abort();
+    recordPayrollRequest = request = new AbortController();
+  }
   let data;
   try {
-    data = authApi('/api/payroll-report?month=' + monthlyPayrollReportMonth);
+    data = window.hanRecordsEnabled
+      ? await recordReportFetch('/api/payroll-report?month=' + monthlyPayrollReportMonth, request.signal)
+      : authApi('/api/payroll-report?month=' + monthlyPayrollReportMonth);
+    if (
+      request &&
+      (request !== recordPayrollRequest || page !== 'reports' || recordReportScreen !== 'payroll')
+    )
+      return;
   } catch (error) {
+    if (error.name === 'AbortError') return;
     return toast(error.message);
   }
   const columns = [

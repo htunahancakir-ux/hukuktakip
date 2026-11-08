@@ -62,6 +62,26 @@ test('10000 files over the legacy response limit return bounded pages with compl
     assert.deepEqual(nextClients.summary, clients.summary);
     assert.deepEqual(foundClient.summary, clients.summary);
     assert(Buffer.byteLength(JSON.stringify(clients)) < 15000);
+    const { reportPage, reportExport } = require('../lib/record-store/reports.cjs');
+    const reportStarted = performance.now();
+    const report = await reportPage(pool, req, { type: 'documents' });
+    const reportNext = await reportPage(pool, req, { type: 'documents', after: report.next });
+    assert.equal(report.count, '10000');
+    assert.equal(report.items.length, 50);
+    assert.equal(report.totals.principal, '100000000');
+    assert.deepEqual(reportNext.totals, report.totals);
+    assert(Buffer.byteLength(JSON.stringify(report)) < 40000);
+    const csv = await reportExport(pool, req, { type: 'documents' });
+    let exported = 0,
+      exportBytes = 0,
+      maxChunk = 0;
+    for await (const chunk of csv.chunks) {
+      exported += chunk.split('\r\n').length - 1;
+      exportBytes += Buffer.byteLength(chunk);
+      maxChunk = Math.max(maxChunk, Buffer.byteLength(chunk));
+    }
+    assert.equal(exported, 10001, 'CSV includes every record plus its header');
+    assert(maxChunk < 250000, 'export reads bounded batches');
     console.log(
       JSON.stringify({
         fixtureDocuments: 10000,
@@ -72,6 +92,10 @@ test('10000 files over the legacy response limit return bounded pages with compl
         warmLastPageMs: Math.round(performance.now() - lastStart),
         responseBytes: Buffer.byteLength(JSON.stringify(first)),
         allRecordsIncludedInTotals: true,
+        reportPageBytes: Buffer.byteLength(JSON.stringify(report)),
+        reportPagesAndExportMs: Math.round(performance.now() - reportStarted),
+        exportedRows: exported - 1,
+        exportBytes,
       }),
     );
   } finally {
