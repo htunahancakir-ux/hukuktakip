@@ -29,10 +29,9 @@ const reportDefinitions = {
       ['sgk', 'SSK'],
       ['vehicle', 'ARAÇ'],
       ['tapu', 'TAPU'],
-      ['clientEntitlement', 'Müvekkile Ödenecek Tutar', 'money'],
+      ['note', 'Açıklama'],
       ['clientPaid', 'Müvekkile Ödenen', 'money'],
       ['clientRemaining', 'Müvekkile Kalan Tutar', 'money'],
-      ['note', 'AÇIKLAMA'],
     ],
   },
   clientPayouts: {
