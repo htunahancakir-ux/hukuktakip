@@ -36,6 +36,7 @@ const { businessDate: parkingToday } = require('../../lib/business-time.cjs');
 const fs = require('node:fs'),
   path = require('node:path'),
   crypto = require('node:crypto');
+const { readOnlyDenied, MESSAGE: READ_ONLY_MESSAGE } = require('../../lib/read-only-account.cjs');
 const permissions = ['clients', 'documents', 'cashIn', 'cashOut'];
 const dataKeys = [
   'icrapro-v1',
@@ -87,7 +88,8 @@ function createAccess(stateFile, options = {}) {
     staffId: u.staffId || '',
     permissions: ['ceo', 'admin'].includes(u.role) ? permissions : u.permissions,
     active: u.active,
-    canDelete: canDelete(u),
+    readOnly: u.readOnly === true,
+    canDelete: u.readOnly !== true && canDelete(u),
     activeBreak: u.activeBreak || null,
   });
   function userEnabled(u) {
@@ -174,6 +176,7 @@ function createAccess(stateFile, options = {}) {
       staffId: v.staffId || '',
       permissions: (v.permissions || []).filter((p) => permissions.includes(p)),
       active: true,
+      readOnly: v.readOnly === true,
     };
   }
   function readKey(key, u) {
@@ -262,6 +265,7 @@ function createAccess(stateFile, options = {}) {
     try {
       if (!mutationSourceAllowed(req, options)) throw fail(403, 'İstek kaynağı doğrulanamadı.');
       const u = current(req);
+      if (readOnlyDenied(u, req.method, url.pathname)) throw fail(403, READ_ONLY_MESSAGE);
       if (
         u?.activeBreak &&
         ![
@@ -286,6 +290,7 @@ function createAccess(stateFile, options = {}) {
         : requiresEmployeeTerms(state, u);
       if (
         u &&
+        !u.readOnly &&
         !termsRequired &&
         !options.skipAutomations &&
         url.pathname !== '/api/search' &&

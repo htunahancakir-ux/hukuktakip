@@ -60,6 +60,21 @@ async function preloadServerData({ complete = false } = {}) {
   if (window.hanRecordsEnabled) window.hanWorkspaceComplete = true;
 }
 function authApi(url, method = 'GET', data) {
+  if (
+    window.hanAuth?.readOnly &&
+    !['GET', 'HEAD'].includes(method) &&
+    !(
+      method === 'POST' &&
+      [
+        '/api/login',
+        '/api/logout',
+        '/api/presence',
+        '/api/employee-terms/accept',
+        '/api/employee-terms/reminder-seen',
+      ].includes(new URL(url, location.origin).pathname)
+    )
+  )
+    throw Error('Bu hesap salt okunurdur. Kayıt ekleme, değiştirme, silme ve gönderim yapılamaz.');
   const submittedValue = data?.value;
   const dataKey = url.startsWith('/api/data?') ? new URL(url, location.origin).searchParams.get('key') : null;
   if (method === 'PUT' && dataKey && window.HanRecordPatch && hanDataBaselines.has(dataKey)) {

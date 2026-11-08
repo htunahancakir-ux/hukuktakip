@@ -218,6 +218,7 @@ async function handleAccountRoutes(ctx) {
       user.permissions = (v.permissions || []).filter((p) => permissions.includes(p));
       user.role = ['ceo', 'admin'].includes(v.role) ? v.role : 'staff';
       user.active = v.active !== false;
+      if (typeof v.readOnly === 'boolean') user.readOnly = v.readOnly;
       user.staffId = user.role === 'ceo' ? '' : v.staffId || '';
       if (v.password) {
         if (typeof v.password !== 'string' || v.password.length < 10 || v.password.length > 128)
