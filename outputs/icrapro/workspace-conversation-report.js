@@ -9,6 +9,12 @@ function conversationReportMethod(method) {
     }[method] || 'Bilinmeyen yöntem'
   );
 }
+function conversationReportLength(report) {
+  const count = Array.from(report.text || '').length;
+  const limit = report.maxChars || 300;
+  if (count <= limit) return count + ' / ' + limit + ' karakter';
+  return count + ' / ' + limit + ' karakter (+' + (count - limit) + ' cümle tamamlama payı)';
+}
 async function requestConversationReport(documentId, { force = false } = {}) {
   // A forced click while the automatic refresh is still pending must join the
   // same operation. Parallel generations can race when persisting one file.
@@ -60,12 +66,10 @@ function bindConversationReport(doc, form) {
       if (!form.isConnected) return;
       output.value = report.text;
       doc.conversationReport = report;
-      output.maxLength = report.maxChars || 300;
+      output.maxLength = (report.maxChars || 300) + 50;
       status.textContent =
-        Array.from(report.text).length +
-        ' / ' +
-        (report.maxChars || 300) +
-        ' karakter · ' +
+        conversationReportLength(report) +
+        ' · ' +
         report.sourceCount +
         ' görüşme · ' +
         conversationReportMethod(report.method) +

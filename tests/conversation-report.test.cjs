@@ -1,7 +1,14 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { generateReport, fingerprint, currentReport, bounded } = require('../lib/conversation-report.cjs');
+const {
+  generateReport,
+  fingerprint,
+  currentReport,
+  bounded,
+  summaryBounded,
+  SUMMARY_COMPLETION_ALLOWANCE,
+} = require('../lib/conversation-report.cjs');
 const aiSettings = require('../lib/ai-settings.cjs');
 const { handleWorkflowRoutes } = require('../outputs/icrapro/access-workflow.cjs');
 const notes = [
@@ -91,6 +98,38 @@ test('Newer conflicting statements retain their negation and source date; long a
       ),
     /Özet uzunluğu/,
   );
+});
+test('AI summaries respect the configured target and use at most 50 characters to finish a sentence', async () => {
+  const tail = 'Ödeme planı pazartesi yeniden değerlendirilecek.';
+  const longSummary = 'Borçlu ödeme yapamayacağını bildirdi. ' + 'Açıklama '.repeat(29) + tail;
+  const normalized = summaryBounded(longSummary, 300);
+  assert.ok(Array.from(normalized).length > 300);
+  assert.ok(Array.from(normalized).length <= 300 + SUMMARY_COMPLETION_ALLOWANCE);
+  assert.match(normalized, /[.!?…]$/u);
+  assert.equal(summaryBounded('Kısa ve tamamlanmış özet.', 300), 'Kısa ve tamamlanmış özet.');
+
+  const originalGatewayKey = process.env.AI_GATEWAY_API_KEY;
+  process.env.AI_GATEWAY_API_KEY = 'test-gateway-key';
+  try {
+    const report = await generateReport(notes, {
+      aiConfig: { enabled: true, provider: 'vercel-ai-gateway', model: 'openai/gpt-6-luna', summaryMaxChars: 300 },
+      fetcher: async () => ({ ok: true, json: async () => ({ output_text: longSummary }) }),
+    });
+    assert.equal(report.method, 'vercel-ai-gateway');
+    assert.equal(report.text, normalized);
+    assert.equal(
+      currentReport({ conversations: notes, conversationReport: report }, {
+        enabled: true,
+        provider: 'vercel-ai-gateway',
+        model: 'openai/gpt-6-luna',
+        summaryMaxChars: 300,
+      }),
+      report,
+    );
+  } finally {
+    if (originalGatewayKey === undefined) delete process.env.AI_GATEWAY_API_KEY;
+    else process.env.AI_GATEWAY_API_KEY = originalGatewayKey;
+  }
 });
 test('Successful AI summaries retain provider token usage for the CEO-only aggregate, without exposing it in reports', async () => {
   const originalGatewayKey = process.env.AI_GATEWAY_API_KEY;
