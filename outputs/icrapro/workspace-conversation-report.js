@@ -1,4 +1,13 @@
 const conversationReportRequests = new Map();
+function conversationReportMethod(method) {
+  return (
+    {
+      'vercel-ai-gateway': 'AI Gateway',
+      openai: 'OpenAI API',
+      'local-extractive': 'Yerel yedek',
+    }[method] || 'Bilinmeyen yöntem'
+  );
+}
 async function requestConversationReport(documentId) {
   if (conversationReportRequests.has(documentId)) return conversationReportRequests.get(documentId);
   const task = (async () => {
@@ -45,7 +54,11 @@ function bindConversationReport(doc, form) {
       output.value = report.text;
       doc.conversationReport = report;
       status.textContent =
-        Array.from(report.text).length + ' / 300 karakter · ' + report.sourceCount + ' görüşme';
+        Array.from(report.text).length +
+        ' / 300 karakter · ' +
+        report.sourceCount +
+        ' görüşme · ' +
+        conversationReportMethod(report.method);
     } catch (error) {
       if (!form.isConnected) return;
       output.value = '';
