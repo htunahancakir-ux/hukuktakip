@@ -69,14 +69,14 @@ async function enterWorkspace() {
   showEmployeeTermsGate(status);
 }
 
-function showEmployeeTermsGate({ document: doc, required, reminder, acceptedAt, notice }) {
-  const gate = document.createElement('main');
-  gate.id = 'employeeTermsGate';
-  gate.innerHTML = `<form class="panel terms-gate" aria-labelledby="termsHeading">
+function employeeTermsGateMarkup({ document: doc, required, acceptedAt, notice }, preview = false) {
+  const headingId = preview ? 'termsPreviewHeading' : 'termsHeading';
+  return `<form class="panel terms-gate" aria-labelledby="${headingId}" ${preview ? 'data-ignore-dirty' : ''}>
     <div class="terms-gate-head"><div><p class="terms-kicker">Han Hukuk Takip · ${termsEscape(new URL(doc.domain).hostname)}</p>
-    <h1 id="termsHeading">${termsEscape(doc.title)}</h1></div>
-    <button type="button" class="secondary" data-terms-logout>Çıkış</button></div>
+    <h1 id="${headingId}">${termsEscape(doc.title)}</h1></div>
+    <button type="button" class="secondary" data-terms-logout>${preview ? 'Önizlemeyi kapat' : 'Çıkış'}</button></div>
     <div class="terms-intro">
+      ${preview ? '<p class="terms-preview-note"><strong>Önizleme</strong> · Ekrandaki metni gösterir. Yayınlama veya kabul kaydı oluşturmaz.</p>' : ''}
       <p>${
         required
           ? '<strong>Kabul kaydı:</strong> Kabul ettiğinizde çalışan hesabınız, belge sürümü ve tarih ile saat kaydedilir. Bu kayıt Hesabım’da gösterilir.'
@@ -89,29 +89,28 @@ function showEmployeeTermsGate({ document: doc, required, reminder, acceptedAt, 
       ${
         required
           ? `<label><input type="checkbox" name="accepted" required disabled> Metni okudum ve kurallara uymayı taahhüt ediyorum</label>
-      <small id="termsScrollHelp" aria-live="polite">Kabul seçeneğini açmak için metnin sonuna kadar kaydırın.</small>`
+      <small data-terms-scroll-help aria-live="polite">Kabul seçeneğini açmak için metnin sonuna kadar kaydırın.</small>`
           : ''
       }
       <p class="terms-error" role="alert"></p>
       <div class="terms-buttons">
-        ${hanAuth.role === 'ceo' ? '<button type="button" class="secondary" data-terms-manage>Sözleşmeyi yönet</button>' : ''}
+        ${!preview && hanAuth.role === 'ceo' ? '<button type="button" class="secondary" data-terms-manage>Sözleşmeyi yönet</button>' : ''}
         <button type="submit" class="primary" ${required ? 'disabled' : ''}>${required ? 'Kabul et ve devam et' : 'Kapat ve devam et'}</button>
       </div>
     </div></form>`;
-  document.getElementById('employeeTermsGate')?.remove();
-  document.body.append(gate);
+}
+
+function bindTermsReadProgress(gate) {
   const form = gate.querySelector('form');
   const reader = gate.querySelector('.terms-reader');
-  const errorLabel = gate.querySelector('.terms-error');
   const checkbox = form.elements.accepted;
   const submit = form.querySelector('[type="submit"]');
-  document.getElementById('authGate')?.remove();
   reader.focus();
   if (checkbox) {
     const unlock = () => {
       if (reader.scrollTop + reader.clientHeight >= reader.scrollHeight - 3) {
         checkbox.disabled = false;
-        gate.querySelector('#termsScrollHelp').textContent = 'Metnin sonuna ulaştınız.';
+        gate.querySelector('[data-terms-scroll-help]').textContent = 'Metnin sonuna ulaştınız.';
         reader.removeEventListener('scroll', unlock);
       }
     };
@@ -121,6 +120,40 @@ function showEmployeeTermsGate({ document: doc, required, reminder, acceptedAt, 
       submit.disabled = !checkbox.checked;
     };
   }
+  return { form, reader, checkbox, submit };
+}
+
+function showEmployeeTermsPreview(doc, notice) {
+  const dialog = document.createElement('dialog');
+  dialog.className = 'terms-dialog terms-preview-dialog';
+  dialog.setAttribute('aria-label', 'Kullanıcı sözleşme ekranı önizlemesi');
+  dialog.innerHTML = employeeTermsGateMarkup({ document: doc, required: true, notice }, true);
+  document.body.append(dialog);
+  dialog.addEventListener('close', () => dialog.remove(), { once: true });
+  dialog.querySelector('[data-terms-logout]').onclick = () => dialog.close();
+  dialog.showModal();
+  const { form, checkbox, submit } = bindTermsReadProgress(dialog);
+  form.onsubmit = (event) => {
+    event.preventDefault();
+    if (checkbox.disabled || !checkbox.checked) return;
+    submit.disabled = true;
+    const status = dialog.querySelector('.terms-error');
+    status.classList.remove('terms-error');
+    status.setAttribute('role', 'status');
+    status.textContent =
+      'Önizleme tamamlandı. Gerçek işlemde kullanıcı hesabı, belge sürümü ve kabul tarihi ile saati kaydedilir. Bu denemede kayıt oluşturulmadı.';
+  };
+}
+
+function showEmployeeTermsGate({ document: doc, required, reminder, acceptedAt, notice }) {
+  const gate = document.createElement('main');
+  gate.id = 'employeeTermsGate';
+  gate.innerHTML = employeeTermsGateMarkup({ document: doc, required, acceptedAt, notice });
+  document.getElementById('employeeTermsGate')?.remove();
+  document.body.append(gate);
+  document.getElementById('authGate')?.remove();
+  const { form, checkbox, submit } = bindTermsReadProgress(gate);
+  const errorLabel = gate.querySelector('.terms-error');
   bindTermsNotice(gate, notice);
   gate.querySelector('[data-terms-logout]').onclick = () => {
     try {

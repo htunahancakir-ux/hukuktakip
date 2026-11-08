@@ -15,6 +15,7 @@ function renderEmployeeTermsManagement(root, { records = true } = {}) {
     try {
       const { document: doc, draft, notice, users } = authApi('/api/employee-terms/settings');
       body.innerHTML = `<p>${doc ? `<strong>Yayındaki sürüm: ${h(doc.version)}</strong> · ${termsDate(doc.issuedAt)}` : 'Henüz yayınlanmış sözleşme yok.'}</p>
+        <div><button type="button" class="secondary" data-terms-preview>Kullanıcı ekranını önizle</button></div>
         <details class="terms-settings-group" ${doc ? '' : 'open'}>
           <summary>Metni ve veri sorumlusunu düzenle</summary>
           <form data-terms-publish class="terms-settings-form">
@@ -27,7 +28,15 @@ function renderEmployeeTermsManagement(root, { records = true } = {}) {
             <div class="terms-buttons">
               <button type="button" class="secondary" data-terms-add>Bölüm ekle</button>
               <button type="submit" class="primary">Yeni sürümü yayınla</button>
-            </div><p role="status" data-terms-status></p>
+            </div>
+            <div class="terms-publish-confirm" data-terms-confirm hidden tabindex="-1" aria-label="Sözleşme yayın onayı">
+              <p data-terms-confirm-summary></p>
+              <p>Mevcut ve yeni kullanıcılar bu belgeyi kabul etmeden çalışma alanına geçemez. Önceki belgeler ve kabul kayıtları korunur.</p>
+              <div class="terms-buttons">
+                <button type="button" class="secondary" data-terms-cancel>Vazgeç</button>
+                <button type="button" class="primary" data-terms-confirm-publish>Onayla ve yayınla</button>
+              </div>
+            </div><p role="status" aria-live="polite" data-terms-status></p>
           </form>
         </details>
         ${
@@ -90,29 +99,112 @@ function renderEmployeeTermsManagement(root, { records = true } = {}) {
           status.textContent = error.message;
         }
       };
+      const confirmation = publish.querySelector('[data-terms-confirm]');
+      const publishStatus = publish.querySelector('[data-terms-status]');
+      const confirmButton = publish.querySelector('[data-terms-confirm-publish]');
+      let pendingPublication = null;
+      let publishing = false;
+      const publicationData = () => ({
+        action: 'publish',
+        baseVersion: doc?.version || null,
+        version: publish.elements.version.value.trim(),
+        controllerName: publish.elements.controllerName.value.trim(),
+        sections: Array.from(sectionRoot.children, (row) => ({
+          title: row.querySelector('[data-title]').value,
+          text: row.querySelector('[data-text]').value,
+          highlight: row.querySelector('[data-highlight]').value,
+        })),
+      });
+      body.querySelector('[data-terms-preview]').onclick = () => {
+        const input = publicationData();
+        showEmployeeTermsPreview(
+          {
+            ...input,
+            version: input.version || doc?.version || 'Taslak',
+            title: doc?.title || 'Çalışanlar İçin Gizlilik ve Kişisel Veri Güvenliği Sözleşmesi',
+            domain: doc?.domain || 'https://www.hanhukuktakip.com',
+            issuedAt: doc?.issuedAt || null,
+          },
+          notice,
+        );
+      };
+      publish.addEventListener(
+        'invalid',
+        () => {
+          publishStatus.textContent = 'Yayınlanamadı. İşaretlenen eksik veya hatalı alanı düzeltin.';
+          publishStatus.classList.add('terms-error');
+          confirmation.hidden = true;
+          pendingPublication = null;
+        },
+        true,
+      );
       publish.onsubmit = (event) => {
         event.preventDefault();
-        if (
-          !window.confirm(
-            'Yeni sürüm yayınlansın mı? Tüm kullanıcılar sonraki girişte veya yenilemede güncel metni kabul edecek.',
-          )
-        )
+        if (publishing || !publish.reportValidity()) return;
+        pendingPublication = publicationData();
+        confirmation.querySelector('[data-terms-confirm-summary]').textContent =
+          'Sürüm ' +
+          pendingPublication.version +
+          ' · Veri sorumlusu: ' +
+          pendingPublication.controllerName +
+          ' · ' +
+          users.length +
+          ' etkin hesap için yayınlanacak.';
+        publishStatus.textContent = '';
+        publishStatus.classList.remove('terms-error');
+        confirmation.hidden = false;
+        confirmation.scrollIntoView({ block: 'nearest' });
+        confirmButton.focus();
+      };
+      publish.querySelector('[data-terms-cancel]').onclick = () => {
+        confirmation.hidden = true;
+        pendingPublication = null;
+        publish.querySelector('[type="submit"]').focus();
+      };
+      confirmButton.onclick = async () => {
+        if (publishing || !pendingPublication || !publish.reportValidity()) return;
+        if (JSON.stringify(pendingPublication) !== JSON.stringify(publicationData())) {
+          pendingPublication = null;
+          confirmation.hidden = true;
+          publishStatus.textContent =
+            'Metin değişti. Yeni sürümü yayınla düğmesine basıp güncel bilgileri onaylayın.';
           return;
-        update(
-          publish,
-          {
-            action: 'publish',
-            baseVersion: doc?.version || null,
-            version: publish.elements.version.value,
-            controllerName: publish.elements.controllerName.value,
-            sections: Array.from(sectionRoot.children, (row) => ({
-              title: row.querySelector('[data-title]').value,
-              text: row.querySelector('[data-text]').value,
-              highlight: row.querySelector('[data-highlight]').value,
-            })),
-          },
-          () => location.reload(),
-        );
+        }
+        publishing = true;
+        const controls = Array.from(publish.elements, (el) => [el, el.disabled]);
+        controls.forEach(([el]) => {
+          el.disabled = true;
+        });
+        publishStatus.classList.remove('terms-error');
+        publishStatus.textContent = 'Sözleşme yayınlanıyor…';
+        try {
+          const response = await fetch('/api/employee-terms/settings', {
+            method: 'PUT',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'X-Han-Request': '1' },
+            body: JSON.stringify(pendingPublication),
+          });
+          const result = await response.json();
+          if (response.status === 401)
+            throw Error(
+              'Oturumunuz sona erdi. Metniniz bu sayfada korunuyor. Başka sekmede tekrar giriş yapıp burada yeniden deneyin.',
+            );
+          if (!response.ok) throw Error(result.error || 'Sözleşme yayınlanamadı.');
+          if (result.document?.version !== pendingPublication.version)
+            throw Error('Yayın sonucu doğrulanamadı. Sayfayı yenileyip yayındaki sürümü kontrol edin.');
+          if (typeof modalFormSaved === 'function') modalFormSaved(publish);
+          publishStatus.textContent =
+            'Sürüm ' + result.document.version + ' yayınlandı. Kabul ekranı açılıyor…';
+          location.reload();
+        } catch (error) {
+          publishing = false;
+          controls.forEach(([el, disabled]) => {
+            el.disabled = disabled;
+          });
+          publishStatus.classList.add('terms-error');
+          publishStatus.textContent = error.message || 'Bağlantı kurulamadı. Lütfen tekrar deneyin.';
+          publishStatus.scrollIntoView({ block: 'nearest' });
+        }
       };
       const resend = body.querySelector('[data-terms-resend]');
       if (resend)
