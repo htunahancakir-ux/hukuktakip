@@ -53,9 +53,12 @@ function bindConversationReport(doc, form) {
       if (!form.isConnected) return;
       output.value = report.text;
       doc.conversationReport = report;
+      output.maxLength = report.maxChars || 300;
       status.textContent =
         Array.from(report.text).length +
-        ' / 300 karakter · ' +
+        ' / ' +
+        (report.maxChars || 300) +
+        ' karakter · ' +
         report.sourceCount +
         ' görüşme · ' +
         conversationReportMethod(report.method);

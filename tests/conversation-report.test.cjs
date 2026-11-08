@@ -67,6 +67,30 @@ test('Newer conflicting statements retain their negation and source date; long a
     { note: 'Cevap vermedi. Cevap vermedi. Cevap vermedi.', result: 'Ulaşılamadı' },
   ]);
   assert.equal((repeated.text.match(/Cevap vermedi/g) || []).length, 1);
+  const extended = await generateReport(
+    [{ result: 'Görüşüldü', note: 'Ödeme değerlendirmesi sürüyor. '.repeat(80) }],
+    { aiConfig: { enabled: false, summaryMaxChars: 500 } },
+  );
+  assert.equal(extended.maxChars, 500);
+  assert.ok(Array.from(extended.text).length <= 500);
+  assert.equal(
+    currentReport(
+      {
+        conversations: [{ result: 'Görüşüldü', note: 'Ödeme değerlendirmesi sürüyor. '.repeat(80) }],
+        conversationReport: extended,
+      },
+      { enabled: false, summaryMaxChars: 500 },
+    ),
+    extended,
+  );
+  assert.throws(
+    () =>
+      aiSettings.configure(
+        {},
+        { enabled: false, provider: 'vercel-ai-gateway', model: 'openai/gpt-6-luna', summaryMaxChars: 99 },
+      ),
+    /Özet uzunluğu/,
+  );
 });
 test('Successful AI summaries retain provider token usage for the CEO-only aggregate, without exposing it in reports', async () => {
   const originalGatewayKey = process.env.AI_GATEWAY_API_KEY;
