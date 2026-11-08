@@ -226,15 +226,23 @@ test('Custom OpenAI-compatible providers keep credentials private and support ch
       outputTokens: 2,
       totalTokens: 6,
     });
+    let reportRequest;
     const report = await generateReport(notes, {
       aiConfig: saved,
-      fetcher: async () => ({
-        ok: true,
-        json: async () => ({ choices: [{ message: { content: 'Özel sağlayıcı ile oluşturulan özet.' } }] }),
-      }),
+      fetcher: async (_url, options) => {
+        reportRequest = JSON.parse(options.body);
+        return {
+          ok: true,
+          json: async () => ({ choices: [{ message: { content: 'Özel sağlayıcı ile oluşturulan özet.' } }] }),
+        };
+      },
     });
     assert.match(report.method, /^custom:/);
     assert.equal(report.text, 'Özel sağlayıcı ile oluşturulan özet.');
+    assert.equal(reportRequest.max_tokens, 512);
+    assert.equal(reportRequest.messages.length, 1);
+    assert.equal(reportRequest.messages[0].role, 'user');
+    assert.match(reportRequest.messages[0].content, /Görüşme geçmişi/);
     assert.throws(
       () =>
         aiSettings.configure(
