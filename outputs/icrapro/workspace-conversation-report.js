@@ -9,14 +9,15 @@ function conversationReportMethod(method) {
     }[method] || 'Bilinmeyen yöntem'
   );
 }
-async function requestConversationReport(documentId) {
-  if (conversationReportRequests.has(documentId)) return conversationReportRequests.get(documentId);
+async function requestConversationReport(documentId, { force = false } = {}) {
+  const requestKey = documentId + ':' + force;
+  if (conversationReportRequests.has(requestKey)) return conversationReportRequests.get(requestKey);
   const task = (async () => {
     const response = await fetch('/api/documents/conversation-report', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'X-Han-Request': '1', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ documentId }),
+      body: JSON.stringify({ documentId, force }),
       signal: AbortSignal.timeout(30000),
     });
     const data = await response.json();
@@ -34,11 +35,11 @@ async function requestConversationReport(documentId) {
       doc.conversationReport = data.report;
     return data.report;
   })();
-  conversationReportRequests.set(documentId, task);
+  conversationReportRequests.set(requestKey, task);
   try {
     return await task;
   } finally {
-    conversationReportRequests.delete(documentId);
+    conversationReportRequests.delete(requestKey);
   }
 }
 function bindConversationReport(doc, form) {
@@ -46,11 +47,11 @@ function bindConversationReport(doc, form) {
   const status = form.querySelector('[data-conversation-report-status]');
   const button = form.querySelector('[data-generate-conversation-report]');
   if (!output || !button) return;
-  const refresh = async () => {
+  const refresh = async (force = false) => {
     button.disabled = true;
     status.textContent = 'Tüm görüşme geçmişi özetleniyor…';
     try {
-      const report = await requestConversationReport(doc.id);
+      const report = await requestConversationReport(doc.id, { force });
       if (!form.isConnected) return;
       output.value = report.text;
       doc.conversationReport = report;
@@ -62,7 +63,8 @@ function bindConversationReport(doc, form) {
         ' karakter · ' +
         report.sourceCount +
         ' görüşme · ' +
-        conversationReportMethod(report.method);
+        conversationReportMethod(report.method) +
+        (report.providerError ? ' · ' + report.providerError : '');
     } catch (error) {
       if (!form.isConnected) return;
       output.value = '';
@@ -71,7 +73,7 @@ function bindConversationReport(doc, form) {
       if (form.isConnected) button.disabled = false;
     }
   };
-  button.onclick = refresh;
+  button.onclick = () => refresh(true);
   // Generation follows saving the original note; it never replaces that note.
   if ((doc.conversations || []).length) void refresh();
   else status.textContent = 'Görüşme kaydedildiğinde tüm geçmişten otomatik oluşturulur.';

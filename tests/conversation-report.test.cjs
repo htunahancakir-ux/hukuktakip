@@ -327,10 +327,14 @@ test('Report field is read-only, full notes stay editable, generated summary is 
     assert.equal(output.name, '');
     assert.equal(form.elements.note.readOnly, false);
     assert.equal(form.elements.note.maxLength, -1);
-    w.fetch = async () => ({
-      ok: true,
-      json: async () => ({ report: { text: '<img src=x onerror=alert(1)>', sourceCount: 2 } }),
-    });
+    const requests = [];
+    w.fetch = async (_url, options) => {
+      requests.push(JSON.parse(options.body));
+      return {
+        ok: true,
+        json: async () => ({ report: { text: '<img src=x onerror=alert(1)>', sourceCount: 2 } }),
+      };
+    };
     w.AbortSignal = AbortSignal;
     w.eval(fs.readFileSync('outputs/icrapro/workspace-conversation-report.js', 'utf8'));
     w.bindConversationReport(doc, form);
@@ -338,6 +342,11 @@ test('Report field is read-only, full notes stay editable, generated summary is 
     await new Promise(setImmediate);
     assert.equal(output.value, '<img src=x onerror=alert(1)>');
     assert.equal(form.querySelector('img'), null);
+    assert.equal(requests[0].force, false);
+    form.querySelector('[data-generate-conversation-report]').click();
+    await new Promise(setImmediate);
+    await new Promise(setImmediate);
+    assert.equal(requests[1].force, true);
     const definitions = require('../outputs/icrapro/report-definitions.js');
     assert.equal(
       definitions.clientDebtorInfo.columns.some((c) => c[0] === 'clientEntitlement'),

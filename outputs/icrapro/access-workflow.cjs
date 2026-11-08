@@ -115,6 +115,8 @@ async function handleWorkflowRoutes(ctx) {
   }
   if (url.pathname === '/api/documents/conversation-report' && req.method === 'POST') {
     const v = await body(req);
+    if (v.force !== undefined && typeof v.force !== 'boolean')
+      throw fail(400, 'Rapor yenileme ayarı geçersiz.');
     const d = ctx.state.data['icrapro-v1'].docs.find((d) => d.id === v.documentId);
     if (
       !d ||
@@ -122,7 +124,7 @@ async function handleWorkflowRoutes(ctx) {
       (!['ceo', 'admin'].includes(u.role) && (!u.staffId || d.relatedStaff !== u.staffId))
     )
       throw fail(403, 'Bu dosyanın görüşme raporuna erişilemiyor.');
-    let report = currentReport(d, ctx.state.aiConfig);
+    let report = v.force ? null : currentReport(d, ctx.state.aiConfig);
     if (!report) {
       report = await generateReport(d.conversations || [], { aiConfig: ctx.state.aiConfig });
       const next = structuredClone(ctx.state);
