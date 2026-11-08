@@ -256,6 +256,7 @@ function enforceRequired(form) {
   }
 }
 function validateRequiredForm(form) {
+  if (form._prepareRequiredValidation && !form._prepareRequiredValidation()) return false;
   enforceRequired(form);
   for (const el of mandatoryControls(form)) {
     el.setCustomValidity('');

@@ -24,7 +24,7 @@ function recordPageNeedsCompatibility() {
   return (
     window.hanRecordsEnabled &&
     !window.hanWorkspaceComplete &&
-    ['intake', 'reports', 'accounting', 'reminders', 'messages'].includes(page)
+    ['reports', 'accounting', 'reminders', 'messages'].includes(page)
   );
 }
 function renderRecordStats() {

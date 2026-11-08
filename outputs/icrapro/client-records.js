@@ -149,6 +149,7 @@ function renderClientScope() {
     filter = document.getElementById('clientScope');
   bar.hidden = page !== 'intake';
   if (page !== 'intake') return;
+  if (window.hanRecordsEnabled) return renderRecordIntakeScope(bar, filter);
   if (selected && !db.clients.some((c) => c.id === selected)) selected = '';
   filter.innerHTML =
     '<option value="">Tüm Müvekkiller</option>' +

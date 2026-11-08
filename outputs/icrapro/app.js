@@ -149,6 +149,7 @@ function toast(t, scope) {
 function stats() {
   updateActiveDebtorCount();
   if (window.hanRecordsEnabled && page === 'clients') return renderRecordClientStats(null);
+  if (window.hanRecordsEnabled && page === 'intake') return renderRecordIntakeStats();
   if (window.hanRecordsEnabled && !window.hanWorkspaceComplete) return renderRecordStats();
   const scoped = page === 'intake' && selected;
   const docs = scoped ? db.docs.filter((d) => d.client === selected) : db.docs;
@@ -306,8 +307,10 @@ if (embeddedIntake) {
   style.textContent =
     'body{display:block;min-height:0}.shell{margin:0;width:100%}.shell main{padding:0;margin:0;max-width:none}aside,.shell>header,.shell .heading,.shell footer,#stats,#clientScopeBar{display:none!important}';
   document.head.append(style);
-  if (window.hanRecordsEnabled && !window.hanWorkspaceComplete)
-    ensureRecordWorkspace(() => intake(undefined, true));
+  if (window.hanRecordsEnabled && selected)
+    ensureIntakeClient(selected)
+      .then(() => intake(undefined, true))
+      .catch((error) => toast(error.message));
   else intake(undefined, true);
   const resize = () => {
     if (window.frameElement)
