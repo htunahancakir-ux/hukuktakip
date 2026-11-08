@@ -122,9 +122,9 @@ async function handleWorkflowRoutes(ctx) {
       (!['ceo', 'admin'].includes(u.role) && (!u.staffId || d.relatedStaff !== u.staffId))
     )
       throw fail(403, 'Bu dosyanın görüşme raporuna erişilemiyor.');
-    let report = currentReport(d);
+    let report = currentReport(d, ctx.state.aiConfig);
     if (!report) {
-      report = await generateReport(d.conversations || []);
+      report = await generateReport(d.conversations || [], { aiConfig: ctx.state.aiConfig });
       const next = structuredClone(ctx.state);
       next.data['icrapro-v1'].docs.find((x) => x.id === d.id).conversationReport = report;
       persist(next);
@@ -219,7 +219,7 @@ async function handleWorkflowRoutes(ctx) {
         createdAt: new Date().toISOString(),
       },
     ];
-    doc.conversationReport = await generateReport(doc.conversations);
+    doc.conversationReport = await generateReport(doc.conversations, { aiConfig: next.aiConfig });
     persist(next);
     send(res, 200, { conversations: doc.conversations, report: doc.conversationReport });
     return true;

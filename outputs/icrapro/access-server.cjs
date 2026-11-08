@@ -17,6 +17,7 @@ const {
 const { searchWorkspace } = require('../../lib/workspace-search.cjs');
 const { notificationSummary } = require('../../lib/notification-summary.cjs');
 const { handleWhatsAppRoutes } = require('./access-whatsapp.cjs');
+const { handleAiRoutes } = require('./access-ai.cjs');
 const { activeArchives } = require('../../lib/document-archive.cjs');
 const { prepareState } = require('../../lib/state-invariants.cjs');
 const { handleWorkflowRoutes } = require('./access-workflow.cjs');
@@ -361,6 +362,7 @@ function createAccess(stateFile, options = {}) {
       }
       if (await handleWhatsAppRoutes(ctx)) return true;
       if (!u) throw fail(401, 'Giriş yapın.');
+      if (await handleAiRoutes(ctx)) return true;
       if (url.pathname === '/api/notifications' && req.method === 'GET') {
         send(res, 200, notificationSummary(state, u, url.searchParams.get('after')));
         return true;

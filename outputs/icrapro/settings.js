@@ -237,6 +237,7 @@ function settingsSectionTabs(active) {
     ['audit', 'İşlem Kayıtları'],
     ['employeeTerms', 'Gizlilik Sözleşmesi'],
     ...(hanAuth.role === 'ceo' ? [['whatsapp', 'WhatsApp Business']] : []),
+    ...(hanAuth.role === 'ceo' ? [['ai', 'Yapay Zeka']] : []),
     ['backup', 'Yedekleme'],
   ];
   return `<div class="settings-tabs" role="tablist" aria-label="Ayar sekmeleri">${tabs
@@ -343,6 +344,7 @@ settings = function () {
   if (settingsTab === 'backup') return backupSettingsPage();
   if (settingsTab === 'audit') return auditSettingsPage();
   if (settingsTab === 'whatsapp') return whatsappSettingsPage();
+  if (settingsTab === 'ai') return aiSettingsPage();
   if (settingsTab === 'employeeTerms') return employeeTermsSettingsPage();
   originalSettings();
   const notice = document.querySelector('#settingsForm .notice');
