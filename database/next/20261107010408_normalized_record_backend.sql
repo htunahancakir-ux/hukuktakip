@@ -1,4 +1,5 @@
 -- NEXT-PHASE schema. Rehearse independently; not applied by db:migrate.
+-- Experimental han_core remains legacy-office-only; it is not granted to the tenant runtime.
 -- All tables are private. No browser/PostgREST grants or SECURITY DEFINER RPCs.
 CREATE SCHEMA han_core;
 REVOKE ALL ON SCHEMA han_core FROM PUBLIC;
@@ -52,10 +53,13 @@ CREATE INDEX documents_live_idx ON han_core.documents(id) WHERE deleted_at IS NU
 CREATE INDEX documents_due_idx ON han_core.documents(due_on, id) WHERE deleted_at IS NULL;
 CREATE INDEX documents_search_idx ON han_core.documents USING gin(search_vector);
 CREATE TABLE han_core.conversations (
+  tenant_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'
+    CHECK (tenant_id='00000000-0000-0000-0000-000000000001'),
   document_id text NOT NULL REFERENCES han_core.documents(id), id text NOT NULL,
   occurred_on date NOT NULL, at_time time NOT NULL, note text NOT NULL DEFAULT '',
-  result text NOT NULL, operator_id text REFERENCES han_private.han_account_index(id),
-  extras jsonb NOT NULL DEFAULT '{}', PRIMARY KEY(document_id, id)
+  result text NOT NULL, operator_id text,
+  extras jsonb NOT NULL DEFAULT '{}', PRIMARY KEY(document_id, id),
+  FOREIGN KEY (tenant_id, operator_id) REFERENCES han_private.han_account_index(tenant_id,id)
 );
 CREATE INDEX conversations_timeline_idx ON han_core.conversations(document_id, occurred_on DESC, at_time DESC, id);
 CREATE INDEX conversations_operator_idx ON han_core.conversations(operator_id);
@@ -84,26 +88,32 @@ CREATE TABLE han_core.accounts (
   id text PRIMARY KEY, name text NOT NULL, kind text NOT NULL, extras jsonb NOT NULL DEFAULT '{}'
 );
 CREATE TABLE han_core.financial_events (
+  tenant_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'
+    CHECK (tenant_id='00000000-0000-0000-0000-000000000001'),
   id text PRIMARY KEY, document_id text NOT NULL REFERENCES han_core.documents(id),
   account_id text REFERENCES han_core.accounts(id),
   kind text NOT NULL CHECK (kind IN ('payment', 'expense', 'costOnly')),
   amount_cents bigint NOT NULL CHECK (amount_cents BETWEEN 1 AND 9007199254740991),
-  occurred_on date NOT NULL, operator_id text REFERENCES han_private.han_account_index(id),
-  note text NOT NULL DEFAULT '', extras jsonb NOT NULL DEFAULT '{}'
+  occurred_on date NOT NULL, operator_id text,
+  note text NOT NULL DEFAULT '', extras jsonb NOT NULL DEFAULT '{}',
+  FOREIGN KEY (tenant_id, operator_id) REFERENCES han_private.han_account_index(tenant_id,id)
 );
 CREATE INDEX financial_document_idx ON han_core.financial_events(document_id, occurred_on DESC, id);
 CREATE INDEX financial_account_idx ON han_core.financial_events(account_id, occurred_on DESC, id);
 CREATE INDEX financial_operator_idx ON han_core.financial_events(operator_id);
 CREATE TABLE han_core.ledger_entries (
+  tenant_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'
+    CHECK (tenant_id='00000000-0000-0000-0000-000000000001'),
   id text PRIMARY KEY, account_id text NOT NULL REFERENCES han_core.accounts(id),
   destination_id text REFERENCES han_core.accounts(id),
   document_id text REFERENCES han_core.documents(id),
   kind text NOT NULL CHECK (kind IN ('in', 'out', 'advance', 'transfer', 'clientPayout')),
   amount_cents bigint NOT NULL CHECK (amount_cents BETWEEN 1 AND 9007199254740991),
-  occurred_on date NOT NULL, operator_id text REFERENCES han_private.han_account_index(id),
+  occurred_on date NOT NULL, operator_id text,
   note text NOT NULL DEFAULT '', extras jsonb NOT NULL DEFAULT '{}',
   CHECK ((kind = 'transfer' AND destination_id IS NOT NULL AND destination_id <> account_id)
-     OR (kind <> 'transfer' AND destination_id IS NULL))
+     OR (kind <> 'transfer' AND destination_id IS NULL)),
+  FOREIGN KEY (tenant_id, operator_id) REFERENCES han_private.han_account_index(tenant_id,id)
 );
 CREATE INDEX ledger_account_idx ON han_core.ledger_entries(account_id, occurred_on DESC, id);
 CREATE INDEX ledger_destination_idx ON han_core.ledger_entries(destination_id);
@@ -111,31 +121,44 @@ CREATE INDEX ledger_document_idx ON han_core.ledger_entries(document_id);
 CREATE INDEX ledger_operator_idx ON han_core.ledger_entries(operator_id);
 
 CREATE TABLE han_core.messages (
-  id text PRIMARY KEY, sender_id text NOT NULL REFERENCES han_private.han_account_index(id),
+  tenant_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'
+    CHECK (tenant_id='00000000-0000-0000-0000-000000000001'),
+  id text PRIMARY KEY, sender_id text NOT NULL,
   subject text NOT NULL, body text NOT NULL, created_at timestamptz NOT NULL,
-  extras jsonb NOT NULL DEFAULT '{}'
+  extras jsonb NOT NULL DEFAULT '{}',
+  FOREIGN KEY (tenant_id, sender_id) REFERENCES han_private.han_account_index(tenant_id,id)
 );
 CREATE INDEX messages_sender_idx ON han_core.messages(sender_id, created_at DESC, id);
 CREATE TABLE han_core.message_recipients (
+  tenant_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'
+    CHECK (tenant_id='00000000-0000-0000-0000-000000000001'),
   message_id text NOT NULL REFERENCES han_core.messages(id),
-  account_id text NOT NULL REFERENCES han_private.han_account_index(id),
-  read_at timestamptz, label_at_send text, PRIMARY KEY (account_id, message_id)
+  account_id text NOT NULL,
+  read_at timestamptz, label_at_send text, PRIMARY KEY (account_id, message_id),
+  FOREIGN KEY (tenant_id, account_id) REFERENCES han_private.han_account_index(tenant_id,id)
 );
 CREATE INDEX message_recipients_message_idx ON han_core.message_recipients(message_id);
 CREATE INDEX message_unread_idx ON han_core.message_recipients(account_id, message_id) WHERE read_at IS NULL;
 CREATE TABLE han_core.work_orders (
-  id text PRIMARY KEY, assigner_id text NOT NULL REFERENCES han_private.han_account_index(id),
-  assignee_id text NOT NULL REFERENCES han_private.han_account_index(id),
+  tenant_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'
+    CHECK (tenant_id='00000000-0000-0000-0000-000000000001'),
+  id text PRIMARY KEY, assigner_id text NOT NULL,
+  assignee_id text NOT NULL,
   title text NOT NULL, description text NOT NULL, status text NOT NULL CHECK (status IN ('pending', 'done')),
-  due_on date, created_at timestamptz NOT NULL, extras jsonb NOT NULL DEFAULT '{}'
+  due_on date, created_at timestamptz NOT NULL, extras jsonb NOT NULL DEFAULT '{}',
+  FOREIGN KEY (tenant_id, assigner_id) REFERENCES han_private.han_account_index(tenant_id,id),
+  FOREIGN KEY (tenant_id, assignee_id) REFERENCES han_private.han_account_index(tenant_id,id)
 );
 CREATE INDEX work_orders_assignee_idx ON han_core.work_orders(assignee_id, status, created_at DESC, id);
 CREATE INDEX work_orders_assigner_idx ON han_core.work_orders(assigner_id, created_at DESC, id);
 CREATE TABLE han_core.reminders (
-  id text PRIMARY KEY, account_id text NOT NULL REFERENCES han_private.han_account_index(id),
+  tenant_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'
+    CHECK (tenant_id='00000000-0000-0000-0000-000000000001'),
+  id text PRIMARY KEY, account_id text NOT NULL,
   client_id text REFERENCES han_core.clients(id), document_id text REFERENCES han_core.documents(id),
   due_at timestamptz NOT NULL, note text NOT NULL, closed_at timestamptz, extras jsonb NOT NULL DEFAULT '{}',
-  CHECK (client_id IS NULL OR document_id IS NULL)
+  CHECK (client_id IS NULL OR document_id IS NULL),
+  FOREIGN KEY (tenant_id, account_id) REFERENCES han_private.han_account_index(tenant_id,id)
 );
 CREATE INDEX reminders_due_idx ON han_core.reminders(account_id, due_at, id) WHERE closed_at IS NULL;
 CREATE INDEX reminders_dispatch_idx ON han_core.reminders(due_at, id) WHERE closed_at IS NULL;
@@ -145,20 +168,29 @@ CREATE TABLE han_core.terms_releases (
   version text PRIMARY KEY, hash text NOT NULL, document jsonb NOT NULL, UNIQUE(version, hash)
 );
 CREATE TABLE han_core.terms_acceptances (
-  account_id text NOT NULL REFERENCES han_private.han_account_index(id),
+  tenant_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'
+    CHECK (tenant_id='00000000-0000-0000-0000-000000000001'),
+  account_id text NOT NULL,
   version text NOT NULL, hash text NOT NULL, accepted_at timestamptz NOT NULL, snapshot jsonb NOT NULL,
-  PRIMARY KEY(account_id, version), FOREIGN KEY(version, hash) REFERENCES han_core.terms_releases(version, hash)
+  PRIMARY KEY(account_id, version), FOREIGN KEY(version, hash) REFERENCES han_core.terms_releases(version, hash),
+  FOREIGN KEY (tenant_id, account_id) REFERENCES han_private.han_account_index(tenant_id,id)
 );
 CREATE INDEX terms_acceptances_version_idx ON han_core.terms_acceptances(version, hash);
 -- Notices and consent are deliberately separate from contract acceptance.
 CREATE TABLE han_core.notice_events (
-  sequence bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, account_id text NOT NULL REFERENCES han_private.han_account_index(id),
-  body jsonb NOT NULL
+  tenant_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'
+    CHECK (tenant_id='00000000-0000-0000-0000-000000000001'),
+  sequence bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, account_id text NOT NULL,
+  body jsonb NOT NULL,
+  FOREIGN KEY (tenant_id, account_id) REFERENCES han_private.han_account_index(tenant_id,id)
 );
 CREATE INDEX notice_events_account_idx ON han_core.notice_events(account_id, sequence);
 CREATE TABLE han_core.consent_events (
-  id text PRIMARY KEY, account_id text NOT NULL REFERENCES han_private.han_account_index(id),
-  purpose text NOT NULL, granted boolean NOT NULL, recorded_at timestamptz NOT NULL, evidence jsonb NOT NULL
+  tenant_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'
+    CHECK (tenant_id='00000000-0000-0000-0000-000000000001'),
+  id text PRIMARY KEY, account_id text NOT NULL,
+  purpose text NOT NULL, granted boolean NOT NULL, recorded_at timestamptz NOT NULL, evidence jsonb NOT NULL,
+  FOREIGN KEY (tenant_id, account_id) REFERENCES han_private.han_account_index(tenant_id,id)
 );
 CREATE INDEX consent_events_account_idx ON han_core.consent_events(account_id, purpose, recorded_at DESC);
 CREATE TABLE han_core.payroll_periods (
@@ -181,9 +213,12 @@ CREATE TABLE han_core.settings (key text PRIMARY KEY, value jsonb NOT NULL);
 
 -- One durable operation key per account. Reusing a key with a different payload is an error.
 CREATE TABLE han_core.commands (
-  actor_id text NOT NULL REFERENCES han_private.han_account_index(id), key text NOT NULL,
+  tenant_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'
+    CHECK (tenant_id='00000000-0000-0000-0000-000000000001'),
+  actor_id text NOT NULL, key text NOT NULL,
   request_hash text NOT NULL, response jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
-  PRIMARY KEY(actor_id, key)
+  PRIMARY KEY(actor_id, key),
+  FOREIGN KEY (tenant_id, actor_id) REFERENCES han_private.han_account_index(tenant_id,id)
 );
 CREATE TABLE han_core.outbox (
   id text PRIMARY KEY, dedupe_key text NOT NULL UNIQUE, topic text NOT NULL,

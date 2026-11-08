@@ -5,7 +5,8 @@
 Kurulum: npm ci. Test: npm test. Derleme: npm run build. Yerel başlatma: npm start.
 
 SaaS geliştirme dalında büro, üyelik ve abonelik temeli: [durum ve uygulama planı](docs/SAAS.md).
-Mevcut çalışma zamanı tek büroludur; birden çok büro için veri izolasyonu henüz tamamlanmadı.
+Veritabanı deposuna tenant anahtarları ve RLS izolasyonu eklendi. Kullanıcıya açık büro seçimi,
+kayıt/davet ve ödeme akışları henüz tamamlanmadı; mevcut HTTP giriş noktası ilk büroyu kullanır.
 
 Yerel adres: http://127.0.0.1:4317/. DATABASE_URL yokken yerel sunucu work/hanhukuk-state.json dosyasını kullanır. Vercel API'sinde PostgreSQL zorunludur; bağlantı veya veri aktarımı eksikse 503 döndürür.
 

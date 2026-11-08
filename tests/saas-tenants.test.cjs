@@ -74,7 +74,7 @@ test('SaaS tenant lifecycle and access boundaries', async (t) => {
           (e) => e.status === 400,
         );
       }
-      assert.equal((await pool.query('SELECT count(*)::int AS n FROM han_saas.tenants')).rows[0].n, 2);
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM han_saas.tenants')).rows[0].n, 3);
     });
 
     await t.test('a provisioning failure rolls back tenant and owner together', async () => {

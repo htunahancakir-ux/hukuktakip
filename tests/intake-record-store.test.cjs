@@ -1,7 +1,5 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const { database, fixture, serve, password } = require('./support/postgres.cjs');
 const { createApplication } = require('../lib/application.cjs');
 const { importState, createStore } = require('../lib/postgres-store.cjs');
@@ -76,29 +74,8 @@ test('Intake allocates server numbers, isolates edits, searches all clients and 
       '200',
     );
 
-    // Rehearse applying the additive migration to populated tables, as in production.
-    await pg.exec(
-      'DROP TRIGGER track_document_number_insert ON han_data.documents; DROP TRIGGER track_document_number_update ON han_data.documents; DROP TRIGGER track_archived_numbers_insert ON han_data.metadata; DROP TRIGGER track_archived_numbers_update ON han_data.metadata; DROP FUNCTION han_data.track_document_number(); DROP TABLE han_data.document_sequences;',
-    );
-    await pg.exec(
-      'BEGIN;' +
-        fs.readFileSync(
-          path.join(__dirname, '../supabase/migrations/20261107235838_intake_document_numbers.sql'),
-          'utf8',
-        ) +
-        ';COMMIT;',
-    );
-    assert.deepEqual((await store.readState()).data, pristine.data);
-    assert.equal(
-      (await pool.query("SELECT last_value::text AS n FROM han_data.document_sequences WHERE prefix='S'"))
-        .rows[0].n,
-      '200',
-    );
-    assert.equal(
-      (await pool.query("SELECT last_value::text AS n FROM han_data.document_sequences WHERE prefix='Ç'"))
-        .rows[0].n,
-      '9',
-    );
+    // Historical migration rehearsal now lives in tenant-isolation.test.cjs,
+    // where it runs before tenant keys and policies are installed.
     server = await serve(createApplication({ store }));
     async function login(username) {
       const r = await fetch(server.url + '/api/login', {
@@ -275,10 +252,12 @@ test('Intake allocates server numbers, isolates edits, searches all clients and 
     let commits = 0;
     pool.connect = async () => {
       const db = await connect();
+      let businessTransaction = false;
       return {
         release: db.release,
         query: (sql, args) => {
-          if (sql === 'COMMIT' && commits++ === 0)
+          if (sql === 'BEGIN ISOLATION LEVEL SERIALIZABLE') businessTransaction = true;
+          if (businessTransaction && sql === 'COMMIT' && commits++ === 0)
             throw Object.assign(Error('Synthetic serialization failure'), { code: '40001' });
           return db.query(sql, args);
         },
