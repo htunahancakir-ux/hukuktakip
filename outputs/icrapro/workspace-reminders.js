@@ -173,7 +173,7 @@ function showWorkflowReceipt(notice) {
     host.remove();
     collectionNoticeShowing = false;
     showNextCollectionNotice();
-  }, 10000);
+  }, breakNotice ? 5000 : 10000);
 }
 
 function bindStaffConversation(d, dialog) {
