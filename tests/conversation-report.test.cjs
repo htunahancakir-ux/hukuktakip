@@ -239,7 +239,7 @@ test('Custom OpenAI-compatible providers keep credentials private and support ch
     });
     assert.match(report.method, /^custom:/);
     assert.equal(report.text, 'Özel sağlayıcı ile oluşturulan özet.');
-    assert.equal(reportRequest.max_tokens, 512);
+    assert.equal(reportRequest.max_tokens, 384);
     assert.equal(reportRequest.messages.length, 1);
     assert.equal(reportRequest.messages[0].role, 'user');
     assert.match(reportRequest.messages[0].content, /Görüşme geçmişi/);
