@@ -18,7 +18,10 @@ async function requestConversationReport(documentId, { force = false } = {}) {
       credentials: 'same-origin',
       headers: { 'X-Han-Request': '1', 'Content-Type': 'application/json' },
       body: JSON.stringify({ documentId, force }),
-      signal: AbortSignal.timeout(30000),
+      // The server permits a bounded 75-second provider request. Keep the
+      // browser alive slightly longer so it can receive that final response
+      // instead of cancelling a valid slow compatible-provider summary.
+      signal: AbortSignal.timeout(90000),
     });
     const data = await response.json();
     if (!response.ok) {
