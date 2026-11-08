@@ -101,6 +101,7 @@ async function handleDeletionRoutes(ctx) {
   if (input.type === 'conversations') {
     const doc = docs.find((d) => d.id === row.documentId);
     doc.conversations = doc.conversations.filter((c) => c.id !== row.id);
+    delete doc.conversationReport;
   } else rows.splice(index, 1);
   if (input.type === 'finance' && row.type === 'payment') {
     const doc = docs.find((d) => d.id === row.documentId);

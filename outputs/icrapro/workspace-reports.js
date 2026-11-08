@@ -185,18 +185,15 @@ function reportRows(type) {
         tapu:
           [d.tapuStatus, d.tapuStatus === 'Var' ? d.tapuDetails : ''].filter(Boolean).join(' · ') ||
           'Belirtilmedi',
-        clientEntitlement: payout.entitlement,
         clientPaid: payout.paid,
         clientRemaining: payout.remaining,
-        note: (d.conversations || [])
-          .filter((c) => c.result === 'Raporlandı')
-          .sort((a, b) => (a.date + 'T' + a.time).localeCompare(b.date + 'T' + b.time))
-          .map((c) =>
-            [displayDate(c.date), c.time, c.staffName || staffName(c.staff), c.note]
-              .filter(Boolean)
-              .join(' · '),
-          )
-          .join('\n'),
+        note:
+          d.conversationReport?.sourceCount === (d.conversations || []).length
+            ? d.conversationReport.text
+            : '',
+        reportPending:
+          (d.conversations || []).length > 0 &&
+          d.conversationReport?.sourceCount !== (d.conversations || []).length,
       });
     }
   if (type === 'calls')
@@ -444,7 +441,14 @@ function reportTable(def, rows, openableDocuments, totals) {
           (r) =>
             '<tr>' +
             def.columns
-              .map((c) => '<td style="white-space:pre-line">' + esc(reportCell(r, c)) + '</td>')
+              .map(
+                (c) =>
+                  '<td style="white-space:pre-line"' +
+                  (c[0] === 'note' ? ' data-report-summary="' + esc(r.documentId) + '"' : '') +
+                  '>' +
+                  (c[0] === 'note' && r.cells.reportPending ? 'Özet hazırlanıyor…' : esc(reportCell(r, c))) +
+                  '</td>',
+              )
               .join('') +
             '</tr>',
         )
@@ -469,6 +473,12 @@ function renderReportResult() {
     result.querySelectorAll('[data-report-borrower]').forEach((button) => {
       button.onclick = () => borrowerDetail(button.dataset.reportBorrower);
     });
+    if (reportFilters.type === 'clientDebtorInfo') {
+      void prepareConversationReportRows(
+        rows,
+        () => result.isConnected && reportFilters.type === 'clientDebtorInfo',
+      ).catch((error) => toast(error.message));
+    }
   } catch (error) {
     $('#reportResult').textContent = error.message;
   }
@@ -480,9 +490,10 @@ function safeCsvCell(value) {
   return '"' + text.replace(/"/g, '""') + '"';
 }
 
-function exportReport() {
+async function exportReport() {
   if (window.hanRecordsEnabled) return exportRecordReport('csv');
   try {
+    if (reportFilters.type === 'clientDebtorInfo') await prepareConversationReportRows(currentReport().rows);
     const { definition, rows } = currentReport(),
       lines = [
         ...(definition.hideDate
@@ -516,9 +527,10 @@ function exportReport() {
   }
 }
 
-function printReport() {
+async function printReport() {
   if (window.hanRecordsEnabled) return exportRecordReport('html');
   try {
+    if (reportFilters.type === 'clientDebtorInfo') await prepareConversationReportRows(currentReport().rows);
     const { definition, rows } = currentReport(),
       frame = document.createElement('iframe');
     frame.style.cssText = 'position:fixed;width:0;height:0;border:0';

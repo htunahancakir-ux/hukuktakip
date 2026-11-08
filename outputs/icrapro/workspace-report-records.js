@@ -120,6 +120,14 @@ async function loadRecordReport() {
         recordAction(button.dataset.reportBorrower, () => borrowerDetail(button.dataset.reportBorrower));
     });
     for (const id of ['printReport', 'exportReport']) if ($('#' + id)) $('#' + id).disabled = false;
+    if (reportFilters.type === 'clientDebtorInfo') {
+      void prepareConversationReportRows(
+        data.items,
+        () => result.isConnected && request === state.request,
+      ).catch((error) => {
+        if (result.isConnected && request === state.request) toast(error.message);
+      });
+    }
   } catch (error) {
     if (error.name !== 'AbortError' && result.isConnected && request === state.request)
       result.textContent = error.message;
@@ -130,6 +138,25 @@ async function loadRecordReport() {
 async function exportRecordReport(format) {
   if (reportFilters.from && reportFilters.to && reportFilters.from > reportFilters.to)
     return toast('Başlangıç tarihi bitiş tarihinden sonra olamaz.');
+  if (reportFilters.type === 'clientDebtorInfo') {
+    const snapshot = JSON.stringify(reportFilters);
+    try {
+      let after = '';
+      do {
+        const data = await recordReportFetch(
+          '/api/records/reports?' + new URLSearchParams({ ...reportFilters, limit: 50, after }),
+        );
+        if (
+          !(await prepareConversationReportRows(data.items, () => JSON.stringify(reportFilters) === snapshot))
+        )
+          return;
+        after = data.next || '';
+      } while (after);
+    } catch (error) {
+      toast(error.message);
+      return;
+    }
+  }
   const url = '/api/records/reports/export?' + new URLSearchParams({ ...reportFilters, format });
   if (format === 'csv') {
     const button = $('#exportReport'),

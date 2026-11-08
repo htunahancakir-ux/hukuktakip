@@ -17,6 +17,7 @@ const workspaceScripts = [
   'workspace-breaks.js',
   'workspace-communications.js',
   'workspace-reminders.js',
+  'workspace-conversation-report.js',
   'workspace-scheduled-reminders.js',
   'client-records.js',
   'document-records.js',
