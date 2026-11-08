@@ -10,7 +10,9 @@ function conversationReportMethod(method) {
   );
 }
 async function requestConversationReport(documentId, { force = false } = {}) {
-  const requestKey = documentId + ':' + force;
+  // A forced click while the automatic refresh is still pending must join the
+  // same operation. Parallel generations can race when persisting one file.
+  const requestKey = documentId;
   if (conversationReportRequests.has(requestKey)) return conversationReportRequests.get(requestKey);
   const task = (async () => {
     const response = await fetch('/api/documents/conversation-report', {
