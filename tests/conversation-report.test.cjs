@@ -169,6 +169,94 @@ test('AI connection test uses the selected model, counts tokens, and returns a s
     else process.env.AI_GATEWAY_API_KEY = originalGatewayKey;
   }
 });
+test('Custom OpenAI-compatible providers keep credentials private and support chat completions reasoning', async () => {
+  const originalKey = process.env.AI_ENCRYPTION_KEY;
+  process.env.AI_ENCRYPTION_KEY = 'a'.repeat(64);
+  try {
+    const saved = aiSettings.configure(
+      {},
+      {
+        enabled: true,
+        provider: 'custom:new',
+        providerName: 'Örnek AI',
+        baseUrl: 'https://api.example.ai/v1',
+        apiFormat: 'chat-completions',
+        model: 'example-reasoner',
+        reasoningEffort: 'high',
+        summaryMaxChars: 300,
+        apiKey: 'example-secret-key',
+      },
+    );
+    assert.match(saved.provider, /^custom:cp_[a-f0-9]{24}$/);
+    const publicConfig = aiSettings.publicConfig(saved);
+    assert.equal(publicConfig.customProviders.length, 1);
+    assert.equal(publicConfig.customProviders[0].apiKeySaved, true);
+    assert.doesNotMatch(JSON.stringify(publicConfig), /example-secret-key|sealedApiKey/);
+    let request;
+    const result = await aiSettings.testConnection(
+      saved,
+      {
+        enabled: true,
+        provider: saved.provider,
+        providerName: 'Örnek AI',
+        baseUrl: 'https://api.example.ai/v1',
+        apiFormat: 'chat-completions',
+        model: 'example-reasoner',
+        reasoningEffort: 'high',
+        summaryMaxChars: 300,
+        apiKey: '',
+      },
+      {
+        fetcher: async (url, options) => {
+          request = { url, options };
+          return { ok: true, json: async () => ({ usage: { prompt_tokens: 4, completion_tokens: 2 } }) };
+        },
+      },
+    );
+    assert.equal(request.url, 'https://api.example.ai/v1/chat/completions');
+    assert.deepEqual(JSON.parse(request.options.body), {
+      model: 'example-reasoner',
+      max_tokens: 16,
+      reasoning_effort: 'high',
+      messages: [{ role: 'user', content: 'Bağlantıyı doğrulamak için yalnızca OK yaz.' }],
+    });
+    assert.deepEqual(result.usage, {
+      model: 'Örnek AI: example-reasoner',
+      inputTokens: 4,
+      outputTokens: 2,
+      totalTokens: 6,
+    });
+    const report = await generateReport(notes, {
+      aiConfig: saved,
+      fetcher: async () => ({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'Özel sağlayıcı ile oluşturulan özet.' } }] }),
+      }),
+    });
+    assert.match(report.method, /^custom:/);
+    assert.equal(report.text, 'Özel sağlayıcı ile oluşturulan özet.');
+    assert.throws(
+      () =>
+        aiSettings.configure(
+          {},
+          {
+            enabled: false,
+            provider: 'custom:new',
+            providerName: 'Yerel',
+            baseUrl: 'https://127.0.0.1/v1',
+            apiFormat: 'responses',
+            model: 'model-a',
+            summaryMaxChars: 300,
+            apiKey: '',
+          },
+        ),
+      /Base URL HTTPS/,
+    );
+  } finally {
+    if (originalKey === undefined) delete process.env.AI_ENCRYPTION_KEY;
+    else process.env.AI_ENCRYPTION_KEY = originalKey;
+  }
+});
 test('Report endpoint ignores manually supplied text, caches unchanged history and enforces file assignment', async () => {
   try {
     let state = {

@@ -1,5 +1,6 @@
 const conversationReportRequests = new Map();
 function conversationReportMethod(method) {
+  if (String(method || '').startsWith('custom:')) return 'Özel AI sağlayıcısı';
   return (
     {
       'vercel-ai-gateway': 'AI Gateway',
