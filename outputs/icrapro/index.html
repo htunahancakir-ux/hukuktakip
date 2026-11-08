@@ -4,14 +4,20 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>HAN (PATAN) HUKUK · Hukuk ve Tahsilat Yönetimi</title>
-    <link rel="stylesheet" href="style.css" />
-    <link rel="stylesheet" href="workspace-layout.css" />
-    <link rel="stylesheet" href="login-layout.css" />
+    <link rel="stylesheet" href="style.css?v=__ASSET_VERSION__" />
+    <link rel="stylesheet" href="workspace-layout.css?v=__ASSET_VERSION__" />
+    <link rel="stylesheet" href="login-layout.css?v=__ASSET_VERSION__" />
   </head>
   <body>
     <aside hidden>
       <a class="brand brand-home" href="/" aria-label="HAN (PATAN) HUKUK · Ana Sayfa">
-        <img class="sidebar-brand-mark" src="brand-scales.png" width="30" height="30" alt="" />
+        <img
+          class="sidebar-brand-mark"
+          src="brand-scales.png?v=__ASSET_VERSION__"
+          width="30"
+          height="30"
+          alt=""
+        />
         <strong>HAN (PATAN)<span> HUKUK</span></strong>
       </a>
       <small>HUKUK VE TAHSİLAT YÖNETİMİ</small>
@@ -118,13 +124,16 @@
     </div>
     <dialog id="modal"></dialog>
     <div id="toast" role="status"></div>
-    <script src="html-safety.js"></script>
-    <script src="workspace-assets.js"></script>
-    <script src="login-layout.js"></script>
-    <script src="login-recovery.js"></script>
-    <script src="modal-dismissal.js"></script>
-    <script src="employee-terms.js"></script>
-    <script src="employee-terms-settings.js"></script>
-    <script src="auth.js"></script>
+    <script>
+      window.HAN_ASSET_VERSION = '__ASSET_VERSION__';
+    </script>
+    <script src="html-safety.js?v=__ASSET_VERSION__"></script>
+    <script src="workspace-assets.js?v=__ASSET_VERSION__"></script>
+    <script src="login-layout.js?v=__ASSET_VERSION__"></script>
+    <script src="login-recovery.js?v=__ASSET_VERSION__"></script>
+    <script src="modal-dismissal.js?v=__ASSET_VERSION__"></script>
+    <script src="employee-terms.js?v=__ASSET_VERSION__"></script>
+    <script src="employee-terms-settings.js?v=__ASSET_VERSION__"></script>
+    <script src="auth.js?v=__ASSET_VERSION__"></script>
   </body>
 </html>

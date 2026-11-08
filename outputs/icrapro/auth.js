@@ -10,6 +10,35 @@ const protectedKeys = new Set([
 const hanDataVersions = new Map();
 const hanDataBaselines = new Map();
 let hanStartupData = null;
+
+function assetUrl(file) {
+  const version = window.HAN_ASSET_VERSION;
+  return version ? `${file}?v=${encodeURIComponent(version)}` : file;
+}
+
+function loadClassicScript(file) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = assetUrl(file);
+    // Keep execution in the declared dependency order while allowing the
+    // browser to fetch all workspace files concurrently.
+    script.async = false;
+    script.onload = resolve;
+    script.onerror = reject;
+    document.body.append(script);
+  });
+}
+
+function showWorkspaceLoading() {
+  document.getElementById('authGate')?.remove();
+  document.querySelector('aside').hidden = false;
+  document.querySelector('.shell').hidden = false;
+  const content = document.getElementById('content');
+  if (content)
+    content.innerHTML =
+      '<section class="panel formbody" role="status" aria-live="polite"><h2>Çalışma alanı hazırlanıyor</h2><p>Dosyalar ve güncel kayıtlar yükleniyor.</p></section>';
+}
+
 async function preloadServerData({ complete = false } = {}) {
   if (window.hanRecordsEnabled && !complete) {
     const response = await fetch('/api/records/bootstrap', {
@@ -432,28 +461,13 @@ function installServerStorage() {
   };
 }
 async function launchApplication() {
-  await new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = 'record-patch.js';
-    script.onload = resolve;
-    script.onerror = reject;
-    document.body.append(script);
-  });
+  await loadClassicScript('record-patch.js');
   await preloadServerData();
   for (const key of protectedKeys) localStorage.removeItem(key);
   installServerStorage();
-  for (const file of workspaceScripts)
-    await new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = file;
-      script.onload = resolve;
-      script.onerror = reject;
-      document.body.append(script);
-    });
+  showWorkspaceLoading();
+  await Promise.all(workspaceScripts.map(loadClassicScript));
   hanStartupData = null;
-  document.getElementById('authGate')?.remove();
-  document.querySelector('aside').hidden = false;
-  document.querySelector('.shell').hidden = false;
   accessMenu();
   refreshBackupIndicator();
   startPresenceHeartbeat();

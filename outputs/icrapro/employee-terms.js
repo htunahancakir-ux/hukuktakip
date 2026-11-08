@@ -57,7 +57,8 @@ async function enterWorkspace() {
     if (typeof setupStaffBreakButton !== 'function')
       await new Promise((resolve, reject) => {
         const script = document.createElement('script');
-        script.src = 'workspace-breaks.js';
+        script.src = assetUrl('workspace-breaks.js');
+        script.async = false;
         script.onload = resolve;
         script.onerror = reject;
         document.body.append(script);
