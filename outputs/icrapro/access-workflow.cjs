@@ -1,4 +1,5 @@
 const { collectionSummary } = require('../../lib/notification-summary.cjs');
+const { currentReport, generateReport } = require('../../lib/conversation-report.cjs');
 async function handleWorkflowRoutes(ctx) {
   const { req, res, url, u, persist, allowed, fail, body, send, crypto, parkingToday, promiseOutstanding } =
     ctx;
@@ -112,6 +113,25 @@ async function handleWorkflowRoutes(ctx) {
     send(res, 200, { ok: true });
     return true;
   }
+  if (url.pathname === '/api/documents/conversation-report' && req.method === 'POST') {
+    const v = await body(req);
+    const d = ctx.state.data['icrapro-v1'].docs.find((d) => d.id === v.documentId);
+    if (
+      !d ||
+      !allowed(u, 'documents') ||
+      (!['ceo', 'admin'].includes(u.role) && (!u.staffId || d.relatedStaff !== u.staffId))
+    )
+      throw fail(403, 'Bu dosyanın görüşme raporuna erişilemiyor.');
+    let report = currentReport(d);
+    if (!report) {
+      report = await generateReport(d.conversations || []);
+      const next = structuredClone(ctx.state);
+      next.data['icrapro-v1'].docs.find((x) => x.id === d.id).conversationReport = report;
+      persist(next);
+    }
+    send(res, 200, { report });
+    return true;
+  }
   if (url.pathname === '/api/documents/conversations' && req.method === 'POST') {
     const v = await body(req),
       d = ctx.state.data['icrapro-v1'].docs.find((d) => d.id === v.documentId);
@@ -199,8 +219,9 @@ async function handleWorkflowRoutes(ctx) {
         createdAt: new Date().toISOString(),
       },
     ];
+    doc.conversationReport = await generateReport(doc.conversations);
     persist(next);
-    send(res, 200, { conversations: doc.conversations });
+    send(res, 200, { conversations: doc.conversations, report: doc.conversationReport });
     return true;
   }
   if (url.pathname === '/api/workflow-notices' && req.method === 'GET') {
@@ -276,6 +297,7 @@ async function handleWorkflowRoutes(ctx) {
         paymentPromise: d.paymentPromise,
         paymentPromiseHistory: d.paymentPromiseHistory || [],
         conversations: d.conversations || [],
+        conversationReport: d.conversationReport,
         status: d.status,
       },
     });

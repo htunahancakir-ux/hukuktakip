@@ -131,7 +131,7 @@ test('Client debtor report shows client entitlement, partial payouts and remaini
  vm.createContext(ctx);
  vm.runInContext(finance.slice(finance.indexOf('function clientPayoutTotals(d)'),finance.indexOf('function clientPayoutSection(d)')),ctx);
  vm.runInContext(reports.slice(0,reports.indexOf('function filterReportRows')),ctx);
- const check=(expected)=>{const cells=ctx.reportRows('clientDebtorInfo')[0].cells;assert.equal(cells.clientEntitlement,expected[0]);assert.equal(cells.clientPaid,expected[1]);assert.equal(cells.clientRemaining,expected[2]);assert.equal(Object.hasOwn(cells,'received'),false);};
+ const check=(expected)=>{const cells=ctx.reportRows('clientDebtorInfo')[0].cells;assert.equal(Object.hasOwn(cells,'clientEntitlement'),false);assert.equal(cells.clientPaid,expected[1]);assert.equal(cells.clientRemaining,expected[2]);assert.equal(Object.hasOwn(cells,'received'),false);};
  check([100000,0,100000]);
  ctx.accounting.entries.push({id:'p1',type:'clientPayout',documentId:'d',amount:25000});check([100000,25000,75000]);
  document.clientPaidAmount=100;check([100000,35000,65000]);

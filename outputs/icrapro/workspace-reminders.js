@@ -169,11 +169,14 @@ function showWorkflowReceipt(notice) {
     headers: { 'X-Han-Request': '1', 'Content-Type': 'application/json' },
     body: JSON.stringify({ ids: [notice.id] }),
   }).catch(() => {});
-  setTimeout(() => {
-    host.remove();
-    collectionNoticeShowing = false;
-    showNextCollectionNotice();
-  }, breakNotice ? 5000 : 10000);
+  setTimeout(
+    () => {
+      host.remove();
+      collectionNoticeShowing = false;
+      showNextCollectionNotice();
+    },
+    breakNotice ? 5000 : 10000,
+  );
 }
 
 function bindStaffConversation(d, dialog) {
@@ -186,6 +189,7 @@ function bindLoggedInConversation(d, root) {
   if (!form) return;
   form.elements.staff.value = hanAuth.name;
   form.elements.staff.readOnly = true;
+  bindConversationReport(d, form);
   let promiseId = '',
     callReminder = null;
   function collectCallReminder() {
@@ -248,8 +252,12 @@ function bindLoggedInConversation(d, root) {
         callReminder,
       });
       d.conversations = result.conversations;
+      d.conversationReport = result.report;
       const record = db.docs.find((x) => x.id === d.id);
-      if (record) record.conversations = result.conversations;
+      if (record) {
+        record.conversations = result.conversations;
+        record.conversationReport = result.report;
+      }
       if (['ceo', 'admin'].includes(hanAuth.role)) borrowerDetail(d.id, form);
       else staffBorrowerDetail(d.id, d);
       toast('Görüşme kaydedildi.', root.querySelector('#borrowerConversationForm') || root);
