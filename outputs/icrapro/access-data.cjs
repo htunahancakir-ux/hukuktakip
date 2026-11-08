@@ -22,7 +22,7 @@ async function handleDataRoutes(ctx) {
     applyParkingFee,
   } = ctx;
   if (url.pathname === '/api/client-payout' && req.method === 'POST') {
-    const next = appendClientPayout(ctx.state, await body(req), u);
+    const next = appendClientPayout(ctx.state, await body(req), u, options?.payoutAccountBalances);
     if (next) persist(next);
     send(res, 200, { ok: true });
     return true;

@@ -28,6 +28,7 @@ const workspaceScripts = [
   'finance-operations.js',
   'workspace-accounting.js',
   'workspace-accounting-records.js',
+  'workspace-payout-records.js',
   'report-definitions.js',
   'workspace-reports.js',
   'workspace-report-records.js',

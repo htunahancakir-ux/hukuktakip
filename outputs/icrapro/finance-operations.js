@@ -963,7 +963,13 @@ function clientPayoutFilterMarkup() {
     (document.getElementById('clientPayoutFilterSection')?.open ? ' open' : '') +
     '><summary>Filtreleme</summary><form id="clientPayoutDateForm" class="formbody"><div class="grid">' +
     '<label class="field">Müvekkil<select name="client" id="clientPayoutFilter" data-optional="true">' +
-    options([['', 'Tüm Müvekkiller'], ...db.clients.map((c) => [c.id, c.name])], clientPayoutFilter) +
+    options(
+      [
+        ['', 'Tüm Müvekkiller'],
+        ...(window.hanRecordsEnabled ? payoutFilterClients() : db.clients).map((c) => [c.id, c.name]),
+      ],
+      clientPayoutFilter,
+    ) +
     '</select></label>' +
     input('İnfaz Tarihi — Başlangıç', 'start', 'date', clientPayoutStart) +
     input('İnfaz Tarihi — Bitiş', 'end', 'date', clientPayoutEnd) +
@@ -998,26 +1004,38 @@ function clientPayoutFilterMarkup() {
     '</div><div class="toolbar" style="margin-top:16px"><button type="submit" class="primary">Filtrele</button><button type="button" class="secondary" id="clearPayoutDates">Tüm Filtreleri Temizle</button></div><p>Başlangıç ve bitiş günleri dahildir. Tarih filtresi açıkken infaz tarihi bulunmayan dosyalar gösterilmez.</p></form></details>'
   );
 }
-function clientPayoutPage() {
-  if (window.hanRecordsEnabled && !window.hanWorkspaceComplete)
-    return ensureRecordWorkspace(clientPayoutPage);
+function clientPayoutPage(remote) {
+  if (!Array.isArray(remote?.items) || !remote?.totals) remote = null;
+  if (window.hanRecordsEnabled && !remote?.items) return loadRecordPayouts();
   try {
-    syncPayoutSources();
+    if (!remote) syncPayoutSources();
   } catch {
     return toast('Ödeme kayıtları okunamadı.');
   }
-  const list = db.docs
-    .map((d) => ({ d, p: clientPayoutTotals(d) }))
-    .filter(
-      ({ d, p }) =>
-        p.eligible &&
-        p.remaining > 0 &&
-        matchesPayoutDate(d, clientPayoutStart, clientPayoutEnd) &&
-        (!clientPayoutFilter || d.client === clientPayoutFilter) &&
-        matchesClientPayoutExtra(d, p, clientPayoutExtraFilters),
-    );
+  const list = remote
+    ? remote.items.map((r) => ({ d: { ...r, docType: r.type }, p: r }))
+    : db.docs
+        .map((d) => ({ d, p: clientPayoutTotals(d) }))
+        .filter(
+          ({ d, p }) =>
+            p.eligible &&
+            p.remaining > 0 &&
+            matchesPayoutDate(d, clientPayoutStart, clientPayoutEnd) &&
+            (!clientPayoutFilter || d.client === clientPayoutFilter) &&
+            matchesClientPayoutExtra(d, p, clientPayoutExtraFilters),
+        );
+  const totals = remote
+      ? remote.totals
+      : {
+          count: list.length,
+          remaining: list.reduce((s, x) => s + x.p.remaining, 0),
+          paid: list.reduce((s, x) => s + x.p.paid, 0),
+          entitlement: list.reduce((s, x) => s + x.p.entitlement, 0),
+        },
+    amount = (v) => (remote ? recordMoney(v) : money(Number(v) / 100));
   $('#content').innerHTML =
-    `<div class="panel"><div class="panelhead"><div><h2>Müvekkil Ödemeleri</h2><p>Yalnızca infaz edilmiş ve müvekkile ödemesi tamamlanmamış dosyalar.</p></div><button type="button" class="secondary" id="backAccounting">← Kasa / Banka</button></div>${clientPayoutFilterMarkup()}<div class="formbody"><div class="notice" style="margin-top:18px">Müvekkile anapara iadesi gider değildir. Seçilen hesap bakiyesi azalır; ciro ve kâr değişmez. Yediemin dosyasında anlaşmalı ofis payı ayrılır. Bu ekran ödeme kaydı tutar, bankaya havale talimatı göndermez.</div><p>${list.length} dosya · Toplam ödenecek: <b>${money(list.reduce((s, x) => s + x.p.remaining, 0) / 100)}</b></p></div><div class="overflow"><table><thead><tr><th>DOSYA</th><th>BORÇLU / MÜVEKKİL</th><th>İNFAZ TARİHİ</th><th>ANAPARA</th><th>ÖDENEN</th><th>ÖDENECEK</th><th>İŞLEM</th></tr></thead><tbody>${list.map(({ d, p }) => `<tr><td>${esc(d.number)}<small>${esc(docType(d))}</small></td><td>${esc(d.debtor)}<small>${esc(db.clients.find((c) => c.id === d.client)?.name || '—')}</small></td><td>${esc(displayDate(clientPayoutClosureDate(d)) || '—')}</td><td>${money(p.entitlement / 100)}</td><td>${money(p.paid / 100)}</td><td><b>${money(p.remaining / 100)}</b></td><td><button class="primary" type="button" data-client-payout="${esc(d.id)}">Ödeme Kaydet</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">Müvekkile ödemesi bekleyen infaz dosyası bulunmuyor.</td></tr>'}</tbody><tfoot><tr><td colspan="3"><strong>ALT TOPLAM</strong></td><td><strong>${money(list.reduce((sum, x) => sum + x.p.entitlement, 0) / 100)}</strong></td><td><strong>${money(list.reduce((sum, x) => sum + x.p.paid, 0) / 100)}</strong></td><td><strong>${money(list.reduce((sum, x) => sum + x.p.remaining, 0) / 100)}</strong></td><td></td></tr></tfoot></table></div></div>`;
+    `<div class="panel"><div class="panelhead"><div><h2>Müvekkil Ödemeleri</h2><p>Yalnızca infaz edilmiş ve müvekkile ödemesi tamamlanmamış dosyalar.</p></div><button type="button" class="secondary" id="backAccounting">← Kasa / Banka</button></div>${clientPayoutFilterMarkup()}<div class="formbody"><div class="notice" style="margin-top:18px">Müvekkile anapara iadesi gider değildir. Seçilen hesap bakiyesi azalır; ciro ve kâr değişmez. Yediemin dosyasında anlaşmalı ofis payı ayrılır. Bu ekran ödeme kaydı tutar, bankaya havale talimatı göndermez.</div><p>${esc(totals.count)} dosya · Toplam ödenecek: <b>${amount(totals.remaining)}</b></p></div><div class="overflow"><table><thead><tr><th>DOSYA</th><th>BORÇLU / MÜVEKKİL</th><th>İNFAZ TARİHİ</th><th>ANAPARA</th><th>ÖDENEN</th><th>ÖDENECEK</th><th>İŞLEM</th></tr></thead><tbody>${list.map(({ d, p }) => `<tr><td>${esc(d.number)}<small>${esc(docType(d))}</small></td><td>${esc(d.debtor)}<small>${esc((remote ? d.clientName : db.clients.find((c) => c.id === d.client)?.name) || '—')}</small></td><td>${esc(displayDate(remote ? d.closedDate : clientPayoutClosureDate(d)) || '—')}</td><td>${amount(p.entitlement)}</td><td>${amount(p.paid)}</td><td><b>${amount(p.remaining)}</b></td><td><button class="primary" type="button" data-client-payout="${esc(d.id)}">Ödeme Kaydet</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">Müvekkile ödemesi bekleyen infaz dosyası bulunmuyor.</td></tr>'}</tbody><tfoot><tr><td colspan="3"><strong>ALT TOPLAM</strong></td><td><strong>${amount(totals.entitlement)}</strong></td><td><strong>${amount(totals.paid)}</strong></td><td><strong>${amount(totals.remaining)}</strong></td><td></td></tr></tfoot></table></div></div>`;
+  if (remote) bindRecordPayoutPage(remote);
   $('#backAccounting').onclick = accountingPage;
   const dateForm = $('#clientPayoutDateForm');
   dateForm.onsubmit = (e) => {
@@ -1077,15 +1095,17 @@ function configureClientPayoutAmount(form, remainingCents, onChange) {
   });
 }
 function clientPayoutForm(id) {
+  const remote = arguments[1];
+  if (window.hanRecordsEnabled && !remote) return loadRecordPayoutForm(id);
   try {
-    syncPayoutSources();
+    if (!remote) syncPayoutSources();
   } catch {
     return toast('Kayıtlar okunamadı.');
   }
-  const d = db.docs.find((d) => d.id === id);
+  const d = remote ? remote.record : db.docs.find((d) => d.id === id);
   if (!d) return;
-  const p = clientPayoutTotals(d),
-    client = db.clients.find((c) => c.id === d.client);
+  const p = remote ? remote.totals : clientPayoutTotals(d),
+    client = remote ? remote.client : db.clients.find((c) => c.id === d.client);
   if (!p.eligible || !p.remaining) return toast('Bu dosyada ödenmemiş infaz anaparası yok.');
   let dialog = document.getElementById('clientPayoutDialog');
   if (!dialog) {
@@ -1093,7 +1113,7 @@ function clientPayoutForm(id) {
     dialog.id = 'clientPayoutDialog';
     document.body.append(dialog);
   }
-  dialog.innerHTML = `<form id="clientPayoutForm"><div class="panelhead"><div><h2>Müvekkile Ödeme Kaydet</h2><p>${esc(d.number)} · ${esc(client?.name || 'Müvekkil bulunamadı')}</p></div><button class="secondary" type="button" id="closeClientPayout">Kapat</button></div><div class="formbody"><div class="notice">Ödenecek tutar: <b>${money(p.remaining / 100)}</b>. Kayıt gider sayılmaz; seçilen hesaptan düşülür.</div><p>Banka: ${esc(client?.bankName || '—')} · Hesap sahibi: ${esc(client?.accountHolder || '—')}<br>IBAN: ${esc(client?.iban || '—')}</p><div class="grid">${collectionAccountField('out')}<label class="field">Ödeme Şekli<select name="paymentMode" data-optional="true"><option value="partial">Tutar Gir (Kısmi Ödeme)</option><option value="full">Ödemenin Tamamı</option></select></label>${field('Ödenecek Tutar (TL)', 'amount', 'number', '', true)}${field('Ödeme Tarihi', 'date', 'date', businessDate(), true)}${field('Dekont / Ödeme Açıklaması', 'note', 'text', '', true, true)}</div><p id="clientPayoutRemainingPreview" role="status" aria-live="polite"></p></div><div class="actions"><button class="primary" type="submit">Ödemeyi Kaydet</button></div></form>`;
+  dialog.innerHTML = `<form id="clientPayoutForm"><div class="panelhead"><div><h2>Müvekkile Ödeme Kaydet</h2><p>${esc(d.number)} · ${esc(client?.name || 'Müvekkil bulunamadı')}</p></div><button class="secondary" type="button" id="closeClientPayout">Kapat</button></div><div class="formbody"><div class="notice">Ödenecek tutar: <b>${money(p.remaining / 100)}</b>. Kayıt gider sayılmaz; seçilen hesaptan düşülür.</div><p>Banka: ${esc(client?.bankName || '—')} · Hesap sahibi: ${esc(client?.accountHolder || '—')}<br>IBAN: ${esc(client?.iban || '—')}</p><div class="grid">${remote ? payoutAccountField(remote.accounts) : collectionAccountField('out')}<label class="field">Ödeme Şekli<select name="paymentMode" data-optional="true"><option value="partial">Tutar Gir (Kısmi Ödeme)</option><option value="full">Ödemenin Tamamı</option></select></label>${field('Ödenecek Tutar (TL)', 'amount', 'number', '', true)}${field('Ödeme Tarihi', 'date', 'date', businessDate(), true)}${field('Dekont / Ödeme Açıklaması', 'note', 'text', '', true, true)}</div><p id="clientPayoutRemainingPreview" role="status" aria-live="polite"></p></div><div class="actions"><button class="primary" type="submit">Ödemeyi Kaydet</button></div></form>`;
   $('#closeClientPayout').onclick = () => dialog.close();
   if (!dialog.open) dialog.showModal();
   const form = $('#clientPayoutForm');
@@ -1109,6 +1129,7 @@ function clientPayoutForm(id) {
   form.elements.amount.addEventListener('change', updateRemaining);
   updateRemaining();
   const paymentRequestId = crypto.randomUUID();
+  if (remote) return bindRecordPayoutSubmit(form, dialog, remote, paymentRequestId);
   form.onsubmit = (e) => {
     e.preventDefault();
     try {
