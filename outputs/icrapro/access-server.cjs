@@ -238,7 +238,12 @@ function createAccess(stateFile, options = {}) {
       if (e.type === 'transfer' && e.destination === id) n += e.amount;
     }
     for (const e of state.data['hanhukuk-finance-v1'])
-      if (e.accountId === id) n += e.type === 'payment' ? e.amount : -e.amount;
+      if (
+        e.accountId === id &&
+        ['payment', 'expense', 'costOnly'].includes(e.type) &&
+        !(ledger.excludedFinanceIds || []).includes(e.id)
+      )
+        n += e.type === 'payment' ? e.amount : -e.amount;
     return n;
   }
   if (options.timers !== false) {

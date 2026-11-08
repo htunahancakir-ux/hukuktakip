@@ -21,11 +21,7 @@ async function ensureRecordWorkspace(callback) {
   }
 }
 function recordPageNeedsCompatibility() {
-  return (
-    window.hanRecordsEnabled &&
-    !window.hanWorkspaceComplete &&
-    ['accounting', 'reminders', 'messages'].includes(page)
-  );
+  return window.hanRecordsEnabled && !window.hanWorkspaceComplete && ['reminders', 'messages'].includes(page);
 }
 function renderRecordStats() {
   const summary = window.hanRecordSummary;

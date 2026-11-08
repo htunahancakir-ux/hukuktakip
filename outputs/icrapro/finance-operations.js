@@ -999,6 +999,8 @@ function clientPayoutFilterMarkup() {
   );
 }
 function clientPayoutPage() {
+  if (window.hanRecordsEnabled && !window.hanWorkspaceComplete)
+    return ensureRecordWorkspace(clientPayoutPage);
   try {
     syncPayoutSources();
   } catch {

@@ -27,6 +27,7 @@ const workspaceScripts = [
   'borrower-sheet.js',
   'finance-operations.js',
   'workspace-accounting.js',
+  'workspace-accounting-records.js',
   'report-definitions.js',
   'workspace-reports.js',
   'workspace-report-records.js',
