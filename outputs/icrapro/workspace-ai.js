@@ -30,6 +30,7 @@ function aiSettingsPage() {
       <label class="field full" id="aiApiKeyField" ${gateway ? 'hidden' : ''}>OpenAI API anahtarı<input name="apiKey" type="password" maxlength="512" autocomplete="new-password" data-optional="true" placeholder="${config.apiKeySaved ? 'Kayıtlı anahtarı korumak için boş bırakın' : 'OpenAI API anahtarını girin'}"><small>Anahtar yalnızca bu istek sırasında sunucuya gider; şifrelenerek saklanır ve tekrar görüntülenmez.</small></label>
       <label class="settings-check full" id="aiClearKeyField" ${!config.apiKeySaved || gateway ? 'hidden' : ''}><input type="checkbox" name="clearApiKey"> Kayıtlı OpenAI API anahtarını sil</label>
       <div class="notice full" id="aiProviderNotice"></div>
+      <div class="full"><button class="secondary" type="button" id="aiTestConnection">Seçili Model ve Anahtarı Test Et</button><small id="aiTestStatus" role="alert" aria-live="polite">Test yalnızca kısa bir “OK” isteği gönderir. Girilen anahtar test edilse bile kaydedilmez.</small></div>
       <section class="notice full" aria-label="AI kullanım istatistikleri"><strong>API kullanımı</strong><p><b>${tokens(usage.totalTokens)}</b> toplam token · ${tokens(usage.inputTokens)} girdi · ${tokens(usage.outputTokens)} çıktı · ${tokens(usage.requests)} başarılı AI isteği${usage.lastUsedAt ? ` · son kullanım: ${esc(new Date(usage.lastUsedAt).toLocaleString('tr-TR'))}` : ''}</p>${(usage.models || []).length ? `<small>${usage.models.map((row) => `${esc(row.model)}: ${tokens(row.totalTokens)} token (${tokens(row.requests)} istek)`).join(' · ')}</small>` : '<small>Henüz sağlayıcı tarafından token kullanımı döndürülmedi. Yerel yedek özetler bu sayaca dahil edilmez.</small>'}<small>Bu sayaç uygulamanın başarılı özet isteklerinden gelir; sağlayıcının fatura ekranı yerine geçmez.</small></section>
       <details class="full"><summary>Gizlilik ve sağlayıcı seçimi</summary><p>Özet oluşturulurken görüşme notları seçtiğiniz yapay zeka sağlayıcısına gönderilir. Ham notlar uygulamada korunur; oluşturulan özet 300 karakterle sınırlıdır.</p><p>Vercel AI Gateway, Vercel dağıtımındaki kimlik doğrulamayla çalışır. OpenAI API seçildiğinde kendi OpenAI anahtarınız şifreli saklanır. API anahtarları hiçbir kullanıcıya veya tarayıcıya geri gönderilmez.</p></details></div><div class="actions"><button class="primary" type="submit">Yapay Zeka Ayarlarını Kaydet</button></div></form>
   </section>`;
@@ -55,14 +56,32 @@ function aiSettingsPage() {
   form.elements.provider.onchange = updateProvider;
   updateModel();
   updateProvider();
-  form.onsubmit = (event) => {
-    event.preventDefault();
+  const readInput = () => {
     const input = Object.fromEntries(new FormData(form));
     input.enabled = form.elements.enabled.checked;
     input.clearApiKey = form.elements.clearApiKey?.checked === true;
     input.provider = String(input.provider || '').trim();
     input.model = String(input.model || '').trim();
     input.apiKey = String(input.apiKey || '').trim();
+    return input;
+  };
+  $('#aiTestConnection').onclick = () => {
+    const button = $('#aiTestConnection');
+    const status = $('#aiTestStatus');
+    button.disabled = true;
+    status.textContent = 'Bağlantı test ediliyor…';
+    try {
+      const result = authApi('/api/ai/test', 'POST', readInput());
+      status.textContent = `✓ Bağlantı başarılı: ${result.model} · ${tokens(result.usage?.totalTokens)} token kullanıldı. Ayarları kalıcı yapmak için Kaydet’e basın.`;
+    } catch (error) {
+      status.textContent = '✕ ' + error.message;
+    } finally {
+      button.disabled = false;
+    }
+  };
+  form.onsubmit = (event) => {
+    event.preventDefault();
+    const input = readInput();
     try {
       authApi('/api/ai/config', 'PUT', input);
       aiSettingsPage();

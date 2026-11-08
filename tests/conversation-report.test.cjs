@@ -131,6 +131,44 @@ test('Successful AI summaries retain provider token usage for the CEO-only aggre
     else process.env.AI_GATEWAY_API_KEY = originalGatewayKey;
   }
 });
+test('AI connection test uses the selected model, counts tokens, and returns a safe provider error', async () => {
+  const originalGatewayKey = process.env.AI_GATEWAY_API_KEY;
+  process.env.AI_GATEWAY_API_KEY = 'test-gateway-key';
+  try {
+    let request;
+    const result = await aiSettings.testConnection(
+      {},
+      { provider: 'vercel-ai-gateway', model: 'openai/gpt-6-luna', apiKey: '' },
+      {
+        fetcher: async (_url, options) => {
+          request = options;
+          return {
+            ok: true,
+            json: async () => ({ usage: { input_tokens: 9, output_tokens: 3, total_tokens: 12 } }),
+          };
+        },
+      },
+    );
+    assert.equal(JSON.parse(request.body).model, 'openai/gpt-6-luna');
+    assert.deepEqual(result.usage, {
+      model: 'openai/gpt-6-luna',
+      inputTokens: 9,
+      outputTokens: 3,
+      totalTokens: 12,
+    });
+    await assert.rejects(
+      aiSettings.testConnection(
+        {},
+        { provider: 'vercel-ai-gateway', model: 'openai/gpt-6-luna', apiKey: '' },
+        { fetcher: async () => ({ ok: false, status: 401 }) },
+      ),
+      /API anahtarı kabul edilmedi/,
+    );
+  } finally {
+    if (originalGatewayKey === undefined) delete process.env.AI_GATEWAY_API_KEY;
+    else process.env.AI_GATEWAY_API_KEY = originalGatewayKey;
+  }
+});
 test('Report endpoint ignores manually supplied text, caches unchanged history and enforces file assignment', async () => {
   try {
     let state = {
