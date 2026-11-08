@@ -79,20 +79,7 @@ try {
 let accountingFilter = '',
   movementFilters = { start: '', end: '', type: '', operator: '', category: '', query: '' };
 
-const accountingExpenseCategories = [
-  'Masraf',
-  'Faturalar',
-  'Yakıt',
-  'SGK',
-  'Maaş',
-  'Prim',
-  'Kira',
-  'Vergi',
-  'Ofis Giderleri',
-  'Yemek',
-  'Ulaşım',
-  'Diğer',
-];
+const accountingExpenseCategories = hanAccountingRules.expenseCategories;
 
 let reportFilters = {
   type: 'finance',

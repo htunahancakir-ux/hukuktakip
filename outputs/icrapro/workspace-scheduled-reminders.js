@@ -9,6 +9,7 @@ const reminderDeliveryLabels = {
   cancelled: 'WhatsApp gönderimi iptal edildi',
 };
 let reminderListStatus = 'open';
+let reminderListOffset = 0;
 let previousDueCount = 0;
 
 function scheduledReminderBadge(count) {
@@ -31,12 +32,13 @@ function applyReminderSummary({ dueCount }) {
   previousDueCount = dueCount;
 }
 
-function scheduledRemindersPage() {
+function scheduledRemindersPage(remote) {
+  if (window.hanRecordsEnabled && !Array.isArray(remote?.items)) return loadRecordActivity('reminders');
   const host = document.getElementById('content');
   try {
-    const { items, whatsappAvailable, dueCount } = authApi(
-      '/api/scheduled-reminders?status=' + reminderListStatus,
-    );
+    const { items, whatsappAvailable, dueCount } = remote?.items
+      ? remote
+      : authApi('/api/scheduled-reminders?status=' + reminderListStatus);
     scheduledReminderBadge(dueCount);
     previousDueCount = dueCount;
     host.innerHTML = `<section class="panel scheduled-reminders">
@@ -67,10 +69,12 @@ function scheduledRemindersPage() {
               .join('')}</ul>`
           : '<p>Bu listede hatırlatma yok.</p>'
       }</div></section>`;
+    if (remote?.items) bindReminderPagination(remote);
     host.querySelector('[data-add-reminder]').onclick = () => scheduledReminderDialog(whatsappAvailable);
     host.querySelectorAll('[data-reminder-view]').forEach((button) => {
       button.onclick = () => {
         reminderListStatus = button.dataset.reminderView;
+        reminderListOffset = 0;
         scheduledRemindersPage();
       };
     });

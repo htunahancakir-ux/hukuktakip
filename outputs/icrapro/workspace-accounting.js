@@ -288,6 +288,8 @@ function cashEntryForm() {
   };
   $('#closeCashEntry').onclick = () => $('#modal').close();
   $('#modal').showModal();
+  if (window.hanRecordsEnabled)
+    return bindRecordCashSubmit(form, { dialog: $('#modal'), onSaved: accountingPage });
   form.onsubmit = (e) => {
     e.preventDefault();
     const v = Object.fromEntries(new FormData(form)),

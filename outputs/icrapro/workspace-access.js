@@ -80,6 +80,7 @@ function staffAccounting() {
   }
   form.elements.type.onchange = toggle;
   toggle();
+  if (window.hanRecordsEnabled) return bindRecordCashSubmit(form, { onSaved: staffAccounting });
   form.onsubmit = (e) => {
     e.preventDefault();
     try {

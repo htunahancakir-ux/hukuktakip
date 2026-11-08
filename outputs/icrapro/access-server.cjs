@@ -382,8 +382,8 @@ function createAccess(stateFile, options = {}) {
   access.metadataTransaction = (work) => work({ state: structuredClone(state), saveState });
   access.runMaintenance = () => {
     const next = structuredClone(state);
-    const payrollChanged = syncPayrollPeriods(next, parkingToday());
-    const workflowChanged = runWorkflowAutomation(next, parkingToday());
+    const payrollChanged = options.skipPayroll ? false : syncPayrollPeriods(next, parkingToday());
+    const workflowChanged = runWorkflowAutomation(next, parkingToday(), undefined, options.workflowRanking);
     if (payrollChanged || workflowChanged) persist(next);
     return payrollChanged || workflowChanged;
   };

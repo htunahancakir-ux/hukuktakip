@@ -7,11 +7,14 @@ function messageTimestamp(date) {
   }).format(d);
 }
 
-function messagesPage() {
+function messagesPage(remote) {
   if (communicationView === 'orders') return workOrdersPage();
+  if (window.hanRecordsEnabled && !Array.isArray(remote?.messages)) return loadRecordActivity('messages');
   let result;
   try {
-    result = authApi('/api/messages?box=' + messageBox + '&offset=' + messageOffset);
+    result = remote?.messages
+      ? remote
+      : authApi('/api/messages?box=' + messageBox + '&offset=' + messageOffset);
   } catch (error) {
     $('#content').textContent = error.message;
     return;
@@ -203,17 +206,20 @@ function bindCommunicationTabs() {
   );
 }
 
-function workOrdersPage() {
+function workOrdersPage(remote) {
+  if (window.hanRecordsEnabled && !Array.isArray(remote?.orders)) return loadRecordActivity('orders');
   let result;
   try {
-    result = authApi(
-      '/api/work-orders?scope=' +
-        workOrderScope +
-        '&status=' +
-        workOrderStatus +
-        '&offset=' +
-        workOrderOffset,
-    );
+    result = remote?.orders
+      ? remote
+      : authApi(
+          '/api/work-orders?scope=' +
+            workOrderScope +
+            '&status=' +
+            workOrderStatus +
+            '&offset=' +
+            workOrderOffset,
+        );
   } catch (error) {
     $('#content').textContent = error.message;
     return;

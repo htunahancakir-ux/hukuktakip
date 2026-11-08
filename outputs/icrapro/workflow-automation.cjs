@@ -25,13 +25,13 @@ function revenueRanking(state, eligible, today) {
   }
   return eligible.map(p => ({...p, collectionTotal:totals.get(p.id)})).sort((a,b) => b.collectionTotal - a.collectionTotal || a.name.localeCompare(b.name,'tr') || a.id.localeCompare(b.id)).slice(0,3);
 }
-function runWorkflowAutomation(state, today, now = new Date().toISOString()) {
+function runWorkflowAutomation(state, today, now = new Date().toISOString(), preparedRanking) {
   let changed = false;
   const staff = state.data['icrapro-personnel-v1'], docs = state.data['icrapro-v1'].docs, events = state.data['hanhukuk-finance-v1'];
   const enabled = u => u.active && (!u.staffId || staff.some(p => p.id === u.staffId && p.active === true));
   const users = state.users.filter(enabled), managers = users.filter(u => ['ceo','admin'].includes(u.role));
   const eligible = staff.filter(p => p.active === true && users.some(u => u.staffId === p.id && (['ceo','admin'].includes(u.role) || u.permissions?.includes('documents'))));
-  const ranking = revenueRanking(state, eligible, today);
+  const ranking = preparedRanking || revenueRanking(state, eligible, today);
   const notices = state.workflowNotices || (state.workflowNotices = []);
   function notify(userId, type, doc, text) {
     notices.push({id:crypto.randomUUID(),userId,type,documentId:doc.id,number:doc.number,debtor:doc.debtor,text,createdAt:now,acknowledgedAt:null});

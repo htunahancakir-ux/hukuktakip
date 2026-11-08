@@ -21,7 +21,8 @@ async function ensureRecordWorkspace(callback) {
   }
 }
 function recordPageNeedsCompatibility() {
-  return window.hanRecordsEnabled && !window.hanWorkspaceComplete && ['reminders', 'messages'].includes(page);
+  // All menu pages now have scoped readers; legacy dialogs explicitly request compatibility data.
+  return false;
 }
 function renderRecordStats() {
   const summary = window.hanRecordSummary;

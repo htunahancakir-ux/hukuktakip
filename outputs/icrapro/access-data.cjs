@@ -28,49 +28,15 @@ async function handleDataRoutes(ctx) {
     return true;
   }
   if (url.pathname === '/api/cash-entry' && req.method === 'POST') {
-    const v = await body(req);
-    const external = v.type === 'external';
-    if (external && !['yes', 'no'].includes(v.profitChoice)) throw fail(400, 'Kâr seçimini yapın.');
-    if (external) v.type = 'in';
-    if (v.type === 'advance' && !['T.Ç', 'S.S', 'Diğer'].includes(v.advanceType))
-      throw fail(400, 'Avans türünü seçin.');
-    if (!['in', 'out', 'advance'].includes(v.type) || !allowed(u, v.type === 'in' ? 'cashIn' : 'cashOut'))
-      throw fail(403, 'Bu para işlemi için yetkiniz yok.');
-    const amount = Number(v.amount),
-      ledger = ctx.state.data['hanhukuk-accounting-v1'];
-    if (
-      !Number.isSafeInteger(amount) ||
-      amount <= 0 ||
-      !ledger.accounts.some((a) => a.id === v.accountId) ||
-      !String(v.note || '').trim() ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(v.date) ||
-      !Number.isFinite(Date.parse(v.date))
-    )
-      throw fail(400, 'Geçerli hesap, tarih, tutar ve açıklama girin.');
-    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad' }).format(new Date());
-    if (v.date > today) throw fail(400, 'Gelecek tarihli işlem yapılamaz.');
-    if (
-      (v.type === 'out' && !String(v.expenseCategory || '').trim()) ||
-      (['out', 'advance'].includes(v.type) && ledgerBalance(v.accountId) < amount)
-    )
-      throw fail(400, 'Gider kalemi eksik veya bakiye yetersiz.');
-    const next = structuredClone(ctx.state);
-    next.data['hanhukuk-accounting-v1'].entries.push({
-      id: crypto.randomUUID(),
-      type: v.type,
-      amount,
-      accountId: v.accountId,
-      date: v.date,
-      note: String(v.note).trim(),
-      expenseCategory: v.type === 'out' ? v.expenseCategory : undefined,
-      advanceType: v.type === 'advance' ? v.advanceType : undefined,
-      entryKind: external ? 'external' : undefined,
-      includeInProfit: external && v.profitChoice === 'yes',
-      operatorId: u.id,
-      operatorName: u.name,
-      createdAt: new Date().toISOString(),
-    });
-    persist(next);
+    const next = require('../../lib/cash-entry.cjs').appendCashEntry(
+      ctx.state,
+      await body(req),
+      u,
+      allowed,
+      options?.cashAccountBalances,
+      ledgerBalance,
+    );
+    if (next) persist(next);
     send(res, 200, { ok: true });
     return true;
   }

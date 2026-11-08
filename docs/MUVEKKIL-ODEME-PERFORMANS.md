@@ -12,4 +12,4 @@ Doğrulama kapsamı: 123 sentetik dosyada 50+50+21 sayfalama, tüm kayıt toplam
 
 Canlı verilerde salt okunur PostgreSQL karşılaştırması: 68 dosyanın 50 uygun ödeme kaydında eski ve yeni hak ediş/ödenen/kalan tutarları birebir eşleşti. Yerel tarayıcıda 123 dosya, ikinci sayfa, sabit genel toplam, seçilen ödeme formu ve kasa/bankaya dönüş kontrol edildi; konsol hatası görülmedi. Bu kontrolde canlı ödeme oluşturulmadı. Şema geçişi veya mevcut iş verisinde değişiklik gerekmedi.
 
-Kalan sınır: genel kasa/banka hareketi yazma yolu hâlâ uyumluluk görünümünü kullanır. Liste toplamları ve güncel hesap bakiyeleri SQL üzerinden bütün ilgili geçmişi tarar; çok büyük hacimlerde artımlı özetler ve gerçek PostgreSQL yük testi ayrıca ele alınmalıdır.
+Genel kasa/banka yazma yolu da dar kapsamlı işlemlere taşındı: [kasa ve iletişim performans notu](ILETISIM-KASA-PERFORMANS.md). Liste toplamları ve güncel hesap bakiyeleri SQL üzerinden bütün ilgili geçmişi tarar; çok büyük hacimlerde artımlı özetler ve gerçek PostgreSQL yük testi ayrıca ele alınmalıdır.
