@@ -475,7 +475,7 @@ body:has(#authGate) {
   #authGate .login-mobile-credit {
     display: block;
     flex-basis: 100%;
-    color: #000;
+    color: #fff;
     font-size: 12px;
     font-weight: 600;
     text-align: right;
