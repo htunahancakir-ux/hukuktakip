@@ -127,6 +127,8 @@ async function handleWorkflowRoutes(ctx) {
       report = await generateReport(d.conversations || [], { aiConfig: ctx.state.aiConfig });
       const next = structuredClone(ctx.state);
       next.data['icrapro-v1'].docs.find((x) => x.id === d.id).conversationReport = report;
+      if (report.aiUsage)
+        next.aiUsage = require('../../lib/ai-settings.cjs').addUsage(next.aiUsage, report.aiUsage);
       persist(next);
     }
     send(res, 200, { report });
@@ -220,6 +222,11 @@ async function handleWorkflowRoutes(ctx) {
       },
     ];
     doc.conversationReport = await generateReport(doc.conversations, { aiConfig: next.aiConfig });
+    if (doc.conversationReport.aiUsage)
+      next.aiUsage = require('../../lib/ai-settings.cjs').addUsage(
+        next.aiUsage,
+        doc.conversationReport.aiUsage,
+      );
     persist(next);
     send(res, 200, { conversations: doc.conversations, report: doc.conversationReport });
     return true;

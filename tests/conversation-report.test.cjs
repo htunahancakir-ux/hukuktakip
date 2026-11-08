@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { generateReport, fingerprint, currentReport, bounded } = require('../lib/conversation-report.cjs');
+const aiSettings = require('../lib/ai-settings.cjs');
 const { handleWorkflowRoutes } = require('../outputs/icrapro/access-workflow.cjs');
 const notes = [
   { id: 'a', date: '2026-01-01', time: '09:00', result: 'Ulaşılamadı', note: 'İlk aramaya cevap verilmedi.' },
@@ -66,6 +67,45 @@ test('Newer conflicting statements retain their negation and source date; long a
     { note: 'Cevap vermedi. Cevap vermedi. Cevap vermedi.', result: 'Ulaşılamadı' },
   ]);
   assert.equal((repeated.text.match(/Cevap vermedi/g) || []).length, 1);
+});
+test('Successful AI summaries retain provider token usage for the CEO-only aggregate, without exposing it in reports', async () => {
+  const originalGatewayKey = process.env.AI_GATEWAY_API_KEY;
+  process.env.AI_GATEWAY_API_KEY = 'test-gateway-key';
+  try {
+    const report = await generateReport(notes, {
+      aiConfig: { enabled: true, provider: 'vercel-ai-gateway', model: 'openai/gpt-6-luna' },
+      fetcher: async () => ({
+        ok: true,
+        json: async () => ({
+          output_text: 'Yapay zeka ile üretilen kısa özet.',
+          usage: { input_tokens: 120, output_tokens: 30, total_tokens: 150 },
+        }),
+      }),
+    });
+    assert.equal(report.method, 'vercel-ai-gateway');
+    assert.deepEqual(report.aiUsage, {
+      model: 'openai/gpt-6-luna',
+      inputTokens: 120,
+      outputTokens: 30,
+      totalTokens: 150,
+    });
+    assert.doesNotMatch(JSON.stringify(report), /aiUsage|150/);
+    const usage = aiSettings.addUsage(undefined, report.aiUsage);
+    assert.deepEqual(aiSettings.publicConfig({}, usage).usage, {
+      requests: 1,
+      inputTokens: 120,
+      outputTokens: 30,
+      totalTokens: 150,
+      lastUsedAt: usage.lastUsedAt,
+      models: [
+        { model: 'openai/gpt-6-luna', requests: 1, inputTokens: 120, outputTokens: 30, totalTokens: 150 },
+      ],
+    });
+    assert.ok(aiSettings.MODEL_OPTIONS.some((model) => model.id === 'openai/gpt-6.1-sol'));
+  } finally {
+    if (originalGatewayKey === undefined) delete process.env.AI_GATEWAY_API_KEY;
+    else process.env.AI_GATEWAY_API_KEY = originalGatewayKey;
+  }
 });
 test('Report endpoint ignores manually supplied text, caches unchanged history and enforces file assignment', async () => {
   try {
