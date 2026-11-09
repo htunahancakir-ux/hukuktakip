@@ -110,6 +110,15 @@ test('Accounting UI loads bounded pages, preserves totals and edit baselines and
   deferred();
   await old;
   assert.ok(w.document.querySelector('#nextAccounting'));
+  let scrolled = 0;
+  w.HTMLElement.prototype.scrollIntoView = function () {
+    scrolled++;
+    assert.ok(this.querySelector('.account-ledger'));
+  };
+  w.document.querySelector('[data-account-name]').click();
+  await tick();
+  assert.equal(scrolled, 1);
+  assert.equal(new URL(requests.at(-1), w.location.origin).searchParams.get('account'), 'cash');
   fail = true;
   await w.accountingPage();
   assert.match(w.document.querySelector('#content').textContent, /Bağlantı hatası/);

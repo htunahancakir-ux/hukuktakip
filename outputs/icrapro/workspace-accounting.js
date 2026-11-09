@@ -280,6 +280,7 @@ function accountLedgerRows(rows) {
   return ordered.reverse();
 }
 
+let accountingScrollToLedger = false;
 function accountingPage(remote) {
   if (!Array.isArray(remote?.items) || !remote?.totals) remote = null;
   if (window.hanAuth && !['ceo', 'admin'].includes(hanAuth.role)) return staffAccounting();
@@ -313,7 +314,7 @@ function accountingPage(remote) {
   const accountTable = `<div class="overflow"><table class="account-summary"><thead><tr><th>KASA / BANKA CARİ HESABI</th><th>TÜR</th><th>GİREN</th><th>ÇIKAN</th><th>KALAN BAKİYE</th><th>İŞLEMLER</th></tr></thead><tbody>${accounting.accounts
     .map((a) => {
       const s = summary(a.id);
-      return `<tr><td><strong>${esc(a.name)}</strong><small>${esc(a.iban || a.bank || 'Nakit kasa')}</small></td><td>${a.type === 'bank' ? 'Banka' : 'Kasa'}</td><td style="color:#15803d;white-space:nowrap">${amount(s.incoming)}</td><td style="color:#b91c1c;white-space:nowrap">${amount(s.outgoing)}</td><td style="white-space:nowrap"><strong>${amount(balance(a.id))}</strong></td><td><button type="button" class="link" data-account-ledger="${esc(a.id)}">Cari Hareketler</button><button type="button" class="link" data-edit-account="${esc(a.id)}">Hesap Bilgileri</button></td></tr>`;
+      return `<tr><td><button type="button" class="link" data-account-ledger="${esc(a.id)}" data-account-name><strong>${esc(a.name)}</strong></button><small>${esc(a.iban || a.bank || 'Nakit kasa')}</small></td><td>${a.type === 'bank' ? 'Banka' : 'Kasa'}</td><td style="color:#15803d;white-space:nowrap">${amount(s.incoming)}</td><td style="color:#b91c1c;white-space:nowrap">${amount(s.outgoing)}</td><td style="white-space:nowrap"><strong>${amount(balance(a.id))}</strong></td><td><button type="button" class="link" data-account-ledger="${esc(a.id)}">Cari Hareketler</button><button type="button" class="link" data-edit-account="${esc(a.id)}">Hesap Bilgileri</button></td></tr>`;
     })
     .join('')}</tbody></table></div>`;
   $('#content').innerHTML =
@@ -367,6 +368,7 @@ function accountingPage(remote) {
   };
   document.querySelectorAll('[data-account-ledger]').forEach((button) => {
     button.onclick = () => {
+      accountingScrollToLedger = true;
       accountingFilter = button.dataset.accountLedger;
       movementFilters = { start: '', end: '', type: '', operator: '', category: '', query: '' };
       accountingPage();
@@ -382,6 +384,14 @@ function accountingPage(remote) {
   document
     .querySelectorAll('[data-edit-account]')
     .forEach((b) => (b.onclick = () => accountForm(b.dataset.editAccount)));
+  if (accountingScrollToLedger) {
+    accountingScrollToLedger = false;
+    const ledger = document.querySelector('.account-ledger')?.closest('.panel');
+    if (ledger) {
+      ledger.style.scrollMarginTop = '90px';
+      ledger.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    }
+  }
 }
 
 function accountForm(id) {
