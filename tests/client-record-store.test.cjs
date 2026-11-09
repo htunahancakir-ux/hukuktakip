@@ -163,6 +163,7 @@ test('Client pages, selected attachments and isolated edits preserve totals, per
     assert.equal(statement.totals.paid, '2500');
     assert.equal(statement.totals.count, '2');
     assert.ok(statement.items.every((e) => e.number === 'F-001'));
+    assert.ok(statement.items.every((e) => e.status === 'İnfaz'));
     const period = await get('/api/records/client?id=c0&section=statement&start=2026-11-01&end=2026-11-01');
     assert.equal(period.totals.paid, '1500');
     assert.equal(period.items[0].bank, 'Gönderen Banka');

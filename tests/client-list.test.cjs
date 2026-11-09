@@ -223,6 +223,7 @@ test('Müvekkil düzenle finansal sekmesi ödeme ekstresini açar ve taslağı k
         items: [
           {
             id: 'p' + offset,
+            status: offset ? 'Derdest' : 'İnfaz',
             date: '2026-11-01',
             number: 'F-001',
             debtor: '<img src=x>',
@@ -244,10 +245,12 @@ test('Müvekkil düzenle finansal sekmesi ödeme ekstresini açar ve taslağı k
   for (let i = 0; i < 8; i++) await new Promise(setImmediate);
   assert.equal(form.querySelector('[data-form-panel="financial"]').hidden, false);
   assert.match(form.querySelector('[data-statement-total]').textContent, /5100/);
-  assert.equal(form.querySelector('[data-statement-rows] tr').children.length, 6);
+  assert.equal(form.querySelector('[data-statement-rows] tr').children.length, 7);
+  assert.equal(form.querySelector('[data-statement-rows] tr').children[3].textContent, 'İnfaz');
   assert.equal(form.querySelector('img'), null);
   form.querySelector('[data-statement-next]').click();
   for (let i = 0; i < 8; i++) await new Promise(setImmediate);
   assert.equal(new URL(requests.at(-1), w.location.origin).searchParams.get('offset'), '50');
+  assert.equal(form.querySelector('[data-statement-rows] tr').children[3].textContent, 'Kısmi');
   assert.equal(form.elements.name.value, 'taslak');
 });
