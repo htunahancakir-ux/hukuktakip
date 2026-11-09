@@ -1214,3 +1214,16 @@ dialog.expense-pool-dialog {
     overflow-wrap: anywhere;
   }
 }
+
+.test-record-badge {
+  display: block;
+  width: fit-content;
+  margin-top: 4px;
+  padding: 3px 7px;
+  border-radius: 4px;
+  background: #fff3da;
+  color: #805414;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.4;
+}

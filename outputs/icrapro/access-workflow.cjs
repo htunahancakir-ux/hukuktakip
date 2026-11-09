@@ -241,9 +241,11 @@ async function handleWorkflowRoutes(ctx) {
         createdAt: new Date().toISOString(),
       },
     ];
+    require('../../lib/test-records.cjs').markRecord(previous, doc.conversations.at(-1), u, 'note');
     const patch = call
       ? { id: call.id, result: v.result, note, resultAt: new Date().toISOString(), resultBy: u.name }
       : null;
+    if (patch) require('../../lib/test-records.cjs').markRecord(call, patch, u, 'note');
     const updatedCalls = calls.map((c) => (patch && c.id === patch.id ? { ...c, ...patch } : c));
     doc.conversationReport = await generateReport(voipConversations.merge(doc.conversations, updatedCalls), {
       aiConfig: next.aiConfig,

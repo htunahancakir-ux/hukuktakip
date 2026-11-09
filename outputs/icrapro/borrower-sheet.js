@@ -613,7 +613,10 @@ function layoutBorrowerSheet(dialog, d, f, client) {
   const head = dialog.querySelector(':scope > .panelhead'),
     body = dialog.querySelector(':scope > .formbody');
   head.querySelector('h2').innerHTML =
-    'Borçlu Föyü · <span class="sheet-folio-number">' + esc(d.number) + '</span>';
+    'Borçlu Föyü · <span class="sheet-folio-number">' +
+    esc(d.number) +
+    '</span>' +
+    (window.testRecordBadge?.(d) || '');
   const field = (label, value, className = '') =>
     '<div class="sheet-meta-field' +
     (className ? ' ' + className : '') +

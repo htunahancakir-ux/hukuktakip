@@ -90,6 +90,7 @@ function createAccess(stateFile, options = {}) {
     permissions: ['ceo', 'admin'].includes(u.role) ? permissions : u.permissions,
     active: u.active,
     readOnly: u.readOnly === true,
+    testAccount: u.testAccount === true,
     canDelete: u.readOnly !== true && canDelete(u),
     activeBreak: u.activeBreak || null,
   });

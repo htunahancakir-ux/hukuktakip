@@ -229,6 +229,7 @@ async function loadRecordPage(direction = 0) {
       client: row.clientId,
       _clientName: row.clientName,
       debtor: row.debtor,
+      testRecord: row.testRecord,
       identity: row.identity,
       relatedStaff: row.staffId,
       relatedStaffName: row.staffName || row.relatedStaffName,

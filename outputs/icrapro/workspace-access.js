@@ -22,7 +22,7 @@ async function userManagement(editId) {
         .filter((u) => normalizeSearch(u.name + ' ' + u.username).includes(normalizeSearch(query)))
         .map(
           (u) =>
-            `<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td>${u.role === 'ceo' ? 'CEO' : u.role === 'admin' ? 'Yönetici' : 'Personel'}</td><td>${u.active ? 'Aktif' : 'Pasif'}</td><td>${u.role !== 'ceo' || hanAuth.role === 'ceo' ? `<button class="link" data-reset-password="${esc(u.id)}">Şifre Değiştir / Sıfırla</button>` : 'CEO tarafından yönetilir'}</td></tr>`,
+            `<tr><td>${esc(u.name)}${u.testAccount ? '<small class="test-record-badge">Test hesabı</small>' : ''}</td><td>${esc(u.username)}</td><td>${u.role === 'ceo' ? 'CEO' : u.role === 'admin' ? 'Yönetici' : 'Personel'}</td><td>${u.active ? 'Aktif' : 'Pasif'}</td><td>${u.role !== 'ceo' || hanAuth.role === 'ceo' ? `<button class="link" data-reset-password="${esc(u.id)}">Şifre Değiştir / Sıfırla</button>` : 'CEO tarafından yönetilir'}</td></tr>`,
         )
         .join('') || '<tr><td colspan="5" class="empty">Kullanıcı bulunamadı.</td></tr>';
     document.querySelectorAll('[data-reset-password]').forEach((b) => {
