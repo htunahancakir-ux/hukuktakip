@@ -163,7 +163,7 @@ function setupClientStatement(form, clientId, clientName = '') {
   const host = document.createElement('div');
   host.className = 'full';
   host.innerHTML =
-    '<h3>Hesap Ekstresi · Müvekkile Yapılan Ödemeler</h3><div class="grid"><label class="field">Başlangıç Tarihi<input type="date" data-statement-start data-optional="true"></label><label class="field">Bitiş Tarihi<input type="date" data-statement-end data-optional="true"></label></div><div class="toolbar"><button type="button" class="secondary" data-statement-filter>Filtrele</button><button type="button" class="secondary" data-statement-clear>Tümünü Göster</button></div><p data-statement-total role="status"></p><div class="overflow" style="max-height:48vh;overflow:auto"><table><thead><tr><th>TARİH</th><th>FÖY NO</th><th>BORÇLU ADI</th><th>DURUM</th><th>ÖDENEN TUTAR</th><th>GÖNDEREN BANKA / KASA</th><th>AÇIKLAMA</th></tr></thead><tbody data-statement-rows></tbody></table></div><div class="tablefoot"><span data-statement-page></span><div class="toolbar"><button type="button" class="secondary" data-statement-prev>Önceki</button><button type="button" class="secondary" data-statement-next>Sonraki</button></div></div><small>Tarihi veya banka bilgisi olmayan eski toplu ödemeler ayrıca belirtilir; tarih filtresinde yer almaz.</small>';
+    '<h3>Hesap Ekstresi · Müvekkile Yapılan Ödemeler</h3><div class="grid"><label class="field">Başlangıç Tarihi<input type="date" data-statement-start data-optional="true"></label><label class="field">Bitiş Tarihi<input type="date" data-statement-end data-optional="true"></label></div><div class="toolbar"><button type="button" class="secondary" data-statement-filter>Filtrele</button><button type="button" class="secondary" data-statement-clear>Tümünü Göster</button></div><p data-statement-total role="status"></p><div class="overflow" style="max-height:48vh;overflow:auto"><table><thead><tr><th>TARİH</th><th>FÖY NO</th><th>BORÇLU ADI</th><th>DURUM</th><th>ÖDENEN TUTAR</th><th>GÖNDEREN BANKA / KASA</th><th>AÇIKLAMA</th></tr></thead><tbody data-statement-rows></tbody><tfoot><tr><td colspan="4"><strong>ALT TOPLAM</strong></td><td style="white-space:nowrap"><strong data-statement-subtotal>—</strong></td><td colspan="2"></td></tr></tfoot></table></div><div class="tablefoot"><span data-statement-page></span><div class="toolbar"><button type="button" class="secondary" data-statement-prev>Önceki</button><button type="button" class="secondary" data-statement-next>Sonraki</button></div></div><small>Tarihi veya banka bilgisi olmayan eski toplu ödemeler ayrıca belirtilir; tarih filtresinde yer almaz.</small>';
   panel.append(host);
   if (clientName) host.querySelector('h3').textContent = clientName + ' · Hesap Ekstresi';
   let offset = 0,
@@ -181,6 +181,7 @@ function setupClientStatement(form, clientId, clientName = '') {
     request = current;
     total.textContent = 'Ödemeler yükleniyor…';
     rows.replaceChildren();
+    host.querySelector('[data-statement-subtotal]').textContent = '—';
     previous.disabled = next.disabled = true;
     try {
       let data;
@@ -249,6 +250,7 @@ function setupClientStatement(form, clientId, clientName = '') {
           .join('') || '<tr><td colspan="7" class="empty">Bu müvekkile yapılmış ödeme bulunamadı.</td></tr>';
       host.querySelector('[data-statement-page]').textContent =
         `${data.items.length ? offset + 1 : 0}–${offset + data.items.length} / ${data.totals.count}`;
+      host.querySelector('[data-statement-subtotal]').textContent = recordMoney(data.totals.paid);
       previous.disabled = offset === 0;
       next.disabled = !data.more;
     } catch (error) {
