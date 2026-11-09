@@ -2,6 +2,27 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
 const fs = require('node:fs');
+test('PIN sonrası fetch yeniden denemesi oturum çerezini kullanır', async () => {
+  const dom = new JSDOM('', { url: 'https://example.test', runScripts: 'dangerously' });
+  try {
+    const w = dom.window;
+    let calls = 0;
+    w.Headers = Headers;
+    w.hanAuth = { role: 'ceo' };
+    w.authApi = () => ({ configured: true, scopes: ['delete'], unlocked: true });
+    w.fetch = async (url, options) => {
+      assert.equal(options.headers.has('X-Han-Pin-Proof'), false);
+      return ++calls === 1
+        ? new Response(JSON.stringify({ code: 'CEO_PIN_REQUIRED' }), { status: 423 })
+        : new Response('{}');
+    };
+    w.eval(fs.readFileSync('outputs/icrapro/workspace-ceo-pin.js', 'utf8'));
+    assert.equal((await w.fetch('/api/operations/delete')).status, 200);
+    assert.equal(calls, 2);
+  } finally {
+    dom.window.close();
+  }
+});
 test('PIN penceresi kompakttır; açık tarayıcı oturumunda tekrar sorulmaz', async () => {
   const dom = new JSDOM('<div id="content"></div>', {
     url: 'https://example.test',
