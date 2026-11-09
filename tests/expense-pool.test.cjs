@@ -206,6 +206,17 @@ for (const records of [false, true]) {
         assert.equal(day.buckets[0].expenses, '1000000');
         const report = await reportPage(pool, req, { type: 'finance' });
         assert.equal(report.totals.expense, '1000000');
+        const expenses = await reportPage(pool, req, {
+          type: 'expenses',
+          account: 'cash',
+          from: '2026-01-02',
+          to: '2026-01-02',
+        });
+        assert.equal(expenses.count, '1');
+        assert.equal(expenses.totals.amount, '1000000');
+        assert.equal(expenses.items[0].cells.kind, 'Masraf Avansı');
+        const nextDay = await reportPage(pool, req, { type: 'expenses', from: '2026-01-03' });
+        assert.equal(nextDay.totals.amount, '0');
       }
       const edited = structuredClone(events);
       edited.find((e) => e.id === 'a1').amount = 1;

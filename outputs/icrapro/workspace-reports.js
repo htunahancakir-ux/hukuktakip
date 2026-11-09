@@ -147,6 +147,21 @@ function reportRows(type) {
         { staffId: e.operatorId || '', accountId: e.accountId },
       );
   }
+  if (type === 'expenses')
+    for (const e of accounting.entries.filter((e) => e.type === 'out' && !e.financeEventId))
+      add(
+        e.date,
+        null,
+        {
+          kind: e.expensePoolFunding === true ? 'Masraf Avansı' : 'Muhasebe Gideri',
+          category: e.expenseCategory || 'Belirtilmedi',
+          account: e.accountName || accountName(e.accountId),
+          staff: e.operatorName || staffName(e.operatorId),
+          amount: e.amount,
+          note: e.note,
+        },
+        { staffId: e.operatorId || '', accountId: e.accountId },
+      );
   if (type === 'accounts')
     for (const e of accountMovements()) {
       const d = db.docs.find((d) => d.id === e.documentId);
@@ -329,7 +344,7 @@ function renderReportsPage() {
   const collapseFilters = reportFilters.type === 'clientDebtorInfo';
   const filtersOpen = document.getElementById('clientInfoReportFilters')?.open;
   $('#content').innerHTML =
-    `<div class="panel"><div class="panelhead"><div><h2>Rapor Merkezi</h2><p>Kayıtlı işlemleri süzün, yazdırın veya Excel için CSV indirin.</p></div><div class="toolbar"><button class="primary" id="openMarketingReport">Pazarlama Raporlama</button><button class="primary monthly-payroll-report-button" id="openMonthlyPayrollReport">Aylık Maaş ve Prim Raporu</button><button class="primary ins-report-button" id="openInsReport">İNS Raporu</button><button class="primary client-list-report-button" id="openClientListReport">Müvekkil Listesi</button><button class="primary client-debtor-report-button" id="openClientDebtorInfo">Müvekkil Borçlu Bilgi Raporu</button><button class="secondary" id="printReport">Yazdır / PDF</button><button class="primary" id="exportReport">CSV İndir</button></div></div>${collapseFilters ? `<details class="borrower-filter-section" id="clientInfoReportFilters"${filtersOpen ? ' open' : ''}><summary>Filtrele</summary>` : ''}<div class="formbody grid"><label class="field full">Rapor Türü<select id="reportType">${Object.entries(
+    `<div class="panel"><div class="panelhead"><div><h2>Rapor Merkezi</h2><p>Kayıtlı işlemleri süzün, yazdırın veya Excel için CSV indirin.</p></div><div class="toolbar"><button class="primary" id="openExpenseReport">Gider Raporu</button><button class="primary" id="openMarketingReport">Pazarlama Raporlama</button><button class="primary monthly-payroll-report-button" id="openMonthlyPayrollReport">Aylık Maaş ve Prim Raporu</button><button class="primary ins-report-button" id="openInsReport">İNS Raporu</button><button class="primary client-list-report-button" id="openClientListReport">Müvekkil Listesi</button><button class="primary client-debtor-report-button" id="openClientDebtorInfo">Müvekkil Borçlu Bilgi Raporu</button><button class="secondary" id="printReport">Yazdır / PDF</button><button class="primary" id="exportReport">CSV İndir</button></div></div>${collapseFilters ? `<details class="borrower-filter-section" id="clientInfoReportFilters"${filtersOpen ? ' open' : ''}><summary>Filtrele</summary>` : ''}<div class="formbody grid"><label class="field full">Rapor Türü<select id="reportType">${Object.entries(
       reportDefinitions,
     )
       .map(
@@ -340,6 +355,19 @@ function renderReportsPage() {
         '',
       )}</select></label>${field('Başlangıç Tarihi', 'reportFrom', 'date', reportFilters.from)}${field('Bitiş Tarihi', 'reportTo', 'date', reportFilters.to)}<label class="field">Müvekkil<select id="reportClient"><option value="">Tümü</option>${(window.hanRecordsEnabled ? recordReportClients() : db.clients).map((c) => `<option value="${esc(c.id)}" ${reportFilters.client === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label class="field">Personel<select id="reportStaff"><option value="">Tümü</option>${personnel.map((p) => `<option value="${esc(p.id)}" ${reportFilters.staff === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label><label class="field">Durum<select id="reportStatus"><option value="">Tümü</option>${(reportFilters.type === 'personnel' ? ['Aktif', 'Pasif'] : reportFilters.type === 'installments' ? ['Ödendi', 'Kısmi Ödendi', 'Bekliyor', 'Gecikmiş'] : ['Derdest', 'İnfaz', 'İade', 'İcra']).map((s) => `<option ${reportFilters.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label><label class="field">Kasa / Banka<select id="reportAccount"><option value="">Tümü</option>${accounting.accounts.map((a) => `<option value="${esc(a.id)}" ${reportFilters.account === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></label><label class="field full">Raporda Ara<input type="search" id="reportQuery" value="${esc(reportFilters.query)}" placeholder="İsim, evrak no, açıklama…"></label><label class="settings-check full"><input type="checkbox" id="reportUndated" ${reportFilters.undated ? 'checked' : ''}> Kayıt tarihi bulunmayan eski kayıtları da göster</label><button class="secondary" id="clearReportFilters">Süzgeçleri Temizle</button></div>${collapseFilters ? '</details>' : ''} </div><div id="reportResult" style="margin-top:22px"></div>`;
   $('#openMarketingReport').hidden = !hanPageAllowed('marketing');
+  if (reportFilters.type === 'expenses') {
+    $('#reportClient').closest('label').hidden = true;
+    $('#reportStatus').closest('label').hidden = true;
+    const note = document.createElement('p');
+    note.className = 'notice';
+    note.textContent =
+      'Masraf avansı kasa çıkışı bir kez gider sayılır. Borçlu dosyası masrafları ve avansın dosyalara dağıtımları bu rapora dahil değildir.';
+    $('#reportResult').before(note);
+  }
+  $('#openExpenseReport').onclick = () => {
+    reportFilters = { ...reportFilters, type: 'expenses', client: '', status: '', query: '' };
+    reportsPage();
+  };
   function refresh() {
     const from = document.querySelector('[name="reportFrom"]').value,
       to = document.querySelector('[name="reportTo"]').value;

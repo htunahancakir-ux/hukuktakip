@@ -80,6 +80,17 @@ const reportDefinitions = {
       ['note', 'Açıklama'],
     ],
   },
+  expenses: {
+    label: 'Gider Raporu',
+    columns: [
+      ['kind', 'Gider Türü'],
+      ['category', 'Gider Kalemi'],
+      ['account', 'Kasa / Banka'],
+      ['staff', 'İşlemi Yapan'],
+      ['amount', 'Gider Tutarı', 'money'],
+      ['note', 'Açıklama'],
+    ],
+  },
   accounts: {
     label: 'Kasa / Banka Hareketleri',
     columns: [

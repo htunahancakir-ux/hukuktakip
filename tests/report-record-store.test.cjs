@@ -223,6 +223,13 @@ test('All report types match established calculations; pages, totals and streami
     const req = { headers: { cookie: 'han_session=' + token } },
       oldCode = legacy(structuredClone(state));
     const before = await pool.query('SELECT id,body,revision FROM han_data.documents ORDER BY id');
+    const expenseReport = await reportPage(pool, req, { type: 'expenses' });
+    assert.equal(
+      expenseReport.count,
+      '1',
+      'Only accounting expenses; borrower costs, transfers and client payouts are excluded',
+    );
+    assert.equal(expenseReport.totals.amount, '1000');
     for (const type of Object.keys(definitions).filter((t) => t !== 'clientList')) {
       const expected = oldCode.reportRows(type),
         pages = [];
