@@ -20,6 +20,10 @@ test('Client pages, selected attachments and isolated edits preserve totals, per
         futureField: { retained: true },
       }));
     clients[0].name = 'IŞIK İNŞAAT %_';
+    clients[2].name = 'Sakarya Mobilya';
+    clients[80].name = 'SAK Beyaz Eşya';
+    clients[81].name = 'İsak Tekstil';
+    clients[121].tradeName = 'sak Ticaret';
     clients[0].attachments = [
       { id: 'a', name: 'test.pdf', kind: 'powerOfAttorney', data: 'data:application/pdf;base64,JVBERi0x' },
     ];
@@ -108,6 +112,19 @@ test('Client pages, selected attachments and isolated edits preserve totals, per
     const search = await get('/api/records/clients?' + new URLSearchParams({ q: 'isik insaat %_' }));
     assert.equal(search.count, '1');
     assert.deepEqual(search.summary, pages[0].summary);
+    const prefix = await get('/api/records/clients?' + new URLSearchParams({ q: 'sak', limit: 2 }));
+    assert.equal(prefix.count, '3');
+    assert.deepEqual(
+      prefix.items.map((c) => c.id),
+      ['c2', 'c80'],
+    );
+    const rest = await get(
+      '/api/records/clients?' + new URLSearchParams({ q: 'sak', limit: 2, after: prefix.next }),
+    );
+    assert.deepEqual(
+      rest.items.map((c) => c.id),
+      ['c121'],
+    );
     assert.equal((await get('/api/records/clients?' + new URLSearchParams({ q: "' OR 1=1 --" }))).count, '0');
     assert.equal(
       (

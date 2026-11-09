@@ -84,6 +84,19 @@ test('Client UI keeps global totals across pages, loads one editor and saves onl
             : { record: original, attachments: [{ id: 'client:c50:0', revision: '1' }] },
       };
     const offset = parsed.searchParams.has('after') ? 50 : 0;
+    if (parsed.searchParams.get('q') === 'sak')
+      return {
+        ok: true,
+        json: async () => ({
+          count: '2',
+          next: null,
+          summary,
+          items: [
+            { id: 's1', name: 'Sakarya Mobilya' },
+            { id: 's2', name: 'SAK Ticaret' },
+          ],
+        }),
+      };
     return {
       ok: true,
       json: async () => ({
@@ -114,6 +127,17 @@ test('Client UI keeps global totals across pages, loads one editor and saves onl
   assert.match(w.document.querySelector('#total').textContent, /51–75 \/ 75/);
   assert.equal(w.document.querySelector('#stats').textContent, firstStats);
   assert.equal(w.db.clients.length, 0, 'list projections must not become edit baselines');
+  w.bindClientSearch();
+  const input = w.document.querySelector('#search');
+  input.value = 'sak';
+  input.dispatchEvent(new w.Event('input', { bubbles: true }));
+  assert.equal(w.clientListState.index, 0);
+  assert.equal(w.clientListState.q, 'sak');
+  await new Promise((resolve) => setTimeout(resolve, 260));
+  assert.match(w.document.querySelector('#rows').textContent, /Sakarya Mobilya/);
+  assert.equal(w.document.querySelectorAll('[data-client-suggestion]').length, 2);
+  assert.equal(w.document.querySelector('#clientSuggestions').hidden, false);
+  assert.match(w.document.querySelector('#total').textContent, /2 müvekkil/);
   w.clientModal = (id, record) => {
     w.opened = record;
   };

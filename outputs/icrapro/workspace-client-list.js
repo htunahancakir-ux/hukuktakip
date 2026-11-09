@@ -27,6 +27,12 @@ function renderRecordClientStats(summary) {
 }
 
 function scheduleRecordClientPage() {
+  const q = $('#search')?.value.trim() || '';
+  if (q !== recordClientList.q) {
+    recordClientList.q = q;
+    recordClientList.cursors = [''];
+    recordClientList.index = 0;
+  }
   clearTimeout(recordClientList.timer);
   recordClientList.request?.abort();
   recordClientList.timer = setTimeout(() => loadRecordClientPage(), 200);
@@ -62,7 +68,7 @@ async function loadRecordClientPage() {
     });
     const result = await response.json();
     if (!response.ok) throw Error(result.error || 'Müvekkiller alınamadı.');
-    if (request.signal.aborted || !rows.isConnected || page !== 'clients') return;
+    if (request.signal.aborted || !rows.isConnected || page !== 'clients' || input.value.trim() !== q) return;
     paintClientRows(result.items, true);
     renderClientSuggestions(q, result.items);
     // Search/list limits do not affect these workspace-wide totals.
