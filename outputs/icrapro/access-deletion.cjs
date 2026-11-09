@@ -11,6 +11,7 @@ function rowsFor(state, type) {
     accounts: data['hanhukuk-accounting-v1'].accounts,
     personnel: data['icrapro-personnel-v1'],
     cases: data['icrapro-cases-v1'],
+    marketing: state.marketingProspects || [],
   };
   if (type === 'conversations')
     return records.docs.flatMap((d) =>
@@ -45,7 +46,7 @@ async function handleDeletionRoutes(ctx) {
         documentId: r.documentId,
         label: [
           r.number || r.documentNumber || docs.find((d) => d.id === r.documentId)?.number,
-          r.name || r.debtor || labels[r.type] || r.type,
+          r.name || r.company || r.debtor || labels[r.type] || r.type,
           r.note || r.notes || r.title,
         ]
           .filter(Boolean)

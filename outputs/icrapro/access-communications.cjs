@@ -4,6 +4,49 @@ const { messageSummary } = require('../../lib/notification-summary.cjs');
 
 async function handleCommunicationRoutes(ctx) {
   const { req, res, url, u, persist, userEnabled, fail, body, send, crypto } = ctx;
+  if (url.pathname === '/api/marketing-prospects') {
+    const manager = ['ceo', 'admin'].includes(u.role);
+    if (req.method === 'GET') {
+      const items = (ctx.state.marketingProspects || []).filter((item) => manager || item.createdBy === u.id);
+      send(res, 200, { items });
+      return true;
+    }
+    const editing = req.method === 'PUT';
+    if (editing && !manager) throw fail(403, 'Yalnız yöneticiler kayıtları düzenleyebilir.');
+    if (!editing && req.method !== 'POST') throw fail(405, 'Yöntem desteklenmiyor.');
+    const input = await body(req);
+    const clean = (key, max) => {
+      const value = String(input?.[key] || '').trim();
+      if (value.length > max) throw fail(400, 'Alan çok uzun: ' + key);
+      return value;
+    };
+    const company = clean('company', 200), date = clean('date', 10), time = clean('time', 5),
+      contact = clean('contact', 200), phone = clean('phone', 30), city = clean('city', 100),
+      district = clean('district', 100), address = clean('address', 1000), notes = clean('notes', 3000),
+      requestedStaff = clean('staffId', 200), status = clean('status', 30);
+    if (!company || !date || !city || !district) throw fail(400, 'Firma adı, tarih, il ve ilçe gereklidir.');
+    if (!['Potansiyel Müvekkil', 'Mevcut Müvekkil'].includes(status)) throw fail(400, 'Durum seçin.');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || (time && !/^\d{2}:\d{2}$/.test(time)))
+      throw fail(400, 'Geçerli tarih ve saat girin.');
+    const staffId = manager ? requestedStaff : (u.staffId || '');
+    const staff = ctx.state.data['icrapro-personnel-v1'].find((p) => p.id === staffId && p.active !== false);
+    if (!staff) throw fail(400, 'Aktif bir personel seçin.');
+    const next = structuredClone(ctx.state);
+    const records = next.marketingProspects || [];
+    const index = editing ? records.findIndex((item) => item.id === input.id) : -1;
+    if (editing && index < 0) throw fail(404, 'Kayıt bulunamadı.');
+    const record = {
+      ...(editing ? records[index] : { id: crypto.randomUUID(), createdBy: u.id, createdAt: new Date().toISOString() }),
+      company, date, time, contact, phone, city, district, address, notes,
+      staffId, staffName: staff.name, status,
+    };
+    if (editing) records[index] = record;
+    else records.push(record);
+    next.marketingProspects = records;
+    persist(next);
+    send(res, 201, { ok: true });
+    return true;
+  }
   if (url.pathname === '/api/work-orders' && req.method === 'GET') {
     const scope = url.searchParams.get('scope') || 'mine',
       status = url.searchParams.get('status') || 'pending';

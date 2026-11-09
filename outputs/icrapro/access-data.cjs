@@ -72,6 +72,27 @@ async function handleDataRoutes(ctx) {
       !allowed(u, 'clients')
     )
       throw fail(403, 'Müvekkil kayıtlarını değiştirme yetkiniz yok.');
+    if (key === 'icrapro-v1' && !['ceo', 'admin'].includes(u.role)) {
+      const protectedFields = ['repaymentPlan', 'repaymentPlanHistory', 'debtDiscountCents', 'discountHistory'];
+      if (patchRequest && Array.isArray(incoming?.changes)) {
+        for (const change of incoming.changes) {
+          if (change.path?.[0] !== 'docs') continue;
+          if (change.field && protectedFields.includes(change.field))
+            throw fail(403, 'Yapılandırmayı yalnızca yönetici yapabilir.');
+          if (!change.field && change.value) {
+            const old = ctx.state.data[key].docs.find((d) => d.id === change.id) || {};
+            if (protectedFields.some((field) => JSON.stringify(old[field]) !== JSON.stringify(change.value[field])))
+              throw fail(403, 'Yapılandırmayı yalnızca yönetici yapabilir.');
+          }
+        }
+      } else if (!patchRequest && Array.isArray(incoming?.value?.docs)) {
+        for (const doc of incoming.value.docs) {
+          const old = ctx.state.data[key].docs.find((d) => d.id === doc.id) || {};
+          if (protectedFields.some((field) => JSON.stringify(old[field]) !== JSON.stringify(doc[field])))
+            throw fail(403, 'Yapılandırmayı yalnızca yönetici yapabilir.');
+        }
+      }
+    }
     const sendSaved = () => {
       if (!patchRequest || !options.recordStore) return send(res, 200, { ok: true });
       const current = readKey(key, u),

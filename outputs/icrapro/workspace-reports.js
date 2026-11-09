@@ -329,7 +329,7 @@ function renderReportsPage() {
   const collapseFilters = reportFilters.type === 'clientDebtorInfo';
   const filtersOpen = document.getElementById('clientInfoReportFilters')?.open;
   $('#content').innerHTML =
-    `<div class="panel"><div class="panelhead"><div><h2>Rapor Merkezi</h2><p>Kayıtlı işlemleri süzün, yazdırın veya Excel için CSV indirin.</p></div><div class="toolbar"><button class="primary monthly-payroll-report-button" id="openMonthlyPayrollReport">Aylık Maaş ve Prim Raporu</button><button class="primary ins-report-button" id="openInsReport">İNS Raporu</button><button class="primary client-list-report-button" id="openClientListReport">Müvekkil Listesi</button><button class="primary client-debtor-report-button" id="openClientDebtorInfo">Müvekkil Borçlu Bilgi Raporu</button><button class="secondary" id="printReport">Yazdır / PDF</button><button class="primary" id="exportReport">CSV İndir</button></div></div>${collapseFilters ? `<details class="borrower-filter-section" id="clientInfoReportFilters"${filtersOpen ? ' open' : ''}><summary>Filtrele</summary>` : ''}<div class="formbody grid"><label class="field full">Rapor Türü<select id="reportType">${Object.entries(
+    `<div class="panel"><div class="panelhead"><div><h2>Rapor Merkezi</h2><p>Kayıtlı işlemleri süzün, yazdırın veya Excel için CSV indirin.</p></div><div class="toolbar"><button class="primary" id="openMarketingReport">Pazarlama Raporlama</button><button class="primary monthly-payroll-report-button" id="openMonthlyPayrollReport">Aylık Maaş ve Prim Raporu</button><button class="primary ins-report-button" id="openInsReport">İNS Raporu</button><button class="primary client-list-report-button" id="openClientListReport">Müvekkil Listesi</button><button class="primary client-debtor-report-button" id="openClientDebtorInfo">Müvekkil Borçlu Bilgi Raporu</button><button class="secondary" id="printReport">Yazdır / PDF</button><button class="primary" id="exportReport">CSV İndir</button></div></div>${collapseFilters ? `<details class="borrower-filter-section" id="clientInfoReportFilters"${filtersOpen ? ' open' : ''}><summary>Filtrele</summary>` : ''}<div class="formbody grid"><label class="field full">Rapor Türü<select id="reportType">${Object.entries(
       reportDefinitions,
     )
       .map(
@@ -395,6 +395,28 @@ function renderReportsPage() {
       query: '',
     };
     reportsPage();
+  };
+  $('#openMarketingReport').onclick = () => {
+    $('#content').innerHTML = `<div class="panel"><div class="panelhead"><div><h2>Potansiyel Müvekkil Raporu</h2><p>Pazarlama kayıtları</p></div><button type="button" class="secondary" id="marketingReportBack">Raporlara Dön</button></div><div class="formbody grid"><label class="field">Başlangıç Tarihi<input id="marketingReportFrom" type="date"></label><label class="field">Bitiş Tarihi<input id="marketingReportTo" type="date"></label><label class="field">Personel<input id="marketingReportStaff" type="search"></label><label class="field">Ara<input id="marketingReportQuery" type="search" placeholder="Firma, kişi, il veya ilçe"></label></div><div class="overflow"><table><thead><tr><th>TARİH</th><th>MÜVEKKİL ADI</th><th>İL</th><th>İLÇE</th><th>ADRES</th><th>TELEFON</th><th>GÖRÜŞÜLEN KİŞİ</th><th>PERSONEL</th><th>DURUM</th><th>AÇIKLAMA</th></tr></thead><tbody id="marketingReportRows"></tbody></table></div><p class="formbody" id="marketingReportCount"></p></div>`;
+    document.getElementById('marketingReportBack').onclick = reportsPage;
+    let items;
+    try { items = authApi('/api/marketing-prospects').items; }
+    catch (error) { document.getElementById('marketingReportCount').textContent = error.message; return; }
+    const refreshMarketingReport = () => {
+      const from = document.getElementById('marketingReportFrom').value;
+      const to = document.getElementById('marketingReportTo').value;
+      const staff = document.getElementById('marketingReportStaff').value.trim().toLocaleLowerCase('tr');
+      const query = document.getElementById('marketingReportQuery').value.trim().toLocaleLowerCase('tr');
+      const filtered = items.filter((item) => (!from || item.date >= from) && (!to || item.date <= to) &&
+        (!staff || String(item.staffName || '').toLocaleLowerCase('tr').includes(staff)) &&
+        (!query || [item.company, item.contact, item.city, item.district, item.address, item.phone].some((v) => String(v || '').toLocaleLowerCase('tr').includes(query))));
+      const columns = ['date', 'company', 'city', 'district', 'address', 'phone', 'contact', 'staffName', 'status', 'notes'];
+      document.getElementById('marketingReportRows').innerHTML = filtered.map((item) => '<tr>' + columns.map((key) => '<td>' + esc(item[key] || '—') + '</td>').join('') + '</tr>').join('') || '<tr><td colspan="10" class="empty">Kayıt bulunamadı.</td></tr>';
+      document.getElementById('marketingReportCount').textContent = filtered.length + ' kayıt';
+    };
+    for (const id of ['marketingReportFrom', 'marketingReportTo', 'marketingReportStaff', 'marketingReportQuery'])
+      document.getElementById(id).addEventListener('input', refreshMarketingReport);
+    refreshMarketingReport();
   };
   $('#openMonthlyPayrollReport').onclick = monthlyPayrollReportPage;
   $('#openInsReport').onclick = insReportPage;

@@ -701,7 +701,7 @@ function repaymentSection(d) {
   const plan = d.repaymentPlan,
     f = docFinance(d);
   let paidSince = plan ? Math.max(0, f.received - plan.receivedAtCreation) : 0;
-  return `<h3 class="sectiontitle" style="margin-top:30px">Borcu Yapılandır</h3>${d.status === 'İnfaz' && f.remaining === 0 ? '<div class="notice">Bu dosya infaz edilmiştir. Yapılandırma planları ve taksit geçmişi aşağıda görüntülenir; kapanmış borç için yeni plan oluşturulmaz.</div>' : ''}<div class="notice">Yapılandırılabilir kalan borç: <b>${money(f.remaining / 100)}</b>. Plan kaydetmek tahsilat oluşturmaz. Plan kaydedildiğinde mevcut faiz ve ücret tutarları sabitlenir; ek masraflar ayrıca borca yansıyabilir.</div><div class="toolbar"><button type="button" class="primary" id="openRepayment" ${f.remaining === 0 || d.status === 'İade' ? 'disabled' : ''}>${plan ? (d.repaymentPlanHistory || []).length + 2 + '. Yapılandırma Oluştur' : 'Borcu Yapılandır'}</button>${paymentPromiseButton(d)}</div>${paymentPromiseSummary(d)}${
+  return `<h3 class="sectiontitle" style="margin-top:30px">Borcu Yapılandır</h3>${d.status === 'İnfaz' && f.remaining === 0 ? '<div class="notice">Bu dosya infaz edilmiştir. Yapılandırma planları ve taksit geçmişi aşağıda görüntülenir; kapanmış borç için yeni plan oluşturulmaz.</div>' : ''}<div class="notice">Yapılandırılabilir kalan borç: <b>${money(f.remaining / 100)}</b>. Plan kaydetmek tahsilat oluşturmaz. Plan kaydedildiğinde mevcut faiz ve ücret tutarları sabitlenir; ek masraflar ayrıca borca yansıyabilir.</div><div class="toolbar"><button type="button" class="primary" id="openRepayment" ${!['ceo', 'admin'].includes(hanAuth.role) || f.remaining === 0 || d.status === 'İade' ? 'disabled' : ''}>${plan ? (d.repaymentPlanHistory || []).length + 2 + '. Yapılandırma Oluştur' : 'Borcu Yapılandır'}</button>${paymentPromiseButton(d)}</div>${paymentPromiseSummary(d)}${
     plan
       ? `<p>${(d.repaymentPlanHistory || []).length + 1}. Yapılandırma · Plan: <b>${esc(plan.method === 'equal' ? 'Eşit Böl' : 'Manuel Taksitlendirme')}</b> · ${plan.installments.length} taksit · Toplam ${money(plan.balance / 100)}${plan.discount ? ` · İndirim: ${money(plan.discount / 100)} · ${esc(plan.discountReason)}` : ''}</p>${f.target !== plan.targetAtCreation ? '<div class="notice">Plan oluşturulduktan sonra borç toplamı değişti. Yeni kalan borç için planı yeniden düzenleyin.</div>' : ''}<div class="overflow"><table><thead><tr><th>TAKSİT</th><th>VADE</th><th>TUTAR</th><th>TAHSİL EDİLEN</th><th>KALAN</th></tr></thead><tbody>${plan.installments
           .map((r, i) => {
@@ -722,6 +722,7 @@ function bindRepayment(d) {
 }
 
 function openRepayment(d) {
+  if (!['ceo', 'admin'].includes(hanAuth.role)) return toast('Yapılandırmayı yalnızca yönetici yapabilir.');
   const finance = docFinance(d);
   if (!finance.remaining || d.status === 'İade') return toast('Bu dosyada yapılandırılabilir borç yok.');
   let dialog = document.getElementById('repaymentDialog');

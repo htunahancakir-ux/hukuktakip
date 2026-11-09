@@ -194,7 +194,7 @@ function hanCan(permission) {
 function hanPageAllowed(p) {
   return (
     ['ceo', 'admin'].includes(hanAuth?.role) ||
-    (!!hanAuth && ['home', 'messages', 'reports', 'reminders'].includes(p)) ||
+    (!!hanAuth && ['home', 'messages', 'reports', 'reminders', 'marketing'].includes(p)) ||
     (p === 'accounting' && (hanCan('cashIn') || hanCan('cashOut'))) ||
     (p === 'clients' && hanCan('clients')) ||
     (['intake', 'documents'].includes(p) && hanCan('documents'))
@@ -300,7 +300,7 @@ function openDeletionPanel() {
     <option value="accounting">Muhasebe / Müvekkil Ödemeleri</option><option value="finance">Tahsilat / Masraf</option>
     <option value="conversations">Görüşmeler</option><option value="documents">Borçlu Dosyaları</option>
     <option value="clients">Müvekkiller</option><option value="accounts">Hesaplar</option>
-    <option value="personnel">Personel</option><option value="cases">İcra İşlemleri</option></select></label>
+    <option value="marketing">Pazarlama / Potansiyel Müvekkiller</option><option value="personnel">Personel</option><option value="cases">İcra İşlemleri</option></select></label>
     <label class="field">Ara<input name="q" placeholder="Dosya numarası, ad veya açıklama"></label><button class="primary">Listele</button></form>
     <p data-status role="status"></p><div data-rows></div><div class="actions"><button class="secondary" data-prev>Önceki</button><button class="secondary" data-next>Sonraki</button></div></div>`;
   let offset = 0,
