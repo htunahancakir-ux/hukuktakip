@@ -299,6 +299,19 @@ function render() {
     setupClientDistrict('prospect');
     const button = document.getElementById('addProspect');
     const form = document.getElementById('prospectForm');
+    const updateProspectFields = () => {
+      const existing = form.elements.status.value === 'Mevcut Müvekkil';
+      for (const name of ['date', 'time', 'staffId', 'contact', 'phone', 'city', 'district', 'address']) {
+        const input = form.elements[name];
+        const container = input?.closest('.field');
+        if (container) container.style.display = existing ? 'none' : '';
+        if (input && ['date', 'city', 'district'].includes(name)) input.required = !existing;
+        if (input && existing) input.setCustomValidity('');
+      }
+      document.getElementById('convertProspect').style.display = existing ? 'none' : '';
+    };
+    form.elements.status.addEventListener('change', updateProspectFields);
+    updateProspectFields();
     button.onclick = () => {
       form.hidden = !form.hidden;
       button.setAttribute('aria-expanded', String(!form.hidden));
@@ -327,6 +340,7 @@ function render() {
             editingProspectId = item.id;
             for (const key of ['date', 'time', 'staffId', 'status', 'company', 'contact', 'phone', 'city', 'district', 'address', 'notes'])
               if (form.elements[key]) form.elements[key].value = item[key] || '';
+            updateProspectFields();
             form.hidden = false;
             button.setAttribute('aria-expanded', 'true');
             form.elements.company.focus();
@@ -338,10 +352,13 @@ function render() {
       event.preventDefault();
       try {
         const values = Object.fromEntries(new FormData(form));
+        if (!('district' in values)) values.district = form.elements.district.value;
+        if (values.status === 'Mevcut Müvekkil' && !values.date) values.date = businessDate();
         if (editingProspectId) values.id = editingProspectId;
         authApi('/api/marketing-prospects', editingProspectId ? 'PUT' : 'POST', values);
         editingProspectId = null;
         form.reset();
+        updateProspectFields();
         loadProspects();
         toast('Potansiyel müvekkil kaydedildi.');
       } catch (error) { toast(error.message); }

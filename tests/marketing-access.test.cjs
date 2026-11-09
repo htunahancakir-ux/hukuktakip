@@ -43,6 +43,23 @@ test('Pazarlama erişimi personel birimine ve yönetici rolüne göre uygulanır
       assert.equal((await session.json()).user.marketingAccess, allowed);
       const get = await fetch(server.url + '/api/marketing-prospects', { headers });
       assert.equal(get.status, allowed ? 200 : 403);
+      if (id === 'marketing') {
+        const entry = { company: 'Örnek', date: '2026-11-09', status: 'Mevcut Müvekkil', notes: 'Görüşme' };
+        const post = await fetch(server.url + '/api/marketing-prospects', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(entry),
+        });
+        assert.equal(post.status, 201);
+        const saved = await (await fetch(server.url + '/api/marketing-prospects', { headers })).json();
+        assert.equal(saved.items.find((item) => item.company === 'Örnek').notes, 'Görüşme');
+        const invalid = await fetch(server.url + '/api/marketing-prospects', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ ...entry, status: 'Potansiyel Müvekkil' }),
+        });
+        assert.equal(invalid.status, 400);
+      }
       if (!allowed) {
         const post = await fetch(server.url + '/api/marketing-prospects', {
           method: 'POST',

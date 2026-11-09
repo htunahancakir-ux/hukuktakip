@@ -28,13 +28,14 @@ async function handleCommunicationRoutes(ctx) {
       contact = clean('contact', 200), phone = clean('phone', 30), city = clean('city', 100),
       district = clean('district', 100), address = clean('address', 1000), notes = clean('notes', 3000),
       requestedStaff = clean('staffId', 200), status = clean('status', 30);
-    if (!company || !date || !city || !district) throw fail(400, 'Firma adı, tarih, il ve ilçe gereklidir.');
     if (!['Potansiyel Müvekkil', 'Mevcut Müvekkil'].includes(status)) throw fail(400, 'Durum seçin.');
+    if (!company || !date || (status === 'Potansiyel Müvekkil' && (!city || !district)))
+      throw fail(400, 'Firma adı ve tarih gereklidir; potansiyel müvekkil için il ve ilçe de girilmelidir.');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || (time && !/^\d{2}:\d{2}$/.test(time)))
       throw fail(400, 'Geçerli tarih ve saat girin.');
     const staffId = manager ? requestedStaff : (u.staffId || '');
     const staff = ctx.state.data['icrapro-personnel-v1'].find((p) => p.id === staffId && p.active !== false);
-    if (!staff) throw fail(400, 'Aktif bir personel seçin.');
+    if (!staff && !(manager && status === 'Mevcut Müvekkil' && !staffId)) throw fail(400, 'Aktif bir personel seçin.');
     const next = structuredClone(ctx.state);
     const records = next.marketingProspects || [];
     const index = editing ? records.findIndex((item) => item.id === input.id) : -1;
@@ -42,7 +43,7 @@ async function handleCommunicationRoutes(ctx) {
     const record = {
       ...(editing ? records[index] : { id: crypto.randomUUID(), createdBy: u.id, createdAt: new Date().toISOString() }),
       company, date, time, contact, phone, city, district, address, notes,
-      staffId, staffName: staff.name, status,
+      staffId, staffName: staff?.name || u.name, status,
     };
     if (editing) records[index] = record;
     else records.push(record);
