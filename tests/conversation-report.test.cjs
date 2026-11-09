@@ -112,18 +112,26 @@ test('AI summaries respect the configured target and use at most 50 characters t
   process.env.AI_GATEWAY_API_KEY = 'test-gateway-key';
   try {
     const report = await generateReport(notes, {
-      aiConfig: { enabled: true, provider: 'vercel-ai-gateway', model: 'openai/gpt-6-luna', summaryMaxChars: 300 },
+      aiConfig: {
+        enabled: true,
+        provider: 'vercel-ai-gateway',
+        model: 'openai/gpt-6-luna',
+        summaryMaxChars: 300,
+      },
       fetcher: async () => ({ ok: true, json: async () => ({ output_text: longSummary }) }),
     });
     assert.equal(report.method, 'vercel-ai-gateway');
     assert.equal(report.text, normalized);
     assert.equal(
-      currentReport({ conversations: notes, conversationReport: report }, {
-        enabled: true,
-        provider: 'vercel-ai-gateway',
-        model: 'openai/gpt-6-luna',
-        summaryMaxChars: 300,
-      }),
+      currentReport(
+        { conversations: notes, conversationReport: report },
+        {
+          enabled: true,
+          provider: 'vercel-ai-gateway',
+          model: 'openai/gpt-6-luna',
+          summaryMaxChars: 300,
+        },
+      ),
       report,
     );
   } finally {
@@ -499,6 +507,69 @@ test('PostgreSQL summaries persist on the selected file; report, CSV and manual 
     response = await post('/api/documents/conversation-report', { documentId: 'd' }, cookie);
     assert.equal(response.status, 200);
     assert.equal((await response.json()).report.sourceCount, 3);
+    await require('../lib/voip-store.cjs').transaction(
+      pool,
+      true,
+      (tx) => {
+        tx.state.voipCalls.push({
+          id: 'bridge-call',
+          documentId: 'd',
+          phone: '905320000000',
+          userId: 'test-ceo',
+          staffName: 'Test',
+          requestId: 'bridge-request',
+          createdAt: '2026-01-04T10:00:00Z',
+          status: 'completed',
+          duration: 90,
+          note: 'Telefon görüşmesinde 200 TL önerildi.',
+        });
+        tx.saveState(tx.state);
+      },
+      { documentId: 'd' },
+    );
+    response = await post('/api/documents/conversation-report', { documentId: 'd' }, cookie);
+    assert.equal((await response.json()).report.sourceCount, 4);
+    const input = {
+      documentId: 'd',
+      voipCallId: 'bridge-call',
+      result: 'Tekrar Aranacak',
+      note: 'Yarın tekrar görüşülecek.',
+    };
+    response = await post('/api/documents/conversations', input, cookie);
+    assert.equal(response.status, 400);
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    response = await post(
+      '/api/documents/conversations',
+      { ...input, callReminder: { date: tomorrow, time: '12:00', note: 'Planlandı' } },
+      cookie,
+    );
+    assert.equal(response.status, 200, await response.clone().text());
+    let merged = await response.json();
+    assert.equal(merged.report.sourceCount, 4);
+    assert.equal(merged.conversations.filter((c) => c.voipCallId === 'bridge-call').length, 1);
+    assert.equal(
+      merged.conversations.find((c) => c.voipCallId === 'bridge-call').callReminder.date,
+      tomorrow,
+    );
+    response = await post(
+      '/api/documents/conversations',
+      { ...input, result: 'Olumlu', note: 'Güncel telefon notu' },
+      cookie,
+    );
+    assert.equal(response.status, 200, await response.clone().text());
+    merged = await response.json();
+    assert.equal(merged.conversations.length, 4, 'editing a phone result cannot duplicate its conversation');
+    const phone = (await pool.query("SELECT body FROM han_private.voip_calls WHERE id='bridge-call'")).rows[0]
+      .body;
+    assert.equal(phone.result, 'Olumlu');
+    assert.equal(phone.duration, 90);
+    response = await post('/api/documents/conversations', { ...input, result: 'Ödeme Sözü Alındı' }, cookie);
+    assert.equal(response.status, 400);
+    response = await nativeFetch(app.url + '/api/voip/history?documentId=d', { headers: { cookie } });
+    const unified = await response.json();
+    assert.equal(unified.total, 4);
+    assert.equal(unified.rows.filter((r) => r.voipCallId === 'bridge-call').length, 1);
+    assert.equal(unified.rows.find((r) => r.voipCallId === 'bridge-call').note, 'Güncel telefon notu');
   } finally {
     global.fetch = nativeFetch;
     if (app) await app.close();

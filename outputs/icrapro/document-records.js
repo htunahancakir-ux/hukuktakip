@@ -657,6 +657,26 @@ function paintDocumentRows(list, isAdmin, showClosureDate) {
       )
       .join('') ||
     `<tr><td colspan="${showClosureDate ? 9 : 8}" class="empty">Seçili durum ve aramayla eşleşen borçlu bulunamadı.</td></tr>`;
+  document.querySelectorAll('#docRows tr').forEach((row) => {
+    const cell = row.lastElementChild,
+      edit = cell.querySelector('[data-edit-debtor]');
+    const others = [...cell.querySelectorAll('button')].filter((button) => button !== edit);
+    if (!others.length) return;
+    const menu = document.createElement('details');
+    menu.className = 'borrower-row-actions';
+    const summary = document.createElement('summary');
+    summary.textContent = 'İşlemler';
+    const actions = document.createElement('div');
+    actions.append(...others);
+    menu.append(summary, actions);
+    cell.append(menu);
+    menu.ontoggle = () => {
+      if (menu.open)
+        document.querySelectorAll('#docRows .borrower-row-actions[open]').forEach((other) => {
+          if (other !== menu) other.open = false;
+        });
+    };
+  });
   document
     .querySelectorAll('[data-delete-document]')
     .forEach(

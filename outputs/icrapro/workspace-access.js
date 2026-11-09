@@ -127,6 +127,7 @@ function staffBorrowerDetail(id, record) {
     editBorrower(id);
   };
   setupBorrowerNavigation(dialog, id);
+  if (typeof setupBorrowerVoip === 'function') setupBorrowerVoip(dialog, d);
   if (!dialog.open) dialog.showModal();
 }
 

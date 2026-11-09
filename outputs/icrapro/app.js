@@ -219,6 +219,7 @@ function render() {
     page === 'messages' ||
     page === 'reminders' ||
     page === 'reports' ||
+    page === 'callRecordings' ||
     page === 'accounting' ||
     page === 'home' ||
     page === 'settings' ||
@@ -227,6 +228,7 @@ function render() {
     .querySelectorAll('nav button')
     .forEach((b) => b.classList.toggle('active', b.dataset.page === page));
   const titles = {
+    callRecordings: ['Görüşme Kayıtları', 'Arama geçmişi, görüşme sonuçları ve şifreli ses arşivi.'],
     messages: ['Mesajlar / İş Emirleri', 'Kullanıcılara tek tek veya toplu mesaj gönderin.'],
     reminders: ['Hatırlatmalar', 'Dosyaya bağlı veya kişisel hatırlatmalarınızı zamanlayın.'],
     users: ['Kullanıcı Yönetimi', 'Hesapları ve yetkileri yönetin.'],
@@ -255,7 +257,8 @@ function render() {
     if (window.hanRecordsEnabled) $('#search').value = recordClientList.q;
     clientRows();
     $('#search').oninput = clientRows;
-  } else if (page === 'messages') messagesPage();
+  } else if (page === 'callRecordings') voipRecordingsPage();
+  else if (page === 'messages') messagesPage();
   else if (page === 'reminders') scheduledRemindersPage();
   else if (page === 'users') userManagement();
   else if (page === 'noAccess')

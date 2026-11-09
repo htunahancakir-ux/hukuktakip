@@ -445,7 +445,11 @@ test('Managers can download with a record of the last sender; only the CEO can r
     async function login(username) {
       const response = await fetch(app.url + '/api/login', {
         method: 'POST',
-        headers: { Origin: 'https://example.invalid', 'X-Han-Request': '1', 'Content-Type': 'application/json' },
+        headers: {
+          Origin: 'https://example.invalid',
+          'X-Han-Request': '1',
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({ username, password }),
       });
       assert.equal(response.status, 200);
@@ -702,7 +706,9 @@ test('Audit tracks successful changes and separates login, logout and failed log
 test('Every workspace browser module is served in the shared manifest; server internals stay private', async () => {
   const app = await serve(createApplication({ cloud: true }));
   try {
-    const html = await (await fetch(app.url + '/')).text();
+    const rawHtml = await (await fetch(app.url + '/')).text();
+    // Production assets carry a cache version; validate their order independently.
+    const html = rawHtml.replace(/\?v=[^"\s]+/g, '');
     assert.ok(html.indexOf('src="workspace-assets.js"') >= 0);
     assert.ok(html.indexOf('src="workspace-assets.js"') < html.indexOf('src="auth.js"'));
     assert.match(html, /href="workspace-layout\.css"/);

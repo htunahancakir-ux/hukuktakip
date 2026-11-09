@@ -229,23 +229,37 @@ function bindBackupFiles(lastDownload) {
 }
 
 function settingsSectionTabs(active) {
+  const integration = ['ai', 'voip', 'whatsapp'].includes(active);
   const tabs = [
     ['firm', 'Firma Bilgileri'],
     ['contact', 'İletişim ve Adres'],
     ['preferences', 'Uygulama Tercihleri'],
     ['staff', 'Personel'],
+    ...(['ceo', 'admin'].includes(hanAuth.role) ? [['permissions', 'Yetkilendirme']] : []),
     ['audit', 'İşlem Kayıtları'],
     ['employeeTerms', 'Gizlilik Sözleşmesi'],
-    ...(hanAuth.role === 'ceo' ? [['whatsapp', 'WhatsApp Business']] : []),
-    ...(hanAuth.role === 'ceo' ? [['ai', 'Yapay Zeka']] : []),
+    ...(hanAuth.role === 'ceo' ? [['integrations', 'Entegrasyonlar']] : []),
     ['backup', 'Yedekleme'],
   ];
   return `<div class="settings-tabs" role="tablist" aria-label="Ayar sekmeleri">${tabs
     .map(
       ([key, label]) =>
-        `<button type="button" id="tab-${key}" role="tab" aria-selected="${key === active}" data-settings-tab="${key}" class="${key === active ? 'selected' : ''}">${esc(label)}</button>`,
+        `<button type="button" id="tab-${key}" role="tab" aria-selected="${key === active || (integration && key === 'integrations')}" data-settings-tab="${key}" class="${key === active || (integration && key === 'integrations') ? 'selected' : ''}">${esc(label)}</button>`,
     )
-    .join('')}</div>`;
+    .join('')}</div>${
+    integration
+      ? `<div class="settings-tabs integration-tabs" role="tablist" aria-label="Entegrasyonlar">${[
+          ['ai', 'Yapay Zekâ'],
+          ['voip', 'VoIP / Telefon'],
+          ['whatsapp', 'WhatsApp Business'],
+        ]
+          .map(
+            ([id, label]) =>
+              `<button type="button" id="tab-${id}" role="tab" aria-selected="${id === active}" data-settings-tab="${id}" class="${id === active ? 'selected' : ''}">${label}</button>`,
+          )
+          .join('')}</div>`
+      : ''
+  }`;
 }
 
 function bindSettingsSectionTabs() {
@@ -341,6 +355,9 @@ function backupSettingsPage() {
 
 const originalSettings = settings;
 settings = function () {
+  if (settingsTab === 'integrations') settingsTab = 'voip';
+  if (settingsTab === 'voip') return voipSettingsPage();
+  if (settingsTab === 'permissions') return voipPermissionsPage();
   if (settingsTab === 'backup') return backupSettingsPage();
   if (settingsTab === 'audit') return auditSettingsPage();
   if (settingsTab === 'whatsapp') return whatsappSettingsPage();

@@ -45,6 +45,7 @@ function borrowerDetail(id, savedForm) {
   setupBorrowerChain(dialog, d);
   setupBorrowerDeletion(dialog, d);
   setupBorrowerNavigation(dialog, id);
+  if (typeof setupBorrowerVoip === 'function') setupBorrowerVoip(dialog, d);
   bindBorrowerSheetTabs(dialog, id);
   dialog.querySelectorAll('[data-sheet-collection-receipt]').forEach((button) => {
     button.onclick = () => openCollectionReceipt(button.dataset.sheetCollectionReceipt);

@@ -221,6 +221,7 @@
       const close = event.target.closest?.('button');
       const closeButton =
         close?.closest('dialog') === dialog &&
+        !close.closest('[data-modal-layer]') &&
         ['Kapat', 'Vazgeç', 'İptal'].includes(close.textContent.trim());
       if (!(closeButton || (event.detail && wasOutside && outside(event, dialog)))) return;
       event.preventDefault();
@@ -234,6 +235,11 @@
     (event) => {
       if (!event.target.matches('dialog') || event.target === warning) return;
       event.preventDefault();
+      const layer = event.target.querySelector('[data-modal-layer]:not([hidden])');
+      if (layer) {
+        layer.dispatchEvent(new Event('modal-layer-dismiss'));
+        return;
+      }
       dismiss(event.target);
     },
     true,

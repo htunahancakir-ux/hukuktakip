@@ -42,8 +42,7 @@ async function requestConversationReport(documentId, { force = false } = {}) {
       throw Error(data.error || 'Görüşme özeti oluşturulamadı.');
     }
     const doc = db.docs.find((d) => d.id === documentId);
-    if (doc && (doc.conversations || []).length === data.report.sourceCount)
-      doc.conversationReport = data.report;
+    if (doc) doc.conversationReport = data.report;
     return data.report;
   })();
   conversationReportRequests.set(requestKey, task);
@@ -54,9 +53,10 @@ async function requestConversationReport(documentId, { force = false } = {}) {
   }
 }
 function bindConversationReport(doc, form) {
-  const output = form.querySelector('[data-conversation-report]');
-  const status = form.querySelector('[data-conversation-report-status]');
-  const button = form.querySelector('[data-generate-conversation-report]');
+  const root = form.closest('[data-borrower-panel="conversations"]') || form;
+  const output = root.querySelector('[data-conversation-report]');
+  const status = root.querySelector('[data-conversation-report-status]');
+  const button = root.querySelector('[data-generate-conversation-report]');
   if (!output || !button) return;
   const refresh = async (force = false) => {
     button.disabled = true;

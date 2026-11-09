@@ -59,6 +59,12 @@ function aiSettingsPage() {
   </section>`;
   bindSettingsSectionTabs();
   const form = $('#aiConfigForm');
+  form
+    .querySelector('.grid')
+    .insertAdjacentHTML(
+      'beforeend',
+      `<div class="full"><h3>Ses kayıtlarını yazıya çevirme</h3></div><label class="settings-check"><input type="checkbox" name="transcriptionEnabled" ${config.transcriptionEnabled !== false ? 'checked' : ''}> Yazıya çevirmeyi etkinleştir</label><label class="field">Ses çözümleme modeli<input data-optional="true" name="transcriptionModel" value="${esc(config.transcriptionModel || 'openai/gpt-transcribe')}" maxlength="128"><small>Yukarıdaki sağlayıcı ve kimlik bilgileri kullanılır. Bu alan özet modelinden ayrıdır. Gateway için sağlayıcı/model, OpenAI için model adı kullanılır; özel sağlayıcı /audio/transcriptions desteği sunmalıdır. İşlemler Görüşme Kayıtları ekranından başlatılır.</small></label>`,
+    );
   const setCustomValues = (provider) => {
     form.elements.providerName.value = provider?.name || '';
     form.elements.baseUrl.value = provider?.baseUrl || '';
@@ -107,6 +113,7 @@ function aiSettingsPage() {
   const readInput = () => {
     const input = Object.fromEntries(new FormData(form));
     input.enabled = form.elements.enabled.checked;
+    input.transcriptionEnabled = form.elements.transcriptionEnabled.checked;
     input.clearApiKey = form.elements.clearApiKey?.checked === true;
     input.provider = String(input.provider || '').trim();
     input.model = String(input.model || '').trim();

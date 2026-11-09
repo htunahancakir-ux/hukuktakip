@@ -469,6 +469,7 @@ async function launchApplication() {
   await Promise.all(workspaceScripts.map(loadClassicScript));
   hanStartupData = null;
   accessMenu();
+  setupVoipNavigation();
   refreshBackupIndicator();
   startPresenceHeartbeat();
   if (embeddedIntake) return;
