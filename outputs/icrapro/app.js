@@ -301,7 +301,7 @@ function render() {
     const form = document.getElementById('prospectForm');
     const updateProspectFields = () => {
       const existing = form.elements.status.value === 'Mevcut Müvekkil';
-      for (const name of ['date', 'time', 'staffId', 'contact', 'phone', 'city', 'district', 'address']) {
+      for (const name of ['staffId', 'contact', 'phone', 'city', 'district', 'address']) {
         const input = form.elements[name];
         const container = input?.closest('.field');
         if (container) container.style.display = existing ? 'none' : '';
