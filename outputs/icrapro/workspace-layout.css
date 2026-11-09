@@ -1086,3 +1086,131 @@ dialog:not(.compact-borrower-sheet),
     width: 100%;
   }
 }
+
+.expense-pool-table .expense-pool-in {
+  background: #e9f7ee;
+  color: #146c38;
+}
+.expense-pool-table .expense-pool-out {
+  background: #fff0f0;
+  color: #a42626;
+}
+dialog.expense-pool-dialog {
+  width: 1450px;
+  max-width: 96vw;
+  max-height: 92vh;
+}
+.expense-pool-body {
+  padding: 18px 22px;
+}
+.expense-pool-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 15px;
+}
+.expense-pool-summary > div {
+  padding: 12px 15px;
+  border: 1px solid #e1e9ed;
+  border-radius: 8px;
+  background: #f8fafb;
+}
+.expense-pool-summary small {
+  display: block;
+  color: #617387;
+  font-size: 11px;
+}
+.expense-pool-summary strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 17px;
+  color: #173c4a;
+}
+.expense-pool-filters {
+  display: flex;
+  gap: 10px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+.expense-pool-filters .field {
+  width: 170px;
+  gap: 4px;
+}
+.expense-pool-filters input {
+  padding: 8px;
+}
+.expense-pool-filters button,
+.expense-pool-pagination button {
+  padding: 8px 13px;
+}
+.expense-pool-status {
+  margin: 8px 0;
+  font-size: 11px;
+  color: #637789;
+}
+.expense-pool-scroll {
+  max-height: 54vh;
+  overflow: auto;
+  border: 1px solid #e3eaee;
+  border-radius: 8px;
+}
+.expense-pool-table {
+  width: 100%;
+  min-width: 990px;
+  table-layout: fixed;
+}
+.expense-pool-table th,
+.expense-pool-table td {
+  padding: 9px 8px;
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+.expense-pool-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.expense-pool-table th:nth-child(1) {
+  width: 90px;
+}
+.expense-pool-table th:nth-child(2) {
+  width: 140px;
+}
+.expense-pool-table th:nth-child(3),
+.expense-pool-table th:nth-child(4) {
+  width: 120px;
+}
+.expense-pool-table th:nth-child(6),
+.expense-pool-table th:nth-child(7),
+.expense-pool-table th:nth-child(8) {
+  width: 110px;
+}
+.expense-pool-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 12px;
+  font-size: 12px;
+}
+.expense-pool-pagination > div {
+  display: flex;
+  gap: 8px;
+}
+@media (max-width: 600px) {
+  .expense-pool-body {
+    padding: 12px;
+  }
+  .expense-pool-summary {
+    gap: 6px;
+  }
+  .expense-pool-summary > div {
+    padding: 8px;
+  }
+  .expense-pool-summary strong {
+    font-size: 13px;
+    overflow-wrap: anywhere;
+  }
+}

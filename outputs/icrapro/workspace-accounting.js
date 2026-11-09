@@ -112,40 +112,80 @@ function expensePoolHistory() {
     return toast(error.message);
   }
   const accounts = new Map(accounting.accounts.map((account) => [account.id, account.name]));
+  const balances = new Map();
+  let running = 0;
+  const chronological = data.movements
+    .slice()
+    .sort(
+      (a, b) =>
+        String(a.date).localeCompare(String(b.date)) ||
+        (a.kind === 'fund' ? 0 : 1) - (b.kind === 'fund' ? 0 : 1) ||
+        String(a.createdAt || '').localeCompare(String(b.createdAt || '')) ||
+        String(a.id).localeCompare(String(b.id)),
+    );
+  for (const row of chronological) {
+    running += row.kind === 'fund' ? row.amount : -row.amount;
+    balances.set(row, running);
+  }
   const dialog = $('#modal');
-  dialog.innerHTML = `<div class="panelhead"><div><h2>Masraf Avansı Hareketleri</h2><p>Ortak havuz ve dosyalara yapılan dağıtımlar</p></div><button type="button" class="secondary" id="closeExpensePoolHistory">Kapat</button></div><div class="formbody"><p>Toplam avans: <b>${money(data.funded / 100)}</b> · Dağıtılan: <b>${money(data.allocated / 100)}</b> · Kalan: <b>${money(data.balance / 100)}</b></p><div class="overflow"><table><thead><tr><th>TARİH</th><th>İŞLEM</th><th>KASA / DOSYA</th><th>PERSONEL</th><th>AÇIKLAMA</th><th>TUTAR</th></tr></thead><tbody>${data.movements.map((row) => `<tr><td>${esc(displayDate(row.date))}</td><td>${row.kind === 'fund' ? 'Avans Girişi' : row.type === 'expense' ? 'Borca Eklenen Masraf' : 'Borca Eklenmeyen Masraf'}</td><td>${esc(row.kind === 'fund' ? accounts.get(row.accountId) || 'Hesap' : row.documentNumber || 'Dosya')}</td><td>${esc(row.operatorName || '—')}</td><td>${esc(row.note || '—')}</td><td>${money(row.amount / 100)}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">Henüz avans hareketi yok.</td></tr>'}</tbody></table></div></div>`;
-  const filter = document.createElement('form');
-  filter.className = 'grid';
-  filter.innerHTML =
-    '<label class="field">Başlangıç Tarihi<input type="date" name="from"></label><label class="field">Bitiş Tarihi<input type="date" name="to"></label><div class="toolbar"><button type="submit" class="primary">Filtrele</button><button type="button" class="secondary" id="clearExpensePoolDates">Temizle</button></div><p role="status" id="expensePoolFilterStatus"></p>';
-  const table = dialog.querySelector('table');
-  table.closest('.overflow').before(filter);
-  const rows = [...table.tBodies[0].rows];
-  const status = filter.querySelector('#expensePoolFilterStatus');
-  const applyFilter = () => {
+  dialog.classList.add('expense-pool-dialog');
+  dialog.addEventListener('close', () => dialog.classList.remove('expense-pool-dialog'), { once: true });
+  dialog.innerHTML = `<div class="panelhead"><div><h2>Masraf Avansı Hareketleri</h2><p>Ortak havuz ve dosyalara yapılan dağıtımlar</p></div><button type="button" class="secondary" id="closeExpensePoolHistory">Kapat</button></div><div class="expense-pool-body"><div class="expense-pool-summary"><div><small>Toplam avans</small><strong>${money(data.funded / 100)}</strong></div><div><small>Dağıtılan</small><strong>${money(data.allocated / 100)}</strong></div><div><small>Kalan</small><strong>${money(data.balance / 100)}</strong></div></div><form id="expensePoolFilter" class="expense-pool-filters"><label class="field">Başlangıç Tarihi<input type="date" name="from"></label><label class="field">Bitiş Tarihi<input type="date" name="to"></label><button type="submit" class="primary">Filtrele</button><button type="button" class="secondary" id="clearExpensePoolDates">Temizle</button></form><p role="status" id="expensePoolFilterStatus" class="expense-pool-status"></p><div class="overflow expense-pool-scroll"><table class="expense-pool-table"><thead><tr><th>TARİH</th><th>İŞLEM</th><th>KASA / DOSYA</th><th>PERSONEL</th><th>AÇIKLAMA</th><th>GİREN</th><th>ÇIKAN</th><th>KALAN</th></tr></thead><tbody></tbody></table></div><div class="expense-pool-pagination"><span id="expensePoolPageInfo" aria-live="polite"></span><div><button type="button" class="secondary" id="expensePoolPrev">Önceki</button><button type="button" class="secondary" id="expensePoolNext">Sonraki</button></div></div></div>`;
+  const filter = document.getElementById('expensePoolFilter');
+  const tbody = dialog.querySelector('tbody');
+  const status = document.getElementById('expensePoolFilterStatus');
+  const prev = document.getElementById('expensePoolPrev');
+  const next = document.getElementById('expensePoolNext');
+  let filtered = data.movements.slice(),
+    pageIndex = 0;
+  const pageSize = 50;
+  const renderPage = () => {
+    const start = pageIndex * pageSize;
+    const page = filtered.slice(start, start + pageSize);
+    tbody.innerHTML =
+      page
+        .map(
+          (row) =>
+            `<tr class="${row.kind === 'fund' ? 'expense-pool-in' : 'expense-pool-out'}"><td>${esc(displayDate(row.date))}</td><td>${row.kind === 'fund' ? 'Avans Girişi' : row.type === 'expense' ? 'Borca Eklenen Masraf' : 'Borca Eklenmeyen Masraf'}</td><td>${esc(row.kind === 'fund' ? accounts.get(row.accountId) || 'Hesap' : row.documentNumber || 'Dosya')}</td><td>${esc(row.operatorName || '—')}</td><td>${esc(row.note || '—')}</td><td>${row.kind === 'fund' ? money(row.amount / 100) : '—'}</td><td>${row.kind === 'fund' ? '—' : money(row.amount / 100)}</td><td>${money(balances.get(row) / 100)}</td></tr>`,
+        )
+        .join('') || '<tr><td colspan="8" class="empty">Bu aralıkta hareket bulunamadı.</td></tr>';
+    document.getElementById('expensePoolPageInfo').textContent = filtered.length
+      ? start + 1 + '–' + (start + page.length) + ' / ' + filtered.length + ' hareket'
+      : '0 hareket';
+    prev.disabled = pageIndex === 0;
+    next.disabled = start + pageSize >= filtered.length;
+  };
+  filter.onsubmit = (event) => {
+    event.preventDefault();
     const from = filter.elements.from.value,
       to = filter.elements.to.value;
     if (from && to && from > to) {
       status.textContent = 'Başlangıç tarihi bitiş tarihinden sonra olamaz.';
       return;
     }
-    let count = 0;
-    data.movements.forEach((movement, index) => {
-      const show = (!from || movement.date >= from) && (!to || movement.date <= to);
-      rows[index].hidden = !show;
-      if (show) count++;
-    });
-    status.textContent = count + ' hareket listeleniyor. Üstteki avans bakiyesi tüm tarihleri kapsar.';
+    filtered = data.movements.filter((row) => (!from || row.date >= from) && (!to || row.date <= to));
+    pageIndex = 0;
+    status.textContent = 'Üstteki toplamlar tüm tarihleri kapsar.';
+    renderPage();
   };
-  filter.onsubmit = (event) => {
-    event.preventDefault();
-    applyFilter();
-  };
-  filter.querySelector('#clearExpensePoolDates').onclick = () => {
+  document.getElementById('clearExpensePoolDates').onclick = () => {
     filter.reset();
-    applyFilter();
+    filter.requestSubmit();
+  };
+  prev.onclick = () => {
+    if (pageIndex > 0) {
+      pageIndex--;
+      renderPage();
+    }
+  };
+  next.onclick = () => {
+    if ((pageIndex + 1) * pageSize < filtered.length) {
+      pageIndex++;
+      renderPage();
+    }
   };
   document.getElementById('closeExpensePoolHistory').onclick = () => dialog.close();
+  renderPage();
   if (!dialog.open) dialog.showModal();
 }
 

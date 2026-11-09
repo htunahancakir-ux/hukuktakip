@@ -154,19 +154,78 @@ test('Avans hareketlerinde tarih aralığı iki uç dahil filtrelenir ve temizle
     });
     w.eval(fs.readFileSync('outputs/icrapro/workspace-accounting.js', 'utf8'));
     w.expensePoolHistory();
-    const form = w.document.querySelector('#expensePoolFilterStatus').closest('form');
+    const form = w.document.querySelector('#expensePoolFilter');
     form.elements.from.value = '2026-01-02';
     form.elements.to.value = '2026-01-03';
     form.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
-    assert.deepEqual(
-      [...w.document.querySelectorAll('#modal tbody tr')].map((row) => row.hidden),
-      [true, false, false],
-    );
+    assert.equal(w.document.querySelectorAll('#modal tbody tr').length, 2);
     form.querySelector('#clearExpensePoolDates').click();
+    assert.equal(w.document.querySelectorAll('#modal tbody tr').length, 3);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('Avans hareketleri giren, çıkan ve önceki hareketleri içeren kalanı gösterir', () => {
+  const { dom, w } = setup();
+  try {
+    w.authApi = () => ({
+      funded: 10000,
+      allocated: 3000,
+      balance: 7000,
+      movements: [
+        { id: 'use', date: '2026-01-03', amount: 3000, kind: 'allocation', type: 'expense' },
+        { id: 'fund', date: '2026-01-01', amount: 10000, kind: 'fund' },
+      ],
+    });
+    w.eval(fs.readFileSync('outputs/icrapro/workspace-accounting.js', 'utf8'));
+    w.expensePoolHistory();
+    const rows = [...w.document.querySelectorAll('.expense-pool-table tbody tr')];
+    assert(rows[0].classList.contains('expense-pool-out'));
+    assert(rows[1].classList.contains('expense-pool-in'));
     assert.deepEqual(
-      [...w.document.querySelectorAll('#modal tbody tr')].map((row) => row.hidden),
-      [false, false, false],
+      [...rows[0].cells].slice(-3).map((cell) => cell.textContent),
+      ['—', '30', '70'],
     );
+    assert.deepEqual(
+      [...rows[1].cells].slice(-3).map((cell) => cell.textContent),
+      ['100', '—', '100'],
+    );
+    const form = w.document.querySelector('#expensePoolFilter');
+    form.elements.from.value = '2026-01-03';
+    form.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+    assert.equal(w.document.querySelectorAll('.expense-pool-table tbody tr').length, 1);
+    assert.equal(w.document.querySelector('.expense-pool-table tbody tr').cells[7].textContent, '70');
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('Avans hareketleri 50 kayıtlık sayfalarda gösterilir', () => {
+  const { dom, w } = setup();
+  try {
+    w.authApi = () => ({
+      funded: 10100,
+      allocated: 0,
+      balance: 10100,
+      movements: Array.from({ length: 101 }, (_, i) => ({
+        id: String(i),
+        date: '2026-01-01',
+        amount: 100,
+        kind: 'fund',
+      })),
+    });
+    w.eval(fs.readFileSync('outputs/icrapro/workspace-accounting.js', 'utf8'));
+    w.expensePoolHistory();
+    assert.equal(w.document.querySelectorAll('.expense-pool-table tbody tr').length, 50);
+    assert.match(w.document.getElementById('expensePoolPageInfo').textContent, /1–50 \/ 101/);
+    w.document.getElementById('expensePoolNext').click();
+    assert.match(w.document.getElementById('expensePoolPageInfo').textContent, /51–100 \/ 101/);
+    w.document.getElementById('expensePoolNext').click();
+    assert.equal(w.document.querySelectorAll('.expense-pool-table tbody tr').length, 1);
+    assert.equal(w.document.getElementById('expensePoolNext').disabled, true);
+    w.document.getElementById('expensePoolPrev').click();
+    assert.equal(w.document.querySelectorAll('.expense-pool-table tbody tr').length, 50);
   } finally {
     dom.window.close();
   }
