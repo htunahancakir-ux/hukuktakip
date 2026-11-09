@@ -125,6 +125,15 @@ test('Client pages, selected attachments and isolated edits preserve totals, per
       rest.items.map((c) => c.id),
       ['c121'],
     );
+    const general = await get('/api/search?' + new URLSearchParams({ q: 'sak' }));
+    assert.deepEqual(
+      general.items
+        .filter((c) => c.type === 'client')
+        .slice(0, 3)
+        .map((c) => c.id)
+        .sort(),
+      ['c121', 'c2', 'c80'],
+    );
     assert.equal((await get('/api/records/clients?' + new URLSearchParams({ q: "' OR 1=1 --" }))).count, '0');
     assert.equal(
       (
