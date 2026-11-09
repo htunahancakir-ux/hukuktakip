@@ -121,6 +121,11 @@ function authApi(url, method = 'GET', data) {
   const request = new XMLHttpRequest();
   request.open(method, url, false);
   request.setRequestHeader('X-Han-Request', '1');
+  if (typeof ceoPinScope === 'function') {
+    const scope = ceoPinScope(url);
+    if (scope && window.hanPinProofs?.[scope])
+      request.setRequestHeader('X-Han-Pin-Proof', window.hanPinProofs[scope]);
+  }
   if (method === 'PUT' && url.startsWith('/api/data?') && hanDataVersions.has(url))
     request.setRequestHeader('If-Match', hanDataVersions.get(url));
   if (data !== undefined) request.setRequestHeader('Content-Type', 'application/json');
@@ -145,8 +150,13 @@ function authApi(url, method = 'GET', data) {
     typeof applyStaffBreakStatus === 'function'
   )
     applyStaffBreakStatus(result.activeBreak);
-  if (request.status < 200 || request.status >= 300)
+  if (request.status < 200 || request.status >= 300) {
+    if (result.code === 'CEO_PIN_REQUIRED' && typeof requireCeoPin === 'function')
+      void requireCeoPin(result.pinScope).then((ok) => {
+        if (ok) toast('PIN doğrulandı. İşlemi tekrar deneyin.');
+      });
     throw Object.assign(Error(result.error || 'İşlem yapılamadı.'), { code: result.code });
+  }
   const version = request.getResponseHeader('ETag');
   if (result.accountBalances) window.hanAccountBalances = result.accountBalances;
   if (method === 'GET' && url === '/api/session') window.hanRecordsEnabled = result.recordStore === true;
@@ -251,6 +261,14 @@ function showAccountPanel() {
     <div class="actions"><button type="button" class="secondary" id="openAccountTerms">Sözleşme geçmişim</button><span><button type="button" class="secondary" id="cancelAccountSettings">Vazgeç</button><button type="submit" class="primary">Şifreyi değiştir</button></span></div>
   </form>`;
   const form = document.getElementById('accountSettingsForm');
+  if (user.role === 'ceo') {
+    const pinButton = document.createElement('button');
+    pinButton.type = 'button';
+    pinButton.className = 'secondary';
+    pinButton.textContent = 'Güvenlik PIN’i Belirle / Değiştir';
+    pinButton.onclick = () => showCeoPinSettings();
+    form.querySelector('.account-settings-form').append(pinButton);
+  }
   installPasswordVisibility(form);
   const close = () => modal.close();
   document.getElementById('closeAccountSettings').onclick = close;
@@ -286,8 +304,9 @@ function openHeaderNotifications() {
   render();
 }
 
-function openDeletionPanel() {
+async function openDeletionPanel() {
   if (!hanAuth.canDelete) return;
+  if (typeof requireCeoPin === 'function' && !(await requireCeoPin('delete'))) return;
   let dialog = document.getElementById('deleteOperationsDialog');
   if (!dialog) {
     dialog = document.createElement('dialog');

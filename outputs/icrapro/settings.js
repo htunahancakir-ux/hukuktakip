@@ -354,7 +354,20 @@ function backupSettingsPage() {
 }
 
 const originalSettings = settings;
-settings = function () {
+let settingsRenderId = 0;
+settings = async function () {
+  const renderId = ++settingsRenderId;
+  const requestedTab = settingsTab;
+  const pinScope = ['integrations', 'voip', 'ai', 'whatsapp'].includes(settingsTab)
+    ? 'integrations'
+    : settingsTab === 'permissions'
+      ? 'permissions'
+      : null;
+  if (pinScope && typeof requireCeoPin === 'function') {
+    $('#content').textContent = 'Güvenlik doğrulaması bekleniyor…';
+    if (!(await requireCeoPin(pinScope))) return;
+    if (renderId !== settingsRenderId || requestedTab !== settingsTab || page !== 'settings') return;
+  }
   if (settingsTab === 'integrations') settingsTab = 'voip';
   if (settingsTab === 'voip') return voipSettingsPage();
   if (settingsTab === 'permissions') return voipPermissionsPage();

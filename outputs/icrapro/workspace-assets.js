@@ -1,6 +1,7 @@
 // Classic scripts share the workspace state. Load definitions before the
 // dashboard state and application entry point, which render the first page.
 const workspaceScripts = [
+  'workspace-ceo-pin.js',
   'accounting-rules.js',
   'profit-rules.js',
   'phone-format.js',

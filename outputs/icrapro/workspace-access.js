@@ -1,4 +1,8 @@
-function userManagement(editId) {
+async function userManagement(editId) {
+  if (window.hanAuth?.role === 'ceo' && typeof requireCeoPin === 'function') {
+    $('#content').textContent = 'Güvenlik doğrulaması bekleniyor…';
+    if (!(await requireCeoPin('permissions')) || page !== 'users') return;
+  }
   let users;
   try {
     users = authApi('/api/users');
