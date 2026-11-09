@@ -275,7 +275,7 @@ function render() {
     document.getElementById('content').innerHTML = `
       <section class="panel">
         <div class="panelhead"><div><h2>Pazarlama</h2><p>Potansiyel müvekkil bilgileri</p></div>
-          <button class="primary" type="button" id="addProspect" aria-expanded="false" aria-controls="prospectForm">＋ Potansiyel Müvekkil Ekle</button>
+          <div class="toolbar"><button class="primary" type="button" id="addProspect" aria-expanded="false" aria-controls="prospectForm">＋ Potansiyel Müvekkil Ekle</button><button class="secondary" type="button" id="marketingBack">← Geri</button></div>
         </div>
         <form id="prospectForm" class="formbody" hidden>
           <h3>Potansiyel Müvekkil Bilgileri</h3>
@@ -299,6 +299,18 @@ function render() {
     setupClientDistrict('prospect');
     const button = document.getElementById('addProspect');
     const form = document.getElementById('prospectForm');
+    document.getElementById('marketingBack').onclick = () => {
+      if (!form.hidden) {
+        editingProspectId = null;
+        form.reset();
+        updateProspectFields();
+        form.hidden = true;
+        button.setAttribute('aria-expanded', 'false');
+      } else {
+        page = 'home';
+        render();
+      }
+    };
     const updateProspectFields = () => {
       const existing = form.elements.status.value === 'Mevcut Müvekkil';
       for (const name of ['staffId', 'contact', 'phone', 'city', 'district', 'address']) {
