@@ -129,7 +129,7 @@ window.fetch = async (url, options = {}) => {
       .json()
       .catch(() => ({}));
     if (error.code === 'CEO_PIN_REQUIRED' && (await requireCeoPin(scope))) {
-      headers.set('X-Han-Pin-Proof', window.hanPinProofs[scope]);
+      headers.delete('X-Han-Pin-Proof');
       return originalPinFetch(url, { ...options, headers });
     }
   }
