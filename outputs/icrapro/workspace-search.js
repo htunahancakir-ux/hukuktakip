@@ -57,12 +57,19 @@ function setupWorkspaceSearch() {
     controller = request;
     show('Aranıyor…');
     try {
-      const response = await fetch('/api/search?q=' + encodeURIComponent(query), {
-        signal: request.signal,
-        cache: 'no-store',
-      });
-      if (!response.ok) throw Error('Arama tamamlanamadı. Yeniden deneyin.');
+      const response = await fetch(
+        (window.hanRecordsEnabled ? '/api/records/search' : '/api/search') +
+          '?q=' +
+          encodeURIComponent(query),
+        {
+          signal: request.signal,
+          cache: 'no-store',
+          credentials: 'same-origin',
+          headers: { 'X-Han-Request': '1' },
+        },
+      );
       const data = await response.json();
+      if (!response.ok) throw Error(data.error || 'Arama tamamlanamadı. Yeniden deneyin.');
       if (request.signal.aborted || input.value.trim() !== query) return;
       items = data.items;
       if (!items.length) return show('Eşleşen kayıt bulunamadı.');

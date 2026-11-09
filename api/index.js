@@ -9,12 +9,6 @@ module.exports = async function (req, res) {
       background: waitUntil,
       store: process.env.DATABASE_URL ? createStore(createPool()) : undefined,
     });
-  const url = new URL(req.url, 'https://localhost');
-  const route = req.query?.route || url.searchParams.get('route');
-  if (typeof route === 'string') {
-    url.pathname = '/api/' + route;
-    url.searchParams.delete('route');
-    req.url = url.pathname + url.search;
-  }
+  req.url = require('../lib/api-request-url.cjs').apiRequestUrl(req);
   return handler(req, res);
 };

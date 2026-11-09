@@ -5,6 +5,35 @@ const path = require('node:path');
 const { JSDOM } = require('jsdom');
 const root = path.resolve(__dirname, '../outputs/icrapro');
 
+test('Üst arama yazılan metni sunucuya taşır ve müvekkil sonucunu gösterir', async (t) => {
+  const dom = new JSDOM(
+    '<form id="workspaceSearch"><input id="workspaceSearchQuery"><div id="workspaceSearchResults" hidden></div></form>',
+    { url: 'https://example.test', runScripts: 'dangerously' },
+  );
+  t.after(() => dom.window.close());
+  const w = dom.window;
+  w.AbortController = AbortController;
+  w.hanRecordsEnabled = true;
+  w.esc = (s) => s;
+  const requests = [];
+  w.fetch = async (url) => {
+    requests.push(url);
+    return {
+      ok: true,
+      json: async () => ({ items: [{ type: 'client', id: 'sak', label: 'Sakarya Mobilya' }] }),
+    };
+  };
+  w.eval(fs.readFileSync(path.join(root, 'workspace-search.js'), 'utf8'));
+  w.setupWorkspaceSearch();
+  const input = w.document.getElementById('workspaceSearchQuery');
+  input.value = 'sak';
+  input.dispatchEvent(new w.Event('input', { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 260));
+  assert.equal(new URL(requests[0], w.location.origin).searchParams.get('q'), 'sak');
+  assert.equal(w.document.getElementById('workspaceSearchResults').hidden, false);
+  assert.match(w.document.getElementById('workspaceSearchResults').textContent, /Sakarya Mobilya/);
+});
+
 test('Client UI keeps global totals across pages, loads one editor and saves only changed client fields', async (t) => {
   const dom = new JSDOM(
     '<div id="stats"></div><span id="count"></span><input id="search"><div id="clientSuggestions"></div><table><tbody id="rows"></tbody></table><div id="total"></div>',

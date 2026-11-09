@@ -25,7 +25,14 @@ test('Active record storage preserves existing HTTP commands, audit, auth and sc
     await importRecords(pool);
     await activateRecords(pool);
     const store = createStore(pool, { records: true });
-    server = await serve(createApplication({ store }));
+    const application = createApplication({ store });
+    server = await serve((req, res) => {
+      const original = new URL(req.url, 'http://localhost');
+      req.query = { ...Object.fromEntries(original.searchParams), route: original.pathname.slice(5) };
+      req.url = '/api/index';
+      req.url = require('../lib/api-request-url.cjs').apiRequestUrl(req);
+      return application(req, res);
+    });
     const login = await fetch(server.url + '/api/login', {
       method: 'POST',
       headers: { 'X-Han-Request': '1', 'Content-Type': 'application/json' },
