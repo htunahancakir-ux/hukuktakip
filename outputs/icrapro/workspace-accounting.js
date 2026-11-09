@@ -70,8 +70,83 @@ function accountOptions(value = '') {
   );
 }
 
-function collectionAccountField(direction = 'in') {
-  return `<label class="field">${direction === 'out' ? 'Paranın Çıktığı Kasa / Banka' : 'Paranın Girdiği Kasa / Banka'} *<select name="accountId" required>${accountOptions()}</select><small>Hesapları Muhasebe bölümünden ekleyebilirsiniz.</small></label>`;
+function collectionAccountField(direction = 'in', { expensePool = false } = {}) {
+  return `<label class="field">${direction === 'out' ? 'Paranın Çıktığı Kasa / Banka' : 'Paranın Girdiği Kasa / Banka'} *<select name="accountId" required>${accountOptions()}${expensePool ? '<option value="__expense_pool__">Masraf Avansı (Ortak Havuz)</option>' : ''}</select><small>Hesapları Muhasebe bölümünden ekleyebilirsiniz.</small></label>`;
+}
+
+function showExpensePoolFunding() {
+  const dialog = $('#modal');
+  dialog.innerHTML = `<form id="expensePoolFundingForm"><div class="panelhead"><div><h2>Masraf Avansı Oluştur</h2><p>Seçilen hesaptan çıkış, işlem tarihinde gider olarak kaydedilir.</p></div><button type="button" class="secondary" id="closeExpensePoolFunding">Kapat</button></div><div class="formbody grid"><label class="field">Kaynak Kasa / Banka<select name="accountId" required>${accountOptions()}</select></label>${field('İşlem Tarihi', 'date', 'date', businessDate(), true)}${field('Tutar (TL)', 'amount', 'number', '', true)}${field('Açıklama', 'note', 'text', '', true, true)}</div><div class="actions"><button class="primary" type="submit">Avansa Aktar</button></div></form>`;
+  const form = document.getElementById('expensePoolFundingForm');
+  const requestId = crypto.randomUUID();
+  document.getElementById('closeExpensePoolFunding').onclick = () => dialog.close();
+  if (!dialog.open) dialog.showModal();
+  form.onsubmit = (event) => {
+    event.preventDefault();
+    if (!form.reportValidity()) return;
+    const button = form.querySelector('button[type="submit"]');
+    if (button.disabled) return;
+    const values = Object.fromEntries(new FormData(form));
+    values.amount = financeCents(values.amount);
+    values.id = requestId;
+    button.disabled = true;
+    try {
+      authApi('/api/expense-pool/fund', 'POST', values);
+      if (!window.hanRecordsEnabled) accounting = authApi('/api/data?key=hanhukuk-accounting-v1');
+      dialog.close();
+      accountingPage();
+      toast('Masraf avansı kaydedildi.');
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      button.disabled = false;
+    }
+  };
+}
+
+function expensePoolHistory() {
+  let data;
+  try {
+    data = authApi('/api/expense-pool');
+  } catch (error) {
+    return toast(error.message);
+  }
+  const accounts = new Map(accounting.accounts.map((account) => [account.id, account.name]));
+  const dialog = $('#modal');
+  dialog.innerHTML = `<div class="panelhead"><div><h2>Masraf Avansı Hareketleri</h2><p>Ortak havuz ve dosyalara yapılan dağıtımlar</p></div><button type="button" class="secondary" id="closeExpensePoolHistory">Kapat</button></div><div class="formbody"><p>Toplam avans: <b>${money(data.funded / 100)}</b> · Dağıtılan: <b>${money(data.allocated / 100)}</b> · Kalan: <b>${money(data.balance / 100)}</b></p><div class="overflow"><table><thead><tr><th>TARİH</th><th>İŞLEM</th><th>KASA / DOSYA</th><th>PERSONEL</th><th>AÇIKLAMA</th><th>TUTAR</th></tr></thead><tbody>${data.movements.map((row) => `<tr><td>${esc(displayDate(row.date))}</td><td>${row.kind === 'fund' ? 'Avans Girişi' : row.type === 'expense' ? 'Borca Eklenen Masraf' : 'Borca Eklenmeyen Masraf'}</td><td>${esc(row.kind === 'fund' ? accounts.get(row.accountId) || 'Hesap' : row.documentNumber || 'Dosya')}</td><td>${esc(row.operatorName || '—')}</td><td>${esc(row.note || '—')}</td><td>${money(row.amount / 100)}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">Henüz avans hareketi yok.</td></tr>'}</tbody></table></div></div>`;
+  const filter = document.createElement('form');
+  filter.className = 'grid';
+  filter.innerHTML =
+    '<label class="field">Başlangıç Tarihi<input type="date" name="from"></label><label class="field">Bitiş Tarihi<input type="date" name="to"></label><div class="toolbar"><button type="submit" class="primary">Filtrele</button><button type="button" class="secondary" id="clearExpensePoolDates">Temizle</button></div><p role="status" id="expensePoolFilterStatus"></p>';
+  const table = dialog.querySelector('table');
+  table.closest('.overflow').before(filter);
+  const rows = [...table.tBodies[0].rows];
+  const status = filter.querySelector('#expensePoolFilterStatus');
+  const applyFilter = () => {
+    const from = filter.elements.from.value,
+      to = filter.elements.to.value;
+    if (from && to && from > to) {
+      status.textContent = 'Başlangıç tarihi bitiş tarihinden sonra olamaz.';
+      return;
+    }
+    let count = 0;
+    data.movements.forEach((movement, index) => {
+      const show = (!from || movement.date >= from) && (!to || movement.date <= to);
+      rows[index].hidden = !show;
+      if (show) count++;
+    });
+    status.textContent = count + ' hareket listeleniyor. Üstteki avans bakiyesi tüm tarihleri kapsar.';
+  };
+  filter.onsubmit = (event) => {
+    event.preventDefault();
+    applyFilter();
+  };
+  filter.querySelector('#clearExpensePoolDates').onclick = () => {
+    filter.reset();
+    applyFilter();
+  };
+  document.getElementById('closeExpensePoolHistory').onclick = () => dialog.close();
+  if (!dialog.open) dialog.showModal();
 }
 
 function accountMovements() {
@@ -189,6 +264,19 @@ function accountingPage(remote) {
       .join(
         '',
       )}</select></label><label class="field">İşlemi Yapan Kullanıcı<input name="operator" list="accountingOperators" data-optional="true" value="${esc(movementFilters.operator)}" placeholder="Tüm kullanıcılar"><datalist id="accountingOperators">${operators.map((n) => `<option value="${esc(n)}"></option>`).join('')}</datalist></label><label class="field">Gider Kalemi<select name="category" data-optional="true"><option value="">Tüm Gider Kalemleri</option>${accountingExpenseCategories.map((n) => `<option value="${esc(n)}" ${movementFilters.category === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label><label class="field">Açıklama / İşlem Ara<input type="search" name="query" data-optional="true" value="${esc(movementFilters.query)}" placeholder="Açıklama, evrak no veya kullanıcı…"></label></div><div class="toolbar" style="margin-top:16px"><button class="primary" type="submit">Filtrele</button><button class="secondary" type="button" id="clearMovementFilters">Filtreleri Temizle</button></div><p>${esc(totals.count)} hareket · Net hareket: <b>${amount(totals.net)}</b>. Tarih aralığı başlangıç ve bitiş günlerini içerir.</p></form></details><div class="overflow"><table><thead><tr><th>TARİH</th><th>HESAP</th><th>İŞLEM</th><th>GİDER KALEMİ</th><th>İŞLEMİ YAPAN</th><th>AÇIKLAMA</th><th>GİRİŞ</th><th>ÇIKIŞ</th></tr></thead><tbody>${rows.map((e) => `<tr><td>${esc(displayDate(e.date))}</td><td>${esc(name(e.accountId))}</td><td>${esc(e.label)}</td><td>${esc(e.type === 'out' ? e.expenseCategory || 'Belirtilmedi' : '—')}</td><td>${esc(e.operatorName || 'Belirtilmedi')}</td><td>${esc(e.note)}</td><td>${e.signed > 0 ? amount(e.signed) : '—'}</td><td>${e.signed < 0 ? amount(-BigInt(e.signed)) : '—'}</td></tr>`).join('') || '<tr><td colspan="8" class="empty">Henüz hesap hareketi yok.</td></tr>'}</tbody><tfoot><tr><td colspan="6"><strong>FİLTRELENEN TOPLAM</strong></td><td><strong>${amount(totals.incoming)}</strong></td><td><strong>${amount(totals.outgoing)}</strong></td></tr></tfoot></table></div></div>`;
+  const poolPanel = document.createElement('div');
+  poolPanel.className = 'panel formbody';
+  poolPanel.style.marginBottom = '22px';
+  try {
+    const pool = authApi('/api/expense-pool');
+    poolPanel.innerHTML = `<div class="panelhead"><div><h2>Ortak Masraf Avansı</h2><p>Kasa çıkışı gider olarak kaydedilir; dosyalara dağıtım ikinci bir gider oluşturmaz.</p></div><div class="toolbar"><button type="button" class="primary" id="fundExpensePool">Masraf Avansı Oluştur</button><button type="button" class="secondary" id="expensePoolHistory">Avans Hareketleri</button></div></div><p>Toplam avans: <b>${money(pool.funded / 100)}</b> · Dağıtılan: <b>${money(pool.allocated / 100)}</b> · Kalan: <b>${money(pool.balance / 100)}</b></p>`;
+    document.getElementById('content').prepend(poolPanel);
+    document.getElementById('fundExpensePool').onclick = showExpensePoolFunding;
+    document.getElementById('expensePoolHistory').onclick = expensePoolHistory;
+  } catch (error) {
+    poolPanel.textContent = 'Masraf avansı bilgileri alınamadı: ' + error.message;
+    document.getElementById('content').prepend(poolPanel);
+  }
   if (remote) bindAccountingPagination(remote);
   const filterForm = $('#movementFilterForm');
   filterForm.onsubmit = (e) => {

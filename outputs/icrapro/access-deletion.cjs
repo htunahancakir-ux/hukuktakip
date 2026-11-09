@@ -76,6 +76,12 @@ async function handleDeletionRoutes(ctx) {
   );
   if (index < 0) throw fail(404, 'Kayıt bulunamadı; listeyi yenileyin.');
   const row = rows[index];
+  if (
+    input.type === 'accounting' &&
+    row.expensePoolFunding === true &&
+    require('../../lib/expense-pool.cjs').summary(next).balance < row.amount
+  )
+    throw fail(409, 'Bu avansın tamamı havuzda değil. Önce bağlı masraf dağıtımlarını düzeltin.');
   const revision = crypto.createHash('sha256').update(JSON.stringify(row)).digest('hex');
   if (input.revision !== revision) throw fail(409, 'Kayıt değişti; listeyi yenileyip tekrar kontrol edin.');
   const data = next.data,
@@ -104,6 +110,8 @@ async function handleDeletionRoutes(ctx) {
     doc.conversations = doc.conversations.filter((c) => c.id !== row.id);
     delete doc.conversationReport;
   } else rows.splice(index, 1);
+  if (input.type === 'accounting' && row.expensePoolFunding === true)
+    require('../../lib/expense-pool.cjs').assertNonnegativeHistory(next);
   if (input.type === 'finance' && row.type === 'payment') {
     const doc = docs.find((d) => d.id === row.documentId);
     if (doc?.status === 'İnfaz') {
