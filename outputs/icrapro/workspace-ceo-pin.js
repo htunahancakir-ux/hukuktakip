@@ -29,10 +29,12 @@ let ceoPinPending = null;
 async function requireCeoPin(scope) {
   if (window.hanAuth?.role !== 'ceo') return true;
   const config = authApi('/api/ceo-pin/status');
-  if (!config.configured || !config.scopes.includes(scope)) return true;
+  if (!config.configured || !config.scopes.includes(scope) || config.unlocked) return true;
   if (ceoPinPending) return ceoPinPending;
   ceoPinPending = new Promise((resolve) => {
     const dialog = document.createElement('dialog');
+    dialog.style.cssText =
+      'width:min(340px,calc(100vw - 32px));max-width:340px;min-width:0;padding:0;border-radius:14px;';
     dialog.innerHTML =
       '<form><div class="panelhead"><h2>Güvenlik PIN’i</h2></div><div class="formbody"><label class="field">4 haneli PIN<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="off" required></label><p role="status"></p></div><div class="actions"><button type="button" class="secondary">Vazgeç</button><button type="submit" class="primary">Doğrula</button></div></form>';
     document.body.append(dialog);
@@ -52,26 +54,6 @@ async function requireCeoPin(scope) {
           dialog.querySelector('[role="status"]').textContent = result.error;
           return;
         }
-        window.hanPinProofs[scope] = result.proof;
-        setTimeout(() => {
-          if (window.hanPinProofs[scope] !== result.proof) return;
-          delete window.hanPinProofs[scope];
-          if (scope === 'delete') document.getElementById('deleteOperationsDialog')?.close();
-          if (scope === 'permissions' && typeof page !== 'undefined' && ['users', 'personnel'].includes(page))
-            document.getElementById('content').textContent =
-              'Güvenlik süresi doldu. Bölümü tekrar açıp PIN girin.';
-          if (
-            typeof page !== 'undefined' &&
-            page === 'settings' &&
-            typeof settingsTab !== 'undefined' &&
-            (scope === 'integrations'
-              ? ['integrations', 'ai', 'voip', 'whatsapp'].includes(settingsTab)
-              : ['permissions', 'staff'].includes(settingsTab))
-          ) {
-            document.getElementById('content').textContent =
-              'Güvenlik süresi doldu. Bölümü tekrar açıp PIN girin.';
-          }
-        }, 60000);
         accepted = true;
         dialog.close();
       } catch (error) {

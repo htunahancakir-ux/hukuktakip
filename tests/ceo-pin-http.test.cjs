@@ -41,10 +41,14 @@ for (const records of [false, true])
           headers: { ...headers, ...(proof ? { 'X-Han-Pin-Proof': proof } : {}) },
           ...(value ? { body: JSON.stringify(value) } : {}),
         });
-        return { status: response.status, body: await response.json() };
+        return {
+          status: response.status,
+          cookie: response.headers.get('set-cookie'),
+          body: await response.json(),
+        };
       };
       const status = await request('/api/ceo-pin/status');
-      assert.deepEqual(status.body, { configured: true, scopes: pin.scopes });
+      assert.deepEqual(status.body, { configured: true, scopes: pin.scopes, unlocked: false });
       assert.equal(
         JSON.stringify((await request('/api/data?key=icrapro-settings-v1')).body).includes(state.ceoPin.hash),
         false,
@@ -53,8 +57,15 @@ for (const records of [false, true])
         assert.equal((await request(path)).status, 423);
       const verified = await request('/api/ceo-pin/verify', 'POST', { pin: '2580', scope: 'permissions' });
       assert.equal(verified.body.ok, true);
+      assert.match(verified.cookie, /HttpOnly/);
+      assert.doesNotMatch(verified.cookie, /Max-Age|Expires/i);
+      headers.cookie += '; ' + verified.cookie.split(';')[0];
+      assert.equal((await request('/api/ceo-pin/status')).body.unlocked, true);
+      assert.equal((await request('/api/users')).status, 200);
+      headers.cookie = 'han_session=' + token;
+      assert.equal((await request('/api/ceo-pin/status')).body.unlocked, false);
       assert.equal((await request('/api/users', 'GET', null, verified.body.proof)).status, 200);
-      assert.equal((await request('/api/voip/config', 'GET', null, verified.body.proof)).status, 423);
+      assert.equal((await request('/api/voip/config', 'GET', null, verified.body.proof)).status, 200);
       assert.equal((await request('/api/users', 'GET', null, verified.body.proof + 'x')).status, 423);
       for (let i = 0; i < 5; i++)
         assert.equal(

@@ -15,11 +15,11 @@ test('PIN hashlenir, beş hatalı denemede kilitlenir ve süre sonunda tekrar do
   await assert.rejects(createPin('12a4'));
   assert.equal((await checkPin('----', await createPin(pin), 100)).ok, false);
 });
-test('PIN kanıtı yalnızca aynı oturum ve bölümde geçerlidir ve süresi dolar', () => {
+test('PIN kanıtı yalnızca aynı oturumda bir saat geçerlidir ve süresi dolar', () => {
   const record = { proofKey: crypto.randomBytes(32).toString('hex') };
   const proof = issueProof(record, 'session-a', 'delete', 1000);
   assert.equal(proofValid(record, proof, 'session-a', 'delete', 1001), true);
   assert.equal(proofValid(record, proof, 'session-b', 'delete', 1001), false);
-  assert.equal(proofValid(record, proof, 'session-a', 'permissions', 1001), false);
-  assert.equal(proofValid(record, proof, 'session-a', 'delete', 61000), false);
+  assert.equal(proofValid(record, proof, 'session-a', 'permissions', 1001), true);
+  assert.equal(proofValid(record, proof, 'session-a', 'delete', 3601000), false);
 });

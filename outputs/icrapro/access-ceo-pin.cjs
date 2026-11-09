@@ -7,7 +7,11 @@ async function handleCeoPin(ctx) {
   if (u?.role !== 'ceo' || u.readOnly) throw fail(403, 'CEO yetkisi gerekli.');
   const current = ctx.state.ceoPin;
   if (url.pathname === '/api/ceo-pin/status' && req.method === 'GET') {
-    send(res, 200, { configured: !!current?.hash, scopes: current?.scopes || pin.scopes });
+    send(res, 200, {
+      configured: !!current?.hash,
+      scopes: current?.scopes || pin.scopes,
+      unlocked: pin.proofValid(current, pin.browserProof(req), sessionKey(req), '*'),
+    });
     return true;
   }
   if (req.method !== 'POST') throw fail(405, 'Yöntem desteklenmiyor.');
@@ -38,11 +42,20 @@ async function handleCeoPin(ctx) {
     next.ceoPin = checked.record;
     persistMetadata(next);
     // Failed attempts must commit in PostgreSQL as well as local storage.
+    const proof = checked.ok ? pin.issueProof(current, sessionKey(req), input.scope) : null;
+    if (proof)
+      res.setHeader(
+        'Set-Cookie',
+        'han_pin=' +
+          proof +
+          '; HttpOnly; SameSite=Strict; Path=/' +
+          (ctx.options?.secureCookies ? '; Secure' : ''),
+      );
     send(
       res,
       200,
       checked.ok
-        ? { ok: true, proof: pin.issueProof(current, sessionKey(req), input.scope) }
+        ? { ok: true, proof }
         : {
             ok: false,
             error: checked.lockedUntil
