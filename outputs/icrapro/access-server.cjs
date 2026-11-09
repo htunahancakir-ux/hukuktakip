@@ -87,6 +87,16 @@ function createAccess(stateFile, options = {}) {
     username: u.username,
     role: u.role,
     staffId: u.staffId || '',
+    marketingAccess:
+      ['ceo', 'admin'].includes(u.role) ||
+      state.data['icrapro-personnel-v1'].some(
+        (p) =>
+          p.id === u.staffId &&
+          p.active !== false &&
+          String(p.department || '')
+            .trim()
+            .toLocaleLowerCase('tr-TR') === 'pazarlama',
+      ),
     permissions: ['ceo', 'admin'].includes(u.role) ? permissions : u.permissions,
     active: u.active,
     readOnly: u.readOnly === true,

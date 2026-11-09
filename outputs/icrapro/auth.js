@@ -204,7 +204,8 @@ function hanCan(permission) {
 function hanPageAllowed(p) {
   return (
     ['ceo', 'admin'].includes(hanAuth?.role) ||
-    (!!hanAuth && ['home', 'messages', 'reports', 'reminders', 'marketing'].includes(p)) ||
+    (!!hanAuth && ['home', 'messages', 'reports', 'reminders'].includes(p)) ||
+    (p === 'marketing' && hanAuth?.marketingAccess === true) ||
     (p === 'accounting' && (hanCan('cashIn') || hanCan('cashOut'))) ||
     (p === 'clients' && hanCan('clients')) ||
     (['intake', 'documents'].includes(p) && hanCan('documents'))
@@ -662,6 +663,7 @@ function authGate(setup) {
         if (!window.confirm(error.message)) return;
         hanAuth = authApi(url, 'POST', { ...data, replaceSessions: true });
       }
+      hanAuth = authApi('/api/session').user;
       await enterWorkspace();
     } catch (error) {
       const output = document.getElementById('authError');

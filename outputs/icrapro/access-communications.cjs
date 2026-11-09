@@ -6,6 +6,10 @@ async function handleCommunicationRoutes(ctx) {
   const { req, res, url, u, persist, userEnabled, fail, body, send, crypto } = ctx;
   if (url.pathname === '/api/marketing-prospects') {
     const manager = ['ceo', 'admin'].includes(u.role);
+    const marketingStaff = ctx.state.data['icrapro-personnel-v1'].some(
+      (p) => p.id === u.staffId && p.active !== false && String(p.department || '').trim().toLocaleLowerCase('tr-TR') === 'pazarlama',
+    );
+    if (!manager && !marketingStaff) throw fail(403, 'Pazarlama bölümüne erişim yetkiniz yok.');
     if (req.method === 'GET') {
       const items = (ctx.state.marketingProspects || []).filter((item) => manager || item.createdBy === u.id);
       send(res, 200, { items });
