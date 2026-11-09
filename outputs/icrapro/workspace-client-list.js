@@ -157,3 +157,135 @@ async function saveRecordClient(before, next) {
   const baseline = hanDataBaselines.get('icrapro-v1');
   if (baseline) merge(baseline.clients);
 }
+function setupClientStatement(form, clientId, clientName = '') {
+  const panel = form.querySelector('[data-form-panel="financial"] .grid');
+  if (!panel) return;
+  const host = document.createElement('div');
+  host.className = 'full';
+  host.innerHTML =
+    '<h3>Hesap Ekstresi · Müvekkile Yapılan Ödemeler</h3><div class="grid"><label class="field">Başlangıç Tarihi<input type="date" data-statement-start data-optional="true"></label><label class="field">Bitiş Tarihi<input type="date" data-statement-end data-optional="true"></label></div><div class="toolbar"><button type="button" class="secondary" data-statement-filter>Filtrele</button><button type="button" class="secondary" data-statement-clear>Tümünü Göster</button></div><p data-statement-total role="status"></p><div class="overflow" style="max-height:48vh;overflow:auto"><table><thead><tr><th>TARİH</th><th>FÖY NO</th><th>BORÇLU ADI</th><th>ÖDENEN TUTAR</th><th>GÖNDEREN BANKA / KASA</th><th>AÇIKLAMA</th></tr></thead><tbody data-statement-rows></tbody></table></div><div class="tablefoot"><span data-statement-page></span><div class="toolbar"><button type="button" class="secondary" data-statement-prev>Önceki</button><button type="button" class="secondary" data-statement-next>Sonraki</button></div></div><small>Tarihi veya banka bilgisi olmayan eski toplu ödemeler ayrıca belirtilir; tarih filtresinde yer almaz.</small>';
+  panel.append(host);
+  if (clientName) host.querySelector('h3').textContent = clientName + ' · Hesap Ekstresi';
+  let offset = 0,
+    start = '',
+    end = '',
+    request,
+    opened = false;
+  const total = host.querySelector('[data-statement-total]');
+  const rows = host.querySelector('[data-statement-rows]');
+  const previous = host.querySelector('[data-statement-prev]');
+  const next = host.querySelector('[data-statement-next]');
+  async function load() {
+    request?.abort();
+    const current = new AbortController();
+    request = current;
+    total.textContent = 'Ödemeler yükleniyor…';
+    rows.replaceChildren();
+    previous.disabled = next.disabled = true;
+    try {
+      let data;
+      if (window.hanRecordsEnabled) {
+        const response = await fetch(
+          '/api/records/client?' +
+            new URLSearchParams({ id: clientId, section: 'statement', start, end, offset }),
+          { credentials: 'same-origin', cache: 'no-store', signal: current.signal },
+        );
+        data = await response.json();
+        if (!response.ok) throw Error(data.error || 'Hesap ekstresi alınamadı.');
+      } else {
+        const docs = new Map(db.docs.filter((d) => d.client === clientId).map((d) => [d.id, d]));
+        let items = accounting.entries
+          .filter(
+            (e) =>
+              e.type === 'clientPayout' && (e.clientId ? e.clientId === clientId : docs.has(e.documentId)),
+          )
+          .map((e) => ({
+            id: e.id,
+            date: e.date || '',
+            number: docs.get(e.documentId)?.number || '—',
+            debtor: docs.get(e.documentId)?.debtor || '—',
+            amount: String(e.amount),
+            bank:
+              e.accountName || accounting.accounts.find((a) => a.id === e.accountId)?.name || 'Belirtilmedi',
+            note: e.note || '',
+          }));
+        for (const d of docs.values())
+          if (Number(d.clientPaidAmount) > 0)
+            items.push({
+              id: 'legacy:' + d.id,
+              date: '',
+              number: d.number,
+              debtor: d.debtor,
+              amount: String(financeCents(d.clientPaidAmount)),
+              bank: 'Belirtilmedi',
+              note: 'Eski kayıttaki toplam ödeme · Tarih ve banka bilgisi bulunmuyor.',
+            });
+        items = items
+          .filter((e) => (!start || e.date >= start) && (!end || (e.date && e.date <= end)))
+          .sort((a, b) => b.date.localeCompare(a.date) || String(b.id).localeCompare(String(a.id)));
+        data = {
+          items: items.slice(offset, offset + 50),
+          totals: {
+            count: String(items.length),
+            paid: String(items.reduce((s, e) => s + BigInt(e.amount), 0n)),
+          },
+          more: offset + 50 < items.length,
+        };
+      }
+      if (!host.isConnected || request !== current || current.signal.aborted) return;
+      if (!data.items.length && offset > 0) {
+        offset = 0;
+        return load();
+      }
+      total.textContent = data.totals.count + ' ödeme · Toplam ödenen: ' + recordMoney(data.totals.paid);
+      rows.innerHTML =
+        data.items
+          .map(
+            (e) =>
+              `<tr><td>${esc(e.date ? displayDate(e.date) : 'Tarih yok')}</td><td>${esc(e.number)}</td><td>${esc(e.debtor)}</td><td style="white-space:nowrap"><strong>${esc(recordMoney(e.amount))}</strong></td><td>${esc(e.bank)}</td><td>${esc(e.note)}</td></tr>`,
+          )
+          .join('') || '<tr><td colspan="6" class="empty">Bu müvekkile yapılmış ödeme bulunamadı.</td></tr>';
+      host.querySelector('[data-statement-page]').textContent =
+        `${data.items.length ? offset + 1 : 0}–${offset + data.items.length} / ${data.totals.count}`;
+      previous.disabled = offset === 0;
+      next.disabled = !data.more;
+    } catch (error) {
+      if (!current.signal.aborted && host.isConnected) total.textContent = error.message;
+    }
+  }
+  previous.onclick = () => {
+    offset = Math.max(0, offset - 50);
+    load();
+  };
+  next.onclick = () => {
+    offset += 50;
+    load();
+  };
+  host.querySelector('[data-statement-filter]').onclick = () => {
+    const from = host.querySelector('[data-statement-start]').value,
+      to = host.querySelector('[data-statement-end]').value;
+    if (from && to && from > to) {
+      total.textContent = 'Başlangıç tarihi bitiş tarihinden sonra olamaz.';
+      return;
+    }
+    start = from;
+    end = to;
+    offset = 0;
+    load();
+  };
+  host.querySelector('[data-statement-clear]').onclick = () => {
+    host.querySelectorAll('input').forEach((i) => {
+      i.value = '';
+      if (i._dateProxy) i._dateProxy.value = '';
+    });
+    start = end = '';
+    offset = 0;
+    load();
+  };
+  form.addEventListener('record-form-tab', (event) => {
+    if (event.detail.key === 'financial' && !opened) {
+      opened = true;
+      load();
+    }
+  });
+}

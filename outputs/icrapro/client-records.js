@@ -375,7 +375,10 @@ function clientModal(id, loadedRecord) {
   const clientIbanInput = document.getElementById('clientForm').elements.iban;
   clientIbanInput.required = false;
   clientIbanInput.addEventListener('input', () => clientIbanInput.setCustomValidity(''));
+  $('#clientForm').dataset.clientId = id || '';
   setupRecordFormTabs($('#clientForm'), 'client');
+  if (id && ['ceo', 'admin'].includes(window.hanAuth?.role))
+    setupClientStatement($('#clientForm'), id, c.name || c.tradeName || c.fullName || '');
   setupExtraContacts($('#clientForm'), c);
   $('#modal').showModal();
   setupClientCity();

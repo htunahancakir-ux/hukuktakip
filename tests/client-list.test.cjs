@@ -194,3 +194,60 @@ test('Client UI keeps global totals across pages, loads one editor and saves onl
   await w.loadRecordClientPage();
   assert.equal(new URL(requests.at(-1).url, 'https://local-test.invalid').searchParams.has('after'), false);
 });
+
+test('Müvekkil düzenle finansal sekmesi ödeme ekstresini açar ve taslağı korur', async (t) => {
+  const dom = new JSDOM(
+    '<form id="clientForm" data-client-id="c"><div class="formbody"><div class="grid"><label class="field">Ad<input name="name" value="taslak"></label></div></div></form>',
+    { url: 'https://example.test', runScripts: 'dangerously' },
+  );
+  t.after(() => dom.window.close());
+  const w = dom.window;
+  Object.assign(w, {
+    AbortController,
+    hanAuth: { role: 'ceo' },
+    hanRecordsEnabled: true,
+    $: (s) => w.document.querySelector(s),
+    displayDate: (s) => s,
+    esc: (s) => String(s).replaceAll('<', '&lt;'),
+    recordMoney: (s) => String(s),
+  });
+  w.eval(fs.readFileSync(path.join(root, 'document-records.js'), 'utf8'));
+  w.eval(fs.readFileSync(path.join(root, 'workspace-client-list.js'), 'utf8'));
+  const requests = [];
+  w.fetch = async (url) => {
+    requests.push(url);
+    const offset = Number(new URL(url, w.location.origin).searchParams.get('offset'));
+    return {
+      ok: true,
+      json: async () => ({
+        items: [
+          {
+            id: 'p' + offset,
+            date: '2026-11-01',
+            number: 'F-001',
+            debtor: '<img src=x>',
+            amount: '100',
+            bank: 'Banka',
+            note: 'Ödeme',
+          },
+        ],
+        totals: { count: '51', paid: '5100' },
+        more: offset === 0,
+      }),
+    };
+  };
+  const form = w.document.querySelector('form');
+  w.setupRecordFormTabs(form, 'client');
+  w.setupClientStatement(form, 'c');
+  assert.equal(requests.length, 0);
+  form.querySelector('[data-form-tab="financial"]').click();
+  for (let i = 0; i < 8; i++) await new Promise(setImmediate);
+  assert.equal(form.querySelector('[data-form-panel="financial"]').hidden, false);
+  assert.match(form.querySelector('[data-statement-total]').textContent, /5100/);
+  assert.equal(form.querySelector('[data-statement-rows] tr').children.length, 6);
+  assert.equal(form.querySelector('img'), null);
+  form.querySelector('[data-statement-next]').click();
+  for (let i = 0; i < 8; i++) await new Promise(setImmediate);
+  assert.equal(new URL(requests.at(-1), w.location.origin).searchParams.get('offset'), '50');
+  assert.equal(form.elements.name.value, 'taslak');
+});

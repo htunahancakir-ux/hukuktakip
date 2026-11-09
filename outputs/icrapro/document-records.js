@@ -1147,6 +1147,8 @@ function setupRecordFormTabs(form, kind) {
           ['guarantors', 'Kefiller'],
           ['files', 'PDF / Fotoğraf'],
         ];
+  if (kind === 'client' && form.dataset.clientId && ['ceo', 'admin'].includes(window.hanAuth?.role))
+    definitions.push(['financial', 'Finansal İşlemler']);
   const body = form.querySelector('.formbody'),
     nodes = [];
   for (const node of [...body.children]) {
@@ -1199,6 +1201,7 @@ function setupRecordFormTabs(form, kind) {
       button.setAttribute('aria-selected', String(active));
     }
     form.dataset.activeFormTab = key;
+    form.dispatchEvent(new CustomEvent('record-form-tab', { detail: { key } }));
   }
   for (const [key, { button }] of panels) button.onclick = () => select(key);
   form.addEventListener(

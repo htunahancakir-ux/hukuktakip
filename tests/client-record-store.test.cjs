@@ -35,6 +35,7 @@ test('Client pages, selected attachments and isolated edits preserve totals, per
       docs: [
         {
           id: 'd1',
+          number: 'F-001',
           client: 'c0',
           debtor: 'Synthetic',
           identity: '20000000000',
@@ -48,7 +49,18 @@ test('Client pages, selected attachments and isolated edits preserve totals, per
     };
     state.data['hanhukuk-accounting-v1'] = {
       accounts: [{ id: 'cash', name: 'Kasa' }],
-      entries: [{ id: 'paid', documentId: 'd1', accountId: 'cash', type: 'clientPayout', amount: 1500 }],
+      entries: [
+        {
+          id: 'paid',
+          documentId: 'd1',
+          accountId: 'cash',
+          type: 'clientPayout',
+          amount: 1500,
+          date: '2026-11-01',
+          accountName: 'Gönderen Banka',
+          note: 'Kısmi ödeme',
+        },
+      ],
     };
     state.users.push(
       ...['allowed', 'denied'].map((username) => ({
@@ -147,6 +159,16 @@ test('Client pages, selected attachments and isolated edits preserve totals, per
       400,
     );
     const detail = await get('/api/records/client?id=c0');
+    const statement = await get('/api/records/client?id=c0&section=statement');
+    assert.equal(statement.totals.paid, '2500');
+    assert.equal(statement.totals.count, '2');
+    assert.ok(statement.items.every((e) => e.number === 'F-001'));
+    const period = await get('/api/records/client?id=c0&section=statement&start=2026-11-01&end=2026-11-01');
+    assert.equal(period.totals.paid, '1500');
+    assert.equal(period.items[0].bank, 'Gönderen Banka');
+    assert.equal(period.items[0].note, 'Kısmi ödeme');
+    const otherStatement = await get('/api/records/client?id=c122&section=statement');
+    assert.equal(otherStatement.totals.count, '0');
     assert.deepEqual(detail.record.attachments, []);
     assert.equal(detail.attachments.length, 1);
     const attachment = await get(
@@ -223,6 +245,10 @@ test('Client pages, selected attachments and isolated edits preserve totals, per
     const allowed = await login('allowed'),
       denied = await login('denied');
     const staff = await get('/api/records/clients', allowed);
+    assert.equal(
+      (await fetch(server.url + '/api/records/client?id=c0&section=statement', { headers: allowed })).status,
+      403,
+    );
     assert.equal(staff.count, '124');
     assert.equal(staff.summary, null, 'staff cannot fetch financial summary');
     assert.equal((await fetch(server.url + '/api/records/clients', { headers: denied })).status, 403);
