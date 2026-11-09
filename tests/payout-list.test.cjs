@@ -122,6 +122,22 @@ test('Payout UI pages complete totals, fetches selected detail only, and retries
     };
   };
   await w.clientPayoutPage();
+  assert.equal(w.document.querySelectorAll('thead th').length, 8);
+  assert.match(w.document.querySelector('thead').textContent, /MÜVEKKİL ADI.*BORÇLU ADI/);
+  const opened = [];
+  w.clientModal = (id) => opened.push(['client', id]);
+  w.recordAction = async (id, callback) => {
+    opened.push(['context', id]);
+    callback();
+  };
+  w.borrowerDetail = (id) => opened.push(['borrower', id]);
+  w.document.querySelector('[data-payout-client="c"]').click();
+  w.document.querySelector('[data-payout-borrower="d"]').click();
+  assert.deepEqual(opened, [
+    ['client', 'c'],
+    ['context', 'd'],
+    ['borrower', 'd'],
+  ]);
   const total = w.document.querySelector('tfoot').textContent;
   w.document.querySelector('#nextPayout').click();
   await tick();
