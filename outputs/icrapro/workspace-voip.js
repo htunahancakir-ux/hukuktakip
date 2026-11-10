@@ -813,6 +813,12 @@ function setupBorrowerVoip(dialog, doc) {
 }
 async function openVoipWebphone(feedback) {
   try {
+    const existing = document.getElementById('voipWebphone');
+    if (existing?.open && existing.querySelector('iframe')?.src) {
+      existing.style.visibility = 'visible';
+      existing.focus();
+      return;
+    }
     const result = await voipApi('webphone', 'POST', {});
     let phone = document.getElementById('voipWebphone');
     if (!phone) {
@@ -1357,6 +1363,20 @@ function openStandaloneVoip() {
   form.elements.phone.focus();
 }
 function setupVoipNavigation() {
+  if (!document.querySelector('[data-global-webphone]') && !hanAuth.readOnly) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'secondary';
+    button.dataset.globalWebphone = '';
+    button.textContent = '🎧 Web telefonu';
+    button.onclick = () =>
+      openVoipWebphone({
+        set textContent(message) {
+          if (typeof toast === 'function') toast(message);
+        },
+      });
+    document.querySelector('.header-actions')?.prepend(button);
+  }
   if (!document.querySelector('[data-standalone-voip]') && !hanAuth.readOnly) {
     const dial = document.createElement('button');
     dial.type = 'button';

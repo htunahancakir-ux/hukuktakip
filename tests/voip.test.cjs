@@ -196,6 +196,45 @@ test('standalone dialer shows last call before allowing a repeated call', async 
     dom.window.close();
   }
 });
+test('webphone is reachable from the header and restoring it does not reload an ongoing session', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('<div class="header-actions"></div><aside><nav></nav></aside>', {
+    url: 'https://example.test',
+    runScripts: 'dangerously',
+  });
+  try {
+    const w = dom.window;
+    let tokens = 0;
+    w.HTMLDialogElement.prototype.show = function () {
+      this.open = true;
+    };
+    Object.assign(w, {
+      hanAuth: { id: 'u', role: 'ceo' },
+      esc: String,
+      fetch: async () => {
+        tokens++;
+        return {
+          ok: true,
+          json: async () => ({ url: 'https://example.bulutsantralim.com/phone?token=preview' }),
+        };
+      },
+    });
+    w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    w.setupVoipNavigation();
+    w.document.querySelector('[data-global-webphone]').click();
+    await new Promise(setImmediate);
+    const phone = w.document.querySelector('#voipWebphone');
+    assert(phone.open);
+    phone.querySelector('button').click();
+    assert.equal(phone.style.visibility, 'hidden');
+    w.document.querySelector('[data-global-webphone]').click();
+    await new Promise(setImmediate);
+    assert.equal(tokens, 1);
+    assert.equal(phone.style.visibility, 'visible');
+  } finally {
+    dom.window.close();
+  }
+});
 test('only managers change user extensions; provider secrets and other assignments remain protected', async () => {
   const h = harness();
   const original = structuredClone(h.state.voipConfig);
