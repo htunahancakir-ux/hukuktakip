@@ -18,6 +18,7 @@ function setup(role = 'admin', status = 'Derdest') {
   const doc = { id: 'd1', number: 'D-1', debtor: 'Test', docType: 'Senet', status, amount: 1000 };
   const requests = [];
   Object.assign(w, {
+    structuredClone,
     hanAuth: { role, id: 'user', name: 'Test' },
     db: { docs: [doc] },
     financeEvents: [{ id: 'payment', documentId: 'd1', type: 'payment', amount: 1000, date: '2026-01-01' }],
@@ -56,19 +57,22 @@ function setup(role = 'admin', status = 'Derdest') {
     },
   });
   w.eval(fs.readFileSync('outputs/icrapro/finance-operations.js', 'utf8'));
+  const calculateFinance = w.docFinance;
   // Keep the UI test focused on the expense form and payment permission.
   w.docFinance = () => ({ remaining: 99000, principal: 100000, received: 1000, target: 100000, expenses: 0 });
   w.financeHistoryMarkup = () => '';
   w.bindFinanceHistory = () => {};
   w.setupFinanceOperationTabs = () => {};
-  return { dom, w, doc, requests };
+  return { dom, w, doc, requests, calculateFinance };
 }
 
 test('Yönetici tahsilatlı açık dosyada faiz ve ücreti değiştirebilir; personel ve infaz dosyası değiştiremez', () => {
   for (const [role, status, enabled] of [
     ['admin', 'Derdest', true],
+    ['ceo', 'Derdest', true],
     ['staff', 'Derdest', false],
     ['admin', 'İnfaz', false],
+    ['ceo', 'İnfaz', false],
   ]) {
     const { dom, w } = setup(role, status);
     try {
@@ -80,6 +84,78 @@ test('Yönetici tahsilatlı açık dosyada faiz ve ücreti değiştirebilir; per
     } finally {
       dom.window.close();
     }
+  }
+});
+
+test('CEO ve yöneticinin elle girdiği faiz ve ücret kaydedilip yeniden açıldığında borca yansır', () => {
+  const { applyAutomaticLegalCharges } = require('../outputs/icrapro/legal-charges.cjs');
+  for (const role of ['ceo', 'admin']) {
+    for (const paid of [false, true]) {
+      const { dom, w, doc, calculateFinance } = setup(role);
+      try {
+        w.docFinance = calculateFinance;
+        w.businessDate = () => '2026-11-10';
+        if (!paid) w.financeEvents = [];
+        Object.assign(doc, {
+          due: '2026-11-01',
+          financeInterest: 50,
+          financeFee: 100,
+          legalCalculation: { automatic: true },
+          _listFinance: { target: 115000, remaining: 114000, expenses: 0 },
+        });
+        let saved;
+        w.save = () => {
+          saved = JSON.parse(JSON.stringify(w.db));
+          // The server prepares the canonical record before returning it.
+          applyAutomaticLegalCharges(saved.docs[0], w.financeEvents, w.businessDate());
+          Object.assign(doc, saved.docs[0]);
+        };
+        w.financialOperations('d1');
+        const form = w.document.querySelector('#financeTerms');
+        form.elements.interest.value = '325.25';
+        form.elements.fee.value = '125.50';
+        form.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+        assert.equal(saved.docs[0].financeInterest, 325.25);
+        assert.equal(saved.docs[0].financeFee, 125.5);
+        assert.equal(saved.docs[0].financeTermsManual, true);
+        assert.equal(doc._listFinance, undefined);
+        // Simulate reloading the persisted record, including the next day's read.
+        w.db.docs = JSON.parse(JSON.stringify(saved.docs));
+        w.businessDate = () => '2026-11-11';
+        w.financialOperations('d1');
+        assert.equal(w.document.querySelector('#financeTerms').elements.interest.value, '325.25');
+        assert.equal(w.document.querySelector('#financeTerms').elements.fee.value, '125.5');
+        assert.equal(w.docFinance(w.db.docs[0]).target, 145075);
+        assert.equal(w.docFinance(w.db.docs[0]).remaining, 145075 - (paid ? 1000 : 0));
+        assert.match(w.document.querySelector('#financeTerms').textContent, /Toplam Borç: 1450.75/);
+      } finally {
+        dom.window.close();
+      }
+    }
+  }
+});
+
+test('Faiz kaydı başarısızsa eski tutarlar, otomatik hesap ve önbellek geri yüklenir', () => {
+  const { dom, w, doc } = setup();
+  try {
+    Object.assign(doc, {
+      financeInterest: 50,
+      financeFee: 100,
+      legalCalculation: { automatic: true },
+      automaticLegalKey: 'old-key',
+      _listFinance: { remaining: 99000, target: 100000, expenses: 0 },
+    });
+    const previous = structuredClone(doc);
+    w.save = () => {
+      throw Error('Kayıt başarısız');
+    };
+    w.financialOperations('d1');
+    const form = w.document.querySelector('#financeTerms');
+    form.elements.interest.value = '400';
+    form.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+    assert.deepEqual(JSON.parse(JSON.stringify(doc)), previous);
+  } finally {
+    dom.window.close();
   }
 });
 

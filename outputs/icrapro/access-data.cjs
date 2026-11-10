@@ -98,6 +98,7 @@ async function handleDataRoutes(ctx) {
         'discountHistory',
         'financeInterest',
         'financeFee',
+        'financeTermsManual',
       ];
       if (patchRequest && Array.isArray(incoming?.changes)) {
         for (const change of incoming.changes) {

@@ -319,16 +319,18 @@ function financialOperations(id, mode) {
       b = financeCents(v.fee);
     if (!Number.isSafeInteger(a) || !Number.isSafeInteger(b) || a < 0 || b < 0)
       return toast('Geçerli tutarlar girin.');
-    const previous = [d.financeInterest, d.financeFee],
-      previousListFinance = d._listFinance;
+    const previous = structuredClone(d);
     d.financeInterest = a / 100;
     d.financeFee = b / 100;
+    d.financeTermsManual = true;
+    delete d.legalCalculation;
+    delete d.legalCalculationError;
     delete d._listFinance;
     try {
       save();
     } catch (error) {
-      [d.financeInterest, d.financeFee] = previous;
-      if (previousListFinance !== undefined) d._listFinance = previousListFinance;
+      Object.keys(d).forEach((key) => delete d[key]);
+      Object.assign(d, previous);
       return toast(error.message || 'Tutarlar saklanamadı.');
     }
     financialOperations(id);
@@ -535,7 +537,7 @@ function bindFinanceHistory() {
 function automaticLegalCharges(d) {
   if (typeof applyParkingFee === 'function') applyParkingFee(d, businessDate());
   if (window.hanAuth && !['ceo', 'admin'].includes(hanAuth.role)) return;
-  if (d.repaymentPlan || isParkingDocument(d)) return;
+  if (d.financeTermsManual === true || d.repaymentPlan || isParkingDocument(d)) return;
   if (
     !d.due ||
     d.status === 'İade' ||
@@ -700,7 +702,9 @@ function openLegalCalculator(id) {
         const previous = structuredClone(d);
         d.financeInterest = result.interest.amount / 100;
         d.financeFee = result.fee.amount / 100;
+        d.financeTermsManual = true;
         d.legalCalculation = result;
+        delete d._listFinance;
         try {
           save();
         } catch {

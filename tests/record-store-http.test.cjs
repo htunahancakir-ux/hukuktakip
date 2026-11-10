@@ -5,6 +5,105 @@ const { createApplication } = require('../lib/application.cjs');
 const { importState, createStore } = require('../lib/postgres-store.cjs');
 const { importRecords, activateRecords } = require('../lib/record-store/storage.cjs');
 const { diff } = require('../outputs/icrapro/record-patch.js');
+test('CEO/admin manual interest survives scoped saves, reloads and balance reports; staff/closed files stay locked', async () => {
+  const { pg, pool } = await database();
+  let server;
+  try {
+    const state = fixture();
+    state.users.push(
+      { ...state.users[0], id: 'admin', username: 'admin', role: 'admin' },
+      { ...state.users[0], id: 'staff', username: 'staff', role: 'staff' },
+    );
+    state.data['icrapro-v1'] = {
+      clients: [{ id: 'client', name: 'Faiz Testi' }],
+      docs: ['unpaid', 'paid', 'closed'].map((id) => ({
+        id,
+        number: id,
+        client: 'client',
+        debtor: id,
+        docType: 'Senet',
+        amount: 1000,
+        due: '2026-11-01',
+        status: id === 'closed' ? 'İnfaz' : 'Derdest',
+        financeInterest: 50,
+        financeFee: 100,
+      })),
+    };
+    state.data['hanhukuk-accounting-v1'].accounts = [{ id: 'cash', name: 'Kasa' }];
+    state.data['hanhukuk-finance-v1'] = ['paid', 'closed'].map((id) => ({
+      id: 'payment-' + id,
+      documentId: id,
+      type: 'payment',
+      accountId: 'cash',
+      amount: id === 'closed' ? 115000 : 10000,
+      date: '2026-11-02',
+    }));
+    await importState(pool, state);
+    await importRecords(pool);
+    await activateRecords(pool);
+    const store = createStore(pool, { records: true });
+    server = await serve(createApplication({ store }));
+    for (const username of ['test', 'admin', 'staff']) {
+      const login = await fetch(server.url + '/api/login', {
+        method: 'POST',
+        headers: { 'X-Han-Request': '1', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      assert.equal(login.status, 200);
+      const headers = {
+        'X-Han-Request': '1',
+        'Content-Type': 'application/json',
+        cookie: login.headers.get('set-cookie').split(';')[0],
+      };
+      const load = async (id) =>
+        (await fetch(server.url + '/api/records/document?id=' + id + '&section=context', { headers })).json();
+      const patch = (before, after) =>
+        fetch(server.url + '/api/data/patch?key=icrapro-v1', {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify(
+            diff('icrapro-v1', { docs: [before], clients: [] }, { docs: [after], clients: [] }),
+          ),
+        });
+      for (const id of ['unpaid', 'paid']) {
+        const before = (await load(id)).record;
+        const interest = username === 'admin' ? 450.75 : 325.25;
+        const after = { ...before, financeInterest: interest, financeFee: 125.5, financeTermsManual: true };
+        const response = await patch(before, after);
+        if (username === 'staff') {
+          assert.equal(response.status, 403);
+          const flagResponse = await patch(before, { ...before, financeTermsManual: false });
+          assert.equal(flagResponse.status, 403);
+          continue;
+        }
+        const body = await response.json();
+        assert.equal(response.status, 200, JSON.stringify(body));
+        assert.equal(body.records[0].value.financeInterest, interest);
+        assert.equal(body.records[0].value.financeFee, 125.5);
+        const reloaded = (await load(id)).record;
+        assert.equal(reloaded.financeInterest, interest);
+        assert.equal(reloaded.financeTermsManual, true);
+        const noteResponse = await patch(reloaded, { ...reloaded, notes: 'Sonraki işlem' });
+        assert.equal(noteResponse.status, 200, await noteResponse.text());
+        const page = await (await fetch(server.url + '/api/records/documents?q=' + id, { headers })).json();
+        const row = page.items.find((item) => item.id === id);
+        assert.equal(row.targetCents, String(100000 + Math.round(interest * 100) + 12550));
+        assert.equal(row.remainingCents, String(Number(row.targetCents) - (id === 'paid' ? 10000 : 0)));
+        assert.equal(
+          (await store.readState()).data['icrapro-v1'].docs.find((doc) => doc.id === id).financeInterest,
+          interest,
+        );
+      }
+      const closed = (await load('closed')).record;
+      const denied = await patch(closed, { ...closed, financeInterest: 400, financeTermsManual: true });
+      assert.equal(denied.status, 403);
+    }
+  } finally {
+    await server?.close();
+    await pg.close();
+  }
+});
+
 test('Active record storage preserves existing HTTP commands, audit, auth and scoped edits', async () => {
   const { pg, pool } = await database();
   let server;
