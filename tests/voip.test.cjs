@@ -1096,3 +1096,89 @@ test('installed AI SDK uses the configured Gateway transcription model and uploa
   assert.equal(Buffer.from(sent.body.audio, 'base64').toString(), 'ID3 synthetic');
   assert.equal(result.text, 'Örnek AI metni');
 });
+
+test('canceling an in-flight originate persists intent and hangs up as soon as the provider ID arrives', async () => {
+  let release;
+  const requests = [];
+  const h = harness(async (url) => {
+    const path = new URL(url).pathname;
+    requests.push(path);
+    if (path === '/originate')
+      return await new Promise((resolve) => {
+        release = () => resolve(new Response('00000000-0000-0000-0000-000000000001'));
+      });
+    return new Response('OK');
+  });
+  const input = { documentId: 'd', phone: '05320000000', requestId: 'cancel-during-start-001' };
+  const starting = h.call('start', 'POST', input);
+  while (!release) await new Promise(setImmediate);
+  h.user = { id: 's', role: 'staff' };
+  await assert.rejects(
+    h.call('cancel-start', 'POST', { requestId: input.requestId }),
+    (e) => e.status === 409,
+  );
+  h.user = { id: 'u', role: 'ceo' };
+  await h.call('cancel-start', 'POST', { requestId: input.requestId });
+  assert.equal(h.state.voipCalls[0].cancelRequested, true);
+  release();
+  const result = await starting;
+  assert.equal(result.call.cancelRequested, true);
+  assert(requests.includes('/hangup/00000000-0000-0000-0000-000000000001'));
+  assert.equal(
+    result.call.status,
+    'ringing',
+    'Wait for confirmed provider termination instead of inventing an ended state',
+  );
+});
+
+test('cancel control is immediately visible while originate is pending', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('<div id="area"></div>', { url: 'https://example.test', runScripts: 'dangerously' });
+  try {
+    const w = dom.window;
+    let release,
+      cancellations = 0;
+    w.fetch = async (url) => {
+      if (url.endsWith('/start'))
+        return await new Promise((resolve) => {
+          release = () =>
+            resolve({ ok: true, json: async () => ({ call: { id: 'call', status: 'ringing' } }) });
+        });
+      cancellations++;
+      return { ok: true, json: async () => ({ ok: true }) };
+    };
+    w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    const pending = w.voipStartCancelable(
+      { requestId: 'cancel-ui-start-001' },
+      w.document.getElementById('area'),
+      () => {},
+    );
+    const button = w.document.querySelector('[data-cancel-starting]');
+    assert(button && !button.disabled);
+    button.click();
+    await new Promise(setImmediate);
+    assert.equal(cancellations, 1);
+    release();
+    assert.equal((await pending).call.cancelRequested, true);
+    assert.equal(w.document.querySelector('[data-cancel-starting]'), null);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('provider busy termination overrides an answered announcement and closes the active state', () => {
+  const call = {
+    status: 'answered',
+    createdAt: new Date().toISOString(),
+    answeredAt: new Date().toISOString(),
+  };
+  updateEvent(call, {
+    event_type: 'hangup',
+    answered: true,
+    failure_status: '486',
+    hangup_cause: 'USER_BUSY',
+    duration: 0,
+  });
+  assert.equal(call.status, 'busy');
+  assert(call.endedAt);
+});

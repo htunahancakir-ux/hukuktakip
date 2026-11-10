@@ -9,8 +9,58 @@ async function voipApi(path, method = 'GET', value) {
     ...(value ? { body: JSON.stringify(value) } : {}),
   });
   const result = await response.json();
-  if (!response.ok) throw Error(result.error || 'Telefon işlemi tamamlanamadı.');
+  if (!response.ok)
+    throw Object.assign(Error(result.error || 'Telefon işlemi tamamlanamadı.'), { status: response.status });
   return result;
+}
+async function voipStartCancelable(input, container, report) {
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'voip-hangup';
+  cancel.dataset.cancelStarting = '';
+  cancel.textContent = 'Sonlandır / İptal et';
+  container.append(cancel);
+  cancel.scrollIntoView?.({ block: 'nearest' });
+  let requested = false,
+    finished = false,
+    cancellation;
+  const requestCancel = async () => {
+    while (true) {
+      try {
+        await voipApi('cancel-start', 'POST', { requestId: input.requestId });
+        return;
+      } catch (error) {
+        if (error.status !== 409 || finished) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+    }
+  };
+  cancel.onclick = () => {
+    if (requested) return;
+    requested = true;
+    cancel.disabled = true;
+    cancel.textContent = 'İptal ediliyor…';
+    report('İptal istendi; santralin çağrıyı kapatması bekleniyor.');
+    cancellation = requestCancel().catch((error) => report(error.message));
+  };
+  try {
+    const result = await voipApi('start', 'POST', input);
+    finished = true;
+    if (requested) {
+      await cancellation;
+      // Also covers cancellation arriving before the reservation was created.
+      try {
+        await voipApi('cancel-start', 'POST', { requestId: input.requestId });
+      } catch (error) {
+        result.call.cancelError = error.message;
+      }
+      result.call.cancelRequested = true;
+    }
+    return result;
+  } finally {
+    finished = true;
+    cancel.remove();
+  }
 }
 function voipDate(value) {
   return value
@@ -695,12 +745,16 @@ function setupBorrowerVoip(dialog, doc) {
         message('Arama başlatılıyor…', 'notice');
         panel.querySelectorAll('[data-dial-phone]').forEach((b) => (b.disabled = true));
         try {
-          const result = await voipApi('start', 'POST', {
-            documentId: doc.id,
-            phone,
-            confirmRecent: confirmed,
-            requestId: crypto.randomUUID(),
-          });
+          const result = await voipStartCancelable(
+            {
+              documentId: doc.id,
+              phone,
+              confirmRecent: confirmed,
+              requestId: crypto.randomUUID(),
+            },
+            panel,
+            (text) => message(text, 'notice'),
+          );
           confirmation = '';
           feedback = '';
           showVoipActive(doc, result.call);
@@ -1012,6 +1066,11 @@ function showVoipActive(doc, call) {
   };
   voipUi.updateActive = update;
   update(call);
+  if (call.cancelRequested)
+    message(
+      call.cancelError || 'İptal istendi. Santralden kapanış bilgisi bekleniyor.',
+      call.cancelError ? 'error' : 'notice',
+    );
   const muteButton = host.querySelector('[data-current-mute]');
   const muteLabel = () => {
     muteButton.setAttribute('aria-pressed', String(muted));
@@ -1416,11 +1475,17 @@ function openStandaloneVoip() {
         e.target.disabled = true;
         feedback.textContent = 'Arama başlatılıyor…';
         try {
-          const result = await voipApi('start', 'POST', {
-            phone: normalized,
-            confirmRecent: !!recent,
-            requestId: crypto.randomUUID(),
-          });
+          const result = await voipStartCancelable(
+            {
+              phone: normalized,
+              confirmRecent: !!recent,
+              requestId: crypto.randomUUID(),
+            },
+            preview,
+            (text) => {
+              feedback.textContent = text;
+            },
+          );
           dialog.close();
           voipUi.minimized = false;
           showVoipActive({ id: '', number: 'Dosyasız arama', debtor: '' }, result.call);
