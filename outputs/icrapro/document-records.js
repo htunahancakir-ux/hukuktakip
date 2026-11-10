@@ -482,7 +482,7 @@ function debtorColumnInput(key, label, options) {
     return (
       '<select' +
       attrs +
-      '><option value="">Tümü</option>' +
+      '><option value="">Tüm evrak türleri</option>' +
       options
         .map((option) => '<option' + (value === option ? ' selected' : '') + '>' + esc(option) + '</option>')
         .join('') +
