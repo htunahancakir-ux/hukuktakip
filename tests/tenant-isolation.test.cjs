@@ -141,6 +141,49 @@ test('Shared PostgreSQL isolates tenant data, sessions and writes with RLS', asy
       );
     });
 
+    await t.test('VoIP calls, settings and active-call limits stay within each office', async () => {
+      const voip = require('../lib/voip-store.cjs');
+      const call = {
+        id: 'same-call',
+        documentId: 'same-doc',
+        phone: '905320000000',
+        userId: 'test-ceo',
+        requestId: 'same-request',
+        createdAt: '2026-11-10T09:00:00.000Z',
+        status: 'ringing',
+      };
+      for (const [db, name] of [
+        [a, 'first'],
+        [b, 'second'],
+      ])
+        await voip.transaction(
+          db,
+          true,
+          (tx) => {
+            tx.state.voipConfig = { provider: 'verimor', label: name };
+            tx.state.voipCalls.push({ ...call, staffName: name });
+            tx.saveState(tx.state);
+          },
+          { configWrite: true },
+        );
+      for (const [db, name] of [
+        [a, 'first'],
+        [b, 'second'],
+      ]) {
+        const seen = await voip.transaction(
+          db,
+          true,
+          (tx) => ({ config: tx.state.voipConfig, calls: tx.state.voipCalls }),
+          { list: { offset: 0 } },
+        );
+        assert.equal(seen.config.label, name);
+        assert.deepEqual(
+          seen.calls.map((row) => row.staffName),
+          [name],
+        );
+      }
+    });
+
     await t.test('connection role and tenant settings are reset after rollback and reuse', async () => {
       await assert.rejects(a.query('SELECT 1/0'), (e) => e.code === '22012');
       assert.equal(
@@ -230,6 +273,66 @@ test('Tenant migration preserves existing active records, unknown metadata and a
       WHERE n.nspname IN ('han_private','han_data') AND c.relkind='r'
         AND c.relname<>'han_migrations' AND NOT c.relrowsecurity`);
     assert.equal(rows[0].n, 0);
+  } finally {
+    await pg.close();
+  }
+});
+
+test('VoIP tables created after tenant isolation receive tenant keys and RLS', async () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { pg, pool } = await database(false);
+  try {
+    for (const name of ['001-state.sql', '002-audit.sql'])
+      await pg.exec(fs.readFileSync(path.join(__dirname, '../migrations', name), 'utf8'));
+    const directory = path.join(__dirname, '../supabase/migrations');
+    const voipMigration = '20261110090000_tenant_voip_tables.sql';
+    for (const name of fs
+      .readdirSync(directory)
+      .filter((name) => name.endsWith('.sql') && name < voipMigration)
+      .sort()) {
+      await pg.exec('BEGIN');
+      await pg.exec(fs.readFileSync(path.join(directory, name), 'utf8'));
+      await pg.exec('COMMIT');
+    }
+    // An office that adopted tenant isolation first, then deployed VoIP.
+    await pg.exec(fs.readFileSync(path.join(__dirname, '../migrations/003-voip.sql'), 'utf8'));
+    await pg.exec('BEGIN');
+    await pg.exec(fs.readFileSync(path.join(directory, voipMigration), 'utf8'));
+    await pg.exec('COMMIT');
+    const { rows } = await pool.query(`SELECT c.relname, c.relrowsecurity AS rls,
+      EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attname='tenant_id') AS tenant
+      FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+      WHERE n.nspname='han_private' AND c.relkind='r' AND c.relname LIKE 'voip%' ORDER BY c.relname`);
+    assert.deepEqual(
+      rows.map((row) => [row.relname, row.rls, row.tenant]),
+      [
+        ['voip_calls', true, true],
+        ['voip_config', true, true],
+        ['voip_recording_access', true, true],
+      ],
+    );
+    const office = await createTenant(pool, { slug: 'late-voip', name: 'Late VoIP', ownerUserId: 'owner' });
+    const voip = require('../lib/voip-store.cjs');
+    for (const db of [createTenantPool(pool, LEGACY_TENANT_ID), createTenantPool(pool, office.id)])
+      await voip.transaction(
+        db,
+        false,
+        (tx) => {
+          tx.state.voipCalls.push({
+            id: 'call',
+            documentId: 'doc',
+            phone: '905320000000',
+            userId: 'user',
+            requestId: 'request',
+            createdAt: '2026-11-10T09:00:00.000Z',
+            status: 'answered',
+          });
+          tx.saveState(tx.state);
+        },
+        {},
+      );
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM han_private.voip_calls')).rows[0].n, 2);
   } finally {
     await pg.close();
   }
