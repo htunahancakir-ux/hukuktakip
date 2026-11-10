@@ -138,7 +138,9 @@
   let drag = null;
   function decorate(dialog) {
     if (!dialog.open) return;
-    const header = dialog.querySelector('.panelhead, .terms-gate-head') || dialog.querySelector('h1,h2,h3');
+    const header =
+      dialog.querySelector('.panelhead, .terms-gate-head, .voip-workspace-heading') ||
+      dialog.querySelector('h1,h2,h3');
     if (header && header.closest('dialog') === dialog) header.classList.add('modal-drag-handle');
   }
   function stop() {
@@ -154,8 +156,8 @@
     if (drag?.dialog === dialog) stop();
     const state = moved.get(dialog);
     if (!state) return;
-    if (state.original) dialog.style.setProperty('translate', state.original, state.priority);
-    else dialog.style.removeProperty('translate');
+    if (state.original) state.target.style.setProperty('translate', state.original, state.priority);
+    else state.target.style.removeProperty('translate');
     moved.delete(dialog);
   }
   document.addEventListener('pointerdown', (event) => {
@@ -170,15 +172,17 @@
     event.preventDefault();
     let state = moved.get(dialog);
     if (!state) {
-      const value = getComputedStyle(dialog).translate;
+      const target = dialog.closest('.voip-phone-dock') || dialog;
+      const value = getComputedStyle(target).translate;
       const parts = value && value !== 'none' ? value.split(/\s+/) : ['0', '0'];
-      const rect = dialog.getBoundingClientRect();
+      const rect = target.getBoundingClientRect();
       const pixels = (v, size) => (parseFloat(v) || 0) * (v?.endsWith('%') ? size / 100 : 1);
       state = {
+        target,
         x: pixels(parts[0], rect.width),
         y: pixels(parts[1], rect.height),
-        original: dialog.style.getPropertyValue('translate'),
-        priority: dialog.style.getPropertyPriority('translate'),
+        original: target.style.getPropertyValue('translate'),
+        priority: target.style.getPropertyPriority('translate'),
       };
       moved.set(dialog, state);
     }
@@ -213,7 +217,7 @@
       const dy = Math.max(8 - rect.top, Math.min(innerHeight - 40 - rect.top, event.clientY - drag.y));
       state.x = drag.startX + dx;
       state.y = drag.startY + dy;
-      drag.dialog.style.setProperty('translate', `${state.x}px ${state.y}px`);
+      state.target.style.setProperty('translate', `${state.x}px ${state.y}px`);
     },
     { passive: false },
   );

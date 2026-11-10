@@ -81,3 +81,40 @@ test('Pencereler başlıktan sürüklenir, sınırda erişilebilir kalır ve yen
   await tick();
   assert(second.querySelector('h2').classList.contains('modal-drag-handle'));
 });
+
+test('phone dock frame and content move together from the dialog heading', async (t) => {
+  const dom = new JSDOM(
+    '<div class="voip-phone-dock"><dialog open><div class="panelhead"><h2>Numara ile arama</h2></div><form><input></form></dialog></div>',
+    { runScripts: 'dangerously', url: 'https://example.test' },
+  );
+  t.after(() => dom.window.close());
+  const w = dom.window,
+    dock = w.document.querySelector('.voip-phone-dock'),
+    dialog = dock.querySelector('dialog'),
+    header = dialog.querySelector('.panelhead');
+  dock.getBoundingClientRect = () => ({
+    left: 100,
+    top: 100,
+    right: 500,
+    bottom: 400,
+    width: 400,
+    height: 300,
+  });
+  header.getBoundingClientRect = () => ({
+    left: 100,
+    top: 100,
+    right: 500,
+    bottom: 150,
+    width: 400,
+    height: 50,
+  });
+  w.eval(fs.readFileSync('outputs/icrapro/modal-dismissal.js', 'utf8'));
+  await tick();
+  pointer(w, header, 'pointerdown', 120, 110);
+  pointer(w, w.document, 'pointermove', 220, 160);
+  pointer(w, w.document, 'pointerup', 220, 160);
+  assert.equal(dock.style.translate, '100px 50px');
+  assert.equal(dialog.style.translate, '');
+  w.dispatchEvent(new w.Event('resize'));
+  assert.equal(dock.style.translate, '');
+});
