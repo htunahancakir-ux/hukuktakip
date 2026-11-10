@@ -1033,7 +1033,10 @@ function showVoipActive(doc, call) {
     host.querySelector('[data-current-hangup]').hidden = ended;
     host.querySelector('[data-current-sync]').hidden = true;
     host.querySelector('[data-current-hold]').hidden = ended;
-    if (next.status === 'busy' && next.resultAt) {
+    if (
+      (next.status === 'busy' && next.resultAt) ||
+      (next.cancelRequested && ['unanswered', 'failed'].includes(next.status))
+    ) {
       clearInterval(voipUi.timer);
       voipUi.disposeActive?.();
       host.remove();
@@ -1041,7 +1044,8 @@ function showVoipActive(doc, call) {
       const dock = document.getElementById('voipPhoneDock');
       if (dock?.hidePopover) dock.hidePopover();
       if (dock) dock.hidden = true;
-      if (typeof toast === 'function') toast('Meşgul sonucu otomatik kaydedildi.');
+      if (typeof toast === 'function')
+        toast(next.cancelRequested ? 'Arama iptal edildi.' : 'Meşgul sonucu otomatik kaydedildi.');
       return;
     }
     host.querySelector('[data-current-save]').hidden = !ended;
@@ -1118,6 +1122,7 @@ function showVoipActive(doc, call) {
     try {
       await voipApi('hangup', 'POST', { id: call.id });
       message('Sonlandırma istendi. Santralden kapanış bilgisi bekleniyor.', 'notice');
+      lastProviderSync = 0;
       await sync();
     } catch (error) {
       message(error.message);
@@ -1188,6 +1193,13 @@ function showVoipActive(doc, call) {
     }
   };
   if (!ended) voipUi.timer = setInterval(sync, 2500);
+  if (call.cancelRequested && !call.cancelError && !ended) {
+    const dock = document.getElementById('voipPhoneDock');
+    if (dock?.hidePopover) dock.hidePopover();
+    if (dock) dock.hidden = true;
+    if (typeof toast === 'function') toast('İptal isteği gönderildi; santral durumu kontrol ediliyor.');
+    sync();
+  }
 }
 async function openVoipHistory(doc, phone = '') {
   let dialog = document.getElementById('voipHistory');
