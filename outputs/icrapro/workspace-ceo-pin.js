@@ -17,6 +17,7 @@ function ceoPinScope(url) {
     [
       '/api/ai/config',
       '/api/ai/test',
+      '/api/ai/models',
       '/api/whatsapp/config',
       '/api/whatsapp/settings',
       '/api/voip/config',

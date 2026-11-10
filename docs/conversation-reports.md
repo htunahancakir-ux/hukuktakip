@@ -10,6 +10,8 @@ Saving a conversation immediately updates its summary. Existing histories are su
 
 `/api/ai/config` is CEO-only. Its public response contains no API key—only whether one has been saved. Changing the AI configuration clears cached summaries so new reports use the chosen provider.
 
+For a custom OpenAI-compatible provider, the model field offers the provider's own model list. `POST /api/ai/models` (CEO-only, rate limited, nothing is saved) reads `GET {Base URL}/models` on the server and returns only the sorted model ids (at most 500). The page asks once typing in Base URL or API key stops, when a saved provider opens, or when "Modelleri getir" is pressed; a name that is not listed can still be typed. Most providers require the API key for this call, so the list appears after the key is typed (a saved provider uses its saved key). A saved key is only sent to the Base URL it was saved for; a changed address needs the key typed again. The address must be an HTTPS host name with a dot, no redirects are followed, the response is size-limited, and a provider's own 401 is reported as a 502 so it never looks like an expired session.
+
 POST /api/documents/conversation-report accepts a document ID, checks permissions and staff assignment, and persists only the selected file.
 
-Verify: node --test --test-concurrency=1 tests/conversation-report.test.cjs
+Verify: node --test --test-concurrency=1 tests/conversation-report.test.cjs tests/ai-models.test.cjs

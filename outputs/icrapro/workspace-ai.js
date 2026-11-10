@@ -44,9 +44,10 @@ function aiSettingsPage() {
         <label class="field">Sağlayıcı adı<input name="providerName" maxlength="80" value="${esc(activeCustom?.name || '')}" placeholder="ör. OpenRouter"></label>
         <label class="field">API biçimi<select name="apiFormat"><option value="responses" ${activeCustom?.apiFormat === 'responses' ? 'selected' : ''}>Responses API</option><option value="chat-completions" ${activeCustom?.apiFormat === 'chat-completions' ? 'selected' : ''}>Chat Completions API</option></select><small>Sağlayıcınızın API dokümanındaki OpenAI uyumlu biçimi seçin.</small></label>
         <label class="field full">Base URL<input name="baseUrl" type="url" maxlength="300" value="${esc(activeCustom?.baseUrl || '')}" placeholder="https://api.ornek.com/v1"><small>HTTPS, genel erişimli alan adı ve sürüm yolu girin; uygulama seçilen API yolunu otomatik ekler.</small></label>
+        <div class="field full"><button class="secondary" type="button" id="aiLoadModels">Modelleri getir</button><small>Base URL ve API anahtarı girilince model listesi kendiliğinden yüklenir. Sağlayıcı listeyi vermezse model adını elle yazın.</small></div>
       </section>
       <label class="field" id="aiModelPresetField">Dil modeli (ucuzdan pahalıya)<select name="modelPreset">${modelOptions}<option value="__custom" ${knownModel ? '' : 'selected'}>Özel model adı gir…</option></select><small>Fiyatlar USD / 1 milyon token; girdi ve çıktı ayrı ücretlenir.</small></label>
-      <label class="field" id="aiCustomModelField" ${knownModel ? 'hidden' : ''}>Model<input name="model" required maxlength="128" value="${esc(config.model)}" placeholder="ör. anthropic/claude-sonnet-4"><small>Özel sağlayıcının tam model kimliğini girin.</small></label>
+      <label class="field" id="aiCustomModelField" ${knownModel ? 'hidden' : ''}>Model<input name="model" required maxlength="128" list="aiModelList" autocomplete="off" value="${esc(config.model)}" placeholder="ör. anthropic/claude-sonnet-4"><datalist id="aiModelList"></datalist><small id="aiModelStatus" role="status" aria-live="polite">Özel sağlayıcının tam model kimliğini girin.</small></label>
       <label class="field">Reasoning effort<select name="reasoningEffort">${effortOptions}</select><small>Sağlayıcı destekliyorsa modelin düşünme düzeyini belirler; desteklemeyen modelde Varsayılanı seçin.</small></label>
       <label class="field">Özet uzunluğu (karakter)<input name="summaryMaxChars" type="number" required min="100" max="2000" step="1" value="${config.summaryMaxChars}"><small>100–2.000 karakter. Bu ayarı değiştirince özetler yeni uzunlukla yeniden oluşturulur.</small></label>
       <label class="field full" id="aiApiKeyField" ${gateway ? 'hidden' : ''}>API anahtarı<input name="apiKey" type="password" maxlength="512" autocomplete="new-password" data-optional="true" placeholder="${config.apiKeySaved ? 'Kayıtlı anahtarı korumak için boş bırakın' : 'API anahtarını girin'}"><small>Anahtar yalnızca bu istek sırasında sunucuya gider; şifrelenerek saklanır ve tekrar görüntülenmez.</small></label>
@@ -63,7 +64,7 @@ function aiSettingsPage() {
     .querySelector('.grid')
     .insertAdjacentHTML(
       'beforeend',
-      `<div class="full"><h3>Ses kayıtlarını yazıya çevirme</h3></div><label class="settings-check"><input type="checkbox" name="transcriptionEnabled" ${config.transcriptionEnabled !== false ? 'checked' : ''}> Yazıya çevirmeyi etkinleştir</label><label class="field">Ses çözümleme modeli<input data-optional="true" name="transcriptionModel" value="${esc(config.transcriptionModel || 'openai/gpt-transcribe')}" maxlength="128"><small>Yukarıdaki sağlayıcı ve kimlik bilgileri kullanılır. Bu alan özet modelinden ayrıdır. Gateway için sağlayıcı/model, OpenAI için model adı kullanılır; özel sağlayıcı /audio/transcriptions desteği sunmalıdır. İşlemler Görüşme Kayıtları ekranından başlatılır.</small></label>`,
+      `<div class="full"><h3>Ses kayıtlarını yazıya çevirme</h3></div><label class="settings-check"><input type="checkbox" name="transcriptionEnabled" ${config.transcriptionEnabled !== false ? 'checked' : ''}> Yazıya çevirmeyi etkinleştir</label><label class="field">Ses çözümleme modeli<input data-optional="true" name="transcriptionModel" list="aiModelList" autocomplete="off" value="${esc(config.transcriptionModel || 'openai/gpt-transcribe')}" maxlength="128"><small>Yukarıdaki sağlayıcı ve kimlik bilgileri kullanılır. Bu alan özet modelinden ayrıdır. Gateway için sağlayıcı/model, OpenAI için model adı kullanılır; özel sağlayıcı /audio/transcriptions desteği sunmalıdır. İşlemler Görüşme Kayıtları ekranından başlatılır.</small></label>`,
     );
   const setCustomValues = (provider) => {
     form.elements.providerName.value = provider?.name || '';
@@ -80,6 +81,65 @@ function aiSettingsPage() {
     $('#aiCustomModelField').hidden = !manual;
     form.elements.model.required = manual;
     if (!manual) form.elements.model.value = form.elements.modelPreset.value;
+  };
+  // A custom provider's model names are listed from its own /models endpoint once the address (and,
+  // where the provider wants one, the key) is typed. Typing stays free: a name that is not listed works.
+  const modelList = $('#aiModelList');
+  const modelStatus = $('#aiModelStatus');
+  const modelHint = modelStatus.textContent;
+  const loadButton = $('#aiLoadModels');
+  let modelTimer;
+  let modelRequest = 0;
+  let modelController;
+  const loadModels = async ({ auto = false } = {}) => {
+    clearTimeout(modelTimer);
+    modelController?.abort();
+    const id = ++modelRequest;
+    const source = {
+      provider: String(form.elements.provider.value),
+      baseUrl: form.elements.baseUrl.value.trim(),
+      apiKey: form.elements.apiKey.value.trim(),
+    };
+    const custom = source.provider.startsWith('custom:');
+    const ready =
+      custom && /^https:\/\/[^/\s]+\.[^/\s]+/iu.test(source.baseUrl) && form.elements.baseUrl.validity.valid;
+    if (!ready) {
+      modelList.replaceChildren();
+      modelStatus.textContent = custom && !auto ? 'Önce geçerli bir HTTPS Base URL girin.' : modelHint;
+      loadButton.disabled = false;
+      return;
+    }
+    modelController = new AbortController();
+    modelStatus.textContent = 'Modeller yükleniyor…';
+    loadButton.disabled = true;
+    try {
+      const response = await fetch('/api/ai/models', {
+        method: 'POST',
+        credentials: 'same-origin',
+        signal: modelController.signal,
+        headers: { 'Content-Type': 'application/json', 'X-Han-Request': '1' },
+        body: JSON.stringify(source),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (id !== modelRequest) return;
+      if (!response.ok) throw Error(result.error || 'Model listesi alınamadı.');
+      modelList.replaceChildren(
+        ...result.models.map((model) => Object.assign(document.createElement('option'), { value: model.id })),
+      );
+      modelStatus.textContent = result.models.length
+        ? `${result.models.length} model bulundu${result.truncated ? ` (toplam ${result.total}; ilk ${result.models.length} gösteriliyor)` : ''}. Listeden seçin veya adı elle yazın.`
+        : 'Sağlayıcı boş bir model listesi döndürdü. Model adını elle yazın.';
+    } catch (error) {
+      if (id !== modelRequest || error.name === 'AbortError') return;
+      modelList.replaceChildren();
+      modelStatus.textContent = `${error.message} Model adını elle de yazabilirsiniz.`;
+    } finally {
+      if (id === modelRequest) loadButton.disabled = false;
+    }
+  };
+  const scheduleModels = () => {
+    clearTimeout(modelTimer);
+    modelTimer = setTimeout(() => loadModels({ auto: true }), 800);
   };
   const updateProvider = () => {
     const selected = form.elements.provider.value;
@@ -104,12 +164,18 @@ function aiSettingsPage() {
   };
   form.elements.modelPreset.onchange = updateModel;
   form.elements.provider.onchange = updateProvider;
+  form.elements.provider.addEventListener('change', scheduleModels);
+  form.elements.baseUrl.addEventListener('input', scheduleModels);
+  form.elements.apiKey.addEventListener('input', scheduleModels);
+  loadButton.onclick = () => loadModels();
   $('#aiAddProvider').onclick = () => {
     form.elements.provider.value = 'custom:new';
     updateProvider();
     form.elements.providerName.focus();
   };
   updateProvider();
+  // A saved provider already has its key: list its models when the page opens.
+  if (activeCustom?.apiKeySaved) loadModels({ auto: true });
   const readInput = () => {
     const input = Object.fromEntries(new FormData(form));
     input.enabled = form.elements.enabled.checked;
