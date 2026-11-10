@@ -100,7 +100,28 @@ test('phone normalization deduplicates numbers and excludes invalid values', () 
     2,
   );
 });
-test('standalone calls use documented JSON originate, retain privacy, and still prevent duplicate calls', async () => {
+test('known originate failures are actionable and unknown provider responses never expose secrets', async () => {
+  const offline = harness(async () => new Response('extension 1001 is not registered', { status: 400 }));
+  await assert.rejects(
+    offline.call('start', 'POST', {
+      documentId: 'd',
+      phone: '05320000000',
+      requestId: 'offline-request-001',
+    }),
+    /santrale bağlı değil/,
+  );
+  assert.match(offline.state.voipCalls[0].providerError, /santrale bağlı değil/);
+  const unknown = harness(async () => new Response('secret-token-should-not-leak', { status: 400 }));
+  await assert.rejects(
+    unknown.call('start', 'POST', {
+      documentId: 'd',
+      phone: '05320000000',
+      requestId: 'unknown-request-001',
+    }),
+    (e) => !e.message.includes('secret-token'),
+  );
+});
+test('standalone calls use documented GET originate, retain privacy, and still prevent duplicate calls', async () => {
   let sent;
   const h = harness(async (url, options) => {
     sent = { url: new URL(url), options };
@@ -111,14 +132,11 @@ test('standalone calls use documented JSON originate, retain privacy, and still 
     requestId: 'standalone-request-001',
   });
   assert.equal(call.documentId, '');
-  assert.equal(sent.options.method, 'POST');
-  assert.equal(sent.options.headers['Content-Type'], 'application/json');
-  assert.equal(sent.url.searchParams.has('destination'), false);
-  assert.deepEqual(JSON.parse(sent.options.body), {
-    extension: '1001',
-    destination: '905320000005',
-    manual_answer: false,
-  });
+  assert.equal(sent.options.method, 'GET');
+  assert.equal(sent.options.body, undefined);
+  assert.equal(sent.url.searchParams.get('extension'), '1001');
+  assert.equal(sent.url.searchParams.get('destination'), '905320000005');
+  assert.equal(sent.url.searchParams.get('manual_answer'), 'false');
   assert.equal((await h.call('calls?phone=05320000005')).calls[0].id, call.id);
   await assert.rejects(
     h.call('start', 'POST', { phone: '05320000005', requestId: 'standalone-request-002' }),

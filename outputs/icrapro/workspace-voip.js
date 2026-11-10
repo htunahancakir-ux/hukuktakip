@@ -826,7 +826,7 @@ async function openVoipWebphone(feedback) {
       phone.id = 'voipWebphone';
       phone.className = 'voip-webphone';
       phone.innerHTML =
-        '<div class="panelhead"><h2>Verimor Web Telefonu</h2><button type="button" class="secondary">Küçült</button></div><iframe title="Verimor web telefonu" allow="microphone; autoplay" referrerpolicy="no-referrer"></iframe>';
+        '<div class="panelhead"><h2>HAN HUKUK WEB TELEFON</h2><button type="button" class="secondary">Küçült</button></div><iframe title="HAN HUKUK web telefonu" allow="microphone; autoplay" referrerpolicy="no-referrer"></iframe>';
       document.body.append(phone);
       phone.querySelector('button').onclick = () => {
         phone.style.visibility = 'hidden';
