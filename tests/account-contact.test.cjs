@@ -119,15 +119,20 @@ test('staff update only their own contact; managers edit others without changing
 test('navigation reminder disappears for complete contacts; saving contact does not require password fields', async () => {
   const { JSDOM } = require('jsdom'),
     fs = require('node:fs');
-  const dom = new JSDOM(
-      '<main></main><form id="account"><div class="account-settings-form"></div><input type="password" required></form>',
-      { runScripts: 'outside-only', url: 'https://example.test' },
-    ),
+  const dom = new JSDOM('<main></main><dialog id="modal"></dialog>', {
+      runScripts: 'outside-only',
+      url: 'https://example.test',
+    }),
     w = dom.window;
   w.eval(fs.readFileSync('outputs/icrapro/html-safety.js', 'utf8'));
   w.esc = w.escapeHtml;
   w.hanAuth = { id: 'staff', role: 'staff' };
-  w.showAccountPanel = () => {};
+  w.accountRoleLabel = () => 'Personel';
+  w.accountInitials = () => 'P';
+  w.installPasswordVisibility = () => {};
+  w.HTMLDialogElement.prototype.showModal = function () {
+    this.setAttribute('open', '');
+  };
   let profile = { id: 'staff', email: '', mobilePhone: '', complete: false },
     saved;
   w.fetch = async () => ({ ok: true, json: async () => profile });
@@ -139,14 +144,31 @@ test('navigation reminder disappears for complete contacts; saving contact does 
     return profile;
   };
   w.eval(fs.readFileSync('outputs/icrapro/workspace-contact.js', 'utf8'));
+  const authSource = fs.readFileSync('outputs/icrapro/auth.js', 'utf8');
+  w.eval(
+    authSource.slice(
+      authSource.indexOf('function showAccountPanel()'),
+      authSource.indexOf('function openHeaderNotifications()'),
+    ),
+  );
   await w.refreshContactReminder();
   assert(w.document.querySelector('#contactCompletionReminder'));
-  w.setupAccountContact(w.document.querySelector('form'));
+  w.showAccountPanel();
+  const contactForm = w.document.querySelector('#accountContactForm'),
+    passwordForm = w.document.querySelector('#accountSettingsForm');
+  assert.equal(
+    w.document.querySelectorAll('form form').length,
+    0,
+    'Contact and password forms must be independent',
+  );
+  assert.equal(w.document.querySelector('details').open, false, 'Password editing is opt-in');
   w.document.querySelector('[name="contactEmail"]').value = 'p@example.com';
   w.document.querySelector('[name="contactMobile"]').value = '05320000001';
-  w.document.querySelector('[data-save-contact]').click();
+  contactForm.requestSubmit();
   assert.equal(saved.email, 'p@example.com');
   assert.equal(w.document.querySelector('[type="password"]').value, '');
+  assert.equal(passwordForm.checkValidity(), false, 'Empty password fields must not block contact save');
+  assert.equal(contactForm.elements.currentPassword, undefined);
   await w.refreshContactReminder();
   assert.equal(w.document.querySelector('#contactCompletionReminder'), null);
   profile = { ...profile, complete: false };
