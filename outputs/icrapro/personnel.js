@@ -181,12 +181,9 @@ async function personnelSettings(editId) {
     return toast('Personel tanımını yalnızca yönetici yapabilir.');
   renderActiveOperator();
   loadCalculatedBonus2();
-  const current = personnel.find((p) => p.id === editId) || {};
   const dailyPrimData = authApi('/api/daily-bonuses?month=' + businessDate().slice(0, 7));
   const dailyPrimTotal = (id) =>
     dailyPrimData.rows.filter((e) => e.staffId === id).reduce((sum, e) => sum + e.amount, 0);
-  const accounts = authApi('/api/users'),
-    loginAccount = accounts.find((u) => u.staffId === editId);
   const isSettings = page === 'settings';
   $('#content').innerHTML =
     `${isSettings ? settingsSectionTabs('staff') : ''}<div class="settings-tabs" role="tablist" aria-label="Personel sekmeleri"><button role="tab" aria-selected="${personnelTab === 'records'}" data-staff-view="records" class="${personnelTab === 'records' ? 'selected' : ''}">Personel Kayıtları</button><button role="tab" aria-selected="${personnelTab === 'payroll'}" data-staff-view="payroll" class="${personnelTab === 'payroll' ? 'selected' : ''}">Maaş ve Prim</button><button role="tab" aria-selected="${personnelTab === 'files'}" data-staff-view="files" class="${personnelTab === 'files' ? 'selected' : ''}">Foto ve PDF Ekle</button></div><div id="personnelView"></div>`;
@@ -201,24 +198,53 @@ async function personnelSettings(editId) {
   if (personnelTab === 'payroll') return personnelCompensationPage();
   if (personnelTab === 'files') return personnelAttachmentsPage();
   $('#personnelView').innerHTML =
-    `<div class="panel"><div class="panelhead"><div><h2>Personel Bilgileri</h2><p>Personel iletişim, birim, maaş ve prim bilgilerini yönetin.</p></div><span class="badge">${personnel.filter((p) => p.active).length} aktif / ${personnel.length} kayıt</span></div><form id="personnelForm"><div class="formbody"><h3 class="sectiontitle">${editId ? 'Personel düzenle' : 'Yeni personel'}</h3><div class="grid">${field('Ad Soyad', 'staffName', 'text', current.name, true)}<label class="field">TC Kimlik Numarası (isteğe bağlı)<input name="identity" data-optional="true" inputmode="numeric" maxlength="11" pattern="[0-9]{11}" title="11 rakam girin" value="${esc(current.identity || '')}"></label>${field('E-posta (isteğe bağlı)', 'email', 'email', current.email).replace('<input ', '<input data-optional="true" ')}${field('Cep telefonu (isteğe bağlı)', 'mobilePhone', 'tel', current.mobilePhone ?? (/^(?:90|0)?5\d{9}$/.test(String(current.phone || '').replace(/\D/g, '')) ? current.phone : '')).replace('<input ', '<input data-optional="true" ')}${field('Telefon (isteğe bağlı)', 'phone', 'tel', current.phone).replace('<input ', '<input data-optional="true" ')}<label class="field">Birimi<select name="department"><option value="">Birim seçin</option>${['Yönetici', 'Pazarlama', 'Callcenter', 'Call Center-Y', 'Call Center-E', 'Muhasebe', 'İcra', 'Evrak Takip', 'Temlik', 'Diğer'].map((unit) => `<option value="${unit}" ${(loginAccount?.role === 'admin' ? 'Yönetici' : current.department) === unit ? 'selected' : ''}>${unit}</option>`).join('')}${current.department && !['Yönetici', 'Pazarlama', 'Callcenter', 'Call Center-Y', 'Call Center-E', 'Muhasebe', 'İcra', 'Evrak Takip', 'Temlik', 'Diğer'].includes(current.department) ? `<option value="${esc(current.department)}" selected>${esc(current.department)} (önceki kayıt)</option>` : ''}</select></label>${clientCityField(current, 'staff')}<label class="field full">Açık Adres<textarea name="address" rows="3">${esc(current.address || '')}</textarea></label></div><h3 class="sectiontitle" style="margin-top:25px">Personel Giriş Bilgileri ve Yetkileri</h3><div class="grid"><label class="field">Kullanıcı Adı<input name="loginUsername" autocomplete="off" value="${esc(loginAccount?.username || '')}" ${editId && !loginAccount ? 'data-optional="true"' : 'required'}></label><label class="field">${loginAccount ? 'Yeni Şifre (değiştirmek için doldurun)' : 'Şifre'}<input name="loginPassword" type="password" minlength="10" autocomplete="new-password" ${editId ? 'data-optional="true"' : 'required'}></label><div class="full"><p>Personel bu kullanıcı adı ve şifreyle giriş yapar. Ana sayfasında yalnızca kendi dosyalarının tahsilatını, brüt kârını ve şimdilik 0 TL primini görür.</p>${[
-      ['clients', 'Müvekkil Kayıtları'],
-      ['documents', 'Evrak / Borçlu Kayıtları'],
-      ['cashIn', 'Muhasebe Para Girişi'],
-      ['cashOut', 'Muhasebe Para Çıkışı'],
-    ]
-      .map(
-        ([key, label]) =>
-          `<label class="settings-check"><input type="checkbox" name="loginPermission" value="${key}" ${(loginAccount?.permissions || []).includes(key) ? 'checked' : ''}>${esc(label)}</label>`,
-      )
-      .join(
-        '',
-      )}</div></div><h3 class="sectiontitle">Maaş ve Prim 1</h3><div class="grid">${salaryField('Maaş *', 'officialSalary', current.officialSalary)}${salaryField('Prim 1 (isteğe bağlı)', 'unofficialSalary', current.unofficialSalary)}<label class="settings-check full"><input name="staffActive" type="checkbox" ${current.active !== false ? 'checked' : ''}> Aktif personel · Seçim listelerinde göster</label></div></div><div class="actions">${editId ? '<button type="button" class="secondary" id="cancelPersonnel">Vazgeç</button>' : ''}<button class="primary">${editId ? 'Personeli Güncelle' : 'Personel Ekle'}</button></div></form><div class="overflow"><table><thead><tr><th>AD SOYAD</th><th>BİRİM / GÖREV</th><th>TELEFON</th><th>MAAŞ + PRİM 1</th><th>PRİM 2</th><th>G. PRİM</th><th>GENEL TOPLAM</th><th>DURUM</th><th>İŞLEM</th></tr></thead><tbody>${personnel.map((p) => `<tr><td><strong>${esc(p.name)}</strong></td><td>${esc(p.department || '—')}<small>${esc(p.title || '—')}</small></td><td>${esc(p.phone || '—')}</td><td>${money(staffMoney(p).salary / 100)}</td><td>${money(staffMoney(p).bonus / 100)}</td><td>${money(dailyPrimTotal(p.id) / 100)}</td><td>${money((staffMoney(p).total + dailyPrimTotal(p.id)) / 100)}</td><td>${p.active ? 'Aktif' : 'Pasif'}</td><td><button class="link" data-personnel-edit="${esc(p.id)}">Düzenle</button></td></tr>`).join('') || '<tr><td colspan="9" class="empty">Henüz personel yok. Yukarıdaki formdan ekleyin.</td></tr>'}</tbody><tfoot><tr><td colspan="3"><strong>ALT TOPLAM</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + staffMoney(p).salary, 0) / 100)}</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + staffMoney(p).bonus, 0) / 100)}</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + dailyPrimTotal(p.id), 0) / 100)}</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + staffMoney(p).total + dailyPrimTotal(p.id), 0) / 100)}</strong></td><td colspan="2"></td></tr></tfoot></table></div></div>`;
-  document
+    `<div class="panel"><div class="panelhead"><div><h2>Personel Kayıtları</h2><p>Bilgileri görmek ve düzenlemek için personel adına tıklayın.</p></div><div class="toolbar"><span class="badge">${personnel.filter((p) => p.active).length} aktif / ${personnel.length} kayıt</span><button type="button" class="primary" id="newPersonnel">Yeni Personel</button></div></div><div class="overflow"><table><thead><tr><th>AD SOYAD</th><th>BİRİM / GÖREV</th><th>TELEFON</th><th>MAAŞ + PRİM 1</th><th>PRİM 2</th><th>G. PRİM</th><th>GENEL TOPLAM</th><th>DURUM</th><th>İŞLEM</th></tr></thead><tbody>${personnel.map((p) => `<tr><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">${esc(p.name)}</button></td><td>${esc(p.department || '—')}<small>${esc(p.title || '—')}</small></td><td>${esc(p.phone || '—')}</td><td>${money(staffMoney(p).salary / 100)}</td><td>${money(staffMoney(p).bonus / 100)}</td><td>${money(dailyPrimTotal(p.id) / 100)}</td><td>${money((staffMoney(p).total + dailyPrimTotal(p.id)) / 100)}</td><td>${p.active ? 'Aktif' : 'Pasif'}</td><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">Düzenle</button></td></tr>`).join('') || '<tr><td colspan="9" class="empty">Henüz personel yok. Yeni Personel butonuyla ekleyin.</td></tr>'}</tbody><tfoot><tr><td colspan="3"><strong>ALT TOPLAM</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + staffMoney(p).salary, 0) / 100)}</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + staffMoney(p).bonus, 0) / 100)}</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + dailyPrimTotal(p.id), 0) / 100)}</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + staffMoney(p).total + dailyPrimTotal(p.id), 0) / 100)}</strong></td><td colspan="2"></td></tr></tfoot></table></div></div>`;
+  $('#newPersonnel').onclick = () => openPersonnelRecord();
+  $('#personnelView')
     .querySelectorAll('[data-personnel-edit]')
-    .forEach((b) => (b.onclick = () => personnelSettings(b.dataset.personnelEdit)));
-  if ($('#cancelPersonnel')) $('#cancelPersonnel').onclick = () => personnelSettings();
-  const form = $('#personnelForm');
+    .forEach((button) => (button.onclick = () => openPersonnelRecord(button.dataset.personnelEdit)));
+  if (editId) return openPersonnelRecord(editId);
+}
+async function openPersonnelRecord(editId) {
+  if (!['ceo', 'admin'].includes(window.hanAuth?.role))
+    return toast('Personel tanımını yalnızca yönetici yapabilir.');
+  const requestedPage = page;
+  if (window.hanAuth.role === 'ceo' && typeof requireCeoPin === 'function') {
+    if (!(await requireCeoPin('permissions')) || page !== requestedPage) return;
+  }
+  const current = editId ? personnel.find((record) => record.id === editId) : {};
+  if (!current) return toast('Personel kaydı bulunamadı.');
+  let accounts;
+  try {
+    accounts = authApi('/api/users');
+  } catch (error) {
+    return toast(error.message || 'Personel giriş bilgileri alınamadı.');
+  }
+  const loginAccount = editId ? accounts.find((account) => account.staffId === editId) : null;
+  let dialog = document.getElementById('personnelRecordDialog');
+  if (!dialog) {
+    dialog = document.createElement('dialog');
+    dialog.id = 'personnelRecordDialog';
+    dialog.style.width = '900px';
+    dialog.setAttribute('aria-labelledby', 'personnelRecordTitle');
+    document.body.append(dialog);
+  }
+  dialog.innerHTML = `<div class="panelhead"><div><h2 id="personnelRecordTitle">${editId ? esc(current.name) : 'Yeni Personel'}</h2><p>Personel kayıt ve bilgileri</p></div><button type="button" class="secondary" data-personnel-close>Kapat</button></div><form id="personnelForm"><div class="formbody"><h3 class="sectiontitle">${editId ? 'Personel düzenle' : 'Yeni personel'}</h3><div class="grid">${field('Ad Soyad', 'staffName', 'text', current.name, true)}<label class="field">TC Kimlik Numarası (isteğe bağlı)<input name="identity" data-optional="true" inputmode="numeric" maxlength="11" pattern="[0-9]{11}" title="11 rakam girin" value="${esc(current.identity || '')}"></label>${field('E-posta (isteğe bağlı)', 'email', 'email', current.email).replace('<input ', '<input data-optional="true" ')}${field('Cep telefonu (isteğe bağlı)', 'mobilePhone', 'tel', current.mobilePhone ?? (/^(?:90|0)?5\d{9}$/.test(String(current.phone || '').replace(/\D/g, '')) ? current.phone : '')).replace('<input ', '<input data-optional="true" ')}${field('Telefon (isteğe bağlı)', 'phone', 'tel', current.phone).replace('<input ', '<input data-optional="true" ')}<label class="field">Birimi<select name="department"><option value="">Birim seçin</option>${['Yönetici', 'Pazarlama', 'Callcenter', 'Call Center-Y', 'Call Center-E', 'Muhasebe', 'İcra', 'Evrak Takip', 'Temlik', 'Diğer'].map((unit) => `<option value="${unit}" ${(loginAccount?.role === 'admin' ? 'Yönetici' : current.department) === unit ? 'selected' : ''}>${unit}</option>`).join('')}${current.department && !['Yönetici', 'Pazarlama', 'Callcenter', 'Call Center-Y', 'Call Center-E', 'Muhasebe', 'İcra', 'Evrak Takip', 'Temlik', 'Diğer'].includes(current.department) ? `<option value="${esc(current.department)}" selected>${esc(current.department)} (önceki kayıt)</option>` : ''}</select></label>${clientCityField(current, 'staff')}<label class="field full">Açık Adres<textarea name="address" rows="3">${esc(current.address || '')}</textarea></label></div><h3 class="sectiontitle" style="margin-top:25px">Personel Giriş Bilgileri ve Yetkileri</h3><div class="grid"><label class="field">Kullanıcı Adı<input name="loginUsername" autocomplete="off" value="${esc(loginAccount?.username || '')}" ${editId && !loginAccount ? 'data-optional="true"' : 'required'}></label><label class="field">${loginAccount ? 'Yeni Şifre (değiştirmek için doldurun)' : 'Şifre'}<input name="loginPassword" type="password" minlength="10" autocomplete="new-password" ${editId ? 'data-optional="true"' : 'required'}></label><div class="full"><p>Personel bu kullanıcı adı ve şifreyle giriş yapar. Ana sayfasında yalnızca kendi dosyalarının tahsilatını, brüt kârını ve şimdilik 0 TL primini görür.</p>${[
+    ['clients', 'Müvekkil Kayıtları'],
+    ['documents', 'Evrak / Borçlu Kayıtları'],
+    ['cashIn', 'Muhasebe Para Girişi'],
+    ['cashOut', 'Muhasebe Para Çıkışı'],
+  ]
+    .map(
+      ([key, label]) =>
+        `<label class="settings-check"><input type="checkbox" name="loginPermission" value="${key}" ${(loginAccount?.permissions || []).includes(key) ? 'checked' : ''}>${esc(label)}</label>`,
+    )
+    .join(
+      '',
+    )}</div></div><h3 class="sectiontitle">Maaş ve Prim 1</h3><div class="grid">${salaryField('Maaş *', 'officialSalary', current.officialSalary)}${salaryField('Prim 1 (isteğe bağlı)', 'unofficialSalary', current.unofficialSalary)}<label class="settings-check full"><input name="staffActive" type="checkbox" ${current.active !== false ? 'checked' : ''}> Aktif personel · Seçim listelerinde göster</label></div></div><div class="actions"><button type="button" class="secondary" id="cancelPersonnel">Vazgeç</button><button class="primary">${editId ? 'Personeli Güncelle' : 'Personel Ekle'}</button></div></form>`;
+  dialog.querySelector('[data-personnel-close]').onclick = () => dialog.close();
+  dialog.querySelector('#cancelPersonnel').onclick = () => dialog.close();
+  const form = dialog.querySelector('#personnelForm');
   setupExtraContacts(form, current);
   setupPersonnelPhoneRelationships(form, current);
   setupPersonnelCompensationTabs(form, current, editId);
@@ -298,9 +324,13 @@ async function personnelSettings(editId) {
       return toast(error.message || 'Personel kaydedilemedi.');
     }
     personnel = next;
+    window.modalFormSaved?.(form);
+    dialog.close();
     personnelSettings();
     toast(editId ? 'Personel bilgileri güncellendi.' : 'Personel kaydedildi.');
   };
+  if (!dialog.open) dialog.showModal();
+  form.elements.staffName.focus();
 }
 function salaryField(label, name, value) {
   return `<label class="field">${esc(label)}<input name="${name}" type="number" min="0" step="0.01" value="${esc(value ?? '')}" ${name === 'unofficialSalary' ? 'data-optional="true"' : 'required'}></label>`;
