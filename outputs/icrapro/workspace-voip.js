@@ -1209,7 +1209,12 @@ function showVoipActive(doc, call) {
       const dock = document.getElementById('voipPhoneDock');
       if (dock?.hidePopover) dock.hidePopover();
       if (dock) dock.hidden = true;
-      if (typeof toast === 'function') toast('Görüşme sonucu kaydedildi.');
+      if (typeof toast === 'function') {
+        const panel = document.querySelector('.voip-number-panel:not([hidden])');
+        toast('Görüşme sonucu kaydedildi.', panel || undefined);
+        const notice = panel?.querySelector('.local-feedback');
+        if (notice) setTimeout(() => notice.remove(), 4000);
+      }
     } catch (error) {
       message(error.message);
       form.querySelectorAll('input,textarea,button').forEach((input) => {
