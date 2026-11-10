@@ -11,6 +11,7 @@ function rowsFor(state, type) {
     accounts: data['hanhukuk-accounting-v1'].accounts,
     personnel: data['icrapro-personnel-v1'],
     cases: data['icrapro-cases-v1'],
+    marketing: state.marketingProspects || [],
   };
   if (type === 'conversations')
     return records.docs.flatMap((d) =>
@@ -45,7 +46,7 @@ async function handleDeletionRoutes(ctx) {
         documentId: r.documentId,
         label: [
           r.number || r.documentNumber || docs.find((d) => d.id === r.documentId)?.number,
-          r.name || r.debtor || labels[r.type] || r.type,
+          r.name || r.company || r.debtor || labels[r.type] || r.type,
           r.note || r.notes || r.title,
         ]
           .filter(Boolean)
@@ -75,6 +76,12 @@ async function handleDeletionRoutes(ctx) {
   );
   if (index < 0) throw fail(404, 'Kayıt bulunamadı; listeyi yenileyin.');
   const row = rows[index];
+  if (
+    input.type === 'accounting' &&
+    row.expensePoolFunding === true &&
+    require('../../lib/expense-pool.cjs').summary(next).balance < row.amount
+  )
+    throw fail(409, 'Bu avansın tamamı havuzda değil. Önce bağlı masraf dağıtımlarını düzeltin.');
   const revision = crypto.createHash('sha256').update(JSON.stringify(row)).digest('hex');
   if (input.revision !== revision) throw fail(409, 'Kayıt değişti; listeyi yenileyip tekrar kontrol edin.');
   const data = next.data,
@@ -103,6 +110,8 @@ async function handleDeletionRoutes(ctx) {
     doc.conversations = doc.conversations.filter((c) => c.id !== row.id);
     delete doc.conversationReport;
   } else rows.splice(index, 1);
+  if (input.type === 'accounting' && row.expensePoolFunding === true)
+    require('../../lib/expense-pool.cjs').assertNonnegativeHistory(next);
   if (input.type === 'finance' && row.type === 'payment') {
     const doc = docs.find((d) => d.id === row.documentId);
     if (doc?.status === 'İnfaz') {

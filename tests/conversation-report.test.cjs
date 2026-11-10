@@ -1,7 +1,15 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { generateReport, fingerprint, currentReport, bounded } = require('../lib/conversation-report.cjs');
+const {
+  generateReport,
+  fingerprint,
+  currentReport,
+  bounded,
+  summaryBounded,
+  SUMMARY_COMPLETION_ALLOWANCE,
+} = require('../lib/conversation-report.cjs');
+const aiSettings = require('../lib/ai-settings.cjs');
 const { handleWorkflowRoutes } = require('../outputs/icrapro/access-workflow.cjs');
 const notes = [
   { id: 'a', date: '2026-01-01', time: '09:00', result: 'Ulaşılamadı', note: 'İlk aramaya cevap verilmedi.' },
@@ -66,6 +74,243 @@ test('Newer conflicting statements retain their negation and source date; long a
     { note: 'Cevap vermedi. Cevap vermedi. Cevap vermedi.', result: 'Ulaşılamadı' },
   ]);
   assert.equal((repeated.text.match(/Cevap vermedi/g) || []).length, 1);
+  const extended = await generateReport(
+    [{ result: 'Görüşüldü', note: 'Ödeme değerlendirmesi sürüyor. '.repeat(80) }],
+    { aiConfig: { enabled: false, summaryMaxChars: 500 } },
+  );
+  assert.equal(extended.maxChars, 500);
+  assert.ok(Array.from(extended.text).length <= 500);
+  assert.equal(
+    currentReport(
+      {
+        conversations: [{ result: 'Görüşüldü', note: 'Ödeme değerlendirmesi sürüyor. '.repeat(80) }],
+        conversationReport: extended,
+      },
+      { enabled: false, summaryMaxChars: 500 },
+    ),
+    extended,
+  );
+  assert.throws(
+    () =>
+      aiSettings.configure(
+        {},
+        { enabled: false, provider: 'vercel-ai-gateway', model: 'openai/gpt-6-luna', summaryMaxChars: 99 },
+      ),
+    /Özet uzunluğu/,
+  );
+});
+test('AI summaries respect the configured target and use at most 50 characters to finish a sentence', async () => {
+  const tail = 'Ödeme planı pazartesi yeniden değerlendirilecek.';
+  const longSummary = 'Borçlu ödeme yapamayacağını bildirdi. ' + 'Açıklama '.repeat(29) + tail;
+  const normalized = summaryBounded(longSummary, 300);
+  assert.ok(Array.from(normalized).length > 300);
+  assert.ok(Array.from(normalized).length <= 300 + SUMMARY_COMPLETION_ALLOWANCE);
+  assert.match(normalized, /[.!?…]$/u);
+  assert.equal(summaryBounded('Kısa ve tamamlanmış özet.', 300), 'Kısa ve tamamlanmış özet.');
+
+  const originalGatewayKey = process.env.AI_GATEWAY_API_KEY;
+  process.env.AI_GATEWAY_API_KEY = 'test-gateway-key';
+  try {
+    const report = await generateReport(notes, {
+      aiConfig: {
+        enabled: true,
+        provider: 'vercel-ai-gateway',
+        model: 'openai/gpt-6-luna',
+        summaryMaxChars: 300,
+      },
+      fetcher: async () => ({ ok: true, json: async () => ({ output_text: longSummary }) }),
+    });
+    assert.equal(report.method, 'vercel-ai-gateway');
+    assert.equal(report.text, normalized);
+    assert.equal(
+      currentReport(
+        { conversations: notes, conversationReport: report },
+        {
+          enabled: true,
+          provider: 'vercel-ai-gateway',
+          model: 'openai/gpt-6-luna',
+          summaryMaxChars: 300,
+        },
+      ),
+      report,
+    );
+  } finally {
+    if (originalGatewayKey === undefined) delete process.env.AI_GATEWAY_API_KEY;
+    else process.env.AI_GATEWAY_API_KEY = originalGatewayKey;
+  }
+});
+test('Successful AI summaries retain provider token usage for the CEO-only aggregate, without exposing it in reports', async () => {
+  const originalGatewayKey = process.env.AI_GATEWAY_API_KEY;
+  process.env.AI_GATEWAY_API_KEY = 'test-gateway-key';
+  try {
+    const report = await generateReport(notes, {
+      aiConfig: { enabled: true, provider: 'vercel-ai-gateway', model: 'openai/gpt-6-luna' },
+      fetcher: async () => ({
+        ok: true,
+        json: async () => ({
+          output_text: 'Yapay zeka ile üretilen kısa özet.',
+          usage: { input_tokens: 120, output_tokens: 30, total_tokens: 150 },
+        }),
+      }),
+    });
+    assert.equal(report.method, 'vercel-ai-gateway');
+    assert.deepEqual(report.aiUsage, {
+      model: 'openai/gpt-6-luna',
+      inputTokens: 120,
+      outputTokens: 30,
+      totalTokens: 150,
+    });
+    assert.doesNotMatch(JSON.stringify(report), /aiUsage|150/);
+    const usage = aiSettings.addUsage(undefined, report.aiUsage);
+    assert.deepEqual(aiSettings.publicConfig({}, usage).usage, {
+      requests: 1,
+      inputTokens: 120,
+      outputTokens: 30,
+      totalTokens: 150,
+      lastUsedAt: usage.lastUsedAt,
+      models: [
+        { model: 'openai/gpt-6-luna', requests: 1, inputTokens: 120, outputTokens: 30, totalTokens: 150 },
+      ],
+    });
+    assert.ok(aiSettings.MODEL_OPTIONS.some((model) => model.id === 'openai/gpt-6.1-sol'));
+  } finally {
+    if (originalGatewayKey === undefined) delete process.env.AI_GATEWAY_API_KEY;
+    else process.env.AI_GATEWAY_API_KEY = originalGatewayKey;
+  }
+});
+test('AI connection test uses the selected model, counts tokens, and returns a safe provider error', async () => {
+  const originalGatewayKey = process.env.AI_GATEWAY_API_KEY;
+  process.env.AI_GATEWAY_API_KEY = 'test-gateway-key';
+  try {
+    let request;
+    const result = await aiSettings.testConnection(
+      {},
+      { provider: 'vercel-ai-gateway', model: 'openai/gpt-6-luna', apiKey: '' },
+      {
+        fetcher: async (_url, options) => {
+          request = options;
+          return {
+            ok: true,
+            json: async () => ({ usage: { input_tokens: 9, output_tokens: 3, total_tokens: 12 } }),
+          };
+        },
+      },
+    );
+    assert.equal(JSON.parse(request.body).model, 'openai/gpt-6-luna');
+    assert.deepEqual(result.usage, {
+      model: 'openai/gpt-6-luna',
+      inputTokens: 9,
+      outputTokens: 3,
+      totalTokens: 12,
+    });
+    await assert.rejects(
+      aiSettings.testConnection(
+        {},
+        { provider: 'vercel-ai-gateway', model: 'openai/gpt-6-luna', apiKey: '' },
+        { fetcher: async () => ({ ok: false, status: 401 }) },
+      ),
+      /API anahtarı kabul edilmedi/,
+    );
+  } finally {
+    if (originalGatewayKey === undefined) delete process.env.AI_GATEWAY_API_KEY;
+    else process.env.AI_GATEWAY_API_KEY = originalGatewayKey;
+  }
+});
+test('Custom OpenAI-compatible providers keep credentials private and support chat completions reasoning', async () => {
+  const originalKey = process.env.AI_ENCRYPTION_KEY;
+  process.env.AI_ENCRYPTION_KEY = 'a'.repeat(64);
+  try {
+    const saved = aiSettings.configure(
+      {},
+      {
+        enabled: true,
+        provider: 'custom:new',
+        providerName: 'Örnek AI',
+        baseUrl: 'https://api.example.ai/v1',
+        apiFormat: 'chat-completions',
+        model: 'example-reasoner',
+        reasoningEffort: 'high',
+        summaryMaxChars: 300,
+        apiKey: 'example-secret-key',
+      },
+    );
+    assert.match(saved.provider, /^custom:cp_[a-f0-9]{24}$/);
+    const publicConfig = aiSettings.publicConfig(saved);
+    assert.equal(publicConfig.customProviders.length, 1);
+    assert.equal(publicConfig.customProviders[0].apiKeySaved, true);
+    assert.doesNotMatch(JSON.stringify(publicConfig), /example-secret-key|sealedApiKey/);
+    let request;
+    const result = await aiSettings.testConnection(
+      saved,
+      {
+        enabled: true,
+        provider: saved.provider,
+        providerName: 'Örnek AI',
+        baseUrl: 'https://api.example.ai/v1',
+        apiFormat: 'chat-completions',
+        model: 'example-reasoner',
+        reasoningEffort: 'high',
+        summaryMaxChars: 300,
+        apiKey: '',
+      },
+      {
+        fetcher: async (url, options) => {
+          request = { url, options };
+          return { ok: true, json: async () => ({ usage: { prompt_tokens: 4, completion_tokens: 2 } }) };
+        },
+      },
+    );
+    assert.equal(request.url, 'https://api.example.ai/v1/chat/completions');
+    assert.deepEqual(JSON.parse(request.options.body), {
+      model: 'example-reasoner',
+      max_tokens: 16,
+      reasoning_effort: 'high',
+      messages: [{ role: 'user', content: 'Bağlantıyı doğrulamak için yalnızca OK yaz.' }],
+    });
+    assert.deepEqual(result.usage, {
+      model: 'Örnek AI: example-reasoner',
+      inputTokens: 4,
+      outputTokens: 2,
+      totalTokens: 6,
+    });
+    let reportRequest;
+    const report = await generateReport(notes, {
+      aiConfig: saved,
+      fetcher: async (_url, options) => {
+        reportRequest = JSON.parse(options.body);
+        return {
+          ok: true,
+          json: async () => ({ choices: [{ message: { content: 'Özel sağlayıcı ile oluşturulan özet.' } }] }),
+        };
+      },
+    });
+    assert.match(report.method, /^custom:/);
+    assert.equal(report.text, 'Özel sağlayıcı ile oluşturulan özet.');
+    assert.equal(reportRequest.max_tokens, 384);
+    assert.equal(reportRequest.messages.length, 1);
+    assert.equal(reportRequest.messages[0].role, 'user');
+    assert.match(reportRequest.messages[0].content, /Görüşme geçmişi/);
+    assert.throws(
+      () =>
+        aiSettings.configure(
+          {},
+          {
+            enabled: false,
+            provider: 'custom:new',
+            providerName: 'Yerel',
+            baseUrl: 'https://127.0.0.1/v1',
+            apiFormat: 'responses',
+            model: 'model-a',
+            summaryMaxChars: 300,
+            apiKey: '',
+          },
+        ),
+      /Base URL HTTPS/,
+    );
+  } finally {
+    if (originalKey === undefined) delete process.env.AI_ENCRYPTION_KEY;
+    else process.env.AI_ENCRYPTION_KEY = originalKey;
+  }
 });
 test('Report endpoint ignores manually supplied text, caches unchanged history and enforces file assignment', async () => {
   try {
@@ -129,10 +374,14 @@ test('Report field is read-only, full notes stay editable, generated summary is 
     assert.equal(output.name, '');
     assert.equal(form.elements.note.readOnly, false);
     assert.equal(form.elements.note.maxLength, -1);
-    w.fetch = async () => ({
-      ok: true,
-      json: async () => ({ report: { text: '<img src=x onerror=alert(1)>', sourceCount: 2 } }),
-    });
+    const requests = [];
+    w.fetch = async (_url, options) => {
+      requests.push(JSON.parse(options.body));
+      return {
+        ok: true,
+        json: async () => ({ report: { text: '<img src=x onerror=alert(1)>', sourceCount: 2 } }),
+      };
+    };
     w.AbortSignal = AbortSignal;
     w.eval(fs.readFileSync('outputs/icrapro/workspace-conversation-report.js', 'utf8'));
     w.bindConversationReport(doc, form);
@@ -140,6 +389,11 @@ test('Report field is read-only, full notes stay editable, generated summary is 
     await new Promise(setImmediate);
     assert.equal(output.value, '<img src=x onerror=alert(1)>');
     assert.equal(form.querySelector('img'), null);
+    assert.equal(requests[0].force, false);
+    form.querySelector('[data-generate-conversation-report]').click();
+    await new Promise(setImmediate);
+    await new Promise(setImmediate);
+    assert.equal(requests[1].force, true);
     const definitions = require('../outputs/icrapro/report-definitions.js');
     assert.equal(
       definitions.clientDebtorInfo.columns.some((c) => c[0] === 'clientEntitlement'),
@@ -253,6 +507,69 @@ test('PostgreSQL summaries persist on the selected file; report, CSV and manual 
     response = await post('/api/documents/conversation-report', { documentId: 'd' }, cookie);
     assert.equal(response.status, 200);
     assert.equal((await response.json()).report.sourceCount, 3);
+    await require('../lib/voip-store.cjs').transaction(
+      pool,
+      true,
+      (tx) => {
+        tx.state.voipCalls.push({
+          id: 'bridge-call',
+          documentId: 'd',
+          phone: '905320000000',
+          userId: 'test-ceo',
+          staffName: 'Test',
+          requestId: 'bridge-request',
+          createdAt: '2026-01-04T10:00:00Z',
+          status: 'completed',
+          duration: 90,
+          note: 'Telefon görüşmesinde 200 TL önerildi.',
+        });
+        tx.saveState(tx.state);
+      },
+      { documentId: 'd' },
+    );
+    response = await post('/api/documents/conversation-report', { documentId: 'd' }, cookie);
+    assert.equal((await response.json()).report.sourceCount, 4);
+    const input = {
+      documentId: 'd',
+      voipCallId: 'bridge-call',
+      result: 'Tekrar Aranacak',
+      note: 'Yarın tekrar görüşülecek.',
+    };
+    response = await post('/api/documents/conversations', input, cookie);
+    assert.equal(response.status, 400);
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    response = await post(
+      '/api/documents/conversations',
+      { ...input, callReminder: { date: tomorrow, time: '12:00', note: 'Planlandı' } },
+      cookie,
+    );
+    assert.equal(response.status, 200, await response.clone().text());
+    let merged = await response.json();
+    assert.equal(merged.report.sourceCount, 4);
+    assert.equal(merged.conversations.filter((c) => c.voipCallId === 'bridge-call').length, 1);
+    assert.equal(
+      merged.conversations.find((c) => c.voipCallId === 'bridge-call').callReminder.date,
+      tomorrow,
+    );
+    response = await post(
+      '/api/documents/conversations',
+      { ...input, result: 'Olumlu', note: 'Güncel telefon notu' },
+      cookie,
+    );
+    assert.equal(response.status, 200, await response.clone().text());
+    merged = await response.json();
+    assert.equal(merged.conversations.length, 4, 'editing a phone result cannot duplicate its conversation');
+    const phone = (await pool.query("SELECT body FROM han_private.voip_calls WHERE id='bridge-call'")).rows[0]
+      .body;
+    assert.equal(phone.result, 'Olumlu');
+    assert.equal(phone.duration, 90);
+    response = await post('/api/documents/conversations', { ...input, result: 'Ödeme Sözü Alındı' }, cookie);
+    assert.equal(response.status, 400);
+    response = await nativeFetch(app.url + '/api/voip/history?documentId=d', { headers: { cookie } });
+    const unified = await response.json();
+    assert.equal(unified.total, 4);
+    assert.equal(unified.rows.filter((r) => r.voipCallId === 'bridge-call').length, 1);
+    assert.equal(unified.rows.find((r) => r.voipCallId === 'bridge-call').note, 'Güncel telefon notu');
   } finally {
     global.fetch = nativeFetch;
     if (app) await app.close();

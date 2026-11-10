@@ -7,6 +7,11 @@ function escapeHtml(value) {
   );
 }
 
+function testRecordBadge(record) {
+  if (!record?.testRecord?.note) return '';
+  return `<small class="test-record-badge" title="${escapeHtml(record.testRecord.note)}">TEST · ${escapeHtml(record.testRecord.userName || 'Teknik Destek')}</small>`;
+}
+
 // Attachments in this application are FileReader data URLs. Do not accept
 // arbitrary URLs, SVG/HTML, or trailing markup, even from existing records.
 function safeAttachmentUrl(value, kind = 'document') {

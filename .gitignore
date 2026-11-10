@@ -23,3 +23,6 @@ supabase/.temp/
 work/release/
 work/backup-settings.json
 work/backups/
+work/voip/
+work/npm-cache/
+work/voip-preview.cjs

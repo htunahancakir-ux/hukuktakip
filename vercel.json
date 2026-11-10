@@ -2,12 +2,34 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm run build",
   "outputDirectory": "public",
-  "functions": { "api/index.js": { "maxDuration": 120, "includeFiles": "{lib/**,outputs/icrapro/*.cjs,outputs/icrapro/*.js}" } },
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 120,
+      "includeFiles": "{lib/**,outputs/icrapro/*.cjs,outputs/icrapro/*.js}"
+    }
+  },
   "crons": [{ "path": "/api/backups/cron", "schedule": "0 3 * * *" }],
   "rewrites": [{ "source": "/api/:path*", "destination": "/api/index?route=:path*" }],
-  "headers": [{ "source": "/(.*)", "headers": [
-    { "key": "Cache-Control", "value": "no-store" },
-    { "key": "X-Content-Type-Options", "value": "nosniff" },
-    { "key": "Referrer-Policy", "value": "same-origin" }
-  ] }]
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "same-origin" }
+      ]
+    },
+    {
+      "source": "/(.*).js",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    },
+    {
+      "source": "/(.*).css",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    },
+    {
+      "source": "/(.*).png",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    }
+  ]
 }

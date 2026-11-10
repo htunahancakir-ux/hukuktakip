@@ -1,5 +1,6 @@
 const { validateNewClientPayouts, appendClientPayout } = require('../../lib/client-payout.cjs');
 const { apply: applyRecordPatch } = require('./record-patch.js');
+const expensePool = require('../../lib/expense-pool.cjs');
 async function handleDataRoutes(ctx) {
   const {
     req,
@@ -21,6 +22,23 @@ async function handleDataRoutes(ctx) {
     parkingToday,
     applyParkingFee,
   } = ctx;
+  if (url.pathname === '/api/expense-pool' && req.method === 'GET') {
+    if (!allowed(u, 'documents')) throw fail(403, 'Dosya işlem yetkiniz yok.');
+    send(res, 200, expensePool.details(ctx.state));
+    return true;
+  }
+  if (url.pathname === '/api/expense-pool/fund' && req.method === 'POST') {
+    const result = expensePool.fund(ctx.state, await body(req), u, allowed, ledgerBalance);
+    if (result.next) persist(result.next);
+    send(res, 200, { ok: true, entry: result.entry, ...expensePool.summary(ctx.state) });
+    return true;
+  }
+  if (url.pathname === '/api/expense-pool/allocate' && req.method === 'POST') {
+    const result = expensePool.allocate(ctx.state, await body(req), u, allowed);
+    if (result.next) persist(result.next);
+    send(res, 200, { ok: true, event: result.event, ...expensePool.summary(ctx.state) });
+    return true;
+  }
   if (url.pathname === '/api/client-payout' && req.method === 'POST') {
     const next = appendClientPayout(ctx.state, await body(req), u, options?.payoutAccountBalances);
     if (next) persist(next);
@@ -72,6 +90,38 @@ async function handleDataRoutes(ctx) {
       !allowed(u, 'clients')
     )
       throw fail(403, 'Müvekkil kayıtlarını değiştirme yetkiniz yok.');
+    if (key === 'icrapro-v1' && !['ceo', 'admin'].includes(u.role)) {
+      const protectedFields = [
+        'repaymentPlan',
+        'repaymentPlanHistory',
+        'debtDiscountCents',
+        'discountHistory',
+        'financeInterest',
+        'financeFee',
+      ];
+      if (patchRequest && Array.isArray(incoming?.changes)) {
+        for (const change of incoming.changes) {
+          if (change.path?.[0] !== 'docs') continue;
+          if (change.field && protectedFields.includes(change.field))
+            throw fail(403, 'Yapılandırmayı yalnızca yönetici yapabilir.');
+          if (!change.field && change.value) {
+            const old = ctx.state.data[key].docs.find((d) => d.id === change.id) || {};
+            if (
+              protectedFields.some(
+                (field) => JSON.stringify(old[field]) !== JSON.stringify(change.value[field]),
+              )
+            )
+              throw fail(403, 'Yapılandırmayı yalnızca yönetici yapabilir.');
+          }
+        }
+      } else if (!patchRequest && Array.isArray(incoming?.value?.docs)) {
+        for (const doc of incoming.value.docs) {
+          const old = ctx.state.data[key].docs.find((d) => d.id === doc.id) || {};
+          if (protectedFields.some((field) => JSON.stringify(old[field]) !== JSON.stringify(doc[field])))
+            throw fail(403, 'Yapılandırmayı yalnızca yönetici yapabilir.');
+        }
+      }
+    }
     const sendSaved = () => {
       if (!patchRequest || !options.recordStore) return send(res, 200, { ok: true });
       const current = readKey(key, u),
@@ -101,6 +151,38 @@ async function handleDataRoutes(ctx) {
     };
     const v = patchRequest ? { value: applyRecordPatch(key, readKey(key, u), incoming) } : incoming,
       next = structuredClone(ctx.state);
+    expensePool.guardGenericChanges(ctx.state, key, v.value);
+    if (key === 'icrapro-v1' && ['ceo', 'admin'].includes(u.role) && Array.isArray(v.value?.docs)) {
+      for (const doc of v.value.docs) {
+        const before = ctx.state.data[key].docs.find((d) => d.id === doc.id);
+        if (
+          !before ||
+          !['financeInterest', 'financeFee'].some(
+            (field) => Number(before[field] || 0) !== Number(doc[field] || 0),
+          )
+        )
+          continue;
+        if (before.status === 'İnfaz') throw fail(403, 'İnfaz edilmiş dosyada faiz ve ücret değiştirilemez.');
+        const amounts = [doc.amount, doc.financeInterest, doc.financeFee].map((value) =>
+          Math.round(Number(value || 0) * 100),
+        );
+        if (amounts.some((value) => !Number.isSafeInteger(value) || value < 0))
+          throw fail(400, 'Faiz ve ücret için geçerli tutarlar girin.');
+        const events = ctx.state.data['hanhukuk-finance-v1'].filter((event) => event.documentId === doc.id);
+        const received = events
+          .filter((event) => event.type === 'payment')
+          .reduce((sum, event) => sum + event.amount, 0);
+        const expense = events
+          .filter((event) => event.type === 'expense')
+          .reduce((sum, event) => sum + event.amount, 0);
+        const total = Math.max(
+          0,
+          amounts.reduce((sum, value) => sum + value, 0) + expense - Number(doc.debtDiscountCents || 0),
+        );
+        if (!Number.isSafeInteger(total) || (received > 0 && received >= total))
+          throw fail(400, 'Yeni toplam borç, alınmış tahsilattan yüksek olmalıdır.');
+      }
+    }
     if (['ceo', 'admin'].includes(u.role) || (key === 'hanhukuk-finance-v1' && allowed(u, 'documents'))) {
       if (key === 'hanhukuk-accounting-v1') validateNewClientPayouts(ctx.state, v.value, u);
       if (key === 'hanhukuk-finance-v1') {

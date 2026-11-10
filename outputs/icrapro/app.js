@@ -219,14 +219,18 @@ function render() {
     page === 'messages' ||
     page === 'reminders' ||
     page === 'reports' ||
+    page === 'callRecordings' ||
     page === 'accounting' ||
     page === 'home' ||
     page === 'settings' ||
-    page === 'personnel';
+    page === 'personnel' ||
+    page === 'marketing';
   document
     .querySelectorAll('nav button')
     .forEach((b) => b.classList.toggle('active', b.dataset.page === page));
   const titles = {
+    marketing: ['Pazarlama', 'Potansiyel müvekkil ve ziyaret takibi.'],
+    callRecordings: ['Görüşme Kayıtları', 'Arama geçmişi, görüşme sonuçları ve şifreli ses arşivi.'],
     messages: ['Mesajlar / İş Emirleri', 'Kullanıcılara tek tek veya toplu mesaj gönderin.'],
     reminders: ['Hatırlatmalar', 'Dosyaya bağlı veya kişisel hatırlatmalarınızı zamanlayın.'],
     users: ['Kullanıcı Yönetimi', 'Hesapları ve yetkileri yönetin.'],
@@ -250,12 +254,13 @@ function render() {
   $('#clientSearchBar').replaceChildren();
   if (page === 'clients') {
     $('#content').innerHTML =
-      `<div class="panel"><div class="panelhead"><div><h2>Müvekkil kayıtları</h2><p>Tüm müvekkiller ve iletişim bilgileri</p></div><div class="client-search-wrap"><input class="search" id="search" placeholder="İsim, unvan veya kimlik numarasının başlangıcını yazın…" aria-label="Müvekkil ara" autocomplete="off" aria-controls="clientSuggestions" aria-expanded="false"><div id="clientSuggestions" class="client-suggestions" hidden></div></div></div><div class="overflow"><table><thead><tr><th>MÜVEKKİL / UNVAN</th><th>TÜR</th><th>İLETİŞİM</th><th>EVRAK</th><th>İŞLEMLER</th></tr></thead><tbody id="rows"></tbody></table></div><div class="tablefoot" id="total"></div></div>`;
+      `<div class="panel"><div class="panelhead"><div><h2>Müvekkil kayıtları</h2><p>Tüm müvekkiller ve iletişim bilgileri</p></div><div class="client-search-wrap"><input class="search" id="search" type="search" maxlength="200" placeholder="Müvekkil adının başlangıcını yazın (ör. sak)…" aria-label="Müvekkil ara" autocomplete="off" aria-controls="clientSuggestions" aria-expanded="false"><div id="clientSuggestions" class="client-suggestions" hidden></div></div></div><div class="overflow"><table><thead><tr><th>MÜVEKKİL / UNVAN</th><th>TÜR</th><th>İLETİŞİM</th><th>EVRAK</th><th>İŞLEMLER</th></tr></thead><tbody id="rows"></tbody></table></div><div class="tablefoot" id="total"></div></div>`;
     $('#clientSearchBar').append($('#content .panelhead'));
     if (window.hanRecordsEnabled) $('#search').value = recordClientList.q;
     clientRows();
-    $('#search').oninput = clientRows;
-  } else if (page === 'messages') messagesPage();
+    bindClientSearch();
+  } else if (page === 'callRecordings') voipRecordingsPage();
+  else if (page === 'messages') messagesPage();
   else if (page === 'reminders') scheduledRemindersPage();
   else if (page === 'users') userManagement();
   else if (page === 'noAccess')
@@ -266,7 +271,134 @@ function render() {
   else if (page === 'intake') {
     intake();
     window.scrollTo({ top: 0, behavior: 'instant' });
-  } else if (page === 'personnel') personnelSettings();
+  } else if (page === 'marketing') {
+    document.getElementById('content').innerHTML = `
+      <section class="panel">
+        <div class="panelhead"><div><h2>Pazarlama</h2><p>Potansiyel müvekkil bilgileri</p></div>
+          <div class="toolbar"><button class="primary" type="button" id="addProspect" aria-expanded="false" aria-controls="prospectForm">＋ Potansiyel Müvekkil Ekle</button><button class="secondary" type="button" id="marketingBack">← Geri</button></div>
+        </div>
+        <form id="prospectForm" class="formbody" hidden>
+          <h3>Potansiyel Müvekkil Bilgileri</h3>
+          <div class="grid">
+            <label class="field">Tarih<input name="date" type="date" required></label>
+            <label class="field">Saat<input name="time" type="time"></label>
+            ${staffSelect('Personel', 'staffId')}
+            <label class="field">Durum<select name="status" required><option value="">Durum seçin</option><option value="Potansiyel Müvekkil">Potansiyel Müvekkil</option><option value="Mevcut Müvekkil">Mevcut Müvekkil</option></select></label>
+            <label class="field">Firma Adı<input name="company" type="text" maxlength="200" required></label>
+            <label class="field">Görüşülen Kişi<input name="contact" type="text" maxlength="200"></label>
+            <label class="field">Telefon Numarası<input name="phone" type="tel" maxlength="30"></label>
+            ${clientCityField({}, 'prospect')}
+            <label class="field full">Adres<textarea name="address" rows="2" maxlength="1000"></textarea></label>
+            <label class="field full">Açıklama<textarea name="notes" rows="3" maxlength="3000"></textarea></label>
+          </div>
+          <div class="actions"><button class="primary" type="submit">Kaydet</button><button class="secondary" type="button" id="convertProspect">Müvekkile Çevir</button></div>
+        </form>
+        <div class="formbody"><div class="grid"><label class="field">Başlangıç Tarihi<input id="prospectFrom" type="date"></label><label class="field">Bitiş Tarihi<input id="prospectTo" type="date"></label><label class="field">Personel<input id="prospectStaffFilter" type="search" placeholder="Personel adı"></label><label class="field">Firma / İl / İlçe Ara<input id="prospectQuery" type="search"></label></div></div><div class="formbody" id="prospectList"></div>
+      </section>`;
+    setupClientCity('prospect');
+    setupClientDistrict('prospect');
+    const button = document.getElementById('addProspect');
+    const form = document.getElementById('prospectForm');
+    document.getElementById('marketingBack').onclick = () => {
+      if (!form.hidden) {
+        editingProspectId = null;
+        form.reset();
+        updateProspectFields();
+        form.hidden = true;
+        button.setAttribute('aria-expanded', 'false');
+      } else {
+        page = 'home';
+        render();
+      }
+    };
+    const updateProspectFields = () => {
+      const existing = form.elements.status.value === 'Mevcut Müvekkil';
+      for (const name of ['staffId', 'contact', 'phone', 'city', 'district', 'address']) {
+        const input = form.elements[name];
+        const container = input?.closest('.field');
+        if (container) container.style.display = existing ? 'none' : '';
+        if (input && ['date', 'city', 'district'].includes(name)) input.required = !existing;
+        if (input && existing) input.setCustomValidity('');
+      }
+      document.getElementById('convertProspect').style.display = existing ? 'none' : '';
+    };
+    form.elements.status.addEventListener('change', updateProspectFields);
+    updateProspectFields();
+    button.onclick = () => {
+      form.hidden = !form.hidden;
+      button.setAttribute('aria-expanded', String(!form.hidden));
+      if (!form.hidden) form.elements.company.focus();
+    };
+    let editingProspectId = null;
+    const loadProspects = () => {
+      try {
+        const result = authApi('/api/marketing-prospects');
+        const from = document.getElementById('prospectFrom').value;
+        const to = document.getElementById('prospectTo').value;
+        const staff = document.getElementById('prospectStaffFilter').value.trim().toLocaleLowerCase('tr');
+        const query = document.getElementById('prospectQuery').value.trim().toLocaleLowerCase('tr');
+        result.items = result.items.filter((item) =>
+          (!from || item.date >= from) && (!to || item.date <= to) &&
+          (!staff || String(item.staffName || '').toLocaleLowerCase('tr').includes(staff)) &&
+          (!query || [item.company, item.city, item.district].some((v) => String(v || '').toLocaleLowerCase('tr').includes(query)))
+        );
+        document.getElementById('prospectList').innerHTML = '<h3>Potansiyel Müvekkiller</h3><div class="overflow"><table><thead><tr><th>TARİH</th><th>FİRMA</th><th>İL / İLÇE</th><th>PERSONEL</th><th>DURUM</th><th>İŞLEM</th></tr></thead><tbody>' +
+          result.items.map((item) => `<tr><td>${esc(item.date)} ${esc(item.time)}</td><td>${esc(item.company)}</td><td>${esc(item.city)} / ${esc(item.district)}</td><td>${esc(item.staffName)}</td><td>${esc(item.status)}</td><td>${['ceo', 'admin'].includes(hanAuth.role) ? `<button type="button" class="link" data-edit-prospect="${esc(item.id)}">Düzenle</button>` : ''}</td></tr>`).join('') +
+          (result.items.length ? '' : '<tr><td colspan="6" class="empty">Henüz kayıt yok.</td></tr>') + '</tbody></table></div>';
+        document.querySelectorAll('[data-edit-prospect]').forEach((editButton) => {
+          editButton.onclick = () => {
+            const item = result.items.find (entry => entry.id === editButton.dataset.editProspect);
+            if (!item) return;
+            editingProspectId = item.id;
+            for (const key of ['date', 'time', 'staffId', 'status', 'company', 'contact', 'phone', 'city', 'district', 'address', 'notes'])
+              if (form.elements[key]) form.elements[key].value = item[key] || '';
+            updateProspectFields();
+            form.hidden = false;
+            button.setAttribute('aria-expanded', 'true');
+            form.elements.company.focus();
+          };
+        });
+      } catch (error) { document.getElementById('prospectList').textContent = error.message; }
+    };
+    form.onsubmit = (event) => {
+      event.preventDefault();
+      try {
+        const values = Object.fromEntries(new FormData(form));
+        if (!('district' in values)) values.district = form.elements.district.value;
+        if (values.status === 'Mevcut Müvekkil' && !values.date) values.date = businessDate();
+        if (editingProspectId) values.id = editingProspectId;
+        authApi('/api/marketing-prospects', editingProspectId ? 'PUT' : 'POST', values);
+        editingProspectId = null;
+        form.reset();
+        updateProspectFields();
+        loadProspects();
+        toast('Potansiyel müvekkil kaydedildi.');
+      } catch (error) { toast(error.message); }
+    };
+    for (const id of ['prospectFrom', 'prospectTo', 'prospectStaffFilter', 'prospectQuery']) document.getElementById(id).addEventListener('input', loadProspects);
+    loadProspects();
+    document.getElementById('convertProspect').onclick = () => {
+      if (!hanCan('clients')) return toast('Müvekkil ekleme yetkiniz yok.');
+      const prospect = Object.fromEntries(new FormData(form));
+      if (!prospect.company.trim()) {
+        form.elements.company.setCustomValidity('Firma adını girin.');
+        form.elements.company.reportValidity();
+        form.elements.company.setCustomValidity('');
+        return;
+      }
+      clientModal(null, {
+        type: 'Şirket',
+        tradeName: prospect.company.trim(),
+        fullName: prospect.contact.trim(),
+        phone: prospect.phone.trim(),
+        city: prospect.city.trim(),
+        district: prospect.district.trim(),
+        address: prospect.address.trim(),
+        notes: prospect.notes.trim(),
+      });
+    };
+  }
+  else if (page === 'personnel') personnelSettings();
   else if (page === 'settings') settings();
   else documents();
 }

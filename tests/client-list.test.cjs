@@ -5,6 +5,35 @@ const path = require('node:path');
 const { JSDOM } = require('jsdom');
 const root = path.resolve(__dirname, '../outputs/icrapro');
 
+test('Üst arama yazılan metni sunucuya taşır ve müvekkil sonucunu gösterir', async (t) => {
+  const dom = new JSDOM(
+    '<form id="workspaceSearch"><input id="workspaceSearchQuery"><div id="workspaceSearchResults" hidden></div></form>',
+    { url: 'https://example.test', runScripts: 'dangerously' },
+  );
+  t.after(() => dom.window.close());
+  const w = dom.window;
+  w.AbortController = AbortController;
+  w.hanRecordsEnabled = true;
+  w.esc = (s) => s;
+  const requests = [];
+  w.fetch = async (url) => {
+    requests.push(url);
+    return {
+      ok: true,
+      json: async () => ({ items: [{ type: 'client', id: 'sak', label: 'Sakarya Mobilya' }] }),
+    };
+  };
+  w.eval(fs.readFileSync(path.join(root, 'workspace-search.js'), 'utf8'));
+  w.setupWorkspaceSearch();
+  const input = w.document.getElementById('workspaceSearchQuery');
+  input.value = 'sak';
+  input.dispatchEvent(new w.Event('input', { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 260));
+  assert.equal(new URL(requests[0], w.location.origin).searchParams.get('q'), 'sak');
+  assert.equal(w.document.getElementById('workspaceSearchResults').hidden, false);
+  assert.match(w.document.getElementById('workspaceSearchResults').textContent, /Sakarya Mobilya/);
+});
+
 test('Client UI keeps global totals across pages, loads one editor and saves only changed client fields', async (t) => {
   const dom = new JSDOM(
     '<div id="stats"></div><span id="count"></span><input id="search"><div id="clientSuggestions"></div><table><tbody id="rows"></tbody></table><div id="total"></div>',
@@ -84,6 +113,19 @@ test('Client UI keeps global totals across pages, loads one editor and saves onl
             : { record: original, attachments: [{ id: 'client:c50:0', revision: '1' }] },
       };
     const offset = parsed.searchParams.has('after') ? 50 : 0;
+    if (parsed.searchParams.get('q') === 'sak')
+      return {
+        ok: true,
+        json: async () => ({
+          count: '2',
+          next: null,
+          summary,
+          items: [
+            { id: 's1', name: 'Sakarya Mobilya' },
+            { id: 's2', name: 'SAK Ticaret' },
+          ],
+        }),
+      };
     return {
       ok: true,
       json: async () => ({
@@ -114,6 +156,17 @@ test('Client UI keeps global totals across pages, loads one editor and saves onl
   assert.match(w.document.querySelector('#total').textContent, /51–75 \/ 75/);
   assert.equal(w.document.querySelector('#stats').textContent, firstStats);
   assert.equal(w.db.clients.length, 0, 'list projections must not become edit baselines');
+  w.bindClientSearch();
+  const input = w.document.querySelector('#search');
+  input.value = 'sak';
+  input.dispatchEvent(new w.Event('input', { bubbles: true }));
+  assert.equal(w.clientListState.index, 0);
+  assert.equal(w.clientListState.q, 'sak');
+  await new Promise((resolve) => setTimeout(resolve, 260));
+  assert.match(w.document.querySelector('#rows').textContent, /Sakarya Mobilya/);
+  assert.equal(w.document.querySelectorAll('[data-client-suggestion]').length, 2);
+  assert.equal(w.document.querySelector('#clientSuggestions').hidden, false);
+  assert.match(w.document.querySelector('#total').textContent, /2 müvekkil/);
   w.clientModal = (id, record) => {
     w.opened = record;
   };
@@ -140,4 +193,66 @@ test('Client UI keeps global totals across pages, loads one editor and saves onl
   assert.equal(w.document.querySelector('#search').value, 'Selected');
   await w.loadRecordClientPage();
   assert.equal(new URL(requests.at(-1).url, 'https://local-test.invalid').searchParams.has('after'), false);
+});
+
+test('Müvekkil düzenle finansal sekmesi ödeme ekstresini açar ve taslağı korur', async (t) => {
+  const dom = new JSDOM(
+    '<form id="clientForm" data-client-id="c"><div class="formbody"><div class="grid"><label class="field">Ad<input name="name" value="taslak"></label></div></div></form>',
+    { url: 'https://example.test', runScripts: 'dangerously' },
+  );
+  t.after(() => dom.window.close());
+  const w = dom.window;
+  Object.assign(w, {
+    AbortController,
+    hanAuth: { role: 'ceo' },
+    hanRecordsEnabled: true,
+    $: (s) => w.document.querySelector(s),
+    displayDate: (s) => s,
+    esc: (s) => String(s).replaceAll('<', '&lt;'),
+    recordMoney: (s) => String(s),
+  });
+  w.eval(fs.readFileSync(path.join(root, 'document-records.js'), 'utf8'));
+  w.eval(fs.readFileSync(path.join(root, 'workspace-client-list.js'), 'utf8'));
+  const requests = [];
+  w.fetch = async (url) => {
+    requests.push(url);
+    const offset = Number(new URL(url, w.location.origin).searchParams.get('offset'));
+    return {
+      ok: true,
+      json: async () => ({
+        items: [
+          {
+            id: 'p' + offset,
+            status: offset ? 'Derdest' : 'İnfaz',
+            date: '2026-11-01',
+            number: 'F-001',
+            debtor: '<img src=x>',
+            amount: '100',
+            bank: 'Banka',
+            note: 'Ödeme',
+          },
+        ],
+        totals: { count: '51', paid: '5100' },
+        more: offset === 0,
+      }),
+    };
+  };
+  const form = w.document.querySelector('form');
+  w.setupRecordFormTabs(form, 'client');
+  w.setupClientStatement(form, 'c');
+  assert.equal(requests.length, 0);
+  form.querySelector('[data-form-tab="financial"]').click();
+  for (let i = 0; i < 8; i++) await new Promise(setImmediate);
+  assert.equal(form.querySelector('[data-form-panel="financial"]').hidden, false);
+  assert.match(form.querySelector('[data-statement-total]').textContent, /5100/);
+  assert.equal(form.querySelector('[data-statement-rows] tr').children.length, 7);
+  assert.equal(form.querySelector('[data-statement-subtotal]').textContent, '5100');
+  assert.equal(form.querySelector('[data-statement-rows] tr').children[3].textContent, 'İnfaz');
+  assert.equal(form.querySelector('img'), null);
+  form.querySelector('[data-statement-next]').click();
+  for (let i = 0; i < 8; i++) await new Promise(setImmediate);
+  assert.equal(new URL(requests.at(-1), w.location.origin).searchParams.get('offset'), '50');
+  assert.equal(form.querySelector('[data-statement-rows] tr').children[3].textContent, 'Kısmi');
+  assert.equal(form.querySelector('[data-statement-subtotal]').textContent, '5100');
+  assert.equal(form.elements.name.value, 'taslak');
 });

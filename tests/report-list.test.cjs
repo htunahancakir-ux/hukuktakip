@@ -21,6 +21,7 @@ test('Report UI keeps complete totals across pages, rejects stale responses and 
     hanWorkspaceComplete: false,
     page: 'reports',
     hanAuth: { role: 'ceo' },
+    hanPageAllowed: () => true,
     db: { clients: [], docs: [] },
     personnel: [],
     accounting: { accounts: [] },
@@ -157,4 +158,11 @@ test('Report UI keeps complete totals across pages, rejects stale responses and 
   assert(requests.every((url) => !url.includes('/api/data') && !url.includes('/api/report-data')));
   await w.exportReport();
   assert.deepEqual(notices, ['Rapor çıktısı çok büyük.']);
+  fail = false;
+  w.document.querySelector('#openExpenseReport').click();
+  await tick();
+  assert.equal(w.reportFilters.type, 'expenses');
+  assert.equal(w.reportFilters.client, '');
+  assert.equal(w.document.querySelector('#reportClient').closest('label').hidden, true);
+  assert.ok(requests.at(-1).includes('type=expenses'));
 });

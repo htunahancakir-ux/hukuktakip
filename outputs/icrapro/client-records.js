@@ -324,11 +324,23 @@ function clientRows(event) {
   if (window.hanRecordsEnabled) return event ? scheduleRecordClientPage() : loadRecordClientPage();
   const q = normalizeSearch($('#search').value);
   const list = db.clients.filter((c) =>
-    [c.name, c.fullName, c.tradeName, c.identity].some((value) => normalizeSearch(value).includes(q)),
+    [c.name, c.fullName, c.tradeName, c.identity].some((value) => normalizeSearch(value).startsWith(q)),
   );
   renderClientSuggestions(q, list);
   paintClientRows(list);
   $('#total').textContent = `${list.length} müvekkil gösteriliyor`;
+}
+
+function bindClientSearch() {
+  const input = document.getElementById('search');
+  input.addEventListener('input', clientRows);
+  input.addEventListener('search', clientRows);
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      clientRows();
+    }
+  });
 }
 
 function paintClientRows(list, remote = false) {
@@ -363,7 +375,10 @@ function clientModal(id, loadedRecord) {
   const clientIbanInput = document.getElementById('clientForm').elements.iban;
   clientIbanInput.required = false;
   clientIbanInput.addEventListener('input', () => clientIbanInput.setCustomValidity(''));
+  $('#clientForm').dataset.clientId = id || '';
   setupRecordFormTabs($('#clientForm'), 'client');
+  if (id && ['ceo', 'admin'].includes(window.hanAuth?.role))
+    setupClientStatement($('#clientForm'), id, c.name || c.tradeName || c.fullName || '');
   setupExtraContacts($('#clientForm'), c);
   $('#modal').showModal();
   setupClientCity();

@@ -10,6 +10,35 @@ const protectedKeys = new Set([
 const hanDataVersions = new Map();
 const hanDataBaselines = new Map();
 let hanStartupData = null;
+
+function assetUrl(file) {
+  const version = window.HAN_ASSET_VERSION;
+  return version ? `${file}?v=${encodeURIComponent(version)}` : file;
+}
+
+function loadClassicScript(file) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = assetUrl(file);
+    // Keep execution in the declared dependency order while allowing the
+    // browser to fetch all workspace files concurrently.
+    script.async = false;
+    script.onload = resolve;
+    script.onerror = reject;
+    document.body.append(script);
+  });
+}
+
+function showWorkspaceLoading() {
+  document.getElementById('authGate')?.remove();
+  document.querySelector('aside').hidden = false;
+  document.querySelector('.shell').hidden = false;
+  const content = document.getElementById('content');
+  if (content)
+    content.innerHTML =
+      '<section class="panel formbody" role="status" aria-live="polite"><h2>Çalışma alanı hazırlanıyor</h2><p>Dosyalar ve güncel kayıtlar yükleniyor.</p></section>';
+}
+
 async function preloadServerData({ complete = false } = {}) {
   if (window.hanRecordsEnabled && !complete) {
     const response = await fetch('/api/records/bootstrap', {
@@ -92,6 +121,11 @@ function authApi(url, method = 'GET', data) {
   const request = new XMLHttpRequest();
   request.open(method, url, false);
   request.setRequestHeader('X-Han-Request', '1');
+  if (typeof ceoPinScope === 'function') {
+    const scope = ceoPinScope(url);
+    if (scope && window.hanPinProofs?.[scope])
+      request.setRequestHeader('X-Han-Pin-Proof', window.hanPinProofs[scope]);
+  }
   if (method === 'PUT' && url.startsWith('/api/data?') && hanDataVersions.has(url))
     request.setRequestHeader('If-Match', hanDataVersions.get(url));
   if (data !== undefined) request.setRequestHeader('Content-Type', 'application/json');
@@ -116,8 +150,13 @@ function authApi(url, method = 'GET', data) {
     typeof applyStaffBreakStatus === 'function'
   )
     applyStaffBreakStatus(result.activeBreak);
-  if (request.status < 200 || request.status >= 300)
+  if (request.status < 200 || request.status >= 300) {
+    if (result.code === 'CEO_PIN_REQUIRED' && typeof requireCeoPin === 'function')
+      void requireCeoPin(result.pinScope).then((ok) => {
+        if (ok) toast('PIN doğrulandı. İşlemi tekrar deneyin.');
+      });
     throw Object.assign(Error(result.error || 'İşlem yapılamadı.'), { code: result.code });
+  }
   const version = request.getResponseHeader('ETag');
   if (result.accountBalances) window.hanAccountBalances = result.accountBalances;
   if (method === 'GET' && url === '/api/session') window.hanRecordsEnabled = result.recordStore === true;
@@ -166,6 +205,7 @@ function hanPageAllowed(p) {
   return (
     ['ceo', 'admin'].includes(hanAuth?.role) ||
     (!!hanAuth && ['home', 'messages', 'reports', 'reminders'].includes(p)) ||
+    (p === 'marketing' && hanAuth?.marketingAccess === true) ||
     (p === 'accounting' && (hanCan('cashIn') || hanCan('cashOut'))) ||
     (p === 'clients' && hanCan('clients')) ||
     (['intake', 'documents'].includes(p) && hanCan('documents'))
@@ -222,6 +262,14 @@ function showAccountPanel() {
     <div class="actions"><button type="button" class="secondary" id="openAccountTerms">Sözleşme geçmişim</button><span><button type="button" class="secondary" id="cancelAccountSettings">Vazgeç</button><button type="submit" class="primary">Şifreyi değiştir</button></span></div>
   </form>`;
   const form = document.getElementById('accountSettingsForm');
+  if (user.role === 'ceo') {
+    const pinButton = document.createElement('button');
+    pinButton.type = 'button';
+    pinButton.className = 'secondary';
+    pinButton.textContent = 'Güvenlik PIN’i Belirle / Değiştir';
+    pinButton.onclick = () => showCeoPinSettings();
+    form.querySelector('.account-settings-form').append(pinButton);
+  }
   installPasswordVisibility(form);
   const close = () => modal.close();
   document.getElementById('closeAccountSettings').onclick = close;
@@ -257,8 +305,9 @@ function openHeaderNotifications() {
   render();
 }
 
-function openDeletionPanel() {
+async function openDeletionPanel() {
   if (!hanAuth.canDelete) return;
+  if (typeof requireCeoPin === 'function' && !(await requireCeoPin('delete'))) return;
   let dialog = document.getElementById('deleteOperationsDialog');
   if (!dialog) {
     dialog = document.createElement('dialog');
@@ -271,7 +320,7 @@ function openDeletionPanel() {
     <option value="accounting">Muhasebe / Müvekkil Ödemeleri</option><option value="finance">Tahsilat / Masraf</option>
     <option value="conversations">Görüşmeler</option><option value="documents">Borçlu Dosyaları</option>
     <option value="clients">Müvekkiller</option><option value="accounts">Hesaplar</option>
-    <option value="personnel">Personel</option><option value="cases">İcra İşlemleri</option></select></label>
+    <option value="marketing">Pazarlama / Potansiyel Müvekkiller</option><option value="personnel">Personel</option><option value="cases">İcra İşlemleri</option></select></label>
     <label class="field">Ara<input name="q" placeholder="Dosya numarası, ad veya açıklama"></label><button class="primary">Listele</button></form>
     <p data-status role="status"></p><div data-rows></div><div class="actions"><button class="secondary" data-prev>Önceki</button><button class="secondary" data-next>Sonraki</button></div></div>`;
   let offset = 0,
@@ -432,29 +481,15 @@ function installServerStorage() {
   };
 }
 async function launchApplication() {
-  await new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = 'record-patch.js';
-    script.onload = resolve;
-    script.onerror = reject;
-    document.body.append(script);
-  });
+  await loadClassicScript('record-patch.js');
   await preloadServerData();
   for (const key of protectedKeys) localStorage.removeItem(key);
   installServerStorage();
-  for (const file of workspaceScripts)
-    await new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = file;
-      script.onload = resolve;
-      script.onerror = reject;
-      document.body.append(script);
-    });
+  showWorkspaceLoading();
+  await Promise.all(workspaceScripts.map(loadClassicScript));
   hanStartupData = null;
-  document.getElementById('authGate')?.remove();
-  document.querySelector('aside').hidden = false;
-  document.querySelector('.shell').hidden = false;
   accessMenu();
+  setupVoipNavigation();
   refreshBackupIndicator();
   startPresenceHeartbeat();
   if (embeddedIntake) return;
@@ -628,6 +663,7 @@ function authGate(setup) {
         if (!window.confirm(error.message)) return;
         hanAuth = authApi(url, 'POST', { ...data, replaceSessions: true });
       }
+      hanAuth = authApi('/api/session').user;
       await enterWorkspace();
     } catch (error) {
       const output = document.getElementById('authError');

@@ -85,10 +85,14 @@ test('Payout UI pages complete totals, fetches selected detail only, and retries
           accountBalances: { cash: '10000' },
         }),
       };
-    if (p.pathname === '/api/records/search')
+    if (p.pathname === '/api/records/clients')
       return {
         ok: true,
-        json: async () => ({ items: [{ id: 'outside', label: '<img src=x>' }], more: false }),
+        json: async () => ({
+          items: [{ id: 'outside', name: 'Sakarya <img src=x>' }],
+          count: '1',
+          next: null,
+        }),
       };
     return {
       ok: true,
@@ -118,6 +122,22 @@ test('Payout UI pages complete totals, fetches selected detail only, and retries
     };
   };
   await w.clientPayoutPage();
+  assert.equal(w.document.querySelectorAll('thead th').length, 8);
+  assert.match(w.document.querySelector('thead').textContent, /MÜVEKKİL ADI.*BORÇLU ADI/);
+  const opened = [];
+  w.clientModal = (id) => opened.push(['client', id]);
+  w.recordAction = async (id, callback) => {
+    opened.push(['context', id]);
+    callback();
+  };
+  w.borrowerDetail = (id) => opened.push(['borrower', id]);
+  w.document.querySelector('[data-payout-client="c"]').click();
+  w.document.querySelector('[data-payout-borrower="d"]').click();
+  assert.deepEqual(opened, [
+    ['client', 'c'],
+    ['context', 'd'],
+    ['borrower', 'd'],
+  ]);
   const total = w.document.querySelector('tfoot').textContent;
   w.document.querySelector('#nextPayout').click();
   await tick();
@@ -127,6 +147,14 @@ test('Payout UI pages complete totals, fetches selected detail only, and retries
   w.document.querySelector('#payoutClientLookup').dispatchEvent(new w.Event('focus'));
   await tick();
   assert.ok(w.document.querySelector('#clientPayoutFilter option[value="outside"]'));
+  assert.equal(w.document.querySelector('#payoutClientMatches').hidden, false);
+  assert.match(w.document.querySelector('#payoutClientMatches').textContent, /Sakarya/);
+  assert.equal(w.document.querySelector('#payoutClientMatches img'), null);
+  let filtered = 0;
+  w.document.querySelector('#clientPayoutFilter').form.requestSubmit = () => filtered++;
+  w.document.querySelector('#payoutClientMatches button').click();
+  assert.equal(w.document.querySelector('#clientPayoutFilter').value, 'outside');
+  assert.equal(filtered, 1);
   assert.equal(w.db.clients.length, 0);
   await w.clientPayoutForm('d');
   const form = w.document.querySelector('#clientPayoutForm');

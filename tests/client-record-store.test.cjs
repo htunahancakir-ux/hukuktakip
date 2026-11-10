@@ -20,6 +20,10 @@ test('Client pages, selected attachments and isolated edits preserve totals, per
         futureField: { retained: true },
       }));
     clients[0].name = 'IŞIK İNŞAAT %_';
+    clients[2].name = 'Sakarya Mobilya';
+    clients[80].name = 'SAK Beyaz Eşya';
+    clients[81].name = 'İsak Tekstil';
+    clients[121].tradeName = 'sak Ticaret';
     clients[0].attachments = [
       { id: 'a', name: 'test.pdf', kind: 'powerOfAttorney', data: 'data:application/pdf;base64,JVBERi0x' },
     ];
@@ -31,6 +35,7 @@ test('Client pages, selected attachments and isolated edits preserve totals, per
       docs: [
         {
           id: 'd1',
+          number: 'F-001',
           client: 'c0',
           debtor: 'Synthetic',
           identity: '20000000000',
@@ -44,7 +49,18 @@ test('Client pages, selected attachments and isolated edits preserve totals, per
     };
     state.data['hanhukuk-accounting-v1'] = {
       accounts: [{ id: 'cash', name: 'Kasa' }],
-      entries: [{ id: 'paid', documentId: 'd1', accountId: 'cash', type: 'clientPayout', amount: 1500 }],
+      entries: [
+        {
+          id: 'paid',
+          documentId: 'd1',
+          accountId: 'cash',
+          type: 'clientPayout',
+          amount: 1500,
+          date: '2026-11-01',
+          accountName: 'Gönderen Banka',
+          note: 'Kısmi ödeme',
+        },
+      ],
     };
     state.users.push(
       ...['allowed', 'denied'].map((username) => ({
@@ -108,6 +124,28 @@ test('Client pages, selected attachments and isolated edits preserve totals, per
     const search = await get('/api/records/clients?' + new URLSearchParams({ q: 'isik insaat %_' }));
     assert.equal(search.count, '1');
     assert.deepEqual(search.summary, pages[0].summary);
+    const prefix = await get('/api/records/clients?' + new URLSearchParams({ q: 'sak', limit: 2 }));
+    assert.equal(prefix.count, '3');
+    assert.deepEqual(
+      prefix.items.map((c) => c.id),
+      ['c2', 'c80'],
+    );
+    const rest = await get(
+      '/api/records/clients?' + new URLSearchParams({ q: 'sak', limit: 2, after: prefix.next }),
+    );
+    assert.deepEqual(
+      rest.items.map((c) => c.id),
+      ['c121'],
+    );
+    const general = await get('/api/search?' + new URLSearchParams({ q: 'sak' }));
+    assert.deepEqual(
+      general.items
+        .filter((c) => c.type === 'client')
+        .slice(0, 3)
+        .map((c) => c.id)
+        .sort(),
+      ['c121', 'c2', 'c80'],
+    );
     assert.equal((await get('/api/records/clients?' + new URLSearchParams({ q: "' OR 1=1 --" }))).count, '0');
     assert.equal(
       (
@@ -121,6 +159,17 @@ test('Client pages, selected attachments and isolated edits preserve totals, per
       400,
     );
     const detail = await get('/api/records/client?id=c0');
+    const statement = await get('/api/records/client?id=c0&section=statement');
+    assert.equal(statement.totals.paid, '2500');
+    assert.equal(statement.totals.count, '2');
+    assert.ok(statement.items.every((e) => e.number === 'F-001'));
+    assert.ok(statement.items.every((e) => e.status === 'İnfaz'));
+    const period = await get('/api/records/client?id=c0&section=statement&start=2026-11-01&end=2026-11-01');
+    assert.equal(period.totals.paid, '1500');
+    assert.equal(period.items[0].bank, 'Gönderen Banka');
+    assert.equal(period.items[0].note, 'Kısmi ödeme');
+    const otherStatement = await get('/api/records/client?id=c122&section=statement');
+    assert.equal(otherStatement.totals.count, '0');
     assert.deepEqual(detail.record.attachments, []);
     assert.equal(detail.attachments.length, 1);
     const attachment = await get(
@@ -197,6 +246,10 @@ test('Client pages, selected attachments and isolated edits preserve totals, per
     const allowed = await login('allowed'),
       denied = await login('denied');
     const staff = await get('/api/records/clients', allowed);
+    assert.equal(
+      (await fetch(server.url + '/api/records/client?id=c0&section=statement', { headers: allowed })).status,
+      403,
+    );
     assert.equal(staff.count, '124');
     assert.equal(staff.summary, null, 'staff cannot fetch financial summary');
     assert.equal((await fetch(server.url + '/api/records/clients', { headers: denied })).status, 403);

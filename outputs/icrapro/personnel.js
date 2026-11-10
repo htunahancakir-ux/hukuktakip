@@ -50,7 +50,12 @@ function payrollTotals(rows) {
     { official: 0, unofficial: 0, bonus: 0, salary: 0, total: 0 },
   );
 }
-function personnelSettings(editId) {
+async function personnelSettings(editId) {
+  if (window.hanAuth?.role === 'ceo' && typeof requireCeoPin === 'function') {
+    const requestedPage = page;
+    $('#content').textContent = 'Güvenlik doğrulaması bekleniyor…';
+    if (!(await requireCeoPin('permissions')) || page !== requestedPage) return;
+  }
   const currentMonth = businessDate().slice(0, 7);
   if (personnelPayrollTodayMonth !== currentMonth) {
     personnelPayrollTodayMonth = currentMonth;

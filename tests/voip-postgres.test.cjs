@@ -1,0 +1,194 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { database, fixture } = require('./support/postgres.cjs');
+const { importState } = require('../lib/postgres-store.cjs');
+const { transaction } = require('../lib/voip-store.cjs');
+test('dedicated VoIP tables preserve snapshot, paginate history and enforce active-call uniqueness', async () => {
+  const { pg, pool } = await database();
+  try {
+    const state = fixture();
+    state.data['icrapro-v1'].clients = [{ id: 'c', name: 'Örnek müvekkil' }];
+    state.data['icrapro-v1'].docs = [
+      { id: 'd', client: 'c', phone1: '05320000000', relatedStaff: 'p', number: 'D-1' },
+    ];
+    state.users.push({ ...state.users[0], id: 's', username: 'staff', role: 'staff', staffId: 'p' });
+    state.data['icrapro-personnel-v1'] = [{ id: 'p', name: 'Test staff', active: true }];
+    await importState(pool, state);
+    const before = JSON.stringify(
+      (await pool.query('SELECT payload FROM han_private.han_state WHERE id=1')).rows[0].payload,
+    );
+    await transaction(
+      pool,
+      false,
+      (tx) => {
+        assert.equal(tx.state.data['icrapro-v1'].docs[0].id, 'd');
+        tx.state.voipConfig = { provider: 'verimor' };
+        for (let i = 0; i < 80; i++)
+          tx.state.voipCalls.push({
+            id: 'call-' + i,
+            documentId: 'd',
+            phone: '905320000000',
+            userId: 'test-ceo',
+            requestId: 'request-' + i,
+            createdAt: new Date(Date.UTC(2026, 0, 1, 0, i)).toISOString(),
+            status: 'completed',
+            staffName: 'Örnek kişi',
+            clientName: 'Örnek müvekkil',
+            result: i === 1 ? 'Olumlu' : '',
+            duration: i,
+            recordingPresent: i < 10,
+            archivedAt: i < 5 ? '2026-01-01' : undefined,
+          });
+        tx.saveState(tx.state);
+      },
+      { documentId: 'd', configWrite: true },
+    );
+    const list = await transaction(
+      pool,
+      false,
+      (tx) => ({ rows: tx.state.voipCalls, total: tx.state.voipTotal }),
+      { list: { offset: 0 } },
+    );
+    assert.equal(list.total, 80);
+    assert.equal(list.rows.length, 50);
+    assert.equal(list.rows[0].id, 'call-79');
+    const second = await transaction(pool, false, (tx) => tx.state.voipCalls, { list: { offset: 50 } });
+    assert.equal(second.length, 30);
+    assert.equal(second[0].id, 'call-29');
+    const job = { status: 'queued', configHash: 'test', model: 'openai/gpt-transcribe', parts: [] };
+    assert.equal(
+      await transaction(pool, false, (tx) => tx.state.voipEnqueued, {
+        enqueueTranscription: { mode: 'filtered', filters: { result: 'Olumlu' }, job },
+      }),
+      1,
+    );
+    assert.equal(
+      await transaction(pool, false, (tx) => tx.state.voipEnqueued, {
+        enqueueTranscription: { mode: 'filtered', filters: { result: 'Olumlu' }, job },
+      }),
+      0,
+    );
+    assert.equal(
+      await transaction(pool, false, (tx) => tx.state.voipEnqueued, {
+        enqueueTranscription: { mode: 'selected', ids: ['call-2'], job },
+      }),
+      1,
+    );
+    assert.equal(
+      await transaction(pool, false, (tx) => tx.state.voipEnqueued, {
+        enqueueTranscription: { mode: 'all', job },
+      }),
+      8,
+    );
+    const claimed = await transaction(
+      pool,
+      false,
+      (tx) => {
+        const c = tx.state.voipCalls[0];
+        c.transcription.status = 'processing';
+        c.transcription.leaseUntil = new Date(Date.now() + 60000).toISOString();
+        tx.saveState(tx.state);
+        return c.id;
+      },
+      { transcriptionJobs: true, aiConfig: true },
+    );
+    assert.equal(claimed, 'call-0');
+    assert.equal(
+      (await transaction(pool, false, (tx) => tx.state.voipCalls, { transcriptionJobs: true })).length,
+      0,
+      'another worker cannot claim while a valid lease is processing',
+    );
+    const ascending = await transaction(pool, false, (tx) => tx.state.voipCalls, {
+      list: { sort: 'date', direction: 'asc' },
+    });
+    const ascendingNext = await transaction(pool, false, (tx) => tx.state.voipCalls, {
+      list: { sort: 'date', direction: 'asc', offset: 50 },
+    });
+    assert.equal(ascending[0].id, 'call-0');
+    assert.equal(ascendingNext[0].id, 'call-50');
+    const byDuration = await transaction(pool, false, (tx) => tx.state.voipCalls, {
+      list: { sort: 'duration', direction: 'desc' },
+    });
+    assert.equal(byDuration[0].duration, 79);
+    for (const sort of ['client', 'document', 'staff', 'phone', 'status', 'result', 'recording']) {
+      assert.equal(
+        (await transaction(pool, false, (tx) => tx.state.voipCalls, { list: { sort, direction: 'asc' } }))
+          .length,
+        50,
+      );
+    }
+    await assert.rejects(
+      transaction(pool, false, () => {}, { list: { sort: 'created_at; DROP TABLE voip_calls' } }),
+      (e) => e.status === 400,
+    );
+    const filtered = await transaction(
+      pool,
+      false,
+      (tx) => ({ calls: tx.state.voipCalls, total: tx.state.voipTotal }),
+      { list: { status: 'completed', result: 'Olumlu' } },
+    );
+    assert.equal(filtered.total, 1);
+    assert.equal(filtered.calls[0].id, 'call-1');
+    assert.equal(await transaction(pool, false, (tx) => tx.state.voipTotal, { list: { status: 'busy' } }), 0);
+    const one = await transaction(pool, false, (tx) => tx.state.voipCalls, { id: 'call-1' });
+    assert.equal(one.length, 1);
+    const query = await transaction(pool, false, (tx) => tx.state.voipTotal, { list: { q: 'müvekkil' } });
+    assert.equal(query, 80);
+    await transaction(
+      pool,
+      false,
+      (tx) => {
+        tx.state.voipCalls[0].status = 'ringing';
+        tx.saveState(tx.state);
+      },
+      { id: 'call-1' },
+    );
+    await assert.rejects(
+      transaction(
+        pool,
+        false,
+        (tx) => {
+          tx.state.voipCalls[0].status = 'ringing';
+          tx.saveState(tx.state);
+        },
+        { id: 'call-2' },
+      ),
+      (e) => e.code === '23505',
+    );
+    assert.equal(
+      JSON.stringify(
+        (await pool.query('SELECT payload FROM han_private.han_state WHERE id=1')).rows[0].payload,
+      ),
+      before,
+    );
+    await transaction(
+      pool,
+      false,
+      (tx) => {
+        tx.state.voipGrants = [{ userId: 's', staffId: 'p', grantedBy: 'test-ceo' }];
+        tx.saveState(tx.state);
+      },
+      { permissions: true, permissionUserId: 's' },
+    );
+    assert.equal(
+      (await pool.query('SELECT user_id FROM han_private.voip_recording_access')).rows[0].user_id,
+      's',
+    );
+    assert.deepEqual(
+      await transaction(pool, false, (tx) => tx.state.voipAccessibleDocuments, { id: 'call-1', userId: 's' }),
+      ['d'],
+    );
+    await pool.query(
+      "UPDATE han_private.han_state SET payload=jsonb_set(payload,'{data,icrapro-v1,docs,0,relatedStaff}', '\"other\"'::jsonb) WHERE id=1",
+    );
+    assert.deepEqual(
+      await transaction(pool, false, (tx) => tx.state.voipAccessibleDocuments, { id: 'call-1', userId: 's' }),
+      [],
+    );
+    const exported = await require('../lib/voip-store.cjs').exportData(pool);
+    assert.equal(exported.voipCalls.length, 80);
+    assert.equal(exported.voipGrants[0].userId, 's');
+  } finally {
+    await pg.close();
+  }
+});

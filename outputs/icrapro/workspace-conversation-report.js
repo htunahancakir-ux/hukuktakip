@@ -1,13 +1,35 @@
 const conversationReportRequests = new Map();
-async function requestConversationReport(documentId) {
-  if (conversationReportRequests.has(documentId)) return conversationReportRequests.get(documentId);
+function conversationReportMethod(method) {
+  if (String(method || '').startsWith('custom:')) return 'Özel AI sağlayıcısı';
+  return (
+    {
+      'vercel-ai-gateway': 'AI Gateway',
+      openai: 'OpenAI API',
+      'local-extractive': 'Yerel yedek',
+    }[method] || 'Bilinmeyen yöntem'
+  );
+}
+function conversationReportLength(report) {
+  const count = Array.from(report.text || '').length;
+  const limit = report.maxChars || 300;
+  if (count <= limit) return count + ' / ' + limit + ' karakter';
+  return count + ' / ' + limit + ' karakter (+' + (count - limit) + ' cümle tamamlama payı)';
+}
+async function requestConversationReport(documentId, { force = false } = {}) {
+  // A forced click while the automatic refresh is still pending must join the
+  // same operation. Parallel generations can race when persisting one file.
+  const requestKey = documentId;
+  if (conversationReportRequests.has(requestKey)) return conversationReportRequests.get(requestKey);
   const task = (async () => {
     const response = await fetch('/api/documents/conversation-report', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'X-Han-Request': '1', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ documentId }),
-      signal: AbortSignal.timeout(30000),
+      body: JSON.stringify({ documentId, force }),
+      // The server permits a bounded 75-second provider request. Keep the
+      // browser alive slightly longer so it can receive that final response
+      // instead of cancelling a valid slow compatible-provider summary.
+      signal: AbortSignal.timeout(90000),
     });
     const data = await response.json();
     if (!response.ok) {
@@ -20,32 +42,38 @@ async function requestConversationReport(documentId) {
       throw Error(data.error || 'Görüşme özeti oluşturulamadı.');
     }
     const doc = db.docs.find((d) => d.id === documentId);
-    if (doc && (doc.conversations || []).length === data.report.sourceCount)
-      doc.conversationReport = data.report;
+    if (doc) doc.conversationReport = data.report;
     return data.report;
   })();
-  conversationReportRequests.set(documentId, task);
+  conversationReportRequests.set(requestKey, task);
   try {
     return await task;
   } finally {
-    conversationReportRequests.delete(documentId);
+    conversationReportRequests.delete(requestKey);
   }
 }
 function bindConversationReport(doc, form) {
-  const output = form.querySelector('[data-conversation-report]');
-  const status = form.querySelector('[data-conversation-report-status]');
-  const button = form.querySelector('[data-generate-conversation-report]');
+  const root = form.closest('[data-borrower-panel="conversations"]') || form;
+  const output = root.querySelector('[data-conversation-report]');
+  const status = root.querySelector('[data-conversation-report-status]');
+  const button = root.querySelector('[data-generate-conversation-report]');
   if (!output || !button) return;
-  const refresh = async () => {
+  const refresh = async (force = false) => {
     button.disabled = true;
     status.textContent = 'Tüm görüşme geçmişi özetleniyor…';
     try {
-      const report = await requestConversationReport(doc.id);
+      const report = await requestConversationReport(doc.id, { force });
       if (!form.isConnected) return;
       output.value = report.text;
       doc.conversationReport = report;
+      output.maxLength = (report.maxChars || 300) + 50;
       status.textContent =
-        Array.from(report.text).length + ' / 300 karakter · ' + report.sourceCount + ' görüşme';
+        conversationReportLength(report) +
+        ' · ' +
+        report.sourceCount +
+        ' görüşme · ' +
+        conversationReportMethod(report.method) +
+        (report.providerError ? ' · ' + report.providerError : '');
     } catch (error) {
       if (!form.isConnected) return;
       output.value = '';
@@ -54,7 +82,7 @@ function bindConversationReport(doc, form) {
       if (form.isConnected) button.disabled = false;
     }
   };
-  button.onclick = refresh;
+  button.onclick = () => refresh(true);
   // Generation follows saving the original note; it never replaces that note.
   if ((doc.conversations || []).length) void refresh();
   else status.textContent = 'Görüşme kaydedildiğinde tüm geçmişten otomatik oluşturulur.';

@@ -32,7 +32,7 @@ function borrowerProfit(d) {
         total +
         (event.type === 'payment'
           ? recognizedEventRevenue(event)
-          : event.type === 'expense' || event.type === 'costOnly'
+          : !event.expensePoolAllocation && (event.type === 'expense' || event.type === 'costOnly')
             ? -event.amount
             : 0),
       0,
@@ -112,7 +112,11 @@ function aggregateFinance(events, period, date, accountingEntries = []) {
           0,
         ) + rows.filter((e) => e.type === 'externalIncome').reduce((s, e) => s + e.amount, 0),
       expenses = rows
-        .filter((e) => e.type === 'expense' || e.type === 'costOnly' || e.type === 'accountingExpense')
+        .filter(
+          (e) =>
+            !e.expensePoolAllocation &&
+            (e.type === 'expense' || e.type === 'costOnly' || e.type === 'accountingExpense'),
+        )
         .reduce((s, e) => s + e.amount, 0),
       closed = payment.filter((e) => e.closes);
     return {
@@ -252,11 +256,27 @@ function financialOperations(id, mode) {
   const d = db.docs.find((x) => x.id === id);
   if (!d) return;
   const f = docFinance(d),
-    locked = financeEvents.some((e) => e.documentId === id && e.type === 'payment');
+    locked = financeEvents.some((e) => e.documentId === id && e.type === 'payment'),
+    termsLocked = d.status === 'İnfaz';
   $('#modal').innerHTML =
-    `<div class="panelhead"><div><h2>${esc(d.number)} · Finansal İşlemler</h2><p><span class="debtor-name-emphasis">${esc(d.debtor)}</span> · Kalan: ${money(f.remaining / 100)} · Masraf: ${money(f.expenses / 100)}</p></div><button class="link" id="closeFinance">Kapat</button></div><form id="financeTerms"><div class="formbody"><h3 class="sectiontitle">Alacak Bileşenleri</h3>${parkingCommissionMarkup(d, f)}<button type="button" class="secondary" id="openLegalCalculator" ${locked ? 'disabled' : ''}>Vade Tarihinden Yasal Faiz ve İcra Vekâlet Ücreti Hesapla</button><p>${isParkingDocument(d) ? 'Yalnız anapara üzerinden tahsilat yapılır.' : d.legalCalculationError ? esc(d.legalCalculationError) : d.legalCalculation ? 'Yasal faiz ve icra vekâlet ücreti toplam borca dahildir. Hesap tarihi: ' + esc(displayDate(d.legalCalculation.end)) : ''}</p><p>Anapara: ${money(d.amount)} · Masraf: ${money(f.expenses / 100)} · Toplam Borç: ${money(f.target / 100)}</p><div class="grid">${field('Faiz Tutarı (₺)', 'interest', 'number', isParkingDocument(d) ? 0 : (d.financeInterest ?? 0), true)}${field('Avukatlık / Hizmet Ücreti (₺)', 'fee', 'number', isParkingDocument(d) ? 0 : (d.financeFee ?? 0), true)}</div><p>${locked ? 'Tahsilat olduğu için tutarlar kilitlidir.' : 'Faiz ve ücret tutarlarını kayıtlı evraka göre girin.'}</p></div><div class="actions"><button class="secondary" ${locked ? 'disabled' : ''}>Tutarları Kaydet</button></div></form><form id="financeEntry"><div class="formbody"><h3 class="sectiontitle">Tahsilat Kaydet</h3></div><input type="hidden" name="type" value="payment"><div class="formbody grid">${field('İşlem Tarihi', 'date', 'date', businessDate(), true, true)}${field('Tutar (₺)', 'amount', 'number', '', true)}${collectionAccountField()}${['ceo', 'admin'].includes(hanAuth.role) ? staffSelect('Ciro Personeli (isteğe bağlı)', 'turnoverStaffId').replace('<select ', '<select data-optional="true" ').replace('Personel seçin', 'Dosya sorumlusu') : ''}${field('Açıklama / Dekont No', 'note', 'text', '', true)}</div><div class="actions"><button type="button" class="secondary" id="latestCollectionReceipt" ${financeEvents.some((e) => e.documentId === id && e.type === 'payment') ? '' : 'disabled'}>Tahsilat Makbuzu</button><button class="primary">İşlemi Kaydet</button></div></form><form id="expenseEntry"><div class="formbody"><h3 class="sectiontitle">Masraf Ekle</h3><p>Toplam kayıtlı masraf: <b>${money(f.expenses / 100)}</b></p><div class="notice">Borca Eklemeden Kaydet yalnızca masraf kaydı oluşturur. Masrafı Borca Ekle toplam ve kalan borcu artırır.</div><input type="hidden" name="type" value="expense"><div class="grid">${field('Masraf Tarihi', 'date', 'date', businessDate(), true, true)}${field('Masraf Tutarı (₺)', 'amount', 'number', '', true)}${collectionAccountField('out')}${field('Masraf Açıklaması', 'note', 'text', '', true, true)}</div></div><div class="actions"><button type="submit" class="secondary" name="saveMode" value="costOnly">Borca Eklemeden Kaydet</button><button type="submit" class="primary" name="saveMode" value="addToDebt">Masrafı Borca Ekle</button></div></form>${financeHistoryMarkup(id)}`;
+    `<div class="panelhead"><div><h2>${esc(d.number)} · Finansal İşlemler</h2><p><span class="debtor-name-emphasis">${esc(d.debtor)}</span> · Kalan: ${money(f.remaining / 100)} · Masraf: ${money(f.expenses / 100)}</p></div><button class="link" id="closeFinance">Kapat</button></div><form id="financeTerms"><div class="formbody"><h3 class="sectiontitle">Alacak Bileşenleri</h3>${parkingCommissionMarkup(d, f)}<button type="button" class="secondary" id="openLegalCalculator" ${locked ? 'disabled' : ''}>Vade Tarihinden Yasal Faiz ve İcra Vekâlet Ücreti Hesapla</button><p>${isParkingDocument(d) ? 'Yalnız anapara üzerinden tahsilat yapılır.' : d.legalCalculationError ? esc(d.legalCalculationError) : d.legalCalculation ? 'Yasal faiz ve icra vekâlet ücreti toplam borca dahildir. Hesap tarihi: ' + esc(displayDate(d.legalCalculation.end)) : ''}</p><p>Anapara: ${money(d.amount)} · Masraf: ${money(f.expenses / 100)} · Toplam Borç: ${money(f.target / 100)}</p><div class="grid">${field('Faiz Tutarı (₺)', 'interest', 'number', isParkingDocument(d) ? 0 : (d.financeInterest ?? 0), true)}${field('Avukatlık / Hizmet Ücreti (₺)', 'fee', 'number', isParkingDocument(d) ? 0 : (d.financeFee ?? 0), true)}</div><p>${termsLocked ? 'İnfaz edilmiş dosyada tutarlar kilitlidir.' : 'Faiz ve ücret tutarlarını kayıtlı evraka göre girin.'}</p></div><div class="actions"><button class="secondary" ${locked ? 'disabled' : ''}>Tutarları Kaydet</button></div></form><form id="financeEntry"><div class="formbody"><h3 class="sectiontitle">Tahsilat Kaydet</h3></div><input type="hidden" name="type" value="payment"><div class="formbody grid">${field('İşlem Tarihi', 'date', 'date', businessDate(), true, true)}${field('Tutar (₺)', 'amount', 'number', '', true)}${collectionAccountField()}${['ceo', 'admin'].includes(hanAuth.role) ? staffSelect('Ciro Personeli (isteğe bağlı)', 'turnoverStaffId').replace('<select ', '<select data-optional="true" ').replace('Personel seçin', 'Dosya sorumlusu') : ''}${field('Açıklama / Dekont No', 'note', 'text', '', true)}</div><div class="actions"><button type="button" class="secondary" id="latestCollectionReceipt" ${financeEvents.some((e) => e.documentId === id && e.type === 'payment') ? '' : 'disabled'}>Tahsilat Makbuzu</button><button class="primary">İşlemi Kaydet</button></div></form><form id="expenseEntry"><div class="formbody"><h3 class="sectiontitle">Masraf Ekle</h3><p>Toplam kayıtlı masraf: <b>${money(f.expenses / 100)}</b></p><div class="notice">Borca Eklemeden Kaydet yalnızca masraf kaydı oluşturur. Masrafı Borca Ekle toplam ve kalan borcu artırır.</div><input type="hidden" name="type" value="expense"><div class="grid">${field('Masraf Tarihi', 'date', 'date', businessDate(), true, true)}${field('Masraf Tutarı (₺)', 'amount', 'number', '', true)}${collectionAccountField('out')}${field('Masraf Açıklaması', 'note', 'text', '', true, true)}</div></div><div class="actions"><button type="submit" class="secondary" name="saveMode" value="costOnly">Borca Eklemeden Kaydet</button><button type="submit" class="primary" name="saveMode" value="addToDebt">Masrafı Borca Ekle</button></div></form>${financeHistoryMarkup(id)}`;
   setupFinanceOperationTabs();
   bindFinanceHistory();
+  const expenseForm = document.getElementById('expenseEntry');
+  const expensePoolOption = document.createElement('option');
+  expensePoolOption.value = '__expense_pool__';
+  expensePoolOption.textContent = 'Masraf Avansı (Ortak Havuz)';
+  expenseForm.elements.accountId.append(expensePoolOption);
+  const expensePoolInfo = document.createElement('p');
+  expensePoolInfo.setAttribute('role', 'status');
+  expenseForm.querySelector('.notice').after(expensePoolInfo);
+  try {
+    const pool = authApi('/api/expense-pool');
+    expensePoolInfo.textContent = 'Ortak masraf avansında kalan: ' + money(pool.balance / 100);
+  } catch (error) {
+    expensePoolOption.disabled = true;
+    expensePoolInfo.textContent = 'Masraf avansı bilgisi alınamadı: ' + error.message;
+  }
   $('#latestCollectionReceipt').onclick = () => {
     const event = financeEvents.filter((e) => e.documentId === id && e.type === 'payment').at(-1);
     if (event) openCollectionReceipt(event.id);
@@ -268,18 +288,17 @@ function financialOperations(id, mode) {
   $('#closeFinance').onclick = () => $('#modal').close();
   if (!$('#modal').open) $('#modal').showModal();
   const terms = $('#financeTerms');
+  const canEditTerms = ['ceo', 'admin'].includes(hanAuth.role) && !termsLocked;
+  terms.querySelector('button[type="submit"], button:not([type])').disabled = !canEditTerms;
   for (const el of terms.querySelectorAll('input')) {
     el.min = '0';
     el.step = '0.01';
     if (el.name === 'parkingCommissionRate') el.max = '100';
-    el.disabled =
-      !['ceo', 'admin'].includes(hanAuth.role) ||
-      locked ||
-      (isParkingDocument(d) && el.name !== 'parkingCommissionRate');
+    el.disabled = !canEditTerms || (isParkingDocument(d) && el.name !== 'parkingCommissionRate');
   }
   terms.onsubmit = (e) => {
     e.preventDefault();
-    if (locked || !['ceo', 'admin'].includes(hanAuth.role)) return;
+    if (!canEditTerms) return;
     const v = Object.fromEntries(new FormData(terms));
     if (isParkingDocument(d)) {
       const rate = Number(v.parkingCommissionRate);
@@ -300,23 +319,28 @@ function financialOperations(id, mode) {
       b = financeCents(v.fee);
     if (!Number.isSafeInteger(a) || !Number.isSafeInteger(b) || a < 0 || b < 0)
       return toast('Geçerli tutarlar girin.');
-    const previous = [d.financeInterest, d.financeFee];
+    const previous = [d.financeInterest, d.financeFee],
+      previousListFinance = d._listFinance;
     d.financeInterest = a / 100;
     d.financeFee = b / 100;
+    delete d._listFinance;
     try {
       save();
-    } catch {
+    } catch (error) {
       [d.financeInterest, d.financeFee] = previous;
-      return toast('Tutarlar saklanamadı.');
+      if (previousListFinance !== undefined) d._listFinance = previousListFinance;
+      return toast(error.message || 'Tutarlar saklanamadı.');
     }
     financialOperations(id);
     toast('Alacak tutarları kaydedildi.');
   };
+  const expensePoolRequestId = crypto.randomUUID();
   const saveFinanceEntry = (e) => {
     e.preventDefault();
     const v = Object.fromEntries(new FormData(e.target));
     if (e.target.id === 'expenseEntry' && e.submitter?.value !== 'addToDebt') v.type = 'costOnly';
-    if (!accounting.accounts.some((a) => a.id === v.accountId))
+    const fromExpensePool = e.target.id === 'expenseEntry' && v.accountId === '__expense_pool__';
+    if (!fromExpensePool && !accounting.accounts.some((a) => a.id === v.accountId))
       return toast(
         v.type === 'payment'
           ? 'Paranın girdiği kasa/banka hesabını seçin.'
@@ -343,9 +367,30 @@ function financialOperations(id, mode) {
       .sort()
       .at(-1);
     if (prior && v.date < prior) return toast('Bu evrakta son işlem tarihinden önce giriş yapılamaz.');
-    if (v.type !== 'payment' && amount > accountBalance(v.accountId))
+    if (!fromExpensePool && v.type !== 'payment' && amount > accountBalance(v.accountId))
       return toast('Seçilen kasa/banka hesabında yeterli bakiye yok.');
     if (v.type === 'payment' && amount > live.remaining) return toast('Tahsilat kalan borcu aşamaz.');
+    if (fromExpensePool) {
+      try {
+        authApi('/api/expense-pool/allocate', 'POST', {
+          id: expensePoolRequestId,
+          documentId: id,
+          type: v.type,
+          amount,
+          date: v.date,
+          note: v.note.trim(),
+        });
+        financeEvents = authApi('/api/data?key=hanhukuk-finance-v1');
+        delete d._listFinance;
+        financeHistoryTab = v.type === 'costOnly' ? 'costOnly' : 'all';
+        financialOperations(id);
+        stats();
+        toast('Masraf avansından dağıtım kaydedildi.');
+      } catch (error) {
+        toast(error.message);
+      }
+      return;
+    }
     const revenuePart =
       v.type === 'payment'
         ? isParkingDocument(d)
@@ -701,7 +746,7 @@ function repaymentSection(d) {
   const plan = d.repaymentPlan,
     f = docFinance(d);
   let paidSince = plan ? Math.max(0, f.received - plan.receivedAtCreation) : 0;
-  return `<h3 class="sectiontitle" style="margin-top:30px">Borcu Yapılandır</h3>${d.status === 'İnfaz' && f.remaining === 0 ? '<div class="notice">Bu dosya infaz edilmiştir. Yapılandırma planları ve taksit geçmişi aşağıda görüntülenir; kapanmış borç için yeni plan oluşturulmaz.</div>' : ''}<div class="notice">Yapılandırılabilir kalan borç: <b>${money(f.remaining / 100)}</b>. Plan kaydetmek tahsilat oluşturmaz. Plan kaydedildiğinde mevcut faiz ve ücret tutarları sabitlenir; ek masraflar ayrıca borca yansıyabilir.</div><div class="toolbar"><button type="button" class="primary" id="openRepayment" ${f.remaining === 0 || d.status === 'İade' ? 'disabled' : ''}>${plan ? (d.repaymentPlanHistory || []).length + 2 + '. Yapılandırma Oluştur' : 'Borcu Yapılandır'}</button>${paymentPromiseButton(d)}</div>${paymentPromiseSummary(d)}${
+  return `<h3 class="sectiontitle" style="margin-top:30px">Borcu Yapılandır</h3>${d.status === 'İnfaz' && f.remaining === 0 ? '<div class="notice">Bu dosya infaz edilmiştir. Yapılandırma planları ve taksit geçmişi aşağıda görüntülenir; kapanmış borç için yeni plan oluşturulmaz.</div>' : ''}<div class="notice">Yapılandırılabilir kalan borç: <b>${money(f.remaining / 100)}</b>. Plan kaydetmek tahsilat oluşturmaz. Plan kaydedildiğinde mevcut faiz ve ücret tutarları sabitlenir; ek masraflar ayrıca borca yansıyabilir.</div><div class="toolbar"><button type="button" class="primary" id="openRepayment" ${!['ceo', 'admin'].includes(window.hanAuth?.role) || f.remaining === 0 || d.status === 'İade' ? 'disabled' : ''}>${plan ? (d.repaymentPlanHistory || []).length + 2 + '. Yapılandırma Oluştur' : 'Borcu Yapılandır'}</button>${paymentPromiseButton(d)}</div>${paymentPromiseSummary(d)}${
     plan
       ? `<p>${(d.repaymentPlanHistory || []).length + 1}. Yapılandırma · Plan: <b>${esc(plan.method === 'equal' ? 'Eşit Böl' : 'Manuel Taksitlendirme')}</b> · ${plan.installments.length} taksit · Toplam ${money(plan.balance / 100)}${plan.discount ? ` · İndirim: ${money(plan.discount / 100)} · ${esc(plan.discountReason)}` : ''}</p>${f.target !== plan.targetAtCreation ? '<div class="notice">Plan oluşturulduktan sonra borç toplamı değişti. Yeni kalan borç için planı yeniden düzenleyin.</div>' : ''}<div class="overflow"><table><thead><tr><th>TAKSİT</th><th>VADE</th><th>TUTAR</th><th>TAHSİL EDİLEN</th><th>KALAN</th></tr></thead><tbody>${plan.installments
           .map((r, i) => {
@@ -722,6 +767,8 @@ function bindRepayment(d) {
 }
 
 function openRepayment(d) {
+  if (!['ceo', 'admin'].includes(window.hanAuth?.role))
+    return toast('Yapılandırmayı yalnızca yönetici yapabilir.');
   const finance = docFinance(d);
   if (!finance.remaining || d.status === 'İade') return toast('Bu dosyada yapılandırılabilir borç yok.');
   let dialog = document.getElementById('repaymentDialog');
@@ -1034,7 +1081,14 @@ function clientPayoutPage(remote) {
         },
     amount = (v) => (remote ? recordMoney(v) : money(Number(v) / 100));
   $('#content').innerHTML =
-    `<div class="panel"><div class="panelhead"><div><h2>Müvekkil Ödemeleri</h2><p>Yalnızca infaz edilmiş ve müvekkile ödemesi tamamlanmamış dosyalar.</p></div><button type="button" class="secondary" id="backAccounting">← Kasa / Banka</button></div>${clientPayoutFilterMarkup()}<div class="formbody"><div class="notice" style="margin-top:18px">Müvekkile anapara iadesi gider değildir. Seçilen hesap bakiyesi azalır; ciro ve kâr değişmez. Yediemin dosyasında anlaşmalı ofis payı ayrılır. Bu ekran ödeme kaydı tutar, bankaya havale talimatı göndermez.</div><p>${esc(totals.count)} dosya · Toplam ödenecek: <b>${amount(totals.remaining)}</b></p></div><div class="overflow"><table><thead><tr><th>DOSYA</th><th>BORÇLU / MÜVEKKİL</th><th>İNFAZ TARİHİ</th><th>ANAPARA</th><th>ÖDENEN</th><th>ÖDENECEK</th><th>İŞLEM</th></tr></thead><tbody>${list.map(({ d, p }) => `<tr><td>${esc(d.number)}<small>${esc(docType(d))}</small></td><td>${esc(d.debtor)}<small>${esc((remote ? d.clientName : db.clients.find((c) => c.id === d.client)?.name) || '—')}</small></td><td>${esc(displayDate(remote ? d.closedDate : clientPayoutClosureDate(d)) || '—')}</td><td>${amount(p.entitlement)}</td><td>${amount(p.paid)}</td><td><b>${amount(p.remaining)}</b></td><td><button class="primary" type="button" data-client-payout="${esc(d.id)}">Ödeme Kaydet</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">Müvekkile ödemesi bekleyen infaz dosyası bulunmuyor.</td></tr>'}</tbody><tfoot><tr><td colspan="3"><strong>ALT TOPLAM</strong></td><td><strong>${amount(totals.entitlement)}</strong></td><td><strong>${amount(totals.paid)}</strong></td><td><strong>${amount(totals.remaining)}</strong></td><td></td></tr></tfoot></table></div></div>`;
+    `<div class="panel"><div class="panelhead"><div><h2>Müvekkil Ödemeleri</h2><p>Yalnızca infaz edilmiş ve müvekkile ödemesi tamamlanmamış dosyalar.</p></div><button type="button" class="secondary" id="backAccounting">← Kasa / Banka</button></div>${clientPayoutFilterMarkup()}<div class="formbody"><div class="notice" style="margin-top:18px">Müvekkile anapara iadesi gider değildir. Seçilen hesap bakiyesi azalır; ciro ve kâr değişmez. Yediemin dosyasında anlaşmalı ofis payı ayrılır. Bu ekran ödeme kaydı tutar, bankaya havale talimatı göndermez.</div><p>${esc(totals.count)} dosya · Toplam ödenecek: <b>${amount(totals.remaining)}</b></p></div><div class="overflow"><table><thead><tr><th>DOSYA</th><th>MÜVEKKİL ADI</th><th>BORÇLU ADI</th><th>İNFAZ TARİHİ</th><th>ANAPARA</th><th>ÖDENEN</th><th>ÖDENECEK</th><th>İŞLEM</th></tr></thead><tbody>${list.map(({ d, p }) => `<tr><td>${esc(d.number)}<small>${esc(docType(d))}</small></td><td>${d.client ? `<button type="button" class="link" style="color:#b91c1c" data-payout-client="${esc(d.client)}">${esc((remote ? d.clientName : db.clients.find((c) => c.id === d.client)?.name) || '—')}</button>` : '—'}</td><td><button type="button" class="link" data-payout-borrower="${esc(d.id)}">${esc(d.debtor || '—')}</button></td><td>${esc(displayDate(remote ? d.closedDate : clientPayoutClosureDate(d)) || '—')}</td><td>${amount(p.entitlement)}</td><td>${amount(p.paid)}</td><td><b>${amount(p.remaining)}</b></td><td><button class="primary" type="button" data-client-payout="${esc(d.id)}">Ödeme Kaydet</button></td></tr>`).join('') || '<tr><td colspan="8" class="empty">Müvekkile ödemesi bekleyen infaz dosyası bulunmuyor.</td></tr>'}</tbody><tfoot><tr><td colspan="4"><strong>ALT TOPLAM</strong></td><td><strong>${amount(totals.entitlement)}</strong></td><td><strong>${amount(totals.paid)}</strong></td><td><strong>${amount(totals.remaining)}</strong></td><td></td></tr></tfoot></table></div></div>`;
+  document.querySelectorAll('[data-payout-client]').forEach((button) => {
+    button.onclick = () => clientModal(button.dataset.payoutClient);
+  });
+  document.querySelectorAll('[data-payout-borrower]').forEach((button) => {
+    button.onclick = () =>
+      recordAction(button.dataset.payoutBorrower, () => borrowerDetail(button.dataset.payoutBorrower));
+  });
   if (remote) bindRecordPayoutPage(remote);
   $('#backAccounting').onclick = accountingPage;
   const dateForm = $('#clientPayoutDateForm');

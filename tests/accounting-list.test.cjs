@@ -66,6 +66,7 @@ test('Accounting UI loads bounded pages, preserves totals and edit baselines and
                   label: '<img src=x>',
                   note: '<script>bad()</script>',
                   signed: '100',
+                  balance: '900719925474099201',
                   type: 'in',
                 },
               ],
@@ -76,6 +77,7 @@ test('Accounting UI loads bounded pages, preserves totals and edit baselines and
                 net: '900719925474099201',
               },
               balances: { cash: '900719925474099201' },
+              accountSummaries: { cash: { incoming: '900719925474099301', outgoing: '100' } },
               accounts: [{ id: 'cash', name: 'Kasa', type: 'cash' }],
               operators: ['<img src=x>'],
               next: url.includes('after=next') ? null : 'next',
@@ -83,7 +85,11 @@ test('Accounting UI loads bounded pages, preserves totals and edit baselines and
     };
   };
   await w.accountingPage();
-  assert.equal(w.document.querySelectorAll('tbody tr').length, 1);
+  assert.equal(w.document.querySelectorAll('.account-ledger tbody tr').length, 1);
+  assert.equal(w.document.querySelectorAll('.account-summary tbody tr').length, 1);
+  assert.ok(w.document.querySelector('[data-account-ledger="cash"]'));
+  assert.match(w.document.querySelector('.account-ledger thead').textContent, /KALAN/);
+  assert.equal(w.document.querySelector('.account-ledger tbody tr').children.length, 9);
   assert.equal(w.document.querySelectorAll('img,script').length, 0);
   const total = w.document.querySelector('tfoot').textContent;
   w.document.querySelector('#nextAccounting').click();
@@ -104,6 +110,15 @@ test('Accounting UI loads bounded pages, preserves totals and edit baselines and
   deferred();
   await old;
   assert.ok(w.document.querySelector('#nextAccounting'));
+  let scrolled = 0;
+  w.HTMLElement.prototype.scrollIntoView = function () {
+    scrolled++;
+    assert.ok(this.querySelector('.account-ledger'));
+  };
+  w.document.querySelector('[data-account-name]').click();
+  await tick();
+  assert.equal(scrolled, 1);
+  assert.equal(new URL(requests.at(-1), w.location.origin).searchParams.get('account'), 'cash');
   fail = true;
   await w.accountingPage();
   assert.match(w.document.querySelector('#content').textContent, /Bağlantı hatası/);

@@ -83,6 +83,7 @@ test('Accounting pages preserve all balances, transfers, exclusions and filters 
     vm.runInContext(fs.readFileSync('outputs/icrapro/workspace-accounting.js', 'utf8'), ctx);
     const all = ctx.accountMovements();
     const before = await pool.query('SELECT id,body,revision FROM han_data.ledger_entries ORDER BY id');
+    let fullBalances;
     for (const f of [
       {},
       { type: 'transfer' },
@@ -113,6 +114,22 @@ test('Accounting pages preserve all balances, transfers, exclusions and filters 
       } while (after);
       assert.equal(items.length, expected.length);
       assert.equal(new Set(items.map((x) => x.id)).size, items.length);
+      if (!Object.keys(f).length) {
+        const running = new Map();
+        fullBalances = new Map();
+        const key = (r) => [r.date, r.created, r.id].join('|');
+        for (const row of items.slice().sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0))) {
+          const next = (running.get(row.accountId) || 0n) + BigInt(row.signed);
+          running.set(row.accountId, next);
+          assert.equal(row.balance, String(next));
+          fullBalances.set(row.id, row.balance);
+        }
+        for (const account of ledger.accounts) {
+          const s = first.accountSummaries[account.id];
+          assert.equal(BigInt(s.incoming) - BigInt(s.outgoing), BigInt(first.balances[account.id]));
+        }
+      }
+      for (const row of items) assert.equal(row.balance, fullBalances.get(row.id));
       const canon = (rows) =>
         Array.from(rows, (r) =>
           JSON.stringify([r.accountId, String(r.signed), r.label, r.note, r.operatorName || null]),

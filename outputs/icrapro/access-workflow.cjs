@@ -1,5 +1,6 @@
 const { collectionSummary } = require('../../lib/notification-summary.cjs');
-const { currentReport, generateReport } = require('../../lib/conversation-report.cjs');
+const { currentReport, generateReport, fingerprint } = require('../../lib/conversation-report.cjs');
+const voipConversations = require('../../lib/voip-conversations.cjs');
 async function handleWorkflowRoutes(ctx) {
   const { req, res, url, u, persist, allowed, fail, body, send, crypto, parkingToday, promiseOutstanding } =
     ctx;
@@ -115,6 +116,8 @@ async function handleWorkflowRoutes(ctx) {
   }
   if (url.pathname === '/api/documents/conversation-report' && req.method === 'POST') {
     const v = await body(req);
+    if (v.force !== undefined && typeof v.force !== 'boolean')
+      throw fail(400, 'Rapor yenileme ayarı geçersiz.');
     const d = ctx.state.data['icrapro-v1'].docs.find((d) => d.id === v.documentId);
     if (
       !d ||
@@ -122,11 +125,26 @@ async function handleWorkflowRoutes(ctx) {
       (!['ceo', 'admin'].includes(u.role) && (!u.staffId || d.relatedStaff !== u.staffId))
     )
       throw fail(403, 'Bu dosyanın görüşme raporuna erişilemiyor.');
-    let report = currentReport(d);
+    const combined = voipConversations.merge(
+      d.conversations,
+      (req.hanVoipHistory || ctx.state.voipCalls || []).filter((c) => c.documentId === d.id),
+    );
+    let report = v.force ? null : currentReport({ ...d, conversations: combined }, ctx.state.aiConfig);
     if (!report) {
-      report = await generateReport(d.conversations || []);
+      const reportKey = d.id + ':' + fingerprint(combined);
+      const cache = req.hanConversationReportCache;
+      report = cache?.get(reportKey);
+      if (
+        !report ||
+        report.configHash !== require('../../lib/ai-settings.cjs').configFingerprint(ctx.state.aiConfig)
+      ) {
+        report = await generateReport(combined, { aiConfig: ctx.state.aiConfig });
+        cache?.set(reportKey, report);
+      }
       const next = structuredClone(ctx.state);
       next.data['icrapro-v1'].docs.find((x) => x.id === d.id).conversationReport = report;
+      if (report.aiUsage)
+        next.aiUsage = require('../../lib/ai-settings.cjs').addUsage(next.aiUsage, report.aiUsage);
       persist(next);
     }
     send(res, 200, { report });
@@ -136,6 +154,17 @@ async function handleWorkflowRoutes(ctx) {
     const v = await body(req),
       d = ctx.state.data['icrapro-v1'].docs.find((d) => d.id === v.documentId);
     if (!d || !allowed(u, 'documents')) throw fail(403, 'Görüşmeyi dosya sorumlusu kaydedebilir.');
+    if (!['ceo', 'admin'].includes(u.role) && (!u.staffId || d.relatedStaff !== u.staffId))
+      throw fail(403, 'Bu dosyaya erişilemiyor.');
+    const calls = (req.hanVoipHistory || ctx.state.voipCalls || []).filter((c) => c.documentId === d.id);
+    const call = v.voipCallId ? calls.find((c) => c.id === v.voipCallId) : null;
+    if (v.voipCallId) {
+      if (!call || (!['ceo', 'admin'].includes(u.role) && call.userId !== u.id))
+        throw fail(403, 'Bu arama üzerinde işlem yetkiniz yok.');
+      if (['starting', 'ringing', 'answered', 'unknown'].includes(call.status))
+        throw fail(409, 'Önce çağrının bittiğini doğrulayın.');
+      Object.assign(v, { date: voipConversations.row(call).date, time: voipConversations.row(call).time });
+    }
     const date = String(v.date || ''),
       time = String(v.time || ''),
       note = String(v.note || '').trim(),
@@ -157,16 +186,7 @@ async function handleWorkflowRoutes(ctx) {
       !/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ||
       date + 'T' + time > now ||
       note.length > 5000 ||
-      ![
-        'Görüşüldü',
-        'Ulaşılamadı',
-        'Tekrar Aranacak',
-        'Ödeme Sözü Alındı',
-        'Ödemeyi Reddetti',
-        'Raporlandı',
-        'İcra Raporu',
-        'Diğer',
-      ].includes(v.result)
+      !voipConversations.RESULTS.includes(v.result)
     )
       throw fail(400, 'Geçerli tarih, saat, sonuç ve görüşme notu girin.');
     if (v.result === 'Tekrar Aranacak') {
@@ -191,10 +211,12 @@ async function handleWorkflowRoutes(ctx) {
       throw fail(400, 'Önce ödeme sözü tarihini, tutarını ve açıklamasını kaydedin.');
     const next = structuredClone(ctx.state),
       doc = next.data['icrapro-v1'].docs.find((x) => x.id === d.id);
+    const previous = call && doc.conversations?.find((c) => c.voipCallId === call.id);
     doc.conversations = [
-      ...(doc.conversations || []),
+      ...(doc.conversations || []).filter((c) => !call || c.voipCallId !== call.id),
       {
-        id: crypto.randomUUID(),
+        id: previous?.id || crypto.randomUUID(),
+        ...(call ? { voipCallId: call.id, phone: call.phone, duration: call.duration } : {}),
         date,
         time,
         note,
@@ -209,8 +231,8 @@ async function handleWorkflowRoutes(ctx) {
               }
             : undefined,
         staff: u.staffId || u.id,
-        staffName: u.name,
-        operatorId: u.id,
+        staffName: call?.staffName || u.name,
+        operatorId: call?.userId || u.id,
         paymentPromiseId: v.result === 'Ödeme Sözü Alındı' ? d.paymentPromise.id : undefined,
         paymentPromise:
           v.result === 'Ödeme Sözü Alındı'
@@ -219,7 +241,31 @@ async function handleWorkflowRoutes(ctx) {
         createdAt: new Date().toISOString(),
       },
     ];
-    doc.conversationReport = await generateReport(doc.conversations);
+    require('../../lib/test-records.cjs').markRecord(previous, doc.conversations.at(-1), u, 'note');
+    const patch = call
+      ? { id: call.id, result: v.result, note, resultAt: new Date().toISOString(), resultBy: u.name }
+      : null;
+    if (patch) require('../../lib/test-records.cjs').markRecord(call, patch, u, 'note');
+    const updatedCalls = calls.map((c) => (patch && c.id === patch.id ? { ...c, ...patch } : c));
+    doc.conversationReport = await generateReport(voipConversations.merge(doc.conversations, updatedCalls), {
+      aiConfig: next.aiConfig,
+    });
+    if (doc.conversationReport.aiUsage)
+      next.aiUsage = require('../../lib/ai-settings.cjs').addUsage(
+        next.aiUsage,
+        doc.conversationReport.aiUsage,
+      );
+    if (patch) {
+      if (req.hanSaveVoipResult) req.hanSaveVoipResult(patch);
+      else
+        next.voipCalls = (ctx.state.voipCalls || []).map((c) => {
+          if (c.id !== patch.id) return c;
+          const copy = { ...c, ...patch };
+          delete copy.draftNote;
+          delete copy.draftUpdatedAt;
+          return copy;
+        });
+    }
     persist(next);
     send(res, 200, { conversations: doc.conversations, report: doc.conversationReport });
     return true;

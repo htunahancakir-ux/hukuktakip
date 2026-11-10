@@ -1,5 +1,5 @@
 function loginBrandMark() {
-  return '<img src="brand-scales.png" width="43" height="43" alt="" aria-hidden="true">';
+  return `<img src="${assetUrl('brand-scales.png')}" width="43" height="43" alt="" aria-hidden="true">`;
 }
 
 function loginBrand() {
@@ -25,7 +25,7 @@ function loginFrame(content) {
   }
   if (!gate.querySelector('.login-card'))
     gate.innerHTML = `<section class="login-story" aria-label="HAN (PATAN) HUKUK">
-      <img class="login-art" src="login-justice-v1.png" alt="" width="1254" height="1254" fetchpriority="high" decoding="async">
+      <img class="login-art" src="${assetUrl('login-justice-v1.png')}" alt="" width="1254" height="1254" fetchpriority="high" decoding="async">
       <div class="login-story-shade" aria-hidden="true"></div>
       ${loginBrand()}
       <div class="login-story-copy">

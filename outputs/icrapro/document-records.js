@@ -653,10 +653,30 @@ function paintDocumentRows(list, isAdmin, showClosureDate) {
     list
       .map(
         (d) =>
-          `<tr class="${debtorStatus(d) === 'İnfaz' ? 'status-closed' : debtorStatus(d) === 'İade' ? 'status-returned' : 'status-pending'}"><td><select ${isAdmin ? '' : 'disabled'} class="row-status" aria-label="${esc(d.debtor)} durumu" data-row-status="${esc(d.id)}">${['Derdest', 'İnfaz', 'İade', 'İcra'].map((status) => `<option ${status === debtorStatus(d) ? 'selected' : ''}>${status}</option>`).join('')}</select></td><td><strong>${esc(d.number)}</strong><small>${esc(docType(d))} · ${esc(d._clientName ?? db.clients.find((c) => c.id === d.client)?.name)}</small></td><td><button class="link debtor-name" data-debtor="${esc(d.id)}">${esc(d.debtor)}</button><small>${esc(d.status || 'Derdest')}</small></td><td>${borrowerAssignmentMarkup(d, isAdmin)}</td><td><strong>${d._principalCents ? recordMoney(d._principalCents) : money(d.amount)}</strong>${isAdmin ? `<small>Toplam alacak: ${d._targetCents ? recordMoney(d._targetCents) : money(docFinance(d).target / 100)}</small>` : ''}</td><td>${esc(displayDate(borrowerTrackingDate(d)) || '—')}</td><td>${esc(d.due ? displayDate(d.due) : '—')}</td>${showClosureDate ? '<td>' + esc(displayDate(clientPayoutClosureDate(d)) || '—') + '</td>' : ''}<td><button type="button" class="link" data-edit-debtor="${esc(d.id)}">Düzenle</button><button type="button" class="link" data-add-guarantor="${esc(d.id)}">Kefil Ekle</button><button class="link" data-receipt="${esc(d.id)}">Tutanak Görüntüle ↗</button>${isAdmin ? `<button class="link" data-finance="${esc(d.id)}">Finansal İşlemler</button>` : ''}${hanAuth.canDelete ? `<button type="button" class="link" data-delete-document="${esc(d.id)}">Dosyayı Sil</button>` : ''}${isAdmin && debtorStatus(d) === 'Derdest' ? `<button type="button" class="link" data-move-enforcement="${esc(d.id)}">İcraya Taşı</button>` : ''}</td></tr>`,
+          `<tr class="${debtorStatus(d) === 'İnfaz' ? 'status-closed' : debtorStatus(d) === 'İade' ? 'status-returned' : 'status-pending'}"><td><select ${isAdmin ? '' : 'disabled'} class="row-status" aria-label="${esc(d.debtor)} durumu" data-row-status="${esc(d.id)}">${['Derdest', 'İnfaz', 'İade', 'İcra'].map((status) => `<option ${status === debtorStatus(d) ? 'selected' : ''}>${status}</option>`).join('')}</select></td><td><strong>${esc(d.number)}</strong>${window.testRecordBadge?.(d) || ''}<small>${esc(docType(d))} · ${esc(d._clientName ?? db.clients.find((c) => c.id === d.client)?.name)}</small></td><td><button class="link debtor-name" data-debtor="${esc(d.id)}">${esc(d.debtor)}</button><small>${esc(d.status || 'Derdest')}</small></td><td>${borrowerAssignmentMarkup(d, isAdmin)}</td><td><strong>${d._principalCents ? recordMoney(d._principalCents) : money(d.amount)}</strong>${isAdmin ? `<small>Toplam alacak: ${d._targetCents ? recordMoney(d._targetCents) : money(docFinance(d).target / 100)}</small>` : ''}</td><td>${esc(displayDate(borrowerTrackingDate(d)) || '—')}</td><td>${esc(d.due ? displayDate(d.due) : '—')}</td>${showClosureDate ? '<td>' + esc(displayDate(clientPayoutClosureDate(d)) || '—') + '</td>' : ''}<td><button type="button" class="link" data-edit-debtor="${esc(d.id)}">Düzenle</button><button type="button" class="link" data-add-guarantor="${esc(d.id)}">Kefil Ekle</button><button class="link" data-receipt="${esc(d.id)}">Tutanak Görüntüle ↗</button>${isAdmin ? `<button class="link" data-finance="${esc(d.id)}">Finansal İşlemler</button>` : ''}${hanAuth.canDelete ? `<button type="button" class="link" data-delete-document="${esc(d.id)}">Dosyayı Sil</button>` : ''}${isAdmin && debtorStatus(d) === 'Derdest' ? `<button type="button" class="link" data-move-enforcement="${esc(d.id)}">İcraya Taşı</button>` : ''}</td></tr>`,
       )
       .join('') ||
     `<tr><td colspan="${showClosureDate ? 9 : 8}" class="empty">Seçili durum ve aramayla eşleşen borçlu bulunamadı.</td></tr>`;
+  document.querySelectorAll('#docRows tr').forEach((row) => {
+    const cell = row.lastElementChild,
+      edit = cell.querySelector('[data-edit-debtor]');
+    const others = [...cell.querySelectorAll('button')].filter((button) => button !== edit);
+    if (!others.length) return;
+    const menu = document.createElement('details');
+    menu.className = 'borrower-row-actions';
+    const summary = document.createElement('summary');
+    summary.textContent = 'İşlemler';
+    const actions = document.createElement('div');
+    actions.append(...others);
+    menu.append(summary, actions);
+    cell.append(menu);
+    menu.ontoggle = () => {
+      if (menu.open)
+        document.querySelectorAll('#docRows .borrower-row-actions[open]').forEach((other) => {
+          if (other !== menu) other.open = false;
+        });
+    };
+  });
   document
     .querySelectorAll('[data-delete-document]')
     .forEach(
@@ -1127,6 +1147,8 @@ function setupRecordFormTabs(form, kind) {
           ['guarantors', 'Kefiller'],
           ['files', 'PDF / Fotoğraf'],
         ];
+  if (kind === 'client' && form.dataset.clientId && ['ceo', 'admin'].includes(window.hanAuth?.role))
+    definitions.push(['financial', 'Finansal İşlemler']);
   const body = form.querySelector('.formbody'),
     nodes = [];
   for (const node of [...body.children]) {
@@ -1179,6 +1201,7 @@ function setupRecordFormTabs(form, kind) {
       button.setAttribute('aria-selected', String(active));
     }
     form.dataset.activeFormTab = key;
+    form.dispatchEvent(new CustomEvent('record-form-tab', { detail: { key } }));
   }
   for (const [key, { button }] of panels) button.onclick = () => select(key);
   form.addEventListener(

@@ -933,3 +933,306 @@ dialog:not(.compact-borrower-sheet),
 .unsaved-modal .actions {
   flex-wrap: wrap;
 }
+/* Compact borrower workspace. */
+.panel:has(.borrower-records-table) > .panelhead {
+  padding: 16px 18px;
+  gap: 18px;
+  align-items: center;
+}
+.panel:has(.borrower-records-table) .global-search {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.panel:has(.borrower-records-table) .global-search input {
+  min-width: 220px;
+  flex: 1;
+  height: 36px;
+  font-size: 12px;
+}
+.panel:has(.borrower-records-table) .global-search button {
+  padding: 8px 12px;
+  font-size: 11px;
+}
+#borrowerFilterSection {
+  margin: 12px 18px;
+  border: 1px solid #d7e2ea;
+  border-radius: 6px;
+}
+#borrowerFilterSection > summary {
+  padding: 9px 12px;
+  background: #f1f6f9;
+  color: #315b73;
+  font-size: 12px;
+  font-weight: 600;
+}
+#borrowerFilterSection > summary::after {
+  font-size: 15px;
+}
+.panel:has(.borrower-records-table) > .segments {
+  padding: 0 18px 12px !important;
+  margin: 0;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.panel:has(.borrower-records-table) > .segments button {
+  border: 1px solid #d6e1e9;
+  border-radius: 5px;
+  font-size: 12px;
+  padding: 7px 13px;
+  color: #526f83;
+  background: white;
+}
+.panel:has(.borrower-records-table) > .segments .selected {
+  background: #183b4b;
+  color: white;
+  border-color: #183b4b;
+}
+.borrower-records-table th {
+  padding: 11px 12px;
+  vertical-align: top;
+  background: #f4f7fa;
+  font-size: 10px;
+  letter-spacing: 0.2px;
+}
+.borrower-records-table th input,
+.borrower-records-table th select {
+  width: 100%;
+  min-width: 0;
+  height: 29px;
+  margin-top: 6px;
+  border: 1px solid #cfdce6;
+  border-radius: 4px;
+  padding: 4px 7px;
+  background: white;
+  color: #48657b;
+  font-size: 11px;
+  outline: none;
+}
+.borrower-records-table th input:focus,
+.borrower-records-table th select:focus {
+  border-color: #367697;
+  box-shadow: 0 0 0 2px #36769715;
+}
+.borrower-records-table td {
+  padding: 13px 12px;
+  vertical-align: top;
+  font-size: 12px;
+  border-bottom: 1px solid #e6edf3;
+}
+.borrower-records-table tbody tr:hover {
+  background: #f8fbfd;
+}
+.borrower-records-table td small {
+  font-size: 10px;
+  line-height: 1.5;
+  color: #7b8e9e;
+}
+.borrower-records-table .row-status {
+  border: 1px solid #d7e2e9;
+  border-radius: 5px;
+  padding: 6px 8px;
+  background: white;
+  color: #3d6179;
+  font-size: 11px;
+}
+.borrower-records-table .debtor-name {
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 650;
+  text-decoration: none;
+}
+.borrower-records-table .debtor-name:hover {
+  text-decoration: underline;
+}
+.borrower-records-table td:last-child > button {
+  padding: 5px 9px;
+  font-size: 11px;
+  border: 1px solid #dbe5ec;
+  border-radius: 4px;
+  display: inline-flex;
+}
+.borrower-row-actions {
+  margin-top: 6px;
+  min-width: 90px;
+}
+.borrower-row-actions > summary {
+  font-size: 11px;
+  color: #456b83;
+  cursor: pointer;
+  padding: 5px 8px;
+  border: 1px solid #dbe5ec;
+  border-radius: 4px;
+  background: #f6f9fb;
+}
+.borrower-row-actions > div {
+  display: grid;
+  gap: 3px;
+  margin-top: 5px;
+}
+.borrower-row-actions button {
+  font-size: 11px;
+  padding: 5px 8px;
+  text-align: left;
+  white-space: normal;
+}
+@media (max-width: 800px) {
+  .panel:has(.borrower-records-table) > .panelhead {
+    flex-wrap: wrap;
+  }
+  .panel:has(.borrower-records-table) .global-search {
+    width: 100%;
+  }
+}
+
+.expense-pool-table .expense-pool-in {
+  background: #e9f7ee;
+  color: #146c38;
+}
+.expense-pool-table .expense-pool-out {
+  background: #fff0f0;
+  color: #a42626;
+}
+dialog.expense-pool-dialog {
+  width: 1450px;
+  max-width: 96vw;
+  max-height: 92vh;
+}
+.expense-pool-body {
+  padding: 18px 22px;
+}
+.expense-pool-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 15px;
+}
+.expense-pool-summary > div {
+  padding: 12px 15px;
+  border: 1px solid #e1e9ed;
+  border-radius: 8px;
+  background: #f8fafb;
+}
+.expense-pool-summary small {
+  display: block;
+  color: #617387;
+  font-size: 11px;
+}
+.expense-pool-summary strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 17px;
+  color: #173c4a;
+}
+.expense-pool-filters {
+  display: flex;
+  gap: 10px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+.expense-pool-filters .field {
+  width: 170px;
+  gap: 4px;
+}
+.expense-pool-filters input {
+  padding: 8px;
+}
+.expense-pool-filters button,
+.expense-pool-pagination button {
+  padding: 8px 13px;
+}
+.expense-pool-status {
+  margin: 8px 0;
+  font-size: 11px;
+  color: #637789;
+}
+.expense-pool-scroll {
+  max-height: 54vh;
+  overflow: auto;
+  border: 1px solid #e3eaee;
+  border-radius: 8px;
+}
+.expense-pool-table {
+  width: 100%;
+  min-width: 990px;
+  table-layout: fixed;
+}
+.expense-pool-table th,
+.expense-pool-table td {
+  padding: 9px 8px;
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+.expense-pool-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.expense-pool-table th:nth-child(1) {
+  width: 90px;
+}
+.expense-pool-table th:nth-child(2) {
+  width: 140px;
+}
+.expense-pool-table th:nth-child(3),
+.expense-pool-table th:nth-child(4) {
+  width: 120px;
+}
+.expense-pool-table th:nth-child(6),
+.expense-pool-table th:nth-child(7),
+.expense-pool-table th:nth-child(8) {
+  width: 110px;
+}
+.expense-pool-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 12px;
+  font-size: 12px;
+}
+.expense-pool-pagination > div {
+  display: flex;
+  gap: 8px;
+}
+@media (max-width: 600px) {
+  .expense-pool-body {
+    padding: 12px;
+  }
+  .expense-pool-summary {
+    gap: 6px;
+  }
+  .expense-pool-summary > div {
+    padding: 8px;
+  }
+  .expense-pool-summary strong {
+    font-size: 13px;
+    overflow-wrap: anywhere;
+  }
+}
+
+.test-record-badge {
+  display: block;
+  width: fit-content;
+  margin-top: 4px;
+  padding: 3px 7px;
+  border-radius: 4px;
+  background: #fff3da;
+  color: #805414;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+dialog .modal-drag-handle {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+dialog.modal-dragging .modal-drag-handle {
+  cursor: grabbing;
+}

@@ -17,6 +17,7 @@ const {
 const { searchWorkspace } = require('../../lib/workspace-search.cjs');
 const { notificationSummary } = require('../../lib/notification-summary.cjs');
 const { handleWhatsAppRoutes } = require('./access-whatsapp.cjs');
+const { handleAiRoutes } = require('./access-ai.cjs');
 const { activeArchives } = require('../../lib/document-archive.cjs');
 const { prepareState } = require('../../lib/state-invariants.cjs');
 const { handleWorkflowRoutes } = require('./access-workflow.cjs');
@@ -86,9 +87,20 @@ function createAccess(stateFile, options = {}) {
     username: u.username,
     role: u.role,
     staffId: u.staffId || '',
+    marketingAccess:
+      ['ceo', 'admin'].includes(u.role) ||
+      state.data['icrapro-personnel-v1'].some(
+        (p) =>
+          p.id === u.staffId &&
+          p.active !== false &&
+          String(p.department || '')
+            .trim()
+            .toLocaleLowerCase('tr-TR') === 'pazarlama',
+      ),
     permissions: ['ceo', 'admin'].includes(u.role) ? permissions : u.permissions,
     active: u.active,
     readOnly: u.readOnly === true,
+    testAccount: u.testAccount === true,
     canDelete: u.readOnly !== true && canDelete(u),
     activeBreak: u.activeBreak || null,
   });
@@ -361,6 +373,8 @@ function createAccess(stateFile, options = {}) {
       }
       if (await handleWhatsAppRoutes(ctx)) return true;
       if (!u) throw fail(401, 'Giriş yapın.');
+      if (await require('./access-ceo-pin.cjs').handleCeoPin(ctx)) return true;
+      if (await handleAiRoutes(ctx)) return true;
       if (url.pathname === '/api/notifications' && req.method === 'GET') {
         send(res, 200, notificationSummary(state, u, url.searchParams.get('after')));
         return true;
