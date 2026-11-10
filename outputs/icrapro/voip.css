@@ -1313,3 +1313,29 @@ dialog.voip-active-call {
   font-size: 12px;
   z-index: auto;
 }
+
+.voip-cancel-wait {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(255 255 255 / 96%);
+  border-radius: inherit;
+  text-align: center;
+  cursor: wait;
+}
+.voip-cancel-wait strong,
+.voip-cancel-wait span {
+  display: block;
+}
+.voip-cancel-wait strong {
+  color: #173c4a;
+  font-size: 18px;
+  margin-bottom: 10px;
+}
+.voip-cancel-wait span {
+  color: #60788b;
+  font-size: 14px;
+}

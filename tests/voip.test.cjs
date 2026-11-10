@@ -1198,6 +1198,10 @@ test('cancel control is immediately visible while originate is pending', async (
     button.click();
     await new Promise(setImmediate);
     assert.equal(cancellations, 1);
+    assert.match(
+      w.document.querySelector('.voip-cancel-wait').textContent,
+      /Kapanana kadar lütfen bekleyiniz/,
+    );
     release();
     assert.equal((await pending).call.cancelRequested, true);
     assert.equal(w.document.querySelector('[data-cancel-starting]'), null);

@@ -13,6 +13,18 @@ async function voipApi(path, method = 'GET', value) {
     throw Object.assign(Error(result.error || 'Telefon işlemi tamamlanamadı.'), { status: response.status });
   return result;
 }
+function voipCancelWait(frame, waiting) {
+  frame.querySelector(':scope > .voip-cancel-wait')?.remove();
+  for (const child of frame.children) child.inert = waiting;
+  if (!waiting) return;
+  const notice = document.createElement('div');
+  notice.className = 'voip-cancel-wait';
+  notice.setAttribute('role', 'status');
+  notice.setAttribute('aria-live', 'polite');
+  notice.innerHTML =
+    '<div><strong>Arama sonlandırılıyor…</strong><span>Kapanana kadar lütfen bekleyiniz.</span></div>';
+  frame.append(notice);
+}
 async function voipStartCancelable(input, container, report, launchButton) {
   if (voipUi.startPending) throw Error('Arama başlatılıyor; mevcut işlemin bitmesini bekleyin.');
   voipUi.startPending = true;
@@ -46,6 +58,7 @@ async function voipStartCancelable(input, container, report, launchButton) {
     requested = true;
     cancel.disabled = true;
     cancel.textContent = 'İptal ediliyor…';
+    voipCancelWait(frame, true);
     report('İptal istendi; santralin çağrıyı kapatması bekleniyor.');
     cancellation = requestCancel().catch((error) => report(error.message));
   };
@@ -67,6 +80,7 @@ async function voipStartCancelable(input, container, report, launchButton) {
     finished = true;
     if (launchButton && cancel.isConnected) cancel.replaceWith(launchButton);
     else cancel.remove();
+    voipCancelWait(frame, false);
     voipUi.startPending = false;
   }
 }
@@ -1002,6 +1016,7 @@ function showVoipActive(doc, call) {
     saveQueue = Promise.resolve(),
     syncing = false,
     lastProviderSync = 0,
+    hangupPending = false,
     disposed = false;
   let muted = !!call.muted;
   const started = Date.parse(call.answeredAt || call.createdAt) || Date.now();
@@ -1066,6 +1081,7 @@ function showVoipActive(doc, call) {
     host.querySelector('[data-current-status]').textContent =
       (next.statusLabel || 'Aranıyor') + (ended ? ' · ' + voipDuration(next.duration) : '');
     host.dataset.ended = String(ended);
+    voipCancelWait(host, !ended && !next.cancelError && (next.cancelRequested || hangupPending));
     if (ended && !wasEnded) releaseVoipWebphone();
     outcomes.hidden = !ended;
     host.querySelector('[data-current-hangup]').hidden = ended;
@@ -1163,12 +1179,16 @@ function showVoipActive(doc, call) {
   };
   host.querySelector('[data-current-hangup]').onclick = async (event) => {
     event.target.disabled = true;
+    hangupPending = true;
+    voipCancelWait(host, true);
     try {
       await voipApi('hangup', 'POST', { id: call.id });
       message('Sonlandırma istendi. Santralden kapanış bilgisi bekleniyor.', 'notice');
       lastProviderSync = 0;
       await sync();
     } catch (error) {
+      hangupPending = false;
+      voipCancelWait(host, false);
       message(error.message);
     } finally {
       event.target.disabled = false;
@@ -1243,8 +1263,7 @@ function showVoipActive(doc, call) {
   };
   if (!ended) voipUi.timer = setInterval(sync, 2500);
   if (call.cancelRequested && !call.cancelError && !ended) {
-    if (!voipUi.minimized) host.querySelector('[data-current-minimize]').click();
-    if (typeof toast === 'function') toast('İptal isteği gönderildi; santral durumu kontrol ediliyor.');
+    voipCancelWait(host, true);
     sync();
   }
 }
