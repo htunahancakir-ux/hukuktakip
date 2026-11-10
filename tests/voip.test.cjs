@@ -100,6 +100,99 @@ test('phone normalization deduplicates numbers and excludes invalid values', () 
     2,
   );
 });
+test('standalone calls use documented JSON originate, retain privacy, and still prevent duplicate calls', async () => {
+  let sent;
+  const h = harness(async (url, options) => {
+    sent = { url: new URL(url), options };
+    return new Response('00000000-0000-0000-0000-000000000001');
+  });
+  const { call } = await h.call('start', 'POST', {
+    phone: '05320000005',
+    requestId: 'standalone-request-001',
+  });
+  assert.equal(call.documentId, '');
+  assert.equal(sent.options.method, 'POST');
+  assert.equal(sent.options.headers['Content-Type'], 'application/json');
+  assert.equal(sent.url.searchParams.has('destination'), false);
+  assert.deepEqual(JSON.parse(sent.options.body), {
+    extension: '1001',
+    destination: '905320000005',
+    manual_answer: false,
+  });
+  assert.equal((await h.call('calls?phone=05320000005')).calls[0].id, call.id);
+  await assert.rejects(
+    h.call('start', 'POST', { phone: '05320000005', requestId: 'standalone-request-002' }),
+    (e) => e.status === 409,
+  );
+  await assert.rejects(
+    h.call('start', 'POST', { documentId: 'd', phone: '05320000006', requestId: 'standalone-request-003' }),
+    /föyde kayıtlı değil/,
+  );
+  h.user = { id: 's', role: 'staff', staffId: 'p' };
+  const other = (await h.call('calls?phone=05320000005')).calls[0];
+  assert.equal(other.phone, '905320000005');
+  assert.equal(other.id, undefined);
+  assert.equal(other.note, undefined);
+});
+test('standalone dialer shows last call before allowing a repeated call', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('<div class="header-actions"></div><aside><nav></nav></aside>', {
+    url: 'https://example.test',
+    runScripts: 'dangerously',
+  });
+  try {
+    const w = dom.window;
+    let starts = 0;
+    w.HTMLDialogElement.prototype.showModal = function () {
+      this.open = true;
+    };
+    w.HTMLDialogElement.prototype.close = function () {
+      this.open = false;
+    };
+    Object.assign(w, {
+      hanAuth: { id: 's', role: 'staff' },
+      esc: (v) => String(v).replaceAll('<', '&lt;'),
+      fetch: async (url) => ({
+        ok: true,
+        json: async () => {
+          if (url.endsWith('/start')) {
+            starts++;
+            return {};
+          }
+          return {
+            enabled: true,
+            extension: '1000',
+            recentMinutes: 1440,
+            results: [],
+            calls: [
+              {
+                phone: '905320000009',
+                createdAt: new Date().toISOString(),
+                staffName: 'Örnek Personel',
+                status: 'completed',
+                statusLabel: 'Görüşüldü',
+                duration: 12,
+              },
+            ],
+            active: [],
+          };
+        },
+      }),
+    });
+    w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    w.setupVoipNavigation();
+    w.document.querySelector('[data-standalone-voip]').click();
+    const form = w.document.querySelector('.voip-standalone-form');
+    form.elements.phone.value = '05320000009';
+    form.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.match(w.document.querySelector('[data-preview]').textContent, /Örnek Personel/);
+    assert.match(w.document.querySelector('[data-dial]').textContent, /tekrar ara/);
+    assert.equal(starts, 0);
+  } finally {
+    dom.window.close();
+  }
+});
 test('only managers change user extensions; provider secrets and other assignments remain protected', async () => {
   const h = harness();
   const original = structuredClone(h.state.voipConfig);
@@ -387,10 +480,15 @@ test('UI keeps numbers, history and role-controlled audio together without prelo
   );
   try {
     const w = dom.window;
-    let startCount = 0;
+    let startCount = 0,
+      savedPhone;
     Object.assign(w, {
       hanAuth: { id: 's', role: 'staff' },
       esc: (v) => String(v).replaceAll('<', '&lt;'),
+      saveRecordIntakeMetadata: async (_before, next) => {
+        savedPhone = next.additionalPhones[0];
+        return next;
+      },
       fetch: async (url) =>
         url.endsWith('/start')
           ? (startCount++,
@@ -430,6 +528,12 @@ test('UI keeps numbers, history and role-controlled audio together without prelo
     assert.match(w.document.body.textContent, /01:30/);
     assert(w.document.querySelector('[data-dial-phone]'));
     assert(w.document.querySelector('[data-number-history]'));
+    w.document.querySelector('[data-add-phone]').click();
+    const add = w.document.querySelector('.voip-add-phone');
+    add.elements.phone.value = '05320000009';
+    add.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+    await new Promise((r) => setImmediate(r));
+    assert.equal(savedPhone, '905320000009');
     assert.equal(w.document.querySelectorAll('audio').length, 0);
     const panel = w.document.querySelector('.voip-number-panel');
     assert.equal(panel.querySelectorAll('[data-close-voip]').length, 0);
