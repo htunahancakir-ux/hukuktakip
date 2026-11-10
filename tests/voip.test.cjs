@@ -951,6 +951,7 @@ test('recordings archive filters status and result, plays on demand and offers n
                       recordingPresent: true,
                       archivedAt: '2026-11-09',
                       canListen: true,
+                      providerEnd: { answered: true, talkSeconds: 50, by: 'callee', result: 'Cevaplandı' },
                       transcription: { status: 'completed' },
                     },
                   ],
@@ -961,6 +962,11 @@ test('recordings archive filters status and result, plays on demand and offers n
     w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
     w.voipRecordingsPage();
     await new Promise((r) => setImmediate(r));
+    // The recordings list shows what the exchange answered next to the status and the result.
+    assert.match(
+      w.document.querySelector('tr[data-voip-entry] .voip-provider-line').textContent,
+      /Santral yanıtı: cevaplandı · konuşma 50 sn · sonuç Cevaplandı · kapatan aranan taraf/,
+    );
     assert.equal(w.document.querySelectorAll('[data-voip-result]').length, 0);
     assert.equal(w.document.querySelectorAll('audio').length, 0);
     const form = w.document.querySelector('form');
@@ -1831,7 +1837,12 @@ test('a leg that connected for zero seconds is no conversation: unreachable is s
   assert.equal(silent.resultBy, 'Santral');
   assert(silent.resultAt);
   assert.equal(silent.note, 'Ulaşılamadı (santral bildirimi).');
-  assert.deepEqual(silent.providerEnd, { answered: true, talkSeconds: 0, cause: 'NORMAL_CLEARING' });
+  assert.deepEqual(silent.providerEnd, {
+    answered: true,
+    talkSeconds: 0,
+    cause: 'NORMAL_CLEARING',
+    reason: 'Cevaplandı',
+  });
 
   // Form-encoded webhooks send every value as a string.
   const form = base();
@@ -1933,7 +1944,12 @@ test('webhook and call-record checks save zero-talk calls as unreachable and rem
   assert.equal(none.result, 'Ulaşılamadı');
   assert(none.hangupRequestedAt, 'pressing Sonlandır is remembered');
   assert.match(none.note, /görüşme olmadan sonlandırıldı/);
-  assert.deepEqual(none.providerEnd, { answered: true, talkSeconds: 0, cause: 'NORMAL_CLEARING' });
+  assert.deepEqual(none.providerEnd, {
+    answered: true,
+    talkSeconds: 0,
+    cause: 'NORMAL_CLEARING',
+    reason: 'Cevaplandı',
+  });
 
   const unknown = await closedByRecord({}, 'zero-talk-cdr-0002');
   assert.equal(unknown.status, 'completed', 'a record without talk time is not treated as zero');
@@ -2061,4 +2077,213 @@ test('"Numara ara" opens its frame right below the header button; other calls ke
   } finally {
     dom.window.close();
   }
+});
+
+test('"Vazgeçildi", "Cevapsız" or "Reddedildi" is no conversation, even though the extension answered', () => {
+  const base = () => ({ status: 'ringing', createdAt: new Date().toISOString() });
+  // The exchange connects the extension first, so "answered" is true while the customer's phone rings.
+  const cases = [
+    [
+      'ORIGINATOR_CANCEL',
+      'Vazgeçildi',
+      'Ulaşılamadı: arama görüşme olmadan sonlandırıldı (santral bildirimi).',
+    ],
+    ['NO_ANSWER', 'Cevapsız', 'Ulaşılamadı: arama cevaplanmadı (santral bildirimi).'],
+    ['ALLOTTED_TIMEOUT', 'Cevapsız', 'Ulaşılamadı: arama cevaplanmadı (santral bildirimi).'],
+    ['NO_USER_RESPONSE', 'Ulaşılamıyor', 'Ulaşılamadı: arama cevaplanmadı (santral bildirimi).'],
+    ['RECOVERY_ON_TIMER_EXPIRE', 'Zamanaşımı', 'Ulaşılamadı: arama cevaplanmadı (santral bildirimi).'],
+    ['CALL_REJECTED', 'Reddedildi', 'Ulaşılamadı: arama reddedildi (santral bildirimi).'],
+  ];
+  for (const [cause, reason, note] of cases) {
+    const call = base();
+    updateEvent(call, { event_type: 'hangup', answered: true, hangup_cause: cause });
+    assert.equal(call.status, 'unanswered', cause);
+    assert.equal(call.result, 'Ulaşılamadı', cause);
+    assert.equal(call.resultBy, 'Santral', cause);
+    assert.equal(call.note, note, cause);
+    assert.deepEqual(call.providerEnd, { answered: true, cause, reason }, cause);
+  }
+
+  // A busy line stays "Meşgul".
+  const busy = base();
+  updateEvent(busy, { event_type: 'hangup', answered: true, hangup_cause: 'USER_BUSY' });
+  assert.equal(busy.status, 'busy');
+  assert.equal(busy.result, 'Meşgul');
+  assert.equal(busy.note, 'Meşgul (santral bildirimi).');
+
+  // The call record words the same outcomes in Turkish.
+  const worded = base();
+  updateEvent(worded, { event_type: 'hangup', answered: true, result: 'Vazgeçildi' });
+  assert.equal(worded.status, 'unanswered');
+  assert.equal(worded.providerEnd.result, 'Vazgeçildi', 'Turkish letters are kept');
+
+  // A normal ending alone decides nothing: the person still chooses the result.
+  for (const event of [
+    { hangup_cause: 'NORMAL_CLEARING' },
+    { hangup_cause: 'NORMAL_UNSPECIFIED' },
+    { result: 'Cevaplandı' },
+    { hangup_cause: 'constructor', result: '__proto__' },
+  ]) {
+    const call = base();
+    updateEvent(call, { event_type: 'hangup', answered: true, ...event });
+    assert.equal(call.status, 'completed', JSON.stringify(event));
+    assert.equal(call.result, undefined, JSON.stringify(event));
+  }
+
+  // A real conversation is never downgraded by a conflicting cause, and neither is a saved result.
+  const talked = base();
+  updateEvent(talked, {
+    event_type: 'hangup',
+    answered: true,
+    hangup_cause: 'ORIGINATOR_CANCEL',
+    duration: 12,
+  });
+  assert.equal(talked.status, 'completed');
+  assert.equal(talked.duration, 12);
+  const saved = { ...base(), result: 'Olumlu', resultBy: 'Personel', resultAt: '2026-11-10T10:00:00.000Z' };
+  updateEvent(saved, { event_type: 'hangup', answered: true, hangup_cause: 'NO_ANSWER' });
+  assert.equal(saved.status, 'completed');
+  assert.equal(saved.result, 'Olumlu');
+
+  // The live note and the Sonlandır press are kept, whatever wording the exchange used.
+  const own = { ...base(), hangupRequestedAt: new Date().toISOString(), draftNote: 'Not' };
+  updateEvent(own, { event_type: 'hangup', answered: true, hangup_cause: 'NO_ANSWER' });
+  assert.match(own.note, /^Not\nUlaşılamadı: arama görüşme olmadan sonlandırıldı/);
+});
+
+test("the customer's leg of the call record decides, not the extension the exchange connects first", () => {
+  const extension = {
+    destination_number: '1001',
+    answer_stamp: '2026-11-10 17:59:40 +0300',
+    result: 'Cevaplandı',
+  };
+  const customer = (leg) => ({
+    destination_number: '905447427442',
+    answer_stamp: '',
+    result: 'Cevaplandı',
+    ...leg,
+  });
+  const run = (flow, event = {}) => {
+    const call = { status: 'ringing', createdAt: new Date().toISOString(), phone: '905447427442' };
+    updateEvent(call, { event_type: 'hangup', answered: true, call_flow: flow, ...event });
+    return call;
+  };
+
+  // The person hung up while it rang: the extension answered, the customer never did.
+  const cancelled = run([extension, customer({ result: 'Vazgeçildi' })]);
+  assert.equal(cancelled.status, 'unanswered');
+  assert.equal(cancelled.result, 'Ulaşılamadı');
+  assert.equal(cancelled.note, 'Ulaşılamadı: arama görüşme olmadan sonlandırıldı (santral bildirimi).');
+  assert.deepEqual(cancelled.providerEnd, { answered: true, legAnswered: false, legResult: 'Vazgeçildi' });
+
+  // Never answered, no reason given: still no conversation.
+  const quiet = run([extension, customer({ result: '' })]);
+  assert.equal(quiet.status, 'unanswered');
+  assert.equal(quiet.note, 'Ulaşılamadı (santral bildirimi).');
+
+  // The customer picked up: a conversation, with or without a talk time.
+  const stamp = '2026-11-10 17:59:52 +0300';
+  const spoken = run([extension, customer({ answer_stamp: stamp })], { duration: 34 });
+  assert.equal(spoken.status, 'completed');
+  assert.equal(spoken.duration, 34);
+  assert.equal(spoken.providerEnd.legAnswered, true);
+  assert.equal(run([extension, customer({ answer_stamp: stamp })]).status, 'completed');
+
+  // Phone formats differ between the app and the exchange; the last ten digits match.
+  for (const destination of ['05447427442', '+90 544 742 74 42', '0090 544 742 74 42']) {
+    const call = run([extension, customer({ destination_number: destination, result: 'Cevapsız' })]);
+    assert.equal(call.status, 'unanswered', destination);
+  }
+
+  // Without a customer leg in the record, nothing is concluded from it.
+  const only = run([extension]);
+  assert.equal(only.status, 'completed');
+  assert.equal(only.providerEnd.legAnswered, undefined);
+  assert.equal(run('not a list').status, 'completed');
+  assert.equal(run([null, 7, 'x', { destination_number: null }]).status, 'completed');
+  assert.equal(run([], { result: 'Vazgeçildi' }).status, 'unanswered');
+
+  // A zeroed stamp means "never answered", like an empty one.
+  assert.equal(
+    run([extension, customer({ answer_stamp: '1970-01-01 03:00:00 +0300' })]).status,
+    'unanswered',
+  );
+
+  // Who ended the call is kept as the exchange words it; anything else is dropped.
+  assert.equal(run([extension], { sip_hangup_disposition: 'caller' }).providerEnd.by, 'caller');
+  const hostile = run([extension], {
+    sip_hangup_disposition: '<img src=x>',
+    result: '<b>x</b>',
+    hangup_cause: 'Vazgeçildi!',
+  });
+  assert.equal(hostile.providerEnd.by, undefined);
+  assert.equal(hostile.providerEnd.result, undefined);
+  assert.equal(hostile.providerEnd.cause, undefined);
+});
+
+test("Sonlandır while it rings: the call record's customer leg says nobody answered", async () => {
+  const closed = async (record, requestId) => {
+    const h = harness(async (url) => {
+      const path = new URL(url).pathname;
+      if (path === '/originate') return new Response('00000000-0000-0000-0000-000000000001');
+      if (path.startsWith('/hangup/')) return new Response('No such channel!', { status: 400 });
+      return new Response(JSON.stringify(record));
+    });
+    const { call } = await h.call('start', 'POST', { documentId: 'd', phone: '05320000000', requestId });
+    await h.call('hangup', 'POST', { id: call.id });
+    return h.state.voipCalls[0];
+  };
+  const extension = {
+    destination_number: '1001',
+    answer_stamp: '2026-11-10 17:59:48 +0300',
+    result: 'Cevaplandı',
+  };
+  const record = (legs, cdr = {}) => ({
+    cdr: {
+      end_stamp: '2026-11-10 18:00:00 +0300',
+      answer_stamp: '2026-11-10 17:59:48 +0300',
+      result: 'Cevaplandı',
+      sip_hangup_disposition: 'caller',
+      recording_present: false,
+      ...cdr,
+    },
+    ...(legs ? { call_flow: legs } : {}),
+  });
+
+  // Hung up while it rang: the call itself says "answered" (the extension), the customer leg does not.
+  const rang = await closed(
+    record([extension, { destination_number: '905320000000', answer_stamp: '', result: 'Vazgeçildi' }]),
+    'ring-cancel-record-0001',
+  );
+  assert.equal(rang.status, 'unanswered');
+  assert.equal(rang.result, 'Ulaşılamadı');
+  assert.equal(rang.resultBy, 'Santral');
+  assert(rang.hangupRequestedAt, 'pressing Sonlandır is remembered');
+  assert.match(rang.note, /görüşme olmadan sonlandırıldı/);
+  assert.equal(rang.providerEnd.by, 'caller');
+  assert.equal(rang.providerEnd.legAnswered, false);
+  assert.equal(rang.providerEnd.legResult, 'Vazgeçildi');
+
+  // The customer talked: a conversation, and the person still chooses the result.
+  const talk = await closed(
+    record(
+      [
+        extension,
+        {
+          destination_number: '905320000000',
+          answer_stamp: '2026-11-10 17:59:55 +0300',
+          result: 'Cevaplandı',
+        },
+      ],
+      { talk_duration: '00:00:41' },
+    ),
+    'ring-talk-record-0002',
+  );
+  assert.equal(talk.status, 'completed');
+  assert.equal(talk.duration, 41);
+  assert.equal(talk.result || '', '');
+
+  // A record without per-leg details keeps working as before.
+  const plain = await closed(record(null), 'ring-plain-record-0003');
+  assert.equal(plain.status, 'completed');
 });
