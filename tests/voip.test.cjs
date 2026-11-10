@@ -1279,6 +1279,12 @@ test('borrower calling initializes the shared background webphone without requir
     await new Promise(setImmediate);
     assert.equal(tokens, 1);
     assert.equal(w.document.querySelector('#voipWebphone iframe'), frame);
+    w.document.getElementById('voipWebphone').remove();
+    w.document.querySelector('[data-open-voip]').click();
+    w.document.querySelector('[data-open-voip]').click();
+    await new Promise(setImmediate);
+    await new Promise(setImmediate);
+    assert.equal(tokens, 2, 'removed phone reconnects instead of reusing a completed initialization');
   } finally {
     dom.window.close();
   }
@@ -1293,7 +1299,14 @@ test('confirmed automatically saved busy calls close without a second evaluation
       this.open = true;
     };
     Object.assign(w, { esc: String });
-    w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    w.eval(
+      (await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8')) +
+        '\nvoipUi.returnToDial = () => { window.returnedToDial = true; };',
+    );
+    const phone = w.document.createElement('dialog');
+    phone.id = 'voipWebphone';
+    phone.innerHTML = '<iframe></iframe>';
+    w.document.body.append(phone);
     const call = {
       id: 'busy-auto',
       phone: '905320000000',
@@ -1313,6 +1326,8 @@ test('confirmed automatically saved busy calls close without a second evaluation
       },
     );
     assert.equal(w.document.getElementById('voipActiveCall'), null);
+    assert.equal(w.returnedToDial, true, 'busy returns to the originating dial screen');
+    assert(w.document.querySelector('#voipWebphone iframe'), 'busy preserves registered webphone');
     assert.equal(w.document.getElementById('voipPhoneDock').hidden, true);
   } finally {
     dom.window.close();

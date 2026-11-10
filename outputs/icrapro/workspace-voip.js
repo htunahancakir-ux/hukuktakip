@@ -625,7 +625,9 @@ function setupBorrowerVoip(dialog, doc) {
             },
           },
           true,
-        );
+        ).finally(() => {
+          phoneOpening = null;
+        });
       const scroll = panel.querySelector('.voip-number-list')?.scrollTop || 0;
       const lastFocused = document.activeElement?.dataset?.dialPhone;
       panel.innerHTML =
@@ -787,8 +789,11 @@ function setupBorrowerVoip(dialog, doc) {
           );
           confirmation = '';
           feedback = '';
-          showVoipActive(doc, result.call);
+          voipUi.returnToDial = () => {
+            if (wrap.isConnected && dialog.open && panel.hidden) trigger.click();
+          };
           close();
+          showVoipActive(doc, result.call);
         } catch (error) {
           message(error.message);
         } finally {
@@ -975,6 +980,8 @@ function showVoipActive(doc, call) {
   voipUi.disposeActive?.();
   host?.remove();
   clearInterval(voipUi.timer);
+  const returnToDial = voipUi.returnToDial;
+  voipUi.returnToDial = null;
   voipUi.activeId = call.id;
   voipUi.minimized = false;
   host = document.createElement('dialog');
@@ -1082,7 +1089,8 @@ function showVoipActive(doc, call) {
       (next.statusLabel || 'Aranıyor') + (ended ? ' · ' + voipDuration(next.duration) : '');
     host.dataset.ended = String(ended);
     voipCancelWait(host, !ended && !next.cancelError && (next.cancelRequested || hangupPending));
-    if (ended && !wasEnded) releaseVoipWebphone();
+    // Busy/canceled calls keep the registered webphone ready for the next attempt.
+    if (ended && !wasEnded && next.status === 'completed') releaseVoipWebphone();
     outcomes.hidden = !ended;
     host.querySelector('[data-current-hangup]').hidden = ended;
     host.querySelector('[data-current-sync]').hidden = true;
@@ -1098,8 +1106,7 @@ function showVoipActive(doc, call) {
       const dock = document.getElementById('voipPhoneDock');
       if (dock?.hidePopover) dock.hidePopover();
       if (dock) dock.hidden = true;
-      if (typeof toast === 'function')
-        toast(next.cancelRequested ? 'Arama iptal edildi.' : 'Meşgul sonucu otomatik kaydedildi.');
+      returnToDial?.();
       return;
     }
     host.querySelector('[data-current-save]').hidden = !ended;
@@ -1604,6 +1611,13 @@ function openStandaloneVoip() {
             },
             e.target,
           );
+          voipUi.returnToDial = () => {
+            if (!dialog.isConnected) return;
+            e.target.disabled = false;
+            feedback.textContent = '';
+            voipPhoneDock();
+            if (!dialog.open) dialog.show();
+          };
           dialog.close();
           voipUi.minimized = false;
           showVoipActive({ id: '', number: 'Dosyasız arama', debtor: '' }, result.call);
