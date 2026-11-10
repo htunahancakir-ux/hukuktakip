@@ -164,6 +164,7 @@ test('standalone dialer shows last call before allowing a repeated call', async 
     w.HTMLDialogElement.prototype.showModal = function () {
       this.open = true;
     };
+    w.HTMLDialogElement.prototype.show = w.HTMLDialogElement.prototype.showModal;
     w.HTMLDialogElement.prototype.close = function () {
       this.open = false;
     };
@@ -247,11 +248,11 @@ test('webphone is reachable from the header and restoring it does not reload an 
     const phone = w.document.querySelector('#voipWebphone');
     assert(phone.open);
     phone.querySelector('button').click();
-    assert.equal(phone.style.visibility, 'hidden');
+    assert(w.document.getElementById('voipPhoneDock').classList.contains('voip-dock-minimized'));
     w.document.querySelector('[data-global-webphone]').click();
     await new Promise(setImmediate);
     assert.equal(tokens, 1);
-    assert.equal(phone.style.visibility, 'visible');
+    assert(!w.document.getElementById('voipPhoneDock').classList.contains('voip-dock-minimized'));
   } finally {
     dom.window.close();
   }
@@ -527,6 +528,60 @@ test('live notes survive confirmed termination and final results reject prematur
     (e) => e.status === 409,
   );
 });
+test('mute requires call ownership, confirms provider success and rejects ended calls', async () => {
+  const requests = [];
+  let rejectMute = false;
+  const h = harness(async (url, init) => {
+    const target = new URL(url);
+    if (target.pathname === '/originate') return new Response('00000000-0000-0000-0000-000000000001');
+    requests.push({ path: target.pathname, state: target.searchParams.get('state'), method: init.method });
+    return new Response(rejectMute ? 'Unavailable' : 'OK', { status: rejectMute ? 400 : 200 });
+  });
+  const { call } = await h.call('start', 'POST', {
+    documentId: 'd',
+    phone: '05320000000',
+    requestId: 'mute-ownership-request',
+  });
+  h.user = { id: 's', role: 'staff', staffId: 'p' };
+  await assert.rejects(h.call('mute', 'POST', { id: call.id, muted: true }), (e) => e.status === 403);
+  assert.equal(requests.length, 0);
+  h.user = { id: 'u', role: 'ceo' };
+  await h.call('mute', 'POST', { id: call.id, muted: true });
+  assert.equal(h.state.voipCalls[0].muted, true);
+  assert.deepEqual(requests[0], {
+    path: '/mute/00000000-0000-0000-0000-000000000001',
+    state: 'on',
+    method: 'GET',
+  });
+  rejectMute = true;
+  await assert.rejects(h.call('mute', 'POST', { id: call.id, muted: false }));
+  assert.equal(h.state.voipCalls[0].muted, true);
+  h.state.voipCalls[0].status = 'completed';
+  await assert.rejects(h.call('mute', 'POST', { id: call.id, muted: false }), (e) => e.status === 409);
+  assert.equal(requests.length, 2);
+});
+
+test('absent provider recordings remain retryable and are distinguished from archive failures', async () => {
+  const h = harness(async () => new Response(JSON.stringify({ cdr: { recording_present: false } })));
+  const id = crypto.randomUUID();
+  h.state.voipCalls.push({
+    id,
+    providerId: crypto.randomUUID(),
+    documentId: 'd',
+    createdAt: new Date().toISOString(),
+    status: 'completed',
+    duration: 0,
+    recordingPresent: false,
+  });
+  await h.call('archive', 'POST', { id });
+  const saved = h.state.voipCalls[0];
+  assert.match(saved.archiveError, /Verimor bu çağrı için henüz ses kaydı sağlamadı/);
+  assert(!saved.archiveError.includes('depolama'));
+  assert(saved.nextArchiveAt);
+  assert.equal(saved.recordingMissing, undefined);
+  assert.equal(saved.archivedAt, undefined);
+});
+
 test('recordings are encrypted on disk, authenticate tampering and preserve original bytes', async () => {
   const dir = path.resolve('work/voip-test-' + crypto.randomUUID());
   const env = {};
@@ -790,7 +845,7 @@ test('recovering an active call never nests its controls inside the minimized we
     w.setupVoipNavigation();
     await new Promise(setImmediate);
     const host = w.document.querySelector('#voipActiveCall');
-    assert.equal(host.parentElement, w.document.body);
+    assert.equal(host.parentElement.id, 'voipPhoneDock');
     assert.equal(host.hidden, false);
     host.querySelector('[data-current-minimize]').click();
     assert.equal(host.hidden, false);

@@ -1,6 +1,57 @@
 .voip-active-call[hidden] {
   display: none !important;
 }
+.voip-phone-dock {
+  position: fixed;
+  inset: auto 16px 16px auto;
+  margin: 0;
+  padding: 0;
+  width: 460px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  background: white;
+  border: 1px solid #b9cad6;
+  border-radius: 12px;
+  box-shadow: 0 12px 50px #15354745;
+  z-index: 2147483646;
+}
+.voip-phone-dock[hidden] {
+  display: none !important;
+}
+.voip-phone-dock > dialog.voip-webphone,
+.voip-phone-dock > dialog.voip-active-call,
+.voip-phone-dock > dialog.voip-standalone {
+  position: static;
+  inset: auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.voip-phone-dock > dialog.voip-active-call {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.voip-dock-minimized .voip-webphone iframe,
+.voip-dock-minimized .voip-standalone,
+.voip-dock-minimized .voip-live-note,
+.voip-dock-minimized .voip-draft-status,
+.voip-dock-minimized .voip-outcomes,
+.voip-dock-minimized [data-current-sync] {
+  display: none;
+}
+.voip-dock-minimized:has(.voip-active-call) .voip-webphone {
+  display: none;
+}
+.voip-workspace-heading time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 18px;
+}
 .integration-tabs {
   margin-top: -12px;
   background: #edf3f8;
@@ -747,6 +798,9 @@ dialog.voip-active-call {
   outline-offset: 2px;
 }
 .voip-workspace-actions {
+  position: sticky;
+  bottom: 0;
+  background: white;
   display: flex;
   align-items: center;
   justify-content: space-between;

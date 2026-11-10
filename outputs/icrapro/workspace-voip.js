@@ -811,8 +811,23 @@ function setupBorrowerVoip(dialog, doc) {
     history,
   );
 }
+function voipPhoneDock() {
+  let dock = document.getElementById('voipPhoneDock');
+  if (!dock) {
+    dock = document.createElement('div');
+    dock.id = 'voipPhoneDock';
+    dock.className = 'voip-phone-dock';
+    dock.setAttribute('popover', 'manual');
+    document.body.append(dock);
+  }
+  dock.hidden = false;
+  if (dock.showPopover && !dock.matches(':popover-open')) dock.showPopover();
+  return dock;
+}
 async function openVoipWebphone(feedback) {
   try {
+    const dock = voipPhoneDock();
+    dock.classList.remove('voip-dock-minimized');
     const existing = document.getElementById('voipWebphone');
     if (existing?.open && existing.querySelector('iframe')?.src) {
       existing.style.visibility = 'visible';
@@ -820,6 +835,8 @@ async function openVoipWebphone(feedback) {
       return;
     }
     const result = await voipApi('webphone', 'POST', {});
+    if (typeof result.url !== 'string' || !result.url.startsWith('https://'))
+      throw Error('Web telefonu bağlantısı alınamadı. VoIP ayarlarını kontrol edin.');
     let phone = document.getElementById('voipWebphone');
     if (!phone) {
       phone = document.createElement('dialog');
@@ -827,9 +844,12 @@ async function openVoipWebphone(feedback) {
       phone.className = 'voip-webphone';
       phone.innerHTML =
         '<div class="panelhead"><h2>HAN HUKUK WEB TELEFON</h2><button type="button" class="secondary">Küçült</button></div><iframe title="HAN HUKUK web telefonu" allow="microphone; autoplay" referrerpolicy="no-referrer"></iframe>';
-      document.body.append(phone);
+      dock.append(phone);
       phone.querySelector('button').onclick = () => {
-        phone.style.visibility = 'hidden';
+        dock.classList.toggle('voip-dock-minimized');
+        phone.querySelector('button').textContent = dock.classList.contains('voip-dock-minimized')
+          ? 'Genişlet'
+          : 'Küçült';
       };
     }
     phone.style.visibility = 'visible';
@@ -855,24 +875,14 @@ function showVoipActive(doc, call) {
   host.id = 'voipActiveCall';
   host.className = 'voip-active-call';
   host.dataset.callId = call.id;
-  const owner = document.getElementById('borrowerDetail')?.open
-    ? document.getElementById('borrowerDetail')
-    : document.querySelector('dialog[open]:not(.voip-webphone):not(.voip-active-call)');
-  (owner || document.body).append(host);
-  owner?.addEventListener(
-    'close',
-    () => {
-      if (host.isConnected) document.body.append(host);
-    },
-    { once: true },
-  );
+  voipPhoneDock().prepend(host);
   if (!host.open) host.show();
   host.hidden = false;
-  host.innerHTML = `<div class="voip-workspace-heading"><div><span data-current-status></span><strong>${esc(voipPhone(call.phone))}</strong><small>${esc(call.documentNumber || doc.number || '')} · ${esc(call.debtorName || doc.debtor || '')}</small></div><button type="button" class="link" data-current-minimize>Küçült</button></div>
+  host.innerHTML = `<div class="voip-workspace-heading"><div><span data-current-status></span><strong>${esc(voipPhone(call.phone))}</strong><small>${esc(call.documentNumber || doc.number || '')} · ${esc(call.debtorName || doc.debtor || '')}</small><time data-current-duration aria-label="Çağrı süresi">00:00</time></div><button type="button" class="link" data-current-minimize>Küçült</button></div>
     <div class="voip-workspace-feedback" data-current-feedback role="alert" hidden></div>
     <form data-current-form><label class="voip-live-note">Görüşme notu<textarea data-optional="true" name="note" maxlength="3000" rows="4" placeholder="Görüşme sürerken notunuzu yazabilirsiniz…"></textarea></label><span class="voip-draft-status" data-draft-status role="status"></span>
     <fieldset class="voip-outcomes" data-current-outcomes hidden><legend>Görüşme sonucu</legend><p data-current-suggestion hidden>Santral sonucu seçildi; gerekirse değiştirebilirsiniz.</p><div data-current-choices></div></fieldset>
-    <div class="voip-workspace-actions"><button class="link" type="button" data-current-sync>Durumu doğrula</button><button class="voip-hangup" type="button" data-current-hangup>Aramayı sonlandır</button><button class="primary" type="submit" data-current-save hidden>Tamam</button></div></form>`;
+    <div class="voip-workspace-actions"><button class="secondary" type="button" data-current-mute aria-pressed="false" title="Sessize al">🎙 Sessize al</button><button class="link" type="button" data-current-sync>Durumu doğrula</button><button class="voip-hangup" type="button" data-current-hangup title="Aramayı sonlandır">☎ Sonlandır</button><button class="primary" type="submit" data-current-save hidden>Tamam</button></div></form>`;
   const form = host.querySelector('form'),
     note = form.elements.note,
     feedback = host.querySelector('[data-current-feedback]'),
@@ -886,6 +896,14 @@ function showVoipActive(doc, call) {
     syncing = false,
     lastProviderSync = 0,
     disposed = false;
+  let muted = !!call.muted;
+  const started = Date.parse(call.answeredAt || call.createdAt) || Date.now();
+  const elapsed = setInterval(() => {
+    if (!ended)
+      host.querySelector('[data-current-duration]').textContent = voipDuration(
+        Math.max(0, Math.floor((Date.now() - started) / 1000)),
+      );
+  }, 1000);
   const message = (text, tone = 'error') => {
     feedback.textContent = text;
     feedback.hidden = !text;
@@ -920,10 +938,12 @@ function showVoipActive(doc, call) {
   voipUi.disposeActive = () => {
     disposed = true;
     clearTimeout(draftTimer);
+    clearInterval(elapsed);
   };
   host.querySelector('[data-current-minimize]').onclick = () => {
     voipUi.minimized = !voipUi.minimized;
     host.classList.toggle('voip-call-minimized', voipUi.minimized);
+    document.getElementById('voipPhoneDock')?.classList.toggle('voip-dock-minimized', voipUi.minimized);
     host.querySelector('[data-current-minimize]').textContent = voipUi.minimized ? 'Genişlet' : 'Küçült';
     if (draftTimer) saveDraft().catch(() => {});
   };
@@ -937,6 +957,11 @@ function showVoipActive(doc, call) {
     host.querySelector('[data-current-hangup]').hidden = ended;
     host.querySelector('[data-current-sync]').hidden = ended;
     host.querySelector('[data-current-save]').hidden = !ended;
+    host.querySelector('[data-current-mute]').hidden = ended;
+    if (ended) {
+      clearInterval(elapsed);
+      host.querySelector('[data-current-duration]').textContent = voipDuration(next.duration);
+    }
     if (!ended) return;
     if (!host.querySelector('[name="result"]')) {
       host.querySelector('[data-current-choices]').innerHTML = (voipUi.results || [])
@@ -967,6 +992,7 @@ function showVoipActive(doc, call) {
         ?.dispatchEvent(new Event('modal-layer-dismiss'));
       voipUi.minimized = false;
       host.classList.remove('voip-call-minimized');
+      document.getElementById('voipPhoneDock')?.classList.remove('voip-dock-minimized');
       host.querySelector('[data-current-minimize]').textContent = 'Küçült';
       host.hidden = false;
       message('Görüşme sona erdi. Sonucu seçip Tamam’a basın.', 'notice');
@@ -976,6 +1002,24 @@ function showVoipActive(doc, call) {
   };
   voipUi.updateActive = update;
   update(call);
+  const muteButton = host.querySelector('[data-current-mute]');
+  const muteLabel = () => {
+    muteButton.setAttribute('aria-pressed', String(muted));
+    muteButton.textContent = muted ? '🔇 Sesi aç' : '🎙 Sessize al';
+  };
+  muteLabel();
+  muteButton.onclick = async () => {
+    muteButton.disabled = true;
+    try {
+      const result = await voipApi('mute', 'POST', { id: call.id, muted: !muted });
+      muted = result.muted;
+      muteLabel();
+    } catch (error) {
+      message(error.message);
+    } finally {
+      muteButton.disabled = false;
+    }
+  };
   host.querySelector('[data-current-hangup]').onclick = async (event) => {
     event.target.disabled = true;
     try {
@@ -1039,6 +1083,9 @@ function showVoipActive(doc, call) {
       voipUi.disposeActive();
       host.remove();
       voipUi.activeId = '';
+      const dock = document.getElementById('voipPhoneDock');
+      if (dock?.hidePopover) dock.hidePopover();
+      if (dock) dock.hidden = true;
       if (typeof toast === 'function') toast('Görüşme sonucu kaydedildi.');
     } catch (error) {
       message(error.message);
@@ -1289,10 +1336,10 @@ function openStandaloneVoip() {
     dialog = document.createElement('dialog');
     dialog.id = 'voipStandalone';
     dialog.className = 'voip-standalone';
-    document.body.append(dialog);
+    voipPhoneDock().prepend(dialog);
   }
   dialog.innerHTML =
-    '<div class="panelhead"><div><h2>Numara ile arama</h2><p>Dosyasız arama · Görüşme kaydı herhangi bir borçlu föyüne bağlanmaz.</p></div><button type="button" class="secondary" data-close>Vazgeç</button></div><form class="voip-standalone-form" data-ignore-dirty><label class="field">Aranacak telefon numarası<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="05XX XXX XX XX" required></label><button type="submit" class="primary">Geçmişi kontrol et</button></form><div data-feedback role="alert"></div><div data-preview></div>';
+    '<div class="panelhead"><div><h2>Numara ile arama</h2><p>Dosyasız arama · Görüşme kaydı herhangi bir borçlu föyüne bağlanmaz.</p><p>Aramadan önce aşağıdaki web telefonunda Hazır durumunu bekleyin. Bekletme, katılımsız aktarma ve ikinci arama kontrolleri web telefonundadır.</p></div><button type="button" class="secondary" data-close>Vazgeç</button></div><form class="voip-standalone-form" data-ignore-dirty><label class="field">Aranacak telefon numarası<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="05XX XXX XX XX" required></label><button type="submit" class="primary">Geçmişi kontrol et</button></form><div data-feedback role="alert"></div><div data-preview></div>';
   dialog.querySelector('[data-close]').onclick = () => dialog.close();
   const form = dialog.querySelector('form'),
     feedback = dialog.querySelector('[data-feedback]'),
@@ -1371,7 +1418,9 @@ function openStandaloneVoip() {
       button.disabled = false;
     }
   };
-  if (!dialog.open) dialog.showModal();
+  voipPhoneDock().classList.remove('voip-dock-minimized');
+  openVoipWebphone(feedback);
+  if (!dialog.open) dialog.show();
   form.elements.phone.focus();
 }
 function setupVoipNavigation() {
