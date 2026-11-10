@@ -232,3 +232,50 @@ test('navigation reminder disappears for complete contacts; saving contact does 
   assert(w.document.querySelector('#contactCompletionReminder'));
   dom.window.close();
 });
+
+test('saved contact form is clean while failed saves and later changes remain unsaved', async () => {
+  const { JSDOM } = require('jsdom'),
+    fs = require('node:fs');
+  const dom = new JSDOM(
+    '<dialog open><form id="contact"></form><form id="other"><input name="note"><button>Kaydet</button></form></dialog>',
+    { runScripts: 'dangerously', url: 'https://example.test' },
+  );
+  try {
+    const w = dom.window,
+      dialog = w.document.querySelector('dialog'),
+      form = w.document.querySelector('#contact'),
+      other = w.document.querySelector('#other');
+    w.esc = (x) => String(x);
+    w.hanAuth = { id: 's' };
+    let failSave = false;
+    w.authApi = (_route, _method, input) => {
+      if (failSave) throw Error('Kayıt başarısız');
+      return { ...input, complete: true };
+    };
+    w.eval(fs.readFileSync('outputs/icrapro/modal-dismissal.js', 'utf8'));
+    w.eval(fs.readFileSync('outputs/icrapro/workspace-contact.js', 'utf8'));
+    w.bindContactEditor(form, { id: 's', email: '', mobilePhone: '' }, '/test');
+    other.onsubmit = (e) => e.preventDefault();
+    await new Promise(setImmediate);
+    form.elements.contactEmail.value = 'test@example.com';
+    other.elements.note.value = 'Korunacak taslak';
+    form.requestSubmit();
+    assert.deepEqual(
+      Array.from(w.modalDrafts(dialog), (f) => f.id),
+      ['other'],
+    );
+    form.elements.contactEmail.value = 'new@example.com';
+    assert.deepEqual(
+      Array.from(w.modalDrafts(dialog), (f) => f.id),
+      ['contact', 'other'],
+    );
+    failSave = true;
+    form.requestSubmit();
+    assert.deepEqual(
+      Array.from(w.modalDrafts(dialog), (f) => f.id),
+      ['contact', 'other'],
+    );
+  } finally {
+    dom.window.close();
+  }
+});

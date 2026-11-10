@@ -450,6 +450,7 @@ function intake(editId, showNew = false, recordReady = false) {
       });
       form.querySelector('#accept').textContent = 'Kaydedildi · ' + d.number;
       form.querySelector('#intakeFolioNumber').value = d.number;
+      window.modalFormSaved?.(form);
       refreshIntakeBatchAfterSave();
     } else {
       intake(original?.id);

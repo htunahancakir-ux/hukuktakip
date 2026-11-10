@@ -92,6 +92,7 @@ function whatsappAccountDialog(user) {
         allowed: form.elements.allowed.checked,
       });
       form.elements.phone.value = contact.phone;
+      window.modalFormSaved?.(form);
       status.textContent = 'WhatsApp numarası kaydedildi.';
     } catch (error) {
       status.textContent = error.message;

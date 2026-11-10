@@ -18,6 +18,7 @@ function bindContactEditor(host, profile, route, done) {
       phone.value = saved.mobilePhone;
       // Only this section was saved; password inputs elsewhere in Hesabım remain untouched.
       host.querySelectorAll('input').forEach((input) => (input.defaultValue = input.value));
+      if (host.tagName === 'FORM') window.modalFormSaved?.(host);
       if (saved.id === hanAuth.id) window.refreshContactReminder?.();
       done?.(saved);
     } catch (error) {

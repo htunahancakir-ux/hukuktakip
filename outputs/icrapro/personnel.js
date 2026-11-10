@@ -521,6 +521,7 @@ function dailyBonusForm(staffId, onSaved) {
       dailyBonusMonth = v.date.slice(0, 7);
       onSaved();
       e.target.reset();
+      window.modalFormSaved?.(e.target);
       toast('Günlük prim kaydedildi.', dialog);
     } catch (error) {
       toast(error.message, dialog);
@@ -561,6 +562,7 @@ function editPersonnelPayroll(id) {
       const result = authApi('/api/personnel-payroll', 'POST', { staffId: id, ...v });
       Object.assign(p, result.record);
       personnelCompensationPage();
+      window.modalFormSaved?.(e.target);
       toast('Maaş ve prim kaydedildi.', dialog);
     } catch (error) {
       toast(error.message, dialog);
