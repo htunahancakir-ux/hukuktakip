@@ -5,6 +5,115 @@ const path = require('node:path');
 const { JSDOM } = require('jsdom');
 const { parsers } = require('prettier/plugins/babel');
 
+test('File selections accumulate and keep stable attachment IDs for retries', async (t) => {
+  const dom = new JSDOM('<form><input id="files" type="file" multiple></form>', {
+    url: 'https://test.invalid',
+    runScripts: 'dangerously',
+  });
+  t.after(() => dom.window.close());
+  const w = dom.window;
+  const source = fs.readFileSync('outputs/icrapro/client-records.js', 'utf8');
+  for (const node of parsers.babel.parse(source).program.body)
+    if (
+      node.type === 'FunctionDeclaration' &&
+      ['bindMultipleFileInput', 'readSelectedFileAttachments'].includes(node.id.name)
+    )
+      w.eval(source.slice(node.start, node.end));
+  const input = w.document.querySelector('#files');
+  w.bindMultipleFileInput(input);
+  const pdf = new w.File(['%PDF-1.4'], '<first>.pdf', { type: 'application/pdf', lastModified: 1 });
+  const photo = new w.File(['photo'], 'second.png', { type: 'image/png', lastModified: 2 });
+  for (const file of [pdf, photo, pdf]) {
+    Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+    input.dispatchEvent(new w.Event('change'));
+  }
+  assert.equal(input._attachmentQueue.length, 2);
+  assert.equal(w.document.querySelector('first'), null);
+  const selected = await w.readSelectedFileAttachments(input, 'auto', 3);
+  const retry = await w.readSelectedFileAttachments(input, 'auto', 3);
+  assert.deepEqual(
+    Array.from(retry, (file) => file.id),
+    Array.from(selected, (file) => file.id),
+  );
+  assert.equal(selected[0].mime, 'application/pdf');
+  assert.equal(selected[1].kind, 'photo');
+  w.document.querySelector('button').click();
+  assert.equal(input._attachmentQueue.length, 1);
+});
+
+test('Client and document saves upload separately and resume a partial upload without duplicating the record', async (t) => {
+  const dom = new JSDOM('', { url: 'https://test.invalid', runScripts: 'dangerously' });
+  t.after(() => dom.window.close());
+  const w = dom.window;
+  Object.assign(w, {
+    structuredClone,
+    db: { clients: [], docs: [] },
+    hanDataBaselines: new Map([['icrapro-v1', { clients: [], docs: [] }]]),
+  });
+  for (const file of [
+    'record-patch.js',
+    'workspace-record-list.js',
+    'workspace-intake.js',
+    'workspace-client-list.js',
+  ])
+    w.eval(fs.readFileSync('outputs/icrapro/' + file, 'utf8'));
+  let state = { clients: [], docs: [] },
+    saves = 0;
+  const failures = new Set(),
+    uploads = new Map();
+  w.fetch = async (url, options) => {
+    const value = JSON.parse(options.body);
+    if (url.startsWith('/api/data/patch')) {
+      saves++;
+      assert.equal(options.body.includes('base64,'), false, 'metadata requests must not contain file bodies');
+      state = w.HanRecordPatch.apply('icrapro-v1', state, value);
+      const change = value.changes[0],
+        record = state[change.path[0]].find((row) => row.id === change.id);
+      if (change.path[0] === 'docs')
+        Object.assign(record, { number: 'S-0001', created: '2026-11-10', trackingDate: '2026-11-10' });
+      return {
+        ok: true,
+        json: async () => ({
+          records: [{ path: change.path, id: record.id, value: structuredClone(record) }],
+        }),
+      };
+    }
+    const key = value.ownerType + ':' + value.attachment.id;
+    if (value.attachment.id === 'second' && !failures.has(key)) {
+      failures.add(key);
+      return { ok: false, json: async () => ({ error: 'Synthetic upload failure' }) };
+    }
+    uploads.set(key, (uploads.get(key) || 0) + 1);
+    return { ok: true, json: async () => ({ ok: true }) };
+  };
+  for (const [kind, save] of [
+    ['client', w.saveRecordClient],
+    ['document', w.saveRecordIntake],
+  ]) {
+    const record = {
+      id: kind,
+      name: 'Client',
+      client: 'client',
+      debtor: 'Synthetic',
+      amount: 100,
+      attachments: [
+        { id: 'first', name: 'one.pdf', data: 'data:application/pdf;base64,JVBERi0x' },
+        { id: 'second', name: 'two.png', data: 'data:image/png;base64,iVBORw0KGgo=' },
+      ],
+    };
+    await assert.rejects(save(null, record), /Synthetic upload failure/);
+    await save(null, record);
+    assert.equal((kind === 'client' ? w.db.clients : w.db.docs).filter((row) => row.id === kind).length, 1);
+    assert.equal(
+      (kind === 'client' ? w.db.clients : w.db.docs).find((row) => row.id === kind).attachments.length,
+      2,
+    );
+    assert.equal(uploads.get(kind + ':first'), 1);
+    assert.equal(uploads.get(kind + ':second'), 1);
+  }
+  assert.equal(saves, 2, 'retry must not recreate or overwrite a saved record');
+});
+
 test('Borrower TC is optional: blank saves with warning and filled values keep format validation', (t) => {
   const dom = new JSDOM('', { runScripts: 'dangerously' });
   t.after(() => dom.window.close());

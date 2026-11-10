@@ -216,7 +216,24 @@ async function loadRecordIntakePage() {
     $('#retryIntake').onclick = loadRecordIntakePage;
   }
 }
+const pendingIntakeAttachments = new Map();
 async function saveRecordIntake(original, next) {
+  const source = original;
+  const pending = pendingIntakeAttachments.get(next.id);
+  if (pending?.source === source) original = pending.record;
+  original ||= db.docs.find((row) => row.id === next.id) || null;
+  const existing = original?.attachments || [];
+  const additions = (next.attachments || []).filter((file) => !existing.some((old) => old.id === file.id));
+  const metadata = { ...next, attachments: existing };
+  if (!Object.hasOwn(original || {}, 'attachments')) delete metadata.attachments;
+  if (original) for (const field of ['number', 'created', 'trackingDate']) metadata[field] = original[field];
+  const record = await saveRecordIntakeMetadata(original, metadata);
+  pendingIntakeAttachments.set(next.id, { source, record });
+  if (additions.length) await saveRecordAttachments('document', record, additions);
+  pendingIntakeAttachments.delete(next.id);
+  return record;
+}
+async function saveRecordIntakeMetadata(original, next) {
   const patch = HanRecordPatch.diff(
     'icrapro-v1',
     { clients: [], docs: original ? [original] : [] },

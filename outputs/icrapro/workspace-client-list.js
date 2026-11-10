@@ -127,7 +127,24 @@ async function openRecordClient(id) {
   }
 }
 
+const pendingClientAttachments = new Map();
 async function saveRecordClient(before, next) {
+  const source = before;
+  const pending = pendingClientAttachments.get(next.id);
+  if (pending?.source === source) before = pending.record;
+  before ||= db.clients.find((row) => row.id === next.id) || null;
+  const existing = before?.attachments || [];
+  const additions = (next.attachments || []).filter((file) => !existing.some((old) => old.id === file.id));
+  const metadata = { ...next, attachments: existing };
+  if (!Object.hasOwn(before || {}, 'attachments')) delete metadata.attachments;
+  if (before?.createdAt) metadata.createdAt = before.createdAt;
+  await saveRecordClientMetadata(before, metadata);
+  const record = db.clients.find((row) => row.id === next.id);
+  pendingClientAttachments.set(next.id, { source, record });
+  if (additions.length) await saveRecordAttachments('client', record, additions);
+  pendingClientAttachments.delete(next.id);
+}
+async function saveRecordClientMetadata(before, next) {
   const patch = HanRecordPatch.diff(
     'icrapro-v1',
     { clients: before ? [before] : [], docs: [] },

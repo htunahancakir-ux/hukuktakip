@@ -22,6 +22,18 @@ async function handleDataRoutes(ctx) {
     parkingToday,
     applyParkingFee,
   } = ctx;
+  if (url.pathname === '/api/record-attachments' && req.method === 'POST') {
+    const result = require('../../lib/record-attachments.cjs').appendAttachment(
+      ctx.state,
+      await body(req),
+      u,
+      allowed,
+    );
+    if (result.next) persist(result.next);
+    const { data, ...attachment } = result.attachment;
+    send(res, 200, { ok: true, attachment });
+    return true;
+  }
   if (url.pathname === '/api/expense-pool' && req.method === 'GET') {
     if (!allowed(u, 'documents')) throw fail(403, 'Dosya işlem yetkiniz yok.');
     send(res, 200, expensePool.details(ctx.state));
@@ -331,6 +343,7 @@ async function handleDataRoutes(ctx) {
         'debtor',
         'identity',
         'officeIdentity',
+        'attachments',
         'additionalPhones',
         'additionalAddresses',
         'phone1',
