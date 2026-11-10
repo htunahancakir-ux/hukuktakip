@@ -170,7 +170,11 @@ test('attachment editors and previews allow only strict PDF/raster data URLs', (
     host.innerHTML =
       w.clientAttachmentFields({ attachments: [{ data, kind: 'photo', name: attack }] }) +
       w.clientAttachmentPreviews({ attachments: [{ data, name: attack }] }) +
-      w.borrowerAttachmentPreviews({ fileData: data, photoData: data });
+      w.borrowerAttachmentPreviews({
+        fileData: data,
+        photoData: data,
+        attachments: [{ data, name: attack, kind: 'photo' }],
+      });
     assert.equal(host.querySelectorAll('a[href], img, object').length, 0, data);
     assertInert(w);
   }

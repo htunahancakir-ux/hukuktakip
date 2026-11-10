@@ -24,9 +24,124 @@ function validStaffSelection(value, previous) {
       !value[key] || value[key] === previous[key] || personnel.some((p) => p.id === value[key] && p.active),
   );
 }
+let personnelAttachmentStaffId = '';
 let personnelTab = 'records',
   payrollScope = 'active',
   payrollSubTab = 'salary';
+async function readPersonnelAttachments(personnelId, attachmentId = '') {
+  const path =
+    (window.hanRecordsEnabled ? '/api/records/personnel-attachments?' : '/api/personnel-attachments?') +
+    new URLSearchParams({ personnelId, ...(attachmentId ? { attachmentId } : {}) });
+  if (!window.hanRecordsEnabled) return authApi(path);
+  const response = await fetch(path, {
+    credentials: 'same-origin',
+    cache: 'no-store',
+    headers: { 'X-Han-Request': '1' },
+  });
+  const result = await response.json();
+  if (!response.ok) throw Error(result.error || 'Personel ekleri alınamadı.');
+  return result;
+}
+async function personnelAttachmentsPage() {
+  const host = $('#personnelView');
+  if (!host || !['ceo', 'admin'].includes(window.hanAuth?.role)) return;
+  if (!personnel.some((person) => person.id === personnelAttachmentStaffId)) personnelAttachmentStaffId = '';
+  const ownerId = personnelAttachmentStaffId;
+  host.innerHTML = `<div class="panel"><div class="panelhead"><div><h2>Foto ve PDF Ekle</h2><p>Personel seçin; birden fazla fotoğraf veya PDF ekleyin.</p></div></div><form id="personnelFilesForm" class="formbody"><div class="grid"><label class="field full">Personel<select id="personnelFileOwner" required><option value="">Personel seçin</option>${personnel.map((person) => `<option value="${esc(person.id)}" ${person.id === ownerId ? 'selected' : ''}>${esc(person.name)}${person.active === false ? ' (Pasif)' : ''}</option>`).join('')}</select></label><label class="field full">Fotoğraf / PDF Ekle<input id="personnelFilePicker" type="file" multiple data-optional="true" accept="application/pdf,image/jpeg,image/png,image/webp" ${ownerId ? '' : 'disabled'}><small>PDF, JPG, PNG veya WEBP · Her dosya en fazla 3 MB. Yeni dosyalar mevcut eklere eklenir.</small></label></div><div class="actions"><button type="submit" class="primary" ${ownerId ? '' : 'disabled'}>Seçilen Dosyaları Ekle</button></div><p role="status" data-personnel-file-status></p></form><div class="formbody" data-personnel-file-list>${ownerId ? 'Ekler yükleniyor…' : 'Ekleri görmek ve yüklemek için personel seçin.'}</div></div>`;
+  const form = host.querySelector('#personnelFilesForm'),
+    input = form.querySelector('#personnelFilePicker'),
+    button = form.querySelector('button[type=submit]'),
+    list = host.querySelector('[data-personnel-file-list]'),
+    status = form.querySelector('[data-personnel-file-status]');
+  bindMultipleFileInput(input);
+  form.querySelector('#personnelFileOwner').onchange = (event) => {
+    personnelAttachmentStaffId = event.target.value;
+    personnelAttachmentsPage();
+  };
+  const pending = { id: ownerId, attachments: [] };
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    if (!ownerId || button.disabled) return;
+    button.disabled = true;
+    input.disabled = true;
+    try {
+      const files = await readSelectedFileAttachments(input, 'auto', 3);
+      if (!files.length) {
+        status.textContent = 'Önce fotoğraf veya PDF seçin.';
+        return;
+      }
+      status.textContent = 'Dosyalar yükleniyor…';
+      await saveRecordAttachments(
+        'personnel',
+        pending,
+        files.filter((file) => !pending.attachments.some((old) => old.id === file.id)),
+      );
+      if (!list.isConnected) return;
+      await personnelAttachmentsPage();
+      toast('Personel dosyaları eklendi.');
+    } catch (error) {
+      if (status.isConnected) status.textContent = error.message || 'Dosyalar yüklenemedi.';
+    } finally {
+      button.disabled = false;
+      input.disabled = false;
+    }
+  };
+  if (!ownerId) return;
+  try {
+    const result = await readPersonnelAttachments(ownerId);
+    if (!list.isConnected) return;
+    list.replaceChildren();
+    if (!result.items.length) {
+      list.textContent = 'Bu personele henüz fotoğraf veya PDF eklenmedi.';
+      return;
+    }
+    for (const file of result.items) {
+      const card = document.createElement('section'),
+        name = document.createElement('h3'),
+        open = document.createElement('button'),
+        preview = document.createElement('div');
+      name.textContent = file.name;
+      open.type = 'button';
+      open.className = 'secondary';
+      open.textContent = 'Görüntüle / İndir';
+      card.append(name, open, preview);
+      list.append(card);
+      open.onclick = async () => {
+        if (open.disabled) return;
+        open.disabled = true;
+        try {
+          const loaded = await readPersonnelAttachments(ownerId, file.id);
+          if (!preview.isConnected) return;
+          const attachment = loaded.attachment,
+            url = safeAttachmentUrl(attachment.data);
+          if (!url) throw Error('Dosya güvenli biçimde görüntülenemiyor.');
+          const photo = url.startsWith('data:image/'),
+            media = document.createElement(photo ? 'img' : 'object'),
+            download = document.createElement('a');
+          media.className = photo ? 'borrower-document-photo' : 'borrower-document-pdf';
+          if (photo) {
+            media.src = url;
+            media.alt = attachment.name;
+          } else {
+            media.data = url;
+            media.type = 'application/pdf';
+          }
+          download.href = url;
+          download.download = attachment.name;
+          download.textContent = attachment.name + ' · İndir';
+          preview.replaceChildren(media, document.createElement('br'), download);
+        } catch (error) {
+          if (preview.isConnected) preview.textContent = error.message;
+        } finally {
+          open.disabled = false;
+        }
+      };
+    }
+  } catch (error) {
+    if (list.isConnected) list.textContent = error.message;
+  }
+}
+
 function staffMoney(p) {
   const official = Math.round(Number(p.officialSalary || 0) * 100),
     unofficial = Math.round(Number(p.unofficialSalary || 0) * 100),
@@ -74,7 +189,7 @@ async function personnelSettings(editId) {
     loginAccount = accounts.find((u) => u.staffId === editId);
   const isSettings = page === 'settings';
   $('#content').innerHTML =
-    `${isSettings ? settingsSectionTabs('staff') : ''}<div class="settings-tabs" role="tablist" aria-label="Personel sekmeleri"><button role="tab" aria-selected="${personnelTab === 'records'}" data-staff-view="records" class="${personnelTab === 'records' ? 'selected' : ''}">Personel Kayıtları</button><button role="tab" aria-selected="${personnelTab === 'payroll'}" data-staff-view="payroll" class="${personnelTab === 'payroll' ? 'selected' : ''}">Maaş ve Prim</button></div><div id="personnelView"></div>`;
+    `${isSettings ? settingsSectionTabs('staff') : ''}<div class="settings-tabs" role="tablist" aria-label="Personel sekmeleri"><button role="tab" aria-selected="${personnelTab === 'records'}" data-staff-view="records" class="${personnelTab === 'records' ? 'selected' : ''}">Personel Kayıtları</button><button role="tab" aria-selected="${personnelTab === 'payroll'}" data-staff-view="payroll" class="${personnelTab === 'payroll' ? 'selected' : ''}">Maaş ve Prim</button><button role="tab" aria-selected="${personnelTab === 'files'}" data-staff-view="files" class="${personnelTab === 'files' ? 'selected' : ''}">Foto ve PDF Ekle</button></div><div id="personnelView"></div>`;
   if (isSettings) bindSettingsSectionTabs();
   document.querySelectorAll('[data-staff-view]').forEach(
     (b) =>
@@ -84,6 +199,7 @@ async function personnelSettings(editId) {
       }),
   );
   if (personnelTab === 'payroll') return personnelCompensationPage();
+  if (personnelTab === 'files') return personnelAttachmentsPage();
   $('#personnelView').innerHTML =
     `<div class="panel"><div class="panelhead"><div><h2>Personel Bilgileri</h2><p>Personel iletişim, birim, maaş ve prim bilgilerini yönetin.</p></div><span class="badge">${personnel.filter((p) => p.active).length} aktif / ${personnel.length} kayıt</span></div><form id="personnelForm"><div class="formbody"><h3 class="sectiontitle">${editId ? 'Personel düzenle' : 'Yeni personel'}</h3><div class="grid">${field('Ad Soyad', 'staffName', 'text', current.name, true)}<label class="field">TC Kimlik Numarası (isteğe bağlı)<input name="identity" data-optional="true" inputmode="numeric" maxlength="11" pattern="[0-9]{11}" title="11 rakam girin" value="${esc(current.identity || '')}"></label>${field('E-posta (isteğe bağlı)', 'email', 'email', current.email).replace('<input ', '<input data-optional="true" ')}${field('Cep telefonu (isteğe bağlı)', 'mobilePhone', 'tel', current.mobilePhone ?? (/^(?:90|0)?5\d{9}$/.test(String(current.phone || '').replace(/\D/g, '')) ? current.phone : '')).replace('<input ', '<input data-optional="true" ')}${field('Telefon (isteğe bağlı)', 'phone', 'tel', current.phone).replace('<input ', '<input data-optional="true" ')}<label class="field">Birimi<select name="department"><option value="">Birim seçin</option>${['Yönetici', 'Pazarlama', 'Callcenter', 'Call Center-Y', 'Call Center-E', 'Muhasebe', 'İcra', 'Evrak Takip', 'Temlik', 'Diğer'].map((unit) => `<option value="${unit}" ${(loginAccount?.role === 'admin' ? 'Yönetici' : current.department) === unit ? 'selected' : ''}>${unit}</option>`).join('')}${current.department && !['Yönetici', 'Pazarlama', 'Callcenter', 'Call Center-Y', 'Call Center-E', 'Muhasebe', 'İcra', 'Evrak Takip', 'Temlik', 'Diğer'].includes(current.department) ? `<option value="${esc(current.department)}" selected>${esc(current.department)} (önceki kayıt)</option>` : ''}</select></label>${clientCityField(current, 'staff')}<label class="field full">Açık Adres<textarea name="address" rows="3">${esc(current.address || '')}</textarea></label></div><h3 class="sectiontitle" style="margin-top:25px">Personel Giriş Bilgileri ve Yetkileri</h3><div class="grid"><label class="field">Kullanıcı Adı<input name="loginUsername" autocomplete="off" value="${esc(loginAccount?.username || '')}" ${editId && !loginAccount ? 'data-optional="true"' : 'required'}></label><label class="field">${loginAccount ? 'Yeni Şifre (değiştirmek için doldurun)' : 'Şifre'}<input name="loginPassword" type="password" minlength="10" autocomplete="new-password" ${editId ? 'data-optional="true"' : 'required'}></label><div class="full"><p>Personel bu kullanıcı adı ve şifreyle giriş yapar. Ana sayfasında yalnızca kendi dosyalarının tahsilatını, brüt kârını ve şimdilik 0 TL primini görür.</p>${[
       ['clients', 'Müvekkil Kayıtları'],
@@ -405,6 +521,7 @@ function dailyBonusForm(staffId, onSaved) {
       dailyBonusMonth = v.date.slice(0, 7);
       onSaved();
       e.target.reset();
+      window.modalFormSaved?.(e.target);
       toast('Günlük prim kaydedildi.', dialog);
     } catch (error) {
       toast(error.message, dialog);
@@ -445,6 +562,7 @@ function editPersonnelPayroll(id) {
       const result = authApi('/api/personnel-payroll', 'POST', { staffId: id, ...v });
       Object.assign(p, result.record);
       personnelCompensationPage();
+      window.modalFormSaved?.(e.target);
       toast('Maaş ve prim kaydedildi.', dialog);
     } catch (error) {
       toast(error.message, dialog);

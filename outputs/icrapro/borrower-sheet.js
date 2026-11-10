@@ -34,6 +34,7 @@ function borrowerDetail(id, savedForm) {
       '',
     )}</div><button class="primary" id="borrowerFinancial">Tahsilat</button><button class="secondary" id="borrowerExpense">Masraf</button>${repaymentSection(d)}</section><section role="tabpanel" id="borrower-panel-document" aria-labelledby="borrower-tab-document" data-borrower-panel="document" hidden><h3 class="sectiontitle" style="margin-top:30px">${esc(type)} Bilgileri</h3><div class="grid">${value('Evrak Türü', type)}${isParkingDocument(d) ? value('Anlaşılan Ofis Payı (%)', validParkingRate(d) ? String(d.parkingCommissionRate) : 'Belirtilmedi') : ''}${value('Evrak Aslı', d.originalDocument || 'Belirtilmedi')}${value(definition.serial, d.serial)}${value(definition.due, d.due)}${value('Düzenleme Tarihi', d.issued)}${definition.extras.map(([label, key]) => value(label, d[key])).join('')}${value('Teslim Eden', d.deliveredBy)}${value('Teslim Alan', d.receivedBy)}${value('Kabul Notu', d.notes)}</div>${borrowerAttachmentPreviews(d)}</section></div>`;
   layoutBorrowerSheet(dialog, d, f, client);
+  bindBorrowerAttachmentUpload(dialog, d);
   if (d.fileData || d.photoData) {
     const actions = document.createElement('div');
     actions.className = 'actions';
@@ -1173,6 +1174,58 @@ function openBorrowerChain(id) {
 }
 
 function borrowerAttachmentPreviews(d) {
+  const attachments = (d.attachments || []).filter((file) => safeAttachmentUrl(file.data));
+  const previews = [];
+  if (d.fileData || d.photoData) previews.push(borrowerLegacyAttachmentPreviews(d));
+  for (const file of attachments) {
+    const photo = file.mime?.startsWith('image/') || file.kind === 'photo';
+    previews.push(
+      borrowerLegacyAttachmentPreviews(
+        photo
+          ? { photoData: file.data, photoFileName: file.name }
+          : { fileData: file.data, fileName: file.name },
+      ),
+    );
+  }
+  return (
+    '<section class="full"><h3>Fotoğraf ve PDF Ekleri</h3><label class="field">Fotoğraf / PDF Ekle (birden fazla seçebilirsiniz)<input type="file" data-borrower-files data-optional="true" multiple accept="application/pdf,image/png,image/jpeg,image/webp"><small>Her dosya en fazla 3 MB. Yeni dosyalar mevcut eklere eklenir.</small></label><button type="button" class="secondary" data-save-borrower-files>Seçilen Dosyaları Ekle</button></section>' +
+    (previews.join('') || '<p class="notice">Henüz fotoğraf veya PDF eklenmedi.</p>')
+  );
+}
+function bindBorrowerAttachmentUpload(dialog, record) {
+  const input = dialog.querySelector('[data-borrower-files]'),
+    button = dialog.querySelector('[data-save-borrower-files]');
+  if (!input || !button) return;
+  bindMultipleFileInput(input);
+  button.onclick = async () => {
+    if (button.disabled) return;
+    button.disabled = true;
+    input.disabled = true;
+    try {
+      const files = await readSelectedFileAttachments(input, 'auto', 3);
+      if (!files.length) return toast('Önce fotoğraf veya PDF seçin.');
+      if (window.hanRecordsEnabled) await saveRecordAttachments('document', record, files);
+      else {
+        const before = record.attachments;
+        record.attachments = [...(before || []), ...files];
+        try {
+          save();
+        } catch (error) {
+          record.attachments = before;
+          throw error;
+        }
+      }
+      borrowerDetail(record.id);
+      toast('Dosyalar eklendi.');
+    } catch (error) {
+      toast(error.message || 'Dosyalar eklenemedi.');
+    } finally {
+      button.disabled = false;
+      input.disabled = false;
+    }
+  };
+}
+function borrowerLegacyAttachmentPreviews(d) {
   const pdf = safeAttachmentUrl(d.fileData, 'pdf'),
     photo = safeAttachmentUrl(d.photoData, 'photo');
   if (!pdf && !photo) return '<p class="notice">Bu evrak için yüklenmiş fotoğraf veya PDF bulunmuyor.</p>';

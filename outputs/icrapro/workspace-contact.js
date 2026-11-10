@@ -3,7 +3,8 @@ function contactFields(value) {
 }
 function bindContactEditor(host, profile, route, done) {
   host.innerHTML = `<h3>İletişim bilgilerim</h3><p>E-posta adresinizi ve cep telefonunuzu güncel tutun.</p><div class="grid">${contactFields(profile)}</div><p role="status" data-contact-status></p><button type="button" class="primary" data-save-contact>İletişim Bilgilerini Kaydet</button>`;
-  host.querySelector('[data-save-contact]').onclick = () => {
+  const save = (event) => {
+    event.preventDefault();
     const email = host.querySelector('[name="contactEmail"]'),
       phone = host.querySelector('[name="contactMobile"]');
     if (!email.reportValidity() || !phone.reportValidity()) return;
@@ -17,15 +18,22 @@ function bindContactEditor(host, profile, route, done) {
       phone.value = saved.mobilePhone;
       // Only this section was saved; password inputs elsewhere in Hesabım remain untouched.
       host.querySelectorAll('input').forEach((input) => (input.defaultValue = input.value));
+      if (host.tagName === 'FORM') window.modalFormSaved?.(host);
       if (saved.id === hanAuth.id) window.refreshContactReminder?.();
       done?.(saved);
     } catch (error) {
       status.textContent = error.message;
     }
   };
+  const button = host.querySelector('[data-save-contact]');
+  if (host.tagName === 'FORM') {
+    button.type = 'submit';
+    host.onsubmit = save;
+  } else button.onclick = save;
 }
 function setupAccountContact(form) {
-  const host = document.createElement('section');
+  const host = document.createElement('form');
+  host.id = 'accountContactForm';
   form.querySelector('.account-settings-form').prepend(host);
   try {
     bindContactEditor(host, authApi('/api/account/contact'), '/api/account/contact');
@@ -33,7 +41,7 @@ function setupAccountContact(form) {
     host.textContent = error.message;
   }
 }
-function showUserContact(account) {
+function showUserContact(account, onSaved) {
   let dialog = document.getElementById('userContactDialog');
   if (!dialog) {
     dialog = document.createElement('dialog');
@@ -59,6 +67,7 @@ function showUserContact(account) {
       host,
       authApi('/api/users/contact?id=' + encodeURIComponent(account.id)),
       '/api/users/contact',
+      onSaved,
     );
     host.querySelector('h3').textContent = 'E-posta ve cep telefonu';
   } catch (error) {

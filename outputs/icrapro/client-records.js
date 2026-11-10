@@ -385,6 +385,7 @@ function clientModal(id, loadedRecord) {
   if (id && ['ceo', 'admin'].includes(window.hanAuth?.role))
     setupClientStatement($('#clientForm'), id, c.name || c.tradeName || c.fullName || '');
   setupExtraContacts($('#clientForm'), c);
+  for (const selector of ['#clientPhotos', '#clientPowerOfAttorney']) bindMultipleFileInput($(selector));
   $('#modal').showModal();
   setupClientCity();
   setupClientDistrict();
@@ -453,7 +454,7 @@ function clientModal(id, loadedRecord) {
     try {
       v.attachments = await collectClientAttachments(c);
       Object.assign(v, {
-        id: id || crypto.randomUUID(),
+        id: id || (e.target.dataset.recordId ||= crypto.randomUUID()),
         type: kind,
         createdAt: id ? c.createdAt : new Date().toISOString(),
       });
@@ -497,44 +498,99 @@ function validClientIban(value) {
 
 function clientAttachmentFields(c) {
   const files = Array.isArray(c.attachments) ? c.attachments : [];
-  return `<section class="full" data-record-group="files"><h3 class="sectiontitle full">Fotoğraf ve Vekâletname</h3><label class="field full">Fotoğraf Ekle (isteğe bağlı)<input id="clientPhotos" type="file" accept="image/jpeg,image/png,image/webp" multiple data-optional="true"><small>JPG, PNG veya WEBP · Her dosya en fazla 2 MB</small></label><label class="field full">PDF Vekâletname Ekle (isteğe bağlı)<input id="clientPowerOfAttorney" type="file" accept="application/pdf" multiple data-optional="true"><small>PDF · Her dosya en fazla 2 MB. Yeni yüklemeler mevcut dosyalara eklenir.</small></label><div class="full">${files.map((file) => `<div style="margin:12px 0">${file.kind === 'photo' && safeAttachmentUrl(file.data, 'photo') ? `<img src="${esc(safeAttachmentUrl(file.data, 'photo'))}" alt="Müvekkil fotoğrafı" style="max-width:160px;max-height:130px;object-fit:contain;border-radius:6px;display:block;margin-bottom:8px">` : ''}${attachmentDownloadLink(file.data, file.name, file.name, file.kind === 'photo' ? 'photo' : 'pdf')}<small> · ${file.kind === 'photo' ? 'Fotoğraf' : 'Vekâletname'}</small></div>`).join('') || '<p>Henüz dosya eklenmedi.</p>'}</div></section>`;
+  return `<section class="full" data-record-group="files"><h3 class="sectiontitle full">Fotoğraf ve PDF Ekleri</h3><label class="field full">Fotoğraf Ekle (birden fazla seçebilirsiniz)<input id="clientPhotos" type="file" accept="image/jpeg,image/png,image/webp" multiple data-optional="true"><small>JPG, PNG veya WEBP · Her dosya en fazla 2 MB</small></label><label class="field full">PDF / Vekâletname Ekle (birden fazla seçebilirsiniz)<input id="clientPowerOfAttorney" type="file" accept="application/pdf" multiple data-optional="true"><small>PDF · Her dosya en fazla 2 MB. Yeni yüklemeler mevcut dosyalara eklenir.</small></label><div class="full">${files.map((file) => `<div style="margin:12px 0">${file.kind === 'photo' && safeAttachmentUrl(file.data, 'photo') ? `<img src="${esc(safeAttachmentUrl(file.data, 'photo'))}" alt="Müvekkil fotoğrafı" style="max-width:160px;max-height:130px;object-fit:contain;border-radius:6px;display:block;margin-bottom:8px">` : ''}${attachmentDownloadLink(file.data, file.name, file.name, file.kind === 'photo' ? 'photo' : 'pdf')}<small> · ${file.kind === 'photo' ? 'Fotoğraf' : 'Vekâletname'}</small></div>`).join('') || '<p>Henüz dosya eklenmedi.</p>'}</div></section>`;
 }
 
 async function collectClientAttachments(c) {
-  const existing = Array.isArray(c.attachments) ? c.attachments : [],
-    items = [
-      ...[...$('#clientPhotos').files].map((file) => ({ file, kind: 'photo' })),
-      ...[...$('#clientPowerOfAttorney').files].map((file) => ({ file, kind: 'powerOfAttorney' })),
-    ];
-  for (const { file, kind } of items) {
-    if (file.size > 2 * 1024 * 1024) throw Error('Her dosya en fazla 2 MB olabilir.');
-    if (
-      !(kind === 'photo' ? ['image/jpeg', 'image/png', 'image/webp'] : ['application/pdf']).includes(
-        file.type,
+  const photos = await readSelectedFileAttachments($('#clientPhotos'), 'photo', 2);
+  const pdfs = await readSelectedFileAttachments($('#clientPowerOfAttorney'), 'pdf', 2);
+  return [...(c.attachments || []), ...photos, ...pdfs];
+}
+
+function bindMultipleFileInput(input) {
+  if (!input || input._attachmentQueue) return;
+  input.multiple = true;
+  input._attachmentQueue = [];
+  const list = document.createElement('div');
+  list.setAttribute('aria-live', 'polite');
+  input.after(list);
+  const render = () => {
+    list.replaceChildren();
+    for (const file of input._attachmentQueue) {
+      const row = document.createElement('div'),
+        remove = document.createElement('button');
+      row.append(document.createTextNode(file.name + ' '));
+      remove.type = 'button';
+      remove.className = 'link';
+      remove.textContent = 'Seçimden kaldır';
+      remove.onclick = () => {
+        if (input.disabled) return;
+        input._attachmentQueue = input._attachmentQueue.filter((item) => item !== file);
+        render();
+      };
+      row.append(remove);
+      list.append(row);
+    }
+  };
+  input.addEventListener('change', () => {
+    for (const file of input.files) {
+      if (
+        !input._attachmentQueue.some(
+          (old) =>
+            old.name === file.name &&
+            old.size === file.size &&
+            old.lastModified === file.lastModified &&
+            old.type === file.type,
+        )
       )
-    )
-      throw Error('Fotoğraf için JPG/PNG/WEBP, vekâletname için PDF seçin.');
-  }
-  const added = await Promise.all(
-    items.map(
-      ({ file, kind }) =>
-        new Promise((resolve, reject) => {
+        input._attachmentQueue.push(file);
+    }
+    input.value = '';
+    render();
+  });
+  input.form?.addEventListener('reset', () => {
+    input._attachmentQueue = [];
+    render();
+  });
+}
+async function readSelectedFileAttachments(input, kind, maxMB) {
+  const files = input?._attachmentQueue || Array.from(input?.files || []);
+  input._attachmentReads ||= new WeakMap();
+  return Promise.all(
+    files.map((file) => {
+      if (file.size > maxMB * 1024 * 1024) throw Error('Her dosya en fazla ' + maxMB + ' MB olabilir.');
+      const photo = ['image/jpeg', 'image/png', 'image/webp'].includes(file.type);
+      if (
+        !(kind === 'photo'
+          ? photo
+          : kind === 'auto'
+            ? photo || file.type === 'application/pdf'
+            : file.type === 'application/pdf')
+      )
+        throw Error('PDF veya JPG/PNG/WEBP fotoğraf seçin.');
+      if (!input._attachmentReads.has(file)) {
+        const pending = new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () =>
             resolve({
               id: crypto.randomUUID(),
               name: file.name,
               mime: file.type,
-              kind,
+              kind: photo ? 'photo' : 'powerOfAttorney',
               data: reader.result,
               createdAt: new Date().toISOString(),
             });
           reader.onerror = () => reject(Error('Dosya okunamadı: ' + file.name));
           reader.readAsDataURL(file);
-        }),
-    ),
+        }).catch((error) => {
+          input._attachmentReads.delete(file);
+          throw error;
+        });
+        input._attachmentReads.set(file, pending);
+      }
+      return input._attachmentReads.get(file);
+    }),
   );
-  return [...existing, ...added];
 }
 
 function clientDebtorIdentityConflict(kind, id, value, borrowerName) {

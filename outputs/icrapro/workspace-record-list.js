@@ -283,6 +283,35 @@ async function loadRecordPage(direction = 0) {
     if (state.request === request) $('#docRows')?.closest('table').removeAttribute('aria-busy');
   }
 }
+async function saveRecordAttachments(ownerType, record, files) {
+  if (!record) throw Error('Eklerin bağlanacağı kayıt bulunamadı.');
+  const rows = ownerType === 'personnel' ? [] : ownerType === 'client' ? db.clients : db.docs;
+  for (const file of files) {
+    const response = await fetch('/api/record-attachments', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-Han-Request': '1' },
+      body: JSON.stringify({ ownerType, ownerId: record.id, attachment: file }),
+    });
+    const result = await response.json();
+    if (!response.ok)
+      throw Error(
+        result.error || 'Kayıt kaydedildi, ancak bazı ekler yüklenemedi. Kaydet düğmesiyle tekrar deneyin.',
+      );
+    const targets = [record, rows.find((row) => row.id === record.id)];
+    const baseline = ownerType === 'personnel' ? null : hanDataBaselines.get('icrapro-v1');
+    if (baseline)
+      targets.push(
+        (ownerType === 'client' ? baseline.clients : baseline.docs).find((row) => row.id === record.id),
+      );
+    for (const target of targets.filter(Boolean)) {
+      target.attachments ||= [];
+      if (!target.attachments.some((old) => old.id === file.id))
+        target.attachments.push(structuredClone(file));
+    }
+  }
+}
+
 async function recordAction(id, callback) {
   if (!window.hanRecordsEnabled) return callback();
   try {
@@ -296,7 +325,7 @@ async function recordAction(id, callback) {
     if (context.accountBalances) window.hanAccountBalances = context.accountBalances;
     // Separate responses keep two valid 3 MB files below the platform's
     // per-response limit. Publish no partial edit context if a fetch fails.
-    await Promise.all(
+    const loadedAttachments = await Promise.all(
       (context.attachments || []).map(async (attachment) => {
         const response = await fetch(
           '/api/records/document?' +
@@ -304,11 +333,15 @@ async function recordAction(id, callback) {
           { credentials: 'same-origin', cache: 'no-store' },
         );
         const result = await response.json();
-        if (!response.ok || !['fileData', 'photoData'].includes(result.field))
+        if (!response.ok || !['fileData', 'photoData', 'attachments'].includes(result.field))
           throw Error(result.error || 'Dosya eki yüklenemedi.');
-        context.record[result.field] = result.value;
+        return result;
       }),
     );
+    for (const result of loadedAttachments) {
+      if (result.field === 'attachments') (context.record.attachments ||= []).push(result.value);
+      else context.record[result.field] = result.value;
+    }
     const replace = (rows, values, predicate) => {
       const fresh = new Map(values.map((value) => [value.id, value]));
       const result = rows.flatMap((row) => {

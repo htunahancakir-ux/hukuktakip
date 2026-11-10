@@ -250,21 +250,21 @@ function accountInitials(name) {
 function showAccountPanel() {
   const modal = document.getElementById('modal');
   const user = hanAuth;
-  modal.innerHTML = `<form id="accountSettingsForm" aria-labelledby="accountSettingsTitle">
+  modal.innerHTML = `<div class="account-settings-panel" aria-labelledby="accountSettingsTitle">
     <div class="panelhead"><div><h2 id="accountSettingsTitle">Hesabım</h2><p>${esc(user.name)} · ${accountRoleLabel(user.role)}</p></div><button type="button" class="secondary" id="closeAccountSettings">Kapat</button></div>
     <div class="formbody account-settings-form">
       <div class="account-identity"><span>${esc(accountInitials(user.name))}</span><div><strong>${esc(user.name)}</strong><small>${esc(user.username)} · ${accountRoleLabel(user.role)}</small></div></div>
-      <section><h3>Şifre değiştir</h3><p class="account-help">Güvenliğiniz için önce mevcut şifrenizi doğrulayın. Şifre değiştiğinde diğer açık oturumlar kapatılır.</p>
+      <details class="account-password-section"><summary>Şifremi değiştir</summary><form id="accountSettingsForm"><section><p class="account-help">Güvenliğiniz için önce mevcut şifrenizi doğrulayın. Şifre değiştiğinde diğer açık oturumlar kapatılır.</p>
         <label class="field">Mevcut şifre<input name="currentPassword" type="password" autocomplete="current-password" minlength="10" maxlength="128" required></label>
         <label class="field">Yeni şifre<input name="password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required></label>
         <label class="field">Yeni şifre tekrar<input name="confirmPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" required></label>
         <p id="accountPasswordStatus" class="account-password-status" role="status"></p>
-      </section>
+      </section><div class="actions"><button type="submit" class="primary">Şifreyi değiştir</button></div></form></details>
     </div>
-    <div class="actions"><button type="button" class="secondary" id="openAccountTerms">Sözleşme geçmişim</button><span><button type="button" class="secondary" id="cancelAccountSettings">Vazgeç</button><button type="submit" class="primary">Şifreyi değiştir</button></span></div>
-  </form>`;
+    <div class="actions"><button type="button" class="secondary" id="openAccountTerms">Sözleşme geçmişim</button><button type="button" class="secondary" id="cancelAccountSettings">Kapat</button></div>
+  </div>`;
   const form = document.getElementById('accountSettingsForm');
-  window.setupAccountContact?.(form);
+  window.setupAccountContact?.(modal);
   installPasswordVisibility(form);
   const close = () => modal.close();
   document.getElementById('closeAccountSettings').onclick = close;

@@ -1,4 +1,226 @@
 const { test } = require('node:test');
+
+test('Personnel files stay private, survive payroll edits and load one attachment at a time', async () => {
+  const crypto = require('node:crypto');
+  const { pg, pool } = await database();
+  let server;
+  try {
+    const state = fixture();
+    state.users.push(
+      { ...state.users[0], id: 'file-admin', username: 'file-admin', role: 'admin' },
+      { ...state.users[0], id: 'file-staff', username: 'file-staff', role: 'staff', permissions: [] },
+    );
+    state.data['icrapro-personnel-v1'] = [
+      { id: 'person-one', name: 'Person One', officialSalary: 1000, unofficialSalary: 0, active: true },
+      { id: 'person-two', name: 'Person Two', officialSalary: 2000, unofficialSalary: 0, active: false },
+    ];
+    await importState(pool, state);
+    await importRecords(pool);
+    await activateRecords(pool);
+    server = await serve(createApplication({ store: createStore(pool, { records: true }) }));
+    const headers = {};
+    for (const id of ['test-ceo', 'file-admin', 'file-staff']) {
+      const token = crypto.randomBytes(32).toString('hex');
+      await pool.query(
+        "INSERT INTO han_private.han_sessions(token_hash,account_id,device_type,expires_at) VALUES($1,$2,'desktop',$3)",
+        [crypto.createHash('sha256').update(token).digest('hex'), id, Date.now() + 600000],
+      );
+      headers[id] = {
+        cookie: 'han_session=' + token,
+        'Content-Type': 'application/json',
+        'X-Han-Request': '1',
+      };
+    }
+    const pdf = { id: 'staff-pdf', name: 'document.pdf', data: 'data:application/pdf;base64,JVBERi0x' },
+      photo = { id: 'staff-photo', name: 'photo.png', data: 'data:image/png;base64,iVBORw0KGgo=' };
+    const upload = (personnelId, attachment, user = 'test-ceo') =>
+      fetch(server.url + '/api/record-attachments', {
+        method: 'POST',
+        headers: headers[user],
+        body: JSON.stringify({ ownerType: 'personnel', ownerId: personnelId, attachment }),
+      });
+    for (const file of [pdf, photo]) {
+      const response = await upload('person-one', file);
+      assert.equal(response.status, 200, await response.text());
+    }
+    assert.equal((await upload('person-one', pdf)).status, 200);
+    assert.equal((await upload('person-two', pdf, 'file-admin')).status, 200);
+    assert.equal((await upload('person-one', { ...pdf, id: 'denied' }, 'file-staff')).status, 403);
+    const get = (params, user = 'test-ceo') =>
+      fetch(server.url + '/api/records/personnel-attachments?' + new URLSearchParams(params), {
+        headers: headers[user],
+      });
+    assert.equal((await get({ personnelId: 'person-one' }, 'file-staff')).status, 403);
+    const response = await get({ personnelId: 'person-one' }, 'file-admin');
+    assert.equal(response.status, 200);
+    const files = await response.json();
+    assert.equal(files.items.length, 2);
+    assert.equal(JSON.stringify(files).includes('base64,'), false);
+    const viewed = await get({ personnelId: 'person-one', attachmentId: files.items[0].id });
+    assert.equal(viewed.status, 200);
+    assert.ok([pdf.data, photo.data].includes((await viewed.json()).attachment.data));
+    assert.equal((await get({ personnelId: 'person-two', attachmentId: files.items[0].id })).status, 404);
+    const edit = await fetch(server.url + '/api/data/patch?key=icrapro-personnel-v1', {
+      method: 'PUT',
+      headers: headers['test-ceo'],
+      body: JSON.stringify({
+        changes: [
+          {
+            path: [],
+            id: 'person-one',
+            field: 'officialSalary',
+            before: { value: 1000 },
+            after: { value: 1200 },
+          },
+        ],
+      }),
+    });
+    assert.equal(edit.status, 200, await edit.text());
+    const exported = await require('../lib/record-store/storage.cjs').exportRecords(pool);
+    assert.equal(exported.personnelAttachments.length, 3);
+    assert.equal(exported.data['icrapro-personnel-v1'][0].officialSalary, 1200);
+    assert.equal(exported.data['icrapro-personnel-v1'][1].officialSalary, 2000);
+    assert.equal(exported.data['icrapro-personnel-v1'][0].attachments, undefined);
+    const { split, join } = require('../lib/record-store/codec.cjs');
+    const decomposed = split(exported);
+    assert.deepEqual(decomposed.metadata.personnelAttachments, []);
+    assert.deepEqual(join(decomposed.metadata, decomposed.rows), exported);
+    const bootstrap = await fetch(server.url + '/api/records/bootstrap', {
+      headers: headers['file-staff'],
+    }).then((r) => r.json());
+    assert.equal(JSON.stringify(bootstrap).includes('base64,'), false);
+    assert.ok(
+      (await pool.query("SELECT count(*)::int AS n FROM han_private.han_audit WHERE area='Personel Ekleri'"))
+        .rows[0].n >= 3,
+    );
+  } finally {
+    await server?.close();
+    await pg.close();
+  }
+});
+
+test('Multiple document and client attachments persist separately, preserve legacy files and safely retry', async () => {
+  const crypto = require('node:crypto');
+  const { pg, pool } = await database();
+  let server;
+  try {
+    const state = fixture();
+    state.users.push({
+      ...state.users[0],
+      id: 'attachment-staff',
+      username: 'attachment-staff',
+      role: 'staff',
+      permissions: [],
+    });
+    state.data['icrapro-v1'].clients = [{ id: 'attachment-client', name: 'Synthetic', attachments: [] }];
+    state.data['icrapro-v1'].docs = [
+      {
+        id: 'attachment-doc',
+        client: 'attachment-client',
+        number: 'S-001',
+        debtor: 'Synthetic',
+        amount: 100,
+        docType: 'Senet',
+        fileData: 'data:application/pdf;base64,JVBERi0x',
+        photoData: 'data:image/png;base64,iVBORw0KGgo=',
+      },
+    ];
+    await importState(pool, state);
+    await importRecords(pool);
+    await activateRecords(pool);
+    server = await serve(createApplication({ store: createStore(pool, { records: true }) }));
+    async function headers(id) {
+      const token = crypto.randomBytes(32).toString('hex');
+      await pool.query(
+        "INSERT INTO han_private.han_sessions(token_hash,account_id,device_type,expires_at) VALUES($1,$2,'desktop',$3)",
+        [crypto.createHash('sha256').update(token).digest('hex'), id, Date.now() + 600000],
+      );
+      return { cookie: 'han_session=' + token, 'Content-Type': 'application/json', 'X-Han-Request': '1' };
+    }
+    const ceo = await headers('test-ceo'),
+      staff = await headers('attachment-staff');
+    const pdf = {
+      id: 'pdf',
+      name: 'first.pdf',
+      data: 'data:application/pdf;base64,' + Buffer.alloc(1700000, 65).toString('base64'),
+    };
+    const photo = {
+      id: 'photo',
+      name: 'second.png',
+      data: 'data:image/png;base64,' + Buffer.alloc(1700000, 66).toString('base64'),
+    };
+    assert.ok(JSON.stringify([pdf, photo]).length > 4 * 1024 * 1024);
+    const post = (ownerType, ownerId, attachment, actor = ceo) =>
+      fetch(server.url + '/api/record-attachments', {
+        method: 'POST',
+        headers: actor,
+        body: JSON.stringify({ ownerType, ownerId, attachment }),
+      });
+    for (const [kind, id] of [
+      ['document', 'attachment-doc'],
+      ['client', 'attachment-client'],
+    ]) {
+      for (const file of [pdf, photo]) {
+        const response = await post(kind, id, file);
+        const body = await response.text();
+        assert.equal(response.status, 200, body);
+        assert.ok(body.length < 1000);
+      }
+      assert.equal((await post(kind, id, pdf)).status, 200);
+      assert.equal((await post(kind, id, { ...pdf, name: 'conflict.pdf' })).status, 409);
+    }
+    assert.equal((await post('client', 'attachment-client', { ...pdf, id: 'denied' }, staff)).status, 403);
+    const edge = {
+      id: 'edge',
+      name: 'three-megabytes.pdf',
+      data: 'data:application/pdf;base64,' + Buffer.alloc(3 * 1024 * 1024, 67).toString('base64'),
+    };
+    const edgeResponse = await post('document', 'attachment-doc', edge);
+    assert.equal(edgeResponse.status, 200, await edgeResponse.text());
+    assert.equal(
+      (
+        await post('document', 'attachment-doc', {
+          id: 'unsafe',
+          name: 'x.svg',
+          data: 'data:image/svg+xml;base64,PHN2Zz4=',
+        })
+      ).status,
+      400,
+    );
+    const record = (await pool.query("SELECT body FROM han_data.documents WHERE id='attachment-doc'")).rows[0]
+      .body;
+    assert.deepEqual(record.attachments, []);
+    assert.equal(record.fileData, undefined);
+    const context = await fetch(server.url + '/api/records/document?id=attachment-doc&section=context', {
+      headers: ceo,
+    }).then((r) => r.json());
+    assert.equal(context.attachments.length, 5);
+    for (const file of context.attachments) {
+      const response = await fetch(
+        server.url +
+          '/api/records/document?' +
+          new URLSearchParams({ id: 'attachment-doc', section: 'attachment', attachmentId: file.id }),
+        { headers: ceo },
+      );
+      assert.equal(response.status, 200);
+      const loaded = await response.json();
+      if (loaded.field === 'attachments')
+        assert.ok([pdf.data, photo.data, edge.data].includes(loaded.value.data));
+    }
+    const exported = await require('../lib/record-store/storage.cjs').exportRecords(pool);
+    const doc = exported.data['icrapro-v1'].docs[0];
+    assert.equal(doc.fileData, state.data['icrapro-v1'].docs[0].fileData);
+    assert.equal(doc.photoData, state.data['icrapro-v1'].docs[0].photoData);
+    assert.deepEqual(
+      doc.attachments.map((f) => f.name),
+      ['first.pdf', 'second.png', 'three-megabytes.pdf'],
+    );
+    assert.equal(exported.data['icrapro-v1'].clients[0].attachments.length, 2);
+  } finally {
+    await server?.close();
+    await pg.close();
+  }
+});
 const assert = require('node:assert/strict');
 const { database, fixture, serve, password } = require('./support/postgres.cjs');
 const { createApplication } = require('../lib/application.cjs');

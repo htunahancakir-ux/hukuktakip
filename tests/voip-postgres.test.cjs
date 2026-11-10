@@ -3,6 +3,44 @@ const assert = require('node:assert/strict');
 const { database, fixture } = require('./support/postgres.cjs');
 const { importState } = require('../lib/postgres-store.cjs');
 const { transaction } = require('../lib/voip-store.cjs');
+test('standalone VoIP calls persist without a document and are scoped by destination or caller', async () => {
+  const { pg, pool } = await database();
+  try {
+    await importState(pool, fixture());
+    const call = {
+      id: 'standalone-1',
+      documentId: '',
+      phone: '905320000005',
+      userId: 'test-ceo',
+      requestId: 'standalone-request-001',
+      createdAt: new Date().toISOString(),
+      status: 'starting',
+    };
+    await transaction(
+      pool,
+      false,
+      (tx) => {
+        tx.state.voipCalls.push(call);
+        tx.saveState(tx.state);
+      },
+      { standalone: true, reserve: true, phone: call.phone, userId: call.userId, requestId: call.requestId },
+    );
+    const rows = await transaction(pool, false, (tx) => tx.state.voipCalls, {
+      standalone: true,
+      phone: call.phone,
+      userId: 'other',
+    });
+    assert.equal(rows[0].id, call.id);
+    const other = await transaction(pool, false, (tx) => tx.state.voipCalls, {
+      standalone: true,
+      phone: '905320000099',
+      userId: 'other',
+    });
+    assert.equal(other.length, 0);
+  } finally {
+    await pg.close();
+  }
+});
 test('dedicated VoIP tables preserve snapshot, paginate history and enforce active-call uniqueness', async () => {
   const { pg, pool } = await database();
   try {

@@ -11,6 +11,82 @@
   position: relative;
   flex-shrink: 0;
 }
+.voip-add-phone {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  padding: 12px;
+  margin: 12px 0;
+  background: #f1f6f9;
+  border: 1px solid #d5e3ec;
+  border-radius: 8px;
+}
+.voip-add-phone label {
+  display: grid;
+  gap: 5px;
+  font-weight: 600;
+}
+.voip-add-phone input {
+  min-width: 0;
+  width: 100%;
+}
+.voip-add-phone > div {
+  display: flex;
+  align-items: end;
+  gap: 5px;
+}
+.voip-add-phone small,
+.voip-add-phone [role='alert'] {
+  grid-column: 1 / -1;
+}
+.voip-add-phone [role='alert'],
+.voip-standalone [data-feedback] {
+  color: #b42332;
+}
+.voip-standalone {
+  width: min(560px, calc(100vw - 32px));
+  border: 0;
+  border-radius: 12px;
+  padding: 22px;
+  box-shadow: 0 20px 60px #102f4240;
+}
+.voip-standalone::backdrop {
+  background: #10283e80;
+}
+.voip-standalone .panelhead {
+  gap: 12px;
+}
+.voip-standalone .panelhead p {
+  color: #64748b;
+  margin: 6px 0 0;
+}
+.voip-standalone-form {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  margin: 20px 0 12px;
+}
+.voip-standalone-form label {
+  flex: 1;
+  min-width: 0;
+}
+.voip-standalone-history {
+  background: #f4f7fa;
+  border: 1px solid #dbe5eb;
+  border-radius: 8px;
+  padding: 14px;
+  margin: 14px 0;
+}
+.voip-standalone-history p {
+  margin: 6px 0;
+}
+@media (max-width: 600px) {
+  .voip-standalone-form,
+  .voip-add-phone {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}
 .voip-hangup {
   background: #b42332;
   color: white;
