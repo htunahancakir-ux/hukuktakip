@@ -40,7 +40,7 @@ function setupAccountContact(form) {
     host.textContent = error.message;
   }
 }
-function showUserContact(account) {
+function showUserContact(account, onSaved) {
   let dialog = document.getElementById('userContactDialog');
   if (!dialog) {
     dialog = document.createElement('dialog');
@@ -66,6 +66,7 @@ function showUserContact(account) {
       host,
       authApi('/api/users/contact?id=' + encodeURIComponent(account.id)),
       '/api/users/contact',
+      onSaved,
     );
     host.querySelector('h3').textContent = 'E-posta ve cep telefonu';
   } catch (error) {

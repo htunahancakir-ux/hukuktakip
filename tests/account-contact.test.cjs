@@ -115,6 +115,62 @@ test('staff update only their own contact; managers edit others without changing
     (await call('/api/users/contact', admin, { id: 'missing', email: '', mobilePhone: '' })).status,
     404,
   );
+  assert.equal((await call('/api/users', staff)).status, 403);
+  const list = await call('/api/users', admin),
+    listed = list.body.find((user) => user.id === 'staff');
+  assert.equal(listed.email, 'yonetici@example.com');
+  assert.equal(listed.mobilePhone, '905320000003');
+  assert(!('hash' in listed));
+  assert(!('salt' in listed));
+});
+test('user management lists escaped contacts, filters by email and refreshes after editing', async () => {
+  const { JSDOM } = require('jsdom'),
+    fs = require('node:fs');
+  const dom = new JSDOM('<div id="content"></div>', { runScripts: 'outside-only' }),
+    w = dom.window;
+  w.eval(fs.readFileSync('outputs/icrapro/html-safety.js', 'utf8'));
+  w.esc = w.escapeHtml;
+  w.hanAuth = { role: 'admin' };
+  w.$ = (selector) => w.document.querySelector(selector);
+  w.normalizeSearch = (value) => String(value).toLowerCase();
+  w.userAuditTabs = () => '';
+  w.bindUserAuditTabs = () => {};
+  const users = [
+    {
+      id: 's',
+      name: 'Personel',
+      username: 'staff',
+      role: 'staff',
+      active: true,
+      email: 'p@example.com',
+      mobilePhone: '905320000001',
+    },
+    {
+      id: 'other',
+      name: 'Diğer',
+      username: 'other',
+      role: 'staff',
+      email: '<img src=x onerror=alert(1)>',
+      mobilePhone: '',
+    },
+  ];
+  w.authApi = () => users;
+  w.showUserContact = (account, saved) => saved({ email: 'edited@example.com', mobilePhone: '905320000002' });
+  const source = fs.readFileSync('outputs/icrapro/workspace-access.js', 'utf8');
+  w.eval(source.slice(0, source.indexOf('function staffAccounting(')));
+  await w.userManagement();
+  assert.match(w.document.querySelector('thead').textContent, /E-POSTA.*CEP TELEFONU/);
+  assert.match(w.document.querySelector('#passwordUserRows').textContent, /p@example.com/);
+  assert.equal(w.document.querySelectorAll('img').length, 0);
+  [...w.document.querySelectorAll('button')]
+    .find((button) => button.textContent === 'E-posta / Cep Telefonu')
+    .click();
+  assert.match(w.document.querySelector('#passwordUserRows').textContent, /edited@example.com/);
+  const search = w.document.querySelector('#passwordUserSearch');
+  search.value = 'edited@example.com';
+  search.dispatchEvent(new w.Event('input'));
+  assert.equal(w.document.querySelectorAll('#passwordUserRows tr').length, 1);
+  dom.window.close();
 });
 test('navigation reminder disappears for complete contacts; saving contact does not require password fields', async () => {
   const { JSDOM } = require('jsdom'),

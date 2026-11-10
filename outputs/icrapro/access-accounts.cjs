@@ -199,7 +199,14 @@ async function handleAccountRoutes(ctx) {
   if (url.pathname === '/api/users') {
     if (!['ceo', 'admin'].includes(u.role)) throw fail(403, 'Yönetici yetkisi gerekli.');
     if (req.method === 'GET') {
-      send(res, 200, ctx.state.users.map(publicUser));
+      send(
+        res,
+        200,
+        ctx.state.users.map((user) => {
+          const contact = require('../../lib/account-contact.cjs').profile(ctx.state, user);
+          return { ...publicUser(user), email: contact.email, mobilePhone: contact.mobilePhone };
+        }),
+      );
       return true;
     }
     if (req.method !== 'POST') throw fail(405, 'İşlem desteklenmiyor.');

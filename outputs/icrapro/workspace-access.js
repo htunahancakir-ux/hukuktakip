@@ -12,19 +12,23 @@ async function userManagement(editId) {
   }
   const selected = users.find((u) => u.id === editId);
   $('#content').innerHTML =
-    `<div class="panel"><div class="panelhead"><div><h2>Personel Şifre Değiştirme / Sıfırlama</h2><p>Yeni hesap ve yetki işlemleri Personel bölümünden yapılır. Şifre sıfırlanınca kullanıcının açık oturumları kapatılır.</p></div></div>${selected ? `<form id="passwordResetForm"><div class="formbody grid"><p class="full"><b>${esc(selected.name)}</b> · ${esc(selected.username)}</p><label class="field">Yeni Şifre<input name="password" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></label><label class="field">Yeni Şifre Tekrar<input name="confirm" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></label></div><div class="actions"><button class="secondary" type="button" id="cancelPasswordReset">Vazgeç</button><button class="primary" type="submit">Şifreyi Sıfırla</button></div></form>` : ''}<div class="formbody"><label class="field">Personel / Kullanıcı Ara<input type="search" id="passwordUserSearch" placeholder="Ad veya kullanıcı adı…"></label></div><div class="overflow"><table><thead><tr><th>AD SOYAD</th><th>KULLANICI ADI</th><th>ROL</th><th>DURUM</th><th>ŞİFRE İŞLEMİ</th></tr></thead><tbody id="passwordUserRows"></tbody></table></div></div>`;
+    `<div class="panel"><div class="panelhead"><div><h2>Personel Şifre Değiştirme / Sıfırlama</h2><p>Yeni hesap ve yetki işlemleri Personel bölümünden yapılır. Şifre sıfırlanınca kullanıcının açık oturumları kapatılır.</p></div></div>${selected ? `<form id="passwordResetForm"><div class="formbody grid"><p class="full"><b>${esc(selected.name)}</b> · ${esc(selected.username)}</p><label class="field">Yeni Şifre<input name="password" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></label><label class="field">Yeni Şifre Tekrar<input name="confirm" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></label></div><div class="actions"><button class="secondary" type="button" id="cancelPasswordReset">Vazgeç</button><button class="primary" type="submit">Şifreyi Sıfırla</button></div></form>` : ''}<div class="formbody"><label class="field">Personel / Kullanıcı Ara<input type="search" id="passwordUserSearch" placeholder="Ad, kullanıcı adı, e-posta veya telefon…"></label></div><div class="overflow"><table><thead><tr><th>AD SOYAD</th><th>KULLANICI ADI</th><th>E-POSTA</th><th>CEP TELEFONU</th><th>ROL</th><th>DURUM</th><th>ŞİFRE İŞLEMİ</th></tr></thead><tbody id="passwordUserRows"></tbody></table></div></div>`;
   $('#content').insertAdjacentHTML('afterbegin', userAuditTabs('users'));
   bindUserAuditTabs();
   const renderRows = () => {
     const query = $('#passwordUserSearch').value.trim().toLocaleLowerCase('tr');
+    const visibleUsers = users.filter((u) =>
+      normalizeSearch([u.name, u.username, u.email, u.mobilePhone].join(' ')).includes(
+        normalizeSearch(query),
+      ),
+    );
     $('#passwordUserRows').innerHTML =
-      users
-        .filter((u) => normalizeSearch(u.name + ' ' + u.username).includes(normalizeSearch(query)))
+      visibleUsers
         .map(
           (u) =>
-            `<tr><td>${esc(u.name)}${u.testAccount ? '<small class="test-record-badge">Test hesabı</small>' : ''}</td><td>${esc(u.username)}</td><td>${u.role === 'ceo' ? 'CEO' : u.role === 'admin' ? 'Yönetici' : 'Personel'}</td><td>${u.active ? 'Aktif' : 'Pasif'}</td><td>${u.role !== 'ceo' || hanAuth.role === 'ceo' ? `<button class="link" data-reset-password="${esc(u.id)}">Şifre Değiştir / Sıfırla</button>` : 'CEO tarafından yönetilir'}</td></tr>`,
+            `<tr><td>${esc(u.name)}${u.testAccount ? '<small class="test-record-badge">Test hesabı</small>' : ''}</td><td>${esc(u.username)}</td><td>${esc(u.email || '—')}</td><td>${esc(u.mobilePhone ? (typeof formatPhoneNumber === 'function' ? formatPhoneNumber(u.mobilePhone) : u.mobilePhone) : '—')}</td><td>${u.role === 'ceo' ? 'CEO' : u.role === 'admin' ? 'Yönetici' : 'Personel'}</td><td>${u.active ? 'Aktif' : 'Pasif'}</td><td>${u.role !== 'ceo' || hanAuth.role === 'ceo' ? `<button class="link" data-reset-password="${esc(u.id)}">Şifre Değiştir / Sıfırla</button>` : 'CEO tarafından yönetilir'}</td></tr>`,
         )
-        .join('') || '<tr><td colspan="5" class="empty">Kullanıcı bulunamadı.</td></tr>';
+        .join('') || '<tr><td colspan="7" class="empty">Kullanıcı bulunamadı.</td></tr>';
     document.querySelectorAll('[data-reset-password]').forEach((b) => {
       b.onclick = () => userManagement(b.dataset.resetPassword);
       const account = users.find((user) => user.id === b.dataset.resetPassword);
@@ -36,15 +40,17 @@ async function userManagement(editId) {
       b.after(whatsapp);
     });
     document.querySelectorAll('#passwordUserRows tr').forEach((row, index) => {
-      const account = users.filter((u) =>
-        normalizeSearch(u.name + ' ' + u.username).includes(normalizeSearch(query)),
-      )[index];
+      const account = visibleUsers[index];
       if (!account) return;
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'link';
       button.textContent = 'E-posta / Cep Telefonu';
-      button.onclick = () => showUserContact(account);
+      button.onclick = () =>
+        showUserContact(account, (saved) => {
+          Object.assign(account, { email: saved.email, mobilePhone: saved.mobilePhone });
+          renderRows();
+        });
       row.lastElementChild.append(button);
     });
   };
