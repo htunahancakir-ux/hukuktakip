@@ -104,6 +104,9 @@ let page = 'home',
   kind = 'Şahıs';
 function save() {
   localStorage.setItem('icrapro-v1', JSON.stringify(db));
+  // Scoped saves already merge the canonical records in authApi. A full read
+  // here would expand the baseline without expanding the partial workspace.
+  if (window.hanRecordsEnabled) return;
   try {
     const latest = JSON.parse(localStorage.getItem('icrapro-v1'));
     for (const d of db.docs) {
