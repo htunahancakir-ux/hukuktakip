@@ -1816,3 +1816,249 @@ test('call bar stays pinned at the top while the page scrolls and keeps the head
   assert.match(rule('body.voip-call-bar-open'), /--voip-bar-h:\s*58px/);
   assert.match(rule(':root'), /--voip-bar-h:\s*0px/);
 });
+
+test('a leg that connected for zero seconds is no conversation: unreachable is saved without asking', () => {
+  const base = () => ({ status: 'ringing', createdAt: new Date().toISOString() });
+  const silent = base();
+  updateEvent(silent, {
+    event_type: 'hangup',
+    answered: true,
+    duration: 0,
+    hangup_cause: 'NORMAL_CLEARING',
+  });
+  assert.equal(silent.status, 'unanswered', 'never "Görüşüldü" for a zero-second call');
+  assert.equal(silent.result, 'Ulaşılamadı');
+  assert.equal(silent.resultBy, 'Santral');
+  assert(silent.resultAt);
+  assert.equal(silent.note, 'Ulaşılamadı (santral bildirimi).');
+  assert.deepEqual(silent.providerEnd, { answered: true, talkSeconds: 0, cause: 'NORMAL_CLEARING' });
+
+  // Form-encoded webhooks send every value as a string.
+  const form = base();
+  updateEvent(form, { event_type: 'hangup', answered: 'true', duration: '0', failure_status: '480' });
+  assert.equal(form.status, 'unanswered');
+  assert.equal(form.providerEnd.code, '480');
+
+  // The person ended it themselves before anyone talked: their live note is kept and the reason is said.
+  const own = { ...base(), hangupRequestedAt: new Date().toISOString(), draftNote: 'Yazılmış not' };
+  updateEvent(own, { event_type: 'hangup', answered: true, duration: 0 });
+  assert.equal(own.status, 'unanswered');
+  assert.match(own.note, /^Yazılmış not\nUlaşılamadı: arama görüşme olmadan sonlandırıldı/);
+
+  // Only an explicit zero counts: a missing or empty duration, or a real one, stays a conversation.
+  for (const event of [
+    { answered: true },
+    { answered: true, duration: '' },
+    { answered: true, duration: null },
+    { answered: true, duration: 34 },
+  ]) {
+    const call = base();
+    updateEvent(call, { event_type: 'hangup', ...event });
+    assert.equal(call.status, 'completed', JSON.stringify(event));
+    assert.equal(call.result, undefined, 'the person still chooses the result');
+  }
+
+  // Late or repeated events never downgrade a recorded conversation or replace a saved result.
+  const talked = { ...base(), duration: 34 };
+  updateEvent(talked, { event_type: 'hangup', answered: true, duration: 0 });
+  assert.equal(talked.status, 'completed');
+  assert.equal(talked.duration, 34);
+  const saved = { ...base(), resultAt: '2026-11-10T10:00:00.000Z', result: 'Olumlu', resultBy: 'Personel' };
+  updateEvent(saved, { event_type: 'hangup', answered: true, duration: 0 });
+  assert.equal(saved.status, 'completed');
+  assert.equal(saved.result, 'Olumlu');
+
+  // Hostile or oversized provider text is never stored.
+  const odd = base();
+  updateEvent(odd, {
+    event_type: 'hangup',
+    answered: false,
+    hangup_cause: '<script>alert(1)</script>',
+    failure_status: 'x'.repeat(200),
+  });
+  assert.deepEqual(odd.providerEnd, { answered: false });
+});
+
+test('webhook and call-record checks save zero-talk calls as unreachable and remember who hung up', async () => {
+  const webhook = harness(async () => new Response('00000000-0000-0000-0000-000000000001'));
+  await webhook.call('start', 'POST', {
+    documentId: 'd',
+    phone: '05320000000',
+    requestId: 'zero-talk-hook-01',
+  });
+  await webhook.call(
+    'webhook?token=' + webhook.state.voipConfig.webhookSecret,
+    'POST',
+    {
+      domain_id: '123',
+      call_uuid: '00000000-0000-0000-0000-000000000001',
+      event_type: 'hangup',
+      answered: 'true',
+      duration: '0',
+      recording_present: 'false',
+    },
+    true,
+  );
+  const hooked = webhook.state.voipCalls[0];
+  assert.equal(hooked.status, 'unanswered');
+  assert.equal(hooked.result, 'Ulaşılamadı');
+  assert.equal(hooked.resultBy, 'Santral');
+  assert.equal(hooked.note, 'Ulaşılamadı (santral bildirimi).');
+
+  const closedByRecord = async (cdr, requestId) => {
+    const h = harness(async (url) => {
+      const path = new URL(url).pathname;
+      if (path === '/originate') return new Response('00000000-0000-0000-0000-000000000001');
+      if (path.startsWith('/hangup/')) return new Response('No such channel!', { status: 400 });
+      return new Response(
+        JSON.stringify({
+          cdr: {
+            end_stamp: '2026-11-10 18:00:00 +0300',
+            answer_stamp: '2026-11-10 17:59:48 +0300',
+            recording_present: false,
+            ...cdr,
+          },
+        }),
+      );
+    });
+    const { call } = await h.call('start', 'POST', { documentId: 'd', phone: '05320000000', requestId });
+    await h.call('hangup', 'POST', { id: call.id });
+    return h.state.voipCalls[0];
+  };
+  const none = await closedByRecord(
+    { talk_duration: '00:00:00', hangup_cause: 'NORMAL_CLEARING' },
+    'zero-talk-cdr-0001',
+  );
+  assert.equal(none.status, 'unanswered');
+  assert.equal(none.result, 'Ulaşılamadı');
+  assert(none.hangupRequestedAt, 'pressing Sonlandır is remembered');
+  assert.match(none.note, /görüşme olmadan sonlandırıldı/);
+  assert.deepEqual(none.providerEnd, { answered: true, talkSeconds: 0, cause: 'NORMAL_CLEARING' });
+
+  const unknown = await closedByRecord({}, 'zero-talk-cdr-0002');
+  assert.equal(unknown.status, 'completed', 'a record without talk time is not treated as zero');
+  assert.equal(unknown.result || '', '', 'the person still chooses the result');
+  const spoken = await closedByRecord({ talk_duration: '00:00:12' }, 'zero-talk-cdr-0003');
+  assert.equal(spoken.status, 'completed');
+  assert.equal(spoken.duration, 12);
+});
+
+test('call history shows what the exchange reported and escapes it', async () => {
+  const { dom, w } = await callBarWindow();
+  try {
+    const call = {
+      id: 'history-call',
+      documentId: 'd',
+      userId: 'u',
+      phone: '905320000000',
+      staffName: 'Personel',
+      status: 'unanswered',
+      statusLabel: 'Ulaşılamadı',
+      createdAt: new Date().toISOString(),
+      duration: 0,
+      result: 'Ulaşılamadı',
+      hangupRequestedAt: new Date().toISOString(),
+      providerEnd: { answered: true, talkSeconds: 0, cause: 'NORMAL_CLEARING', code: '480' },
+    };
+    const html = w.voipCallMarkup(call, ['Olumlu']);
+    assert.match(
+      html,
+      /Santral yanıtı: cevaplandı · konuşma 0 sn · neden NORMAL_CLEARING · kod 480 · siz sonlandırdınız/,
+    );
+    assert.equal(
+      w.voipCallMarkup({ ...call, providerEnd: undefined }, ['Olumlu']).includes('Santral yanıtı'),
+      false,
+    );
+    const hostile = w.voipCallMarkup({ ...call, providerEnd: { cause: '<img src=x>' } }, ['Olumlu']);
+    assert.equal(hostile.includes('<img'), false);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('"Numara ara" opens its frame right below the header button; other calls keep the corner', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('<div class="shell"><header><div class="header-actions"></div></header></div>', {
+    url: 'https://example.test',
+    runScripts: 'dangerously',
+  });
+  try {
+    const w = dom.window;
+    w.HTMLDialogElement.prototype.show = function () {
+      this.open = true;
+    };
+    w.HTMLDialogElement.prototype.close = function () {
+      this.open = false;
+    };
+    Object.assign(w, {
+      hanAuth: { id: 'u', role: 'staff' },
+      esc: String,
+      fetch: async () => ({ ok: true, json: async () => ({ url: 'https://example.test/webphone?token=x' }) }),
+    });
+    const width = (value) =>
+      Object.defineProperty(w, 'innerWidth', { value, configurable: true, writable: true });
+    w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    // The real header button, created by the app, passes itself as the anchor when clicked.
+    w.setupVoipNavigation();
+    const button = w.document.querySelector('[data-standalone-voip]');
+    assert(button, 'the header button exists');
+    const place = (right) => {
+      button.getBoundingClientRect = () => ({
+        left: right - 180,
+        right,
+        top: 8,
+        bottom: 52,
+        width: 180,
+        height: 44,
+      });
+    };
+    width(1400);
+    place(1180);
+    button.click();
+    const dock = w.document.getElementById('voipPhoneDock');
+    assert.equal(dock.hidden, false);
+    assert.equal(dock.dataset.anchored, 'header');
+    // Eight pixels below the button, its right edge aligned with the button's right edge.
+    assert.deepEqual(
+      ['top', 'left', 'right', 'bottom', 'width'].map((side) => dock.style[side]),
+      ['60px', '720px', 'auto', 'auto', '460px'],
+    );
+    assert.equal(w.document.getElementById('voipStandalone').parentElement, dock);
+
+    // A narrow window keeps the frame inside the viewport.
+    width(700);
+    place(400);
+    w.dispatchEvent(new w.Event('resize'));
+    assert.deepEqual(
+      ['top', 'left', 'width'].map((side) => dock.style[side]),
+      ['60px', '12px', '460px'],
+    );
+    width(360);
+    place(340);
+    w.dispatchEvent(new w.Event('resize'));
+    assert.deepEqual(
+      ['left', 'width'].map((side) => dock.style[side]),
+      ['12px', '336px'],
+    );
+
+    // Closing hides the frame; any other call opens it in the default bottom-right corner again.
+    w.document.querySelector('#voipStandalone [data-close]').click();
+    assert.equal(dock.hidden, true);
+    w.voipPhoneDock();
+    assert.equal(dock.hidden, false);
+    assert.equal(dock.dataset.anchored, undefined);
+    assert.deepEqual(
+      ['top', 'left', 'right', 'bottom', 'width', 'maxHeight'].map((side) => dock.style[side]),
+      ['', '', '', '', '', ''],
+    );
+
+    // Opening it again from the header anchors it again, even after another call placed it.
+    place(1180);
+    width(1400);
+    button.click();
+    assert.equal(dock.style.top, '60px');
+    assert.equal(dock.style.left, '720px');
+  } finally {
+    dom.window.close();
+  }
+});

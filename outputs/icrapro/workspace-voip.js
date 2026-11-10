@@ -388,10 +388,25 @@ function voipTranscriptMarkup(call) {
       : '')
   );
 }
+// What the phone exchange reported for the call, so an unexpected result can be explained.
+function voipProviderLine(call) {
+  const end = call.providerEnd;
+  if (!end) return '';
+  const parts = [
+    end.answered === true ? 'cevaplandı' : end.answered === false ? 'cevaplanmadı' : '',
+    Number.isFinite(end.talkSeconds) ? 'konuşma ' + end.talkSeconds + ' sn' : '',
+    end.cause ? 'neden ' + end.cause : '',
+    end.code ? 'kod ' + end.code : '',
+    call.hangupRequestedAt || call.cancelRequested ? 'siz sonlandırdınız' : '',
+  ].filter(Boolean);
+  return parts.length
+    ? '<p class="voip-provider-line">Santral yanıtı: ' + esc(parts.join(' · ')) + '</p>'
+    : '';
+}
 function voipCallMarkup(call, results) {
   return `<article class="voip-call-entry" data-call-state="${esc(call.status)}"><div class="voip-call-top"><strong>${esc(voipDate(call.createdAt))}</strong><span class="voip-status-pill">${esc(call.statusLabel)}</span></div>
     <div class="voip-history-meta"><strong>${esc(voipPhone(call.phone))}</strong><span>${esc(call.staffName)}</span>${window.testRecordBadge?.(call) || ''}<span>${esc(voipDuration(call.duration))}</span>${call.documentNumber ? '<span>Föy ' + esc(call.documentNumber) + '</span>' : ''}</div>
-    <p class="voip-history-result"><span>Görüşme sonucu</span><b>${esc(call.result || 'Henüz girilmedi')}</b></p>
+    <p class="voip-history-result"><span>Görüşme sonucu</span><b>${esc(call.result || 'Henüz girilmedi')}</b></p>${voipProviderLine(call)}
     <div class="toolbar">${call.canListen ? `<button class="secondary" type="button" data-voip-listen="${esc(call.id)}">▶ Dinle</button>` : ''}${call.archivedAt && call.canListen && ['ceo', 'admin'].includes(hanAuth.role) ? `<a class="link" href="/api/voip/media?id=${encodeURIComponent(call.id)}&download=1">İndir</a>` : ''}${call.recordingPresent && !call.archivedAt && ['ceo', 'admin'].includes(hanAuth.role) ? `<button class="link" type="button" data-voip-archive="${esc(call.id)}">Arşivlemeyi yeniden dene</button>` : ''}${voipActiveStatuses.has(call.status) && (call.userId === hanAuth.id || ['ceo', 'admin'].includes(hanAuth.role)) ? `<button class="link" type="button" data-voip-sync="${esc(call.id)}">Durumu doğrula</button>` : ''}</div>
     ${call.archiveError ? '<p class="voip-notice">' + esc(call.archiveError) + '</p>' : ''}
     ${call.draftNote || call.note ? `<details class="voip-personal-note"><summary>Personel notu</summary><p class="voip-note">${esc(call.draftNote ?? call.note ?? '')}</p></details>` : ''}${voipTranscriptMarkup(call)}
@@ -1018,7 +1033,30 @@ function setupBorrowerVoip(dialog, doc) {
     history,
   );
 }
-function voipPhoneDock(reveal = true) {
+// The shared phone frame sits in the bottom-right corner, except when it is opened from the
+// header's "Numara ara" button: then it opens right below that button, inside the viewport.
+function voipPlaceDock(dock, anchor) {
+  const rect = anchor?.isConnected ? anchor.getBoundingClientRect() : null;
+  if (!rect || !rect.width) {
+    for (const side of ['top', 'left', 'right', 'bottom', 'width', 'maxHeight']) dock.style[side] = '';
+    delete dock.dataset.anchored;
+    return;
+  }
+  const margin = 12,
+    width = Math.min(460, window.innerWidth - margin * 2),
+    left = Math.max(margin, Math.min(rect.right - width, window.innerWidth - width - margin)),
+    top = Math.round(rect.bottom + 8);
+  Object.assign(dock.style, {
+    top: top + 'px',
+    left: Math.round(left) + 'px',
+    right: 'auto',
+    bottom: 'auto',
+    width: width + 'px',
+    maxHeight: 'calc(100dvh - ' + (top + margin) + 'px)',
+  });
+  dock.dataset.anchored = 'header';
+}
+function voipPhoneDock(reveal = true, anchor = null) {
   let dock = document.getElementById('voipPhoneDock');
   if (!dock) {
     dock = document.createElement('div');
@@ -1027,8 +1065,15 @@ function voipPhoneDock(reveal = true) {
     dock.setAttribute('popover', 'manual');
     dock.hidden = true;
     document.body.append(dock);
+    // The header button moves when the window is resized; keep the frame under it.
+    window.addEventListener('resize', () => {
+      if (!dock.hidden && dock.dataset.anchored)
+        voipPlaceDock(dock, document.querySelector('[data-standalone-voip]'));
+    });
   }
   if (reveal) {
+    // Placement is decided when the frame opens; later calls leave it where it is.
+    if (dock.hidden || anchor) voipPlaceDock(dock, anchor);
     dock.hidden = false;
     if (dock.showPopover && !dock.matches(':popover-open')) dock.showPopover();
   }
@@ -1713,13 +1758,15 @@ function voipRecordingsPage() {
   };
   refresh();
 }
-function openStandaloneVoip() {
+function openStandaloneVoip(anchor = document.querySelector('[data-standalone-voip]')) {
+  // Opens right below the header's "Numara ara" button instead of the bottom-right corner.
+  const dock = voipPhoneDock(true, anchor);
   let dialog = document.getElementById('voipStandalone');
   if (!dialog) {
     dialog = document.createElement('dialog');
     dialog.id = 'voipStandalone';
     dialog.className = 'voip-standalone';
-    voipPhoneDock().prepend(dialog);
+    dock.prepend(dialog);
   }
   dialog.innerHTML =
     '<div class="panelhead"><div><h2>Numara ile arama</h2><p>Dosyasız arama · Telefon bağlantısı arka planda açılır.</p></div><button type="button" class="secondary" data-close>Kapat</button></div><form class="voip-standalone-form" data-ignore-dirty><label class="field">Aranacak telefon numarası<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="05XX XXX XX XX" required></label><button type="submit" class="primary">Geçmişi kontrol et</button></form><div data-feedback role="alert"></div><div data-preview></div>';
@@ -1848,7 +1895,7 @@ function setupVoipNavigation() {
     dial.className = 'secondary';
     dial.dataset.standaloneVoip = '';
     dial.textContent = '☎ Numara ara';
-    dial.onclick = openStandaloneVoip;
+    dial.onclick = (event) => openStandaloneVoip(event.currentTarget);
     document.querySelector('.header-actions')?.prepend(dial);
     voipApi('calls')
       .then((data) => {

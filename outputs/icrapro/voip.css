@@ -1562,3 +1562,11 @@ body.voip-call-bar-open .shell > header {
     display: none;
   }
 }
+
+/* What the phone exchange reported for a call (history entries). */
+.voip-provider-line {
+  margin: 2px 0 6px;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.4;
+}
