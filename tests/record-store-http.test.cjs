@@ -5,6 +5,24 @@ const { createApplication } = require('../lib/application.cjs');
 const { importState, createStore } = require('../lib/postgres-store.cjs');
 const { importRecords, activateRecords } = require('../lib/record-store/storage.cjs');
 const { diff } = require('../outputs/icrapro/record-patch.js');
+
+test('Unchanged automatic charges preserve their timestamp; changed inputs are still recalculated', () => {
+  const { applyAutomaticLegalCharges } = require('../outputs/icrapro/legal-charges.cjs');
+  const doc = { id: 'automatic', docType: 'Senet', amount: 1000, due: '2026-11-01', status: 'Derdest' };
+  assert.equal(applyAutomaticLegalCharges(doc, [], '2026-11-10'), true);
+  doc.legalCalculation.calculatedAt = '2026-11-10T00:00:00.000Z';
+  const before = structuredClone(doc);
+  assert.equal(applyAutomaticLegalCharges(doc, [], '2026-11-10'), false);
+  assert.deepEqual(doc, before);
+  doc.amount = 2000;
+  assert.equal(applyAutomaticLegalCharges(doc, [], '2026-11-10'), true);
+  assert.equal(doc.legalCalculation.principal, 200000);
+  doc.due = '2026-11-02';
+  assert.equal(applyAutomaticLegalCharges(doc, [], '2026-11-10'), true);
+  assert.equal(doc.legalCalculation.start, '2026-11-02');
+  assert.equal(applyAutomaticLegalCharges(doc, [], '2026-11-11'), true);
+  assert.equal(doc.legalCalculation.end, '2026-11-11');
+});
 test('CEO/admin manual interest survives scoped saves, reloads and balance reports; staff/closed files stay locked', async () => {
   const { pg, pool } = await database();
   let server;
@@ -38,6 +56,11 @@ test('CEO/admin manual interest survives scoped saves, reloads and balance repor
       amount: id === 'closed' ? 115000 : 10000,
       date: '2026-11-02',
     }));
+    require('../outputs/icrapro/legal-charges.cjs').applyAutomaticLegalCharges(
+      state.data['icrapro-v1'].docs[0],
+      [],
+      require('../lib/business-time.cjs').businessDate(),
+    );
     await importState(pool, state);
     await importRecords(pool);
     await activateRecords(pool);
@@ -69,6 +92,14 @@ test('CEO/admin manual interest survives scoped saves, reloads and balance repor
         const before = (await load(id)).record;
         const interest = username === 'admin' ? 450.75 : 325.25;
         const after = { ...before, financeInterest: interest, financeFee: 125.5, financeTermsManual: true };
+        if (username === 'test' && id === 'unpaid') {
+          // A background save must not alter the unchanged automatic calculation
+          // and make the finance form's existing snapshot stale.
+          const background = await patch(before, { ...before, notes: 'Başka oturumun notu' });
+          assert.equal(background.status, 200, await background.text());
+          delete after.legalCalculation;
+          delete after.legalCalculationError;
+        }
         const response = await patch(before, after);
         if (username === 'staff') {
           assert.equal(response.status, 403);
@@ -93,6 +124,14 @@ test('CEO/admin manual interest survives scoped saves, reloads and balance repor
           (await store.readState()).data['icrapro-v1'].docs.find((doc) => doc.id === id).financeInterest,
           interest,
         );
+        if (username === 'test' && id === 'unpaid') {
+          const current = (await load(id)).record;
+          const concurrent = await patch(current, { ...current, financeInterest: interest + 10 });
+          assert.equal(concurrent.status, 200, await concurrent.text());
+          const stale = await patch(current, { ...current, financeInterest: interest + 20 });
+          assert.equal(stale.status, 409, 'Actual concurrent edits of interest must remain protected');
+          assert.equal((await load(id)).record.financeInterest, interest + 10);
+        }
       }
       const closed = (await load('closed')).record;
       const denied = await patch(closed, { ...closed, financeInterest: 400, financeTermsManual: true });
