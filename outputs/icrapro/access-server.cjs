@@ -28,6 +28,7 @@ const { handleBreakRoutes } = require('./access-breaks.cjs');
 const { handleDataRoutes } = require('./access-data.cjs');
 const { handleDeletionRoutes } = require('./access-deletion.cjs');
 const { canDelete } = require('../../lib/deletion-policy.cjs');
+const { accountingStaff } = require('../../lib/accounting-access.cjs');
 const { recognizedCollectionRevenue } = require('./profit-rules.js');
 const { syncPayrollPeriods } = require('./payroll-periods.cjs');
 const { isCallcenter, calculateCallcenterBonus } = require('./personnel-bonus.cjs');
@@ -98,6 +99,7 @@ function createAccess(stateFile, options = {}) {
             .toLocaleLowerCase('tr-TR') === 'pazarlama',
       ),
     permissions: ['ceo', 'admin'].includes(u.role) ? permissions : u.permissions,
+    accountingAccess: accountingStaff(u, state.data['icrapro-personnel-v1']),
     active: u.active,
     readOnly: u.readOnly === true,
     testAccount: u.testAccount === true,
@@ -147,7 +149,12 @@ function createAccess(stateFile, options = {}) {
     for (const [key, s] of sessions) if (s.id === id) sessions.delete(key);
   }
   function allowed(u, p) {
-    return ['ceo', 'admin'].includes(u.role) || p === 'documents' || u.permissions.includes(p);
+    return (
+      ['ceo', 'admin'].includes(u.role) ||
+      p === 'documents' ||
+      (['cashIn', 'cashOut'].includes(p) && accountingStaff(u, state.data['icrapro-personnel-v1'])) ||
+      u.permissions.includes(p)
+    );
   }
   const fail = (code, message) => Object.assign(Error(message), { code });
   async function body(req) {

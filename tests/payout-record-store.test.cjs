@@ -62,11 +62,25 @@ test('Payout pages and scoped writes preserve complete totals, unrelated data, a
     data['icrapro-v1'].docs[5].closedDate = '';
     data['hanhukuk-finance-v1'][5].closes = false;
     state.users.push({ ...state.users[0], id: 'staff', username: 'staff', role: 'staff' });
+    state.data['icrapro-personnel-v1'].push({
+      id: 'accountant-person',
+      name: 'Accountant',
+      department: 'Muhasebe',
+      active: true,
+    });
+    state.users.push({
+      ...state.users[0],
+      id: 'accountant',
+      username: 'accountant',
+      role: 'staff',
+      staffId: 'accountant-person',
+      permissions: [],
+    });
     await importState(pool, state);
     await importRecords(pool);
     await activateRecords(pool);
     const reqs = {};
-    for (const id of ['test-ceo', 'staff']) {
+    for (const id of ['test-ceo', 'staff', 'accountant']) {
       const token = crypto.randomBytes(32).toString('hex');
       await pool.query(
         "INSERT INTO han_private.han_sessions(token_hash,account_id,device_type,expires_at) VALUES($1,$2,'desktop',$3)",
@@ -78,6 +92,7 @@ test('Payout pages and scoped writes preserve complete totals, unrelated data, a
       first = await payoutPage(pool, req);
     assert.equal(first.items.length, 50);
     assert.equal(first.totals.count, '121');
+    assert.equal((await payoutPage(pool, reqs.accountant)).totals.count, '121');
     assert.equal(first.totals.remaining, '1203000');
     const second = await payoutPage(pool, req, { after: first.next }),
       third = await payoutPage(pool, req, { after: second.next });
@@ -122,7 +137,7 @@ test('Payout pages and scoped writes preserve complete totals, unrelated data, a
       return connection;
     };
     server = await serve(createApplication({ store: createStore(pool, { records: true }) }));
-    const headers = { ...req.headers, 'X-Han-Request': '1', 'Content-Type': 'application/json' };
+    const headers = { ...reqs.accountant.headers, 'X-Han-Request': '1', 'Content-Type': 'application/json' };
     async function pay(v, custom = headers) {
       const r = await fetch(server.url + '/api/client-payout', {
         method: 'POST',
@@ -195,7 +210,9 @@ test('Payout pages and scoped writes preserve complete totals, unrelated data, a
       '123',
     );
     assert.equal((await fetch(server.url + '/api/records/client-payouts', { headers })).status, 200);
-    const audit = await (await fetch(server.url + '/api/audit?category=changes', { headers })).json();
+    const audit = await (
+      await fetch(server.url + '/api/audit?category=changes', { headers: req.headers })
+    ).json();
     assert.match(JSON.stringify(audit), /client-payout|Müvekkil|Ödeme/i);
   } finally {
     await server?.close();

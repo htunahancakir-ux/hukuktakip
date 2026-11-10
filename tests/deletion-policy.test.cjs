@@ -57,6 +57,7 @@ test('Only the pinned active owner has deletion capability, even among CEOs', ()
     { ...owner, id: 'other' },
     { ...owner, role: 'admin' },
     { ...owner, active: false },
+    { id: 'accountant', role: 'staff', accountingAccess: true, active: true },
   ])
     assert(!canDelete(user));
 });

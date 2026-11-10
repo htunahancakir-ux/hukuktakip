@@ -198,6 +198,7 @@ function hanCan(permission) {
     !!hanAuth &&
     (['ceo', 'admin'].includes(hanAuth.role) ||
       permission === 'documents' ||
+      (hanAuth.accountingAccess === true && ['cashIn', 'cashOut'].includes(permission)) ||
       hanAuth.permissions.includes(permission))
   );
 }
