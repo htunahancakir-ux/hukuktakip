@@ -806,6 +806,11 @@ test('live call workspace preserves typed notes across polling, then saves the c
         JSON.stringify(results),
     );
     w.showVoipActive({ id: 'd' }, call);
+    assert.equal(
+      w.document.getElementById('voipActiveCall').dataset.modalPromoted,
+      'true',
+      'live controls escape borrower modal inertness before hangup',
+    );
     const phone = w.document.createElement('dialog');
     phone.id = 'voipWebphone';
     phone.innerHTML = '<iframe></iframe>';

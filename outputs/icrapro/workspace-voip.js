@@ -959,7 +959,12 @@ function showVoipActive(doc, call) {
   host.className = 'voip-active-call';
   host.dataset.callId = call.id;
   voipPhoneDock().prepend(host);
-  if (!host.open) host.show();
+  // The borrower sheet is modal: a plain dialog/popover above it is still inert.
+  // Keep call controls in the modal top layer from the moment dialing starts.
+  if (!host.open) {
+    if (typeof host.showModal === 'function') host.showModal();
+    else host.show();
+  }
   host.hidden = false;
   host.innerHTML = `<div class="voip-workspace-heading"><div><span data-current-status></span><strong>${esc(voipPhone(call.phone))}</strong><small>${esc(call.documentNumber || doc.number || '')} · ${esc(call.debtorName || doc.debtor || '')}</small><time data-current-duration aria-label="Çağrı süresi">00:00</time></div><button type="button" class="link" data-current-minimize>Küçült</button></div>
     <div class="voip-workspace-feedback" data-current-feedback role="alert" hidden></div>
