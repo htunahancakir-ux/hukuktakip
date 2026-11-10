@@ -884,6 +884,7 @@ function showVoipActive(doc, call) {
     draftRevision = 0,
     saveQueue = Promise.resolve(),
     syncing = false,
+    lastProviderSync = 0,
     disposed = false;
   const message = (text, tone = 'error') => {
     feedback.textContent = text;
@@ -991,6 +992,14 @@ function showVoipActive(doc, call) {
     if (syncing || disposed || ended) return;
     syncing = true;
     try {
+      if (Date.now() - lastProviderSync >= 15000) {
+        lastProviderSync = Date.now();
+        try {
+          await voipApi('sync', 'POST', { id: call.id });
+        } catch {
+          /* CDR may not exist until hangup. */
+        }
+      }
       const data = await voipApi(
           'calls?' +
             (call.documentId

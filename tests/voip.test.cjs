@@ -410,6 +410,36 @@ test('verified webhook updates call; duplicates and late ringing do not reopen a
   );
   await h.call('start', 'POST', { documentId: 'd', phone: '05320000001', requestId: 'request-000000004' });
 });
+test('hangup of an already closed channel verifies CDR instead of leaving a stuck active call', async () => {
+  let complete = true;
+  const h = harness(async (url) => {
+    const path = new URL(url).pathname;
+    if (path === '/originate') return new Response('00000000-0000-0000-0000-000000000001');
+    if (path.startsWith('/hangup/')) return new Response('No such channel!', { status: 400 });
+    return new Response(
+      JSON.stringify({
+        cdr: {
+          end_stamp: complete ? '2026-11-10 18:00:00 +0300' : null,
+          answer_stamp: '2026-11-10 17:59:48 +0300',
+          talk_duration: '00:00:12',
+          recording_present: false,
+        },
+      }),
+    );
+  });
+  const { call } = await h.call('start', 'POST', {
+    documentId: 'd',
+    phone: '05320000000',
+    requestId: 'closed-channel-001',
+  });
+  complete = false;
+  await assert.rejects(h.call('hangup', 'POST', { id: call.id }), (e) => e.status === 409);
+  assert.equal(h.state.voipCalls[0].status, 'ringing');
+  complete = true;
+  await h.call('hangup', 'POST', { id: call.id });
+  assert.equal(h.state.voipCalls[0].status, 'completed');
+  assert.equal(h.state.voipCalls[0].duration, 12);
+});
 test('recordings require manager or explicit current-assignee grant; reassignment revokes access', async () => {
   const h = harness();
   h.state.voipCalls.push({
