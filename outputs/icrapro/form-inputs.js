@@ -291,7 +291,7 @@ function upgradePhoneInputs() {
       return;
     if (!input.dataset.phoneFormat) {
       input.dataset.phoneFormat = 'true';
-      input.placeholder = '0 (545) 967 29 77';
+      input.placeholder = '0 (532) 123 45 67';
       input.inputMode = 'tel';
       input.addEventListener('blur', () => (input.value = formatPhoneNumber(input.value)));
       input.addEventListener('change', () => (input.value = formatPhoneNumber(input.value)));
