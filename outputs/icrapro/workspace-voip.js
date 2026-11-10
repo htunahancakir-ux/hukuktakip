@@ -858,6 +858,13 @@ function setupBorrowerVoip(dialog, doc) {
     }
   }
   trigger.onclick = () => {
+    const activeCall = document.getElementById('voipActiveCall');
+    if (voipUi.minimized && activeCall && activeCall.dataset.ended !== 'true') {
+      activeCall.hidden = false;
+      if (!activeCall.open) activeCall.showModal();
+      activeCall.querySelector('[data-current-hangup]')?.click();
+      return;
+    }
     if (!panel.hidden) return close();
     panel.hidden = false;
     trigger.setAttribute('aria-expanded', 'true');
@@ -1072,7 +1079,14 @@ function showVoipActive(doc, call) {
   };
   const heartbeatTimer = setInterval(heartbeat, 15000);
   heartbeat();
+  const headerCallButton = doc.id ? document.querySelector('#borrowerDetail [data-open-voip]') : null;
+  const resetHeaderCall = () => {
+    if (!headerCallButton) return;
+    headerCallButton.textContent = '☎ Ara';
+    headerCallButton.classList.remove('voip-hangup');
+  };
   voipUi.disposeActive = () => {
+    resetHeaderCall();
     clearInterval(heartbeatTimer);
     disposed = true;
     clearTimeout(draftTimer);
@@ -1081,6 +1095,18 @@ function showVoipActive(doc, call) {
   host.querySelector('[data-current-minimize]').onclick = () => {
     voipUi.minimized = !voipUi.minimized;
     host.classList.toggle('voip-call-minimized', voipUi.minimized);
+    if (headerCallButton && !ended) {
+      if (voipUi.minimized) {
+        headerCallButton.textContent = '☎ Sonlandır';
+        headerCallButton.classList.add('voip-hangup');
+        if (host.open) host.close();
+        host.hidden = true;
+      } else {
+        resetHeaderCall();
+        host.hidden = false;
+        if (!host.open) host.showModal();
+      }
+    }
     document.getElementById('voipPhoneDock')?.classList.toggle('voip-dock-minimized', voipUi.minimized);
     host.querySelector('[data-current-minimize]').textContent = voipUi.minimized ? 'Genişlet' : 'Küçült';
     if (draftTimer) saveDraft().catch(() => {});
@@ -1091,6 +1117,7 @@ function showVoipActive(doc, call) {
     host.querySelector('[data-current-status]').textContent =
       (next.statusLabel || 'Aranıyor') + (ended ? ' · ' + voipDuration(next.duration) : '');
     host.dataset.ended = String(ended);
+    if (ended) resetHeaderCall();
     voipCancelWait(host, !ended && !next.cancelError && (next.cancelRequested || hangupPending));
     // Busy/canceled calls keep the registered webphone ready for the next attempt.
     if (ended && !wasEnded && next.status === 'completed') releaseVoipWebphone();
@@ -1099,7 +1126,8 @@ function showVoipActive(doc, call) {
     host.querySelector('[data-current-sync]').hidden = true;
     host.querySelector('[data-current-hold]').hidden = ended;
     if (
-      (next.status === 'busy' && next.resultAt) ||
+      (next.resultAt &&
+        (next.status === 'busy' || (next.result === 'Meşgul' && next.resultBy === 'Santral'))) ||
       (next.cancelRequested && ['unanswered', 'failed'].includes(next.status))
     ) {
       clearInterval(voipUi.timer);

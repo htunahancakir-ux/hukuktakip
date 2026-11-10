@@ -1523,3 +1523,11 @@ test('closing standalone dialer releases phone and ignores a late webphone token
     dom.window.close();
   }
 });
+
+test('late hangup does not overwrite a provider-confirmed busy result', () => {
+  const call = { status: 'ringing', createdAt: new Date().toISOString() };
+  updateEvent(call, { event_type: 'hangup', failure_status: '486', answered: false });
+  updateEvent(call, { event_type: 'hangup', answered: true, duration: 0 });
+  assert.equal(call.status, 'busy');
+  assert.equal(call.result, 'Meşgul');
+});
