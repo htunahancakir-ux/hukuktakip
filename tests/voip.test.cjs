@@ -1164,7 +1164,10 @@ test('canceling an in-flight originate persists intent and hangs up as soon as t
 
 test('cancel control is immediately visible while originate is pending', async () => {
   const { JSDOM } = require('jsdom');
-  const dom = new JSDOM('<div id="area"></div>', { url: 'https://example.test', runScripts: 'dangerously' });
+  const dom = new JSDOM('<div id="area"><span id="slot"><button id="launch">Ara</button></span></div>', {
+    url: 'https://example.test',
+    runScripts: 'dangerously',
+  });
   try {
     const w = dom.window;
     let release,
@@ -1183,9 +1186,15 @@ test('cancel control is immediately visible while originate is pending', async (
       { requestId: 'cancel-ui-start-001' },
       w.document.getElementById('area'),
       () => {},
+      w.document.getElementById('launch'),
     );
     const button = w.document.querySelector('[data-cancel-starting]');
     assert(button && !button.disabled);
+    assert.equal(button.parentElement.id, 'slot', 'cancel replaces Ara in its original cell');
+    assert.equal(w.document.getElementById('launch'), null);
+    await assert.rejects(
+      w.voipStartCancelable({ requestId: 'second' }, w.document.getElementById('area'), () => {}),
+    );
     button.click();
     await new Promise(setImmediate);
     assert.equal(cancellations, 1);

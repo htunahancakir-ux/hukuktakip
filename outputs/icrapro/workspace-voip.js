@@ -13,14 +13,20 @@ async function voipApi(path, method = 'GET', value) {
     throw Object.assign(Error(result.error || 'Telefon işlemi tamamlanamadı.'), { status: response.status });
   return result;
 }
-async function voipStartCancelable(input, container, report) {
+async function voipStartCancelable(input, container, report, launchButton) {
+  if (voipUi.startPending) throw Error('Arama başlatılıyor; mevcut işlemin bitmesini bekleyin.');
+  voipUi.startPending = true;
+  document.querySelectorAll('.local-feedback').forEach((el) => el.remove());
+  const frame = container.closest('.voip-number-panel, dialog') || container;
+  const rect = frame.getBoundingClientRect();
+  voipUi.callPlacement = rect.width > 0 ? { left: rect.left, top: rect.top, width: rect.width } : null;
   const cancel = document.createElement('button');
   cancel.type = 'button';
   cancel.className = 'voip-hangup';
   cancel.dataset.cancelStarting = '';
   cancel.textContent = 'Sonlandır / İptal et';
-  container.append(cancel);
-  cancel.scrollIntoView?.({ block: 'nearest' });
+  if (launchButton?.isConnected) launchButton.replaceWith(cancel);
+  else container.append(cancel);
   let requested = false,
     finished = false,
     cancellation;
@@ -59,7 +65,9 @@ async function voipStartCancelable(input, container, report) {
     return result;
   } finally {
     finished = true;
-    cancel.remove();
+    if (launchButton && cancel.isConnected) cancel.replaceWith(launchButton);
+    else cancel.remove();
+    voipUi.startPending = false;
   }
 }
 function voipDate(value) {
@@ -761,6 +769,7 @@ function setupBorrowerVoip(dialog, doc) {
             },
             panel,
             (text) => message(text, 'notice'),
+            [...panel.querySelectorAll('[data-dial-phone]')].find((b) => b.dataset.dialPhone === phone),
           );
           confirmation = '';
           feedback = '';
@@ -957,6 +966,16 @@ function showVoipActive(doc, call) {
   host = document.createElement('dialog');
   host.id = 'voipActiveCall';
   host.className = 'voip-active-call';
+  if (voipUi.callPlacement) {
+    const place = voipUi.callPlacement;
+    const left = Math.max(12, Math.min(place.left, window.innerWidth - 320));
+    const top = Math.max(12, Math.min(place.top, window.innerHeight - 240));
+    host.style.position = 'fixed';
+    host.style.inset = top + 'px auto auto ' + left + 'px';
+    host.style.width = Math.min(place.width, window.innerWidth - left - 12) + 'px';
+    host.style.maxWidth = 'calc(100vw - 24px)';
+    host.style.maxHeight = 'calc(100dvh - ' + (top + 12) + 'px)';
+  }
   host.dataset.callId = call.id;
   voipPhoneDock().prepend(host);
   // The borrower sheet is modal: a plain dialog/popover above it is still inert.
@@ -1564,6 +1583,7 @@ function openStandaloneVoip() {
             (text) => {
               feedback.textContent = text;
             },
+            e.target,
           );
           dialog.close();
           voipUi.minimized = false;
