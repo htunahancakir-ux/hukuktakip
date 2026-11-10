@@ -24,7 +24,6 @@ function validStaffSelection(value, previous) {
       !value[key] || value[key] === previous[key] || personnel.some((p) => p.id === value[key] && p.active),
   );
 }
-let personnelAttachmentStaffId = '';
 let personnelTab = 'records',
   payrollScope = 'active',
   payrollSubTab = 'salary';
@@ -42,22 +41,16 @@ async function readPersonnelAttachments(personnelId, attachmentId = '') {
   if (!response.ok) throw Error(result.error || 'Personel ekleri alınamadı.');
   return result;
 }
-async function personnelAttachmentsPage() {
-  const host = $('#personnelView');
+async function personnelAttachmentsPage(host, ownerId) {
   if (!host || !['ceo', 'admin'].includes(window.hanAuth?.role)) return;
-  if (!personnel.some((person) => person.id === personnelAttachmentStaffId)) personnelAttachmentStaffId = '';
-  const ownerId = personnelAttachmentStaffId;
-  host.innerHTML = `<div class="panel"><div class="panelhead"><div><h2>Foto ve PDF Ekle</h2><p>Personel seçin; birden fazla fotoğraf veya PDF ekleyin.</p></div></div><form id="personnelFilesForm" class="formbody"><div class="grid"><label class="field full">Personel<select id="personnelFileOwner" required><option value="">Personel seçin</option>${personnel.map((person) => `<option value="${esc(person.id)}" ${person.id === ownerId ? 'selected' : ''}>${esc(person.name)}${person.active === false ? ' (Pasif)' : ''}</option>`).join('')}</select></label><label class="field full">Fotoğraf / PDF Ekle<input id="personnelFilePicker" type="file" multiple data-optional="true" accept="application/pdf,image/jpeg,image/png,image/webp" ${ownerId ? '' : 'disabled'}><small>PDF, JPG, PNG veya WEBP · Her dosya en fazla 3 MB. Yeni dosyalar mevcut eklere eklenir.</small></label></div><div class="actions"><button type="submit" class="primary" ${ownerId ? '' : 'disabled'}>Seçilen Dosyaları Ekle</button></div><p role="status" data-personnel-file-status></p></form><div class="formbody" data-personnel-file-list>${ownerId ? 'Ekler yükleniyor…' : 'Ekleri görmek ve yüklemek için personel seçin.'}</div></div>`;
+
+  host.innerHTML = `<div class="panel"><div class="panelhead"><div><h2>Foto ve PDF Ekle</h2><p>Bu personele ait fotoğraf ve PDF dosyalarını ekleyin veya görüntüleyin.</p></div></div><form id="personnelFilesForm" class="formbody"><div class="grid"><label class="field full">Fotoğraf / PDF Ekle<input id="personnelFilePicker" type="file" multiple data-optional="true" accept="application/pdf,image/jpeg,image/png,image/webp" ${ownerId ? '' : 'disabled'}><small>PDF, JPG, PNG veya WEBP · Her dosya en fazla 3 MB. Yeni dosyalar mevcut eklere eklenir.</small></label></div><div class="actions"><button type="submit" class="primary" ${ownerId ? '' : 'disabled'}>Seçilen Dosyaları Ekle</button></div><p role="status" data-personnel-file-status></p></form><div class="formbody" data-personnel-file-list>${ownerId ? 'Ekler yükleniyor…' : 'Ekleri görmek ve yüklemek için personel seçin.'}</div></div>`;
   const form = host.querySelector('#personnelFilesForm'),
     input = form.querySelector('#personnelFilePicker'),
     button = form.querySelector('button[type=submit]'),
     list = host.querySelector('[data-personnel-file-list]'),
     status = form.querySelector('[data-personnel-file-status]');
   bindMultipleFileInput(input);
-  form.querySelector('#personnelFileOwner').onchange = (event) => {
-    personnelAttachmentStaffId = event.target.value;
-    personnelAttachmentsPage();
-  };
   const pending = { id: ownerId, attachments: [] };
   form.onsubmit = async (event) => {
     event.preventDefault();
@@ -77,7 +70,7 @@ async function personnelAttachmentsPage() {
         files.filter((file) => !pending.attachments.some((old) => old.id === file.id)),
       );
       if (!list.isConnected) return;
-      await personnelAttachmentsPage();
+      await personnelAttachmentsPage(host, ownerId);
       toast('Personel dosyaları eklendi.');
     } catch (error) {
       if (status.isConnected) status.textContent = error.message || 'Dosyalar yüklenemedi.';
@@ -186,7 +179,7 @@ async function personnelSettings(editId) {
     dailyPrimData.rows.filter((e) => e.staffId === id).reduce((sum, e) => sum + e.amount, 0);
   const isSettings = page === 'settings';
   $('#content').innerHTML =
-    `${isSettings ? settingsSectionTabs('staff') : ''}<div class="settings-tabs" role="tablist" aria-label="Personel sekmeleri"><button role="tab" aria-selected="${personnelTab === 'records'}" data-staff-view="records" class="${personnelTab === 'records' ? 'selected' : ''}">Personel Kayıtları</button><button role="tab" aria-selected="${personnelTab === 'payroll'}" data-staff-view="payroll" class="${personnelTab === 'payroll' ? 'selected' : ''}">Maaş ve Prim</button><button role="tab" aria-selected="${personnelTab === 'files'}" data-staff-view="files" class="${personnelTab === 'files' ? 'selected' : ''}">Foto ve PDF Ekle</button></div><div id="personnelView"></div>`;
+    `${isSettings ? settingsSectionTabs('staff') : ''}<div class="settings-tabs" role="tablist" aria-label="Personel sekmeleri"><button role="tab" aria-selected="${personnelTab === 'records'}" data-staff-view="records" class="${personnelTab === 'records' ? 'selected' : ''}">Personel Kayıtları</button><button role="tab" aria-selected="${personnelTab === 'payroll'}" data-staff-view="payroll" class="${personnelTab === 'payroll' ? 'selected' : ''}">Maaş ve Prim</button></div><div id="personnelView"></div>`;
   if (isSettings) bindSettingsSectionTabs();
   document.querySelectorAll('[data-staff-view]').forEach(
     (b) =>
@@ -196,7 +189,6 @@ async function personnelSettings(editId) {
       }),
   );
   if (personnelTab === 'payroll') return personnelCompensationPage();
-  if (personnelTab === 'files') return personnelAttachmentsPage();
   $('#personnelView').innerHTML =
     `<div class="panel"><div class="panelhead"><div><h2>Personel Kayıtları</h2><p>Bilgileri görmek ve düzenlemek için personel adına tıklayın.</p></div><div class="toolbar"><span class="badge">${personnel.filter((p) => p.active).length} aktif / ${personnel.length} kayıt</span><button type="button" class="primary" id="newPersonnel">Yeni Personel</button></div></div><div class="overflow"><table><thead><tr><th>AD SOYAD</th><th>BİRİM / GÖREV</th><th>TELEFON</th><th>MAAŞ + PRİM 1</th><th>PRİM 2</th><th>G. PRİM</th><th>GENEL TOPLAM</th><th>DURUM</th><th>İŞLEM</th></tr></thead><tbody>${personnel.map((p) => `<tr><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">${esc(p.name)}</button></td><td>${esc(p.department || '—')}<small>${esc(p.title || '—')}</small></td><td>${esc(p.phone || '—')}</td><td>${money(staffMoney(p).salary / 100)}</td><td>${money(staffMoney(p).bonus / 100)}</td><td>${money(dailyPrimTotal(p.id) / 100)}</td><td>${money((staffMoney(p).total + dailyPrimTotal(p.id)) / 100)}</td><td>${p.active ? 'Aktif' : 'Pasif'}</td><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">Düzenle</button></td></tr>`).join('') || '<tr><td colspan="9" class="empty">Henüz personel yok. Yeni Personel butonuyla ekleyin.</td></tr>'}</tbody><tfoot><tr><td colspan="3"><strong>ALT TOPLAM</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + staffMoney(p).salary, 0) / 100)}</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + staffMoney(p).bonus, 0) / 100)}</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + dailyPrimTotal(p.id), 0) / 100)}</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + staffMoney(p).total + dailyPrimTotal(p.id), 0) / 100)}</strong></td><td colspan="2"></td></tr></tfoot></table></div></div>`;
   $('#newPersonnel').onclick = () => openPersonnelRecord();
@@ -702,7 +694,7 @@ function setupPersonnelCompensationTabs(form, current, editId) {
   const nav = document.createElement('div');
   nav.className = 'settings-tabs';
   nav.innerHTML =
-    '<button type="button" data-personnel-section="general" class="selected">Personel Bilgileri</button><button type="button" data-personnel-section="payroll">Maaş ve Prim</button>';
+    '<button type="button" data-personnel-section="general" class="selected">Personel Bilgileri</button><button type="button" data-personnel-section="payroll">Maaş ve Prim</button><button type="button" data-personnel-section="files">Fotoğraf / PDF Ekle ve Gör</button>';
   const sub = document.createElement('div');
   sub.className = 'settings-tabs';
   payroll.append(sub);
@@ -745,7 +737,20 @@ function setupPersonnelCompensationTabs(form, current, editId) {
     };
     if (key === 'salary') button.classList.add('selected');
   }
+  const files = document.createElement('section');
+  files.hidden = true;
+  form.after(files);
+  let filesLoaded = false;
   function select(section) {
+    files.hidden = section !== 'files';
+    form.querySelector('.actions').hidden = section === 'files';
+    if (section === 'files' && !filesLoaded) {
+      filesLoaded = true;
+      if (editId) personnelAttachmentsPage(files, editId);
+      else
+        files.innerHTML =
+          '<div class="formbody notice">Fotoğraf veya PDF eklemek için önce personeli kaydedin.</div>';
+    }
     general.hidden = section !== 'general';
     payroll.hidden = section !== 'payroll';
     nav
