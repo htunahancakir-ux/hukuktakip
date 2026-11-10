@@ -47,6 +47,7 @@ async function restoreBackup({ file, rawKey, localTarget, credentials }) {
   delete state._hanBackup;
   delete state.backupPolicy;
   delete state.whatsappConfig;
+  delete state.mapsConfig;
   delete state.passwordRecovery;
   delete state.reminderScheduler;
   for (const reminder of state.scheduledReminders || []) {

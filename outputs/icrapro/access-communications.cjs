@@ -1,15 +1,14 @@
 const { createWorkOrderBatch } = require('../../lib/work-order-batch.cjs');
 const { queue: queueWhatsApp } = require('../../lib/whatsapp.cjs');
 const { messageSummary } = require('../../lib/notification-summary.cjs');
+const { hasMarketingAccess } = require('../../lib/marketing-routes.cjs');
+const { VISIT_RESULTS } = require('./workspace-marketing-route.js');
 
 async function handleCommunicationRoutes(ctx) {
   const { req, res, url, u, persist, userEnabled, fail, body, send, crypto } = ctx;
   if (url.pathname === '/api/marketing-prospects') {
     const manager = ['ceo', 'admin'].includes(u.role);
-    const marketingStaff = ctx.state.data['icrapro-personnel-v1'].some(
-      (p) => p.id === u.staffId && p.active !== false && String(p.department || '').trim().toLocaleLowerCase('tr-TR') === 'pazarlama',
-    );
-    if (!manager && !marketingStaff) throw fail(403, 'Pazarlama bölümüne erişim yetkiniz yok.');
+    if (!hasMarketingAccess(ctx.state, u)) throw fail(403, 'Pazarlama bölümüne erişim yetkiniz yok.');
     if (req.method === 'GET') {
       const items = (ctx.state.marketingProspects || []).filter((item) => manager || item.createdBy === u.id);
       send(res, 200, { items });
@@ -24,26 +23,69 @@ async function handleCommunicationRoutes(ctx) {
       if (value.length > max) throw fail(400, 'Alan çok uzun: ' + key);
       return value;
     };
-    const company = clean('company', 200), date = clean('date', 10), time = clean('time', 5),
-      contact = clean('contact', 200), phone = clean('phone', 30), city = clean('city', 100),
-      district = clean('district', 100), address = clean('address', 1000), notes = clean('notes', 3000),
-      requestedStaff = clean('staffId', 200), status = clean('status', 30);
+    const company = clean('company', 200),
+      date = clean('date', 10),
+      time = clean('time', 5),
+      contact = clean('contact', 200),
+      phone = clean('phone', 30),
+      city = clean('city', 100),
+      district = clean('district', 100),
+      address = clean('address', 1000),
+      notes = clean('notes', 3000),
+      requestedStaff = clean('staffId', 200),
+      status = clean('status', 30);
     if (!['Potansiyel Müvekkil', 'Mevcut Müvekkil'].includes(status)) throw fail(400, 'Durum seçin.');
     if (!company || !date || (status === 'Potansiyel Müvekkil' && (!city || !district)))
       throw fail(400, 'Firma adı ve tarih gereklidir; potansiyel müvekkil için il ve ilçe de girilmelidir.');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || (time && !/^\d{2}:\d{2}$/.test(time)))
       throw fail(400, 'Geçerli tarih ve saat girin.');
-    const staffId = manager ? requestedStaff : (u.staffId || '');
+    const visitResult = clean('visitResult', 40);
+    if (visitResult && !VISIT_RESULTS.includes(visitResult))
+      throw fail(400, 'Geçerli bir ziyaret sonucu seçin.');
+    const staffId = manager ? requestedStaff : u.staffId || '';
     const staff = ctx.state.data['icrapro-personnel-v1'].find((p) => p.id === staffId && p.active !== false);
-    if (!staff && !(manager && status === 'Mevcut Müvekkil' && !staffId)) throw fail(400, 'Aktif bir personel seçin.');
+    if (!staff && !(manager && status === 'Mevcut Müvekkil' && !staffId))
+      throw fail(400, 'Aktif bir personel seçin.');
     const next = structuredClone(ctx.state);
     const records = next.marketingProspects || [];
     const index = editing ? records.findIndex((item) => item.id === input.id) : -1;
     if (editing && index < 0) throw fail(404, 'Kayıt bulunamadı.');
+    // A visit recorded from Rota Bulma keeps its Google place and route link; the
+    // regular form does not send them, so an edit keeps the saved values.
+    const linked = (key, pattern) => {
+      if (input?.[key] === undefined) return editing ? records[index][key] || '' : '';
+      const value = clean(key, 300);
+      if (value && !pattern.test(value)) throw fail(400, 'Geçersiz bağlantı: ' + key);
+      return value;
+    };
+    const placeId = linked('placeId', /^[A-Za-z0-9_-]{10,300}$/);
+    const routeId = linked('routeId', /^[0-9a-f-]{36}$/);
+    // Only a newly supplied link must exist; old routes may have aged out of the list.
+    if (
+      input?.routeId !== undefined &&
+      routeId &&
+      !(ctx.state.marketingRoutes || []).some((item) => item.id === routeId)
+    )
+      throw fail(400, 'Rota bulunamadı.');
     const record = {
-      ...(editing ? records[index] : { id: crypto.randomUUID(), createdBy: u.id, createdAt: new Date().toISOString() }),
-      company, date, time, contact, phone, city, district, address, notes,
-      staffId, staffName: staff?.name || u.name, status,
+      ...(editing
+        ? records[index]
+        : { id: crypto.randomUUID(), createdBy: u.id, createdAt: new Date().toISOString() }),
+      company,
+      date,
+      time,
+      contact,
+      phone,
+      city,
+      district,
+      address,
+      notes,
+      staffId,
+      staffName: staff?.name || u.name,
+      status,
+      visitResult,
+      placeId,
+      routeId,
     };
     if (editing) records[index] = record;
     else records.push(record);

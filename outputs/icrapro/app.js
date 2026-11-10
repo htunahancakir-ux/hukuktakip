@@ -276,10 +276,11 @@ function render() {
     intake();
     window.scrollTo({ top: 0, behavior: 'instant' });
   } else if (page === 'marketing') {
+    if (typeof marketingView !== 'undefined' && marketingView === 'routes') return marketingRoutePage();
     document.getElementById('content').innerHTML = `
       <section class="panel">
         <div class="panelhead"><div><h2>Pazarlama</h2><p>Potansiyel müvekkil bilgileri</p></div>
-          <div class="toolbar"><button class="primary" type="button" id="addProspect" aria-expanded="false" aria-controls="prospectForm">＋ Potansiyel Müvekkil Ekle</button><button class="secondary" type="button" id="marketingBack">← Geri</button></div>
+          <div class="toolbar"><button class="primary" type="button" id="openRouteFinder">⌖ Rota Bulma</button><button class="primary" type="button" id="addProspect" aria-expanded="false" aria-controls="prospectForm">＋ Potansiyel Müvekkil Ekle</button><button class="secondary" type="button" id="marketingBack">← Geri</button></div>
         </div>
         <form id="prospectForm" class="formbody" hidden>
           <h3>Potansiyel Müvekkil Bilgileri</h3>
@@ -288,6 +289,7 @@ function render() {
             <label class="field">Saat<input name="time" type="time"></label>
             ${staffSelect('Personel', 'staffId')}
             <label class="field">Durum<select name="status" required><option value="">Durum seçin</option><option value="Potansiyel Müvekkil">Potansiyel Müvekkil</option><option value="Mevcut Müvekkil">Mevcut Müvekkil</option></select></label>
+            <label class="field">Ziyaret Sonucu<select name="visitResult"><option value="">Belirtilmedi</option>${HanMarketingRoute.VISIT_RESULTS.map((result) => `<option value="${esc(result)}">${esc(result)}</option>`).join('')}</select></label>
             <label class="field">Firma Adı<input name="company" type="text" maxlength="200" required></label>
             <label class="field">Görüşülen Kişi<input name="contact" type="text" maxlength="200"></label>
             <label class="field">Telefon Numarası<input name="phone" type="tel" maxlength="30"></label>
@@ -301,6 +303,7 @@ function render() {
       </section>`;
     setupClientCity('prospect');
     setupClientDistrict('prospect');
+    document.getElementById('openRouteFinder').onclick = openMarketingRouteFinder;
     const button = document.getElementById('addProspect');
     const form = document.getElementById('prospectForm');
     document.getElementById('marketingBack').onclick = () => {
@@ -341,20 +344,50 @@ function render() {
         const to = document.getElementById('prospectTo').value;
         const staff = document.getElementById('prospectStaffFilter').value.trim().toLocaleLowerCase('tr');
         const query = document.getElementById('prospectQuery').value.trim().toLocaleLowerCase('tr');
-        result.items = result.items.filter((item) =>
-          (!from || item.date >= from) && (!to || item.date <= to) &&
-          (!staff || String(item.staffName || '').toLocaleLowerCase('tr').includes(staff)) &&
-          (!query || [item.company, item.city, item.district].some((v) => String(v || '').toLocaleLowerCase('tr').includes(query)))
+        result.items = result.items.filter(
+          (item) =>
+            (!from || item.date >= from) &&
+            (!to || item.date <= to) &&
+            (!staff ||
+              String(item.staffName || '')
+                .toLocaleLowerCase('tr')
+                .includes(staff)) &&
+            (!query ||
+              [item.company, item.city, item.district].some((v) =>
+                String(v || '')
+                  .toLocaleLowerCase('tr')
+                  .includes(query),
+              )),
         );
-        document.getElementById('prospectList').innerHTML = '<h3>Potansiyel Müvekkiller</h3><div class="overflow"><table><thead><tr><th>TARİH</th><th>FİRMA</th><th>İL / İLÇE</th><th>PERSONEL</th><th>DURUM</th><th>İŞLEM</th></tr></thead><tbody>' +
-          result.items.map((item) => `<tr><td>${esc(item.date)} ${esc(item.time)}</td><td>${esc(item.company)}</td><td>${esc(item.city)} / ${esc(item.district)}</td><td>${esc(item.staffName)}</td><td>${esc(item.status)}</td><td>${['ceo', 'admin'].includes(hanAuth.role) ? `<button type="button" class="link" data-edit-prospect="${esc(item.id)}">Düzenle</button>` : ''}</td></tr>`).join('') +
-          (result.items.length ? '' : '<tr><td colspan="6" class="empty">Henüz kayıt yok.</td></tr>') + '</tbody></table></div>';
+        document.getElementById('prospectList').innerHTML =
+          '<h3>Potansiyel Müvekkiller</h3><div class="overflow"><table><thead><tr><th>TARİH</th><th>FİRMA</th><th>İL / İLÇE</th><th>PERSONEL</th><th>DURUM</th><th>İŞLEM</th></tr></thead><tbody>' +
+          result.items
+            .map(
+              (item) =>
+                `<tr><td>${esc(item.date)} ${esc(item.time)}</td><td>${esc(item.company)}</td><td>${esc(item.city)} / ${esc(item.district)}</td><td>${esc(item.staffName)}</td><td>${esc(item.status)}${item.visitResult ? '<small>' + esc(item.visitResult) + '</small>' : ''}</td><td>${['ceo', 'admin'].includes(hanAuth.role) ? `<button type="button" class="link" data-edit-prospect="${esc(item.id)}">Düzenle</button>` : ''}</td></tr>`,
+            )
+            .join('') +
+          (result.items.length ? '' : '<tr><td colspan="6" class="empty">Henüz kayıt yok.</td></tr>') +
+          '</tbody></table></div>';
         document.querySelectorAll('[data-edit-prospect]').forEach((editButton) => {
           editButton.onclick = () => {
-            const item = result.items.find (entry => entry.id === editButton.dataset.editProspect);
+            const item = result.items.find((entry) => entry.id === editButton.dataset.editProspect);
             if (!item) return;
             editingProspectId = item.id;
-            for (const key of ['date', 'time', 'staffId', 'status', 'company', 'contact', 'phone', 'city', 'district', 'address', 'notes'])
+            for (const key of [
+              'date',
+              'time',
+              'staffId',
+              'status',
+              'visitResult',
+              'company',
+              'contact',
+              'phone',
+              'city',
+              'district',
+              'address',
+              'notes',
+            ])
               if (form.elements[key]) form.elements[key].value = item[key] || '';
             updateProspectFields();
             form.hidden = false;
@@ -362,7 +395,9 @@ function render() {
             form.elements.company.focus();
           };
         });
-      } catch (error) { document.getElementById('prospectList').textContent = error.message; }
+      } catch (error) {
+        document.getElementById('prospectList').textContent = error.message;
+      }
     };
     form.onsubmit = (event) => {
       event.preventDefault();
@@ -377,9 +412,12 @@ function render() {
         updateProspectFields();
         loadProspects();
         toast('Potansiyel müvekkil kaydedildi.');
-      } catch (error) { toast(error.message); }
+      } catch (error) {
+        toast(error.message);
+      }
     };
-    for (const id of ['prospectFrom', 'prospectTo', 'prospectStaffFilter', 'prospectQuery']) document.getElementById(id).addEventListener('input', loadProspects);
+    for (const id of ['prospectFrom', 'prospectTo', 'prospectStaffFilter', 'prospectQuery'])
+      document.getElementById(id).addEventListener('input', loadProspects);
     loadProspects();
     document.getElementById('convertProspect').onclick = () => {
       if (!hanCan('clients')) return toast('Müvekkil ekleme yetkiniz yok.');
@@ -401,8 +439,7 @@ function render() {
         notes: prospect.notes.trim(),
       });
     };
-  }
-  else if (page === 'personnel') personnelSettings();
+  } else if (page === 'personnel') personnelSettings();
   else if (page === 'settings') settings();
   else documents();
 }
@@ -432,6 +469,8 @@ document.querySelectorAll('[data-page]').forEach(
   (b) =>
     (b.onclick = () => {
       page = b.dataset.page;
+      // The menu always opens a section's main view, not a sub-view left open earlier.
+      if (typeof marketingView !== 'undefined') marketingView = 'prospects';
       render();
     }),
 );

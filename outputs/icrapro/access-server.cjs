@@ -18,6 +18,8 @@ const { searchWorkspace } = require('../../lib/workspace-search.cjs');
 const { notificationSummary } = require('../../lib/notification-summary.cjs');
 const { handleWhatsAppRoutes } = require('./access-whatsapp.cjs');
 const { handleAiRoutes } = require('./access-ai.cjs');
+const { handleMarketingRoutes } = require('./access-marketing.cjs');
+const { hasMarketingAccess } = require('../../lib/marketing-routes.cjs');
 const { activeArchives } = require('../../lib/document-archive.cjs');
 const { prepareState } = require('../../lib/state-invariants.cjs');
 const { handleWorkflowRoutes } = require('./access-workflow.cjs');
@@ -88,16 +90,7 @@ function createAccess(stateFile, options = {}) {
     username: u.username,
     role: u.role,
     staffId: u.staffId || '',
-    marketingAccess:
-      ['ceo', 'admin'].includes(u.role) ||
-      state.data['icrapro-personnel-v1'].some(
-        (p) =>
-          p.id === u.staffId &&
-          p.active !== false &&
-          String(p.department || '')
-            .trim()
-            .toLocaleLowerCase('tr-TR') === 'pazarlama',
-      ),
+    marketingAccess: hasMarketingAccess(state, u),
     permissions: ['ceo', 'admin'].includes(u.role) ? permissions : u.permissions,
     accountingAccess: accountingStaff(u, state.data['icrapro-personnel-v1']),
     active: u.active,
@@ -386,6 +379,7 @@ function createAccess(stateFile, options = {}) {
       if (!u) throw fail(401, 'Giriş yapın.');
       if (await require('./access-ceo-pin.cjs').handleCeoPin(ctx)) return true;
       if (await handleAiRoutes(ctx)) return true;
+      if (await handleMarketingRoutes(ctx)) return true;
       if (url.pathname === '/api/notifications' && req.method === 'GET') {
         send(res, 200, notificationSummary(state, u, url.searchParams.get('after')));
         return true;

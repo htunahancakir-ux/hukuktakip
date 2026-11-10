@@ -427,7 +427,7 @@ function renderReportsPage() {
   };
   $('#openMarketingReport').onclick = () => {
     $('#content').innerHTML =
-      `<div class="panel"><div class="panelhead"><div><h2>Potansiyel Müvekkil Raporu</h2><p>Pazarlama kayıtları</p></div><button type="button" class="secondary" id="marketingReportBack">Raporlara Dön</button></div><div class="formbody grid"><label class="field">Başlangıç Tarihi<input id="marketingReportFrom" type="date"></label><label class="field">Bitiş Tarihi<input id="marketingReportTo" type="date"></label><label class="field">Personel<input id="marketingReportStaff" type="search"></label><label class="field">Ara<input id="marketingReportQuery" type="search" placeholder="Firma, kişi, il veya ilçe"></label></div><div class="overflow"><table><thead><tr><th>TARİH</th><th>MÜVEKKİL ADI</th><th>İL</th><th>İLÇE</th><th>ADRES</th><th>TELEFON</th><th>GÖRÜŞÜLEN KİŞİ</th><th>PERSONEL</th><th>DURUM</th><th>AÇIKLAMA</th></tr></thead><tbody id="marketingReportRows"></tbody></table></div><p class="formbody" id="marketingReportCount"></p></div>`;
+      `<div class="panel"><div class="panelhead"><div><h2>Potansiyel Müvekkil Raporu</h2><p>Pazarlama kayıtları</p></div><button type="button" class="secondary" id="marketingReportBack">Raporlara Dön</button></div><div class="formbody grid"><label class="field">Başlangıç Tarihi<input id="marketingReportFrom" type="date"></label><label class="field">Bitiş Tarihi<input id="marketingReportTo" type="date"></label><label class="field">Personel<input id="marketingReportStaff" type="search"></label><label class="field">Ara<input id="marketingReportQuery" type="search" placeholder="Firma, kişi, il veya ilçe"></label></div><div class="overflow"><table><thead><tr><th>TARİH</th><th>MÜVEKKİL ADI</th><th>İL</th><th>İLÇE</th><th>ADRES</th><th>TELEFON</th><th>GÖRÜŞÜLEN KİŞİ</th><th>PERSONEL</th><th>DURUM</th><th>ZİYARET SONUCU</th><th>AÇIKLAMA</th></tr></thead><tbody id="marketingReportRows"></tbody></table></div><p class="formbody" id="marketingReportCount"></p></div>`;
     document.getElementById('marketingReportBack').onclick = reportsPage;
     let items;
     try {
@@ -466,6 +466,7 @@ function renderReportsPage() {
         'contact',
         'staffName',
         'status',
+        'visitResult',
         'notes',
       ];
       document.getElementById('marketingReportRows').innerHTML =
@@ -474,7 +475,7 @@ function renderReportsPage() {
             (item) =>
               '<tr>' + columns.map((key) => '<td>' + esc(item[key] || '—') + '</td>').join('') + '</tr>',
           )
-          .join('') || '<tr><td colspan="10" class="empty">Kayıt bulunamadı.</td></tr>';
+          .join('') || '<tr><td colspan="11" class="empty">Kayıt bulunamadı.</td></tr>';
       document.getElementById('marketingReportCount').textContent = filtered.length + ' kayıt';
     };
     for (const id of [

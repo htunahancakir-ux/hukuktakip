@@ -21,6 +21,8 @@ function ceoPinScope(url) {
       '/api/whatsapp/settings',
       '/api/voip/config',
       '/api/voip/test',
+      '/api/marketing/config',
+      '/api/marketing/test',
     ].includes(p)
   )
     return 'integrations';

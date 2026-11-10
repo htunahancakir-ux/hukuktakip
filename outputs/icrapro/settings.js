@@ -229,7 +229,7 @@ function bindBackupFiles(lastDownload) {
 }
 
 function settingsSectionTabs(active) {
-  const integration = ['ai', 'voip', 'whatsapp'].includes(active);
+  const integration = ['ai', 'voip', 'whatsapp', 'maps'].includes(active);
   const tabs = [
     ['firm', 'Firma Bilgileri'],
     ['contact', 'İletişim ve Adres'],
@@ -252,6 +252,7 @@ function settingsSectionTabs(active) {
           ['ai', 'Yapay Zekâ'],
           ['voip', 'VoIP / Telefon'],
           ['whatsapp', 'WhatsApp Business'],
+          ['maps', 'Google Haritalar'],
         ]
           .map(
             ([id, label]) =>
@@ -358,7 +359,7 @@ let settingsRenderId = 0;
 settings = async function () {
   const renderId = ++settingsRenderId;
   const requestedTab = settingsTab;
-  const pinScope = ['integrations', 'voip', 'ai', 'whatsapp'].includes(settingsTab)
+  const pinScope = ['integrations', 'voip', 'ai', 'whatsapp', 'maps'].includes(settingsTab)
     ? 'integrations'
     : settingsTab === 'permissions'
       ? 'permissions'
@@ -375,6 +376,7 @@ settings = async function () {
   if (settingsTab === 'audit') return auditSettingsPage();
   if (settingsTab === 'whatsapp') return whatsappSettingsPage();
   if (settingsTab === 'ai') return aiSettingsPage();
+  if (settingsTab === 'maps') return mapsSettingsPage();
   if (settingsTab === 'employeeTerms') return employeeTermsSettingsPage();
   originalSettings();
   const notice = document.querySelector('#settingsForm .notice');

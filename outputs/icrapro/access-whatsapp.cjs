@@ -271,4 +271,4 @@ async function handleWhatsAppRoutes(ctx) {
   return false;
 }
 
-module.exports = { handleWhatsAppRoutes };
+module.exports = { handleWhatsAppRoutes, throttle };

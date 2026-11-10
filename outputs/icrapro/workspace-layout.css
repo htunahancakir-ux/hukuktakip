@@ -1245,3 +1245,172 @@ dialog.modal-dragging .modal-drag-handle {
   flex-wrap: wrap;
   margin-bottom: 16px;
 }
+
+/* Pazarlama → Rota Bulma */
+.marketing-notice {
+  margin: 0 20px 14px;
+}
+.marketing-search-grid {
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+}
+.marketing-section-head {
+  padding: 4px 20px 0;
+  border-top: 1px solid #e6e9ee;
+}
+.marketing-section-head h3 {
+  margin: 14px 0 0;
+  font-size: 15px;
+}
+.marketing-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px 14px;
+  align-items: end;
+  padding: 12px 20px 16px;
+}
+.marketing-filters .settings-check {
+  min-height: 38px;
+  align-items: center;
+}
+.marketing-results th.marketing-check,
+.marketing-results td.marketing-check {
+  width: 44px;
+  text-align: center;
+}
+.marketing-results td,
+.marketing-route table td {
+  vertical-align: top;
+}
+.marketing-results td small,
+.marketing-route table td small {
+  display: block;
+  margin-top: 3px;
+  color: #6b7785;
+  font-size: 11px;
+}
+.marketing-results tr.selected td {
+  background: #f1f7fa;
+}
+.marketing-status {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #eef2f5;
+  color: #34495c;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.marketing-status.planned {
+  background: #fff3da;
+  color: #7a5300;
+}
+.marketing-status.visited {
+  background: #e5f4ea;
+  color: #1d6b38;
+}
+.marketing-status.refused {
+  background: #fbe9e9;
+  color: #8c2a2a;
+}
+.marketing-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.marketing-foot-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.marketing-attribution {
+  color: #5f6b76;
+  font-size: 11px;
+}
+.marketing-plan {
+  border-top: 1px solid #e6e9ee;
+}
+.marketing-stops {
+  margin: 0;
+  padding: 0 20px 0 44px;
+}
+.marketing-stops li {
+  padding: 8px 0;
+  border-bottom: 1px solid #eef0f3;
+}
+.marketing-stops li > span:first-child {
+  display: inline-block;
+  max-width: calc(100% - 120px);
+  vertical-align: top;
+}
+.marketing-stops small {
+  display: block;
+  color: #6b7785;
+}
+.marketing-stop-actions {
+  float: right;
+  white-space: nowrap;
+}
+.marketing-links {
+  flex-wrap: wrap;
+}
+.marketing-links a.primary,
+.marketing-links a.secondary {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+.marketing-links a.secondary {
+  padding: 11px 16px;
+  border: 1px solid #dce2e8;
+  border-radius: 6px;
+  background: white;
+  color: #1d6b38;
+  font-weight: 600;
+}
+.marketing-hint {
+  color: #6b7785;
+  font-size: 12px;
+}
+.marketing-copy {
+  width: 100%;
+  min-height: 120px;
+}
+.marketing-saved-head {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.marketing-saved-head h3 {
+  margin: 0 0 4px;
+}
+.marketing-saved-head p {
+  margin: 0;
+  color: #6b7785;
+}
+.marketing-route .muted {
+  color: #8a96a3;
+}
+@media (max-width: 600px) {
+  .marketing-filters,
+  .marketing-search-grid {
+    grid-template-columns: 1fr;
+  }
+  .marketing-stops {
+    padding: 0 12px 0 32px;
+  }
+  .marketing-stops li > span:first-child {
+    max-width: 100%;
+  }
+  .marketing-stop-actions {
+    float: none;
+    display: block;
+  }
+  .marketing-links a.primary,
+  .marketing-links a.secondary {
+    width: 100%;
+    justify-content: center;
+  }
+}

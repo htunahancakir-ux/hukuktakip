@@ -16,6 +16,8 @@ const workspaceScripts = [
   'parking-fees.js',
   'document-types.js',
   'districts.js',
+  'workspace-marketing-route.js',
+  'workspace-marketing.js',
   'workspace-access.js',
   'workspace-notifications.js',
   'workspace-breaks.js',
