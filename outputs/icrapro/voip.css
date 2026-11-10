@@ -209,6 +209,15 @@
 .voip-standalone-history p {
   margin: 6px 0;
 }
+.voip-recent-call {
+  padding: 7px 0;
+  border-bottom: 1px solid #dbe5eb;
+  line-height: 1.4;
+}
+.voip-recent-call small {
+  display: block;
+  color: #64748b;
+}
 @media (max-width: 600px) {
   .voip-standalone-form,
   .voip-add-phone {

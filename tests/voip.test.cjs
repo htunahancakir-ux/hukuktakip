@@ -183,16 +183,14 @@ test('standalone dialer shows last call before allowing a repeated call', async 
             extension: '1000',
             recentMinutes: 1440,
             results: [],
-            calls: [
-              {
-                phone: '905320000009',
-                createdAt: new Date().toISOString(),
-                staffName: 'Örnek Personel',
-                status: 'completed',
-                statusLabel: 'Görüşüldü',
-                duration: 12,
-              },
-            ],
+            calls: Array.from({ length: 7 }, (_, index) => ({
+              phone: '905320000009',
+              createdAt: new Date(Date.now() - index * 1000).toISOString(),
+              staffName: 'Örnek Personel',
+              status: 'completed',
+              statusLabel: 'Görüşüldü',
+              duration: 12,
+            })),
             active: [],
           };
         },
@@ -208,6 +206,11 @@ test('standalone dialer shows last call before allowing a repeated call', async 
     form.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
     await new Promise((resolve) => setImmediate(resolve));
     assert.match(w.document.querySelector('[data-preview]').textContent, /Örnek Personel/);
+    assert.equal(w.document.querySelectorAll('.voip-recent-call').length, 5);
+    assert(w.document.querySelector('[data-more-phone-history]'));
+    w.document.querySelector('[data-more-phone-history]').click();
+    await new Promise(setImmediate);
+    assert.equal(w.document.querySelectorAll('#voipHistory .voip-call-entry').length, 7);
     assert.match(w.document.querySelector('[data-dial]').textContent, /tekrar ara/);
     assert.equal(w.modalDrafts(form.closest('dialog')).length, 0, 'Phone lookup is not an unsaved edit');
     assert.equal(starts, 0);
@@ -526,8 +529,10 @@ test('live notes survive confirmed termination and final results reject prematur
     duration: 0,
   });
   assert.equal(h.state.voipCalls[0].status, 'busy');
-  assert.equal(h.state.voipCalls[0].draftNote, 'Görüşme sürerken alınan not');
-  await h.call('result', 'POST', { id: call.id, result: 'Meşgul', note: 'Görüşme sürerken alınan not' });
+  assert.equal(h.state.voipCalls[0].result, 'Meşgul');
+  assert.match(h.state.voipCalls[0].note, /Görüşme sürerken alınan not/);
+  assert.match(h.state.voipCalls[0].note, /Meşgul/);
+  assert(h.state.voipCalls[0].resultAt);
   assert.equal(h.state.voipCalls[0].draftNote, undefined);
   assert.equal((await h.call('recordings?status=busy&result=' + encodeURIComponent('Meşgul'))).total, 1);
   assert.equal((await h.call('recordings?status=completed')).total, 0);
@@ -1181,4 +1186,96 @@ test('provider busy termination overrides an answered announcement and closes th
   });
   assert.equal(call.status, 'busy');
   assert(call.endedAt);
+});
+
+test('borrower calling initializes the shared background webphone without requiring standalone dialing', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM(
+    '<dialog open><div class="sheet-header-actions"></div><section data-borrower-panel="conversations"></section></dialog>',
+    {
+      url: 'https://example.test',
+      runScripts: 'dangerously',
+    },
+  );
+  try {
+    const w = dom.window;
+    let tokens = 0;
+    w.HTMLDialogElement.prototype.show = function () {
+      this.open = true;
+    };
+    Object.assign(w, {
+      hanAuth: { id: 'u', role: 'ceo' },
+      esc: String,
+      fetch: async (url) => ({
+        ok: true,
+        json: async () => {
+          if (url.endsWith('/webphone')) {
+            tokens++;
+            return { url: 'https://example.test/webphone?token=test' };
+          }
+          return {
+            webphone: true,
+            enabled: true,
+            extension: '1001',
+            phones: [],
+            calls: [],
+            active: [],
+            results: [],
+          };
+        },
+      }),
+    });
+    w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    w.setupBorrowerVoip(w.document.querySelector('dialog'), { id: 'd' });
+    w.document.querySelector('[data-open-voip]').click();
+    await new Promise(setImmediate);
+    await new Promise(setImmediate);
+    assert.equal(tokens, 1);
+    const frame = w.document.querySelector('#voipWebphone iframe');
+    assert(frame);
+    assert.equal(w.document.getElementById('voipPhoneDock').hidden, true);
+    assert.equal(w.document.querySelector('[data-open-webphone]'), null);
+    w.document.querySelector('[data-open-voip]').click();
+    w.document.querySelector('[data-open-voip]').click();
+    await new Promise(setImmediate);
+    assert.equal(tokens, 1);
+    assert.equal(w.document.querySelector('#voipWebphone iframe'), frame);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('confirmed automatically saved busy calls close without a second evaluation', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('', { url: 'https://example.test', runScripts: 'dangerously' });
+  try {
+    const w = dom.window;
+    w.HTMLDialogElement.prototype.show = function () {
+      this.open = true;
+    };
+    Object.assign(w, { esc: String });
+    w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    const call = {
+      id: 'busy-auto',
+      phone: '905320000000',
+      status: 'ringing',
+      createdAt: new Date().toISOString(),
+    };
+    w.showVoipActive({}, call);
+    assert(w.document.getElementById('voipActiveCall'));
+    w.showVoipActive(
+      {},
+      {
+        ...call,
+        status: 'busy',
+        result: 'Meşgul',
+        resultAt: new Date().toISOString(),
+        duration: 0,
+      },
+    );
+    assert.equal(w.document.getElementById('voipActiveCall'), null);
+    assert.equal(w.document.getElementById('voipPhoneDock').hidden, true);
+  } finally {
+    dom.window.close();
+  }
 });

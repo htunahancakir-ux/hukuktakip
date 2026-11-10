@@ -556,6 +556,7 @@ function setupBorrowerVoip(dialog, doc) {
     tone = 'error',
     confirmation = '',
     addingPhone = false;
+  let phoneOpening;
   function message(text, type = 'error') {
     feedback = text;
     tone = type;
@@ -594,6 +595,15 @@ function setupBorrowerVoip(dialog, doc) {
       const data = await voipApi('calls?documentId=' + encodeURIComponent(doc.id));
       if (!wrap.isConnected || seq !== version) return;
       voipUi.results = data.results || voipUi.results || [];
+      if (data.webphone && !phoneOpening)
+        phoneOpening = openVoipWebphone(
+          {
+            set textContent(text) {
+              message(text);
+            },
+          },
+          true,
+        );
       const scroll = panel.querySelector('.voip-number-list')?.scrollTop || 0;
       const lastFocused = document.activeElement?.dataset?.dialPhone;
       panel.innerHTML =
@@ -602,9 +612,6 @@ function setupBorrowerVoip(dialog, doc) {
         ' numara · Verimor</span></div>' +
         (!hanAuth.readOnly
           ? '<button type="button" class="secondary" data-add-phone>＋ Numara ekle</button>'
-          : '') +
-        (data.webphone
-          ? '<button type="button" class="secondary" data-open-webphone>Web telefonu</button>'
           : '') +
         '</div>' +
         '<div class="voip-panel-messages"><div data-voip-feedback role="alert" aria-live="assertive" hidden></div><div data-voip-repeat hidden></div></div>' +
@@ -865,30 +872,35 @@ function setupBorrowerVoip(dialog, doc) {
     history,
   );
 }
-function voipPhoneDock() {
+function voipPhoneDock(reveal = true) {
   let dock = document.getElementById('voipPhoneDock');
   if (!dock) {
     dock = document.createElement('div');
     dock.id = 'voipPhoneDock';
     dock.className = 'voip-phone-dock';
     dock.setAttribute('popover', 'manual');
+    dock.hidden = true;
     document.body.append(dock);
   }
-  dock.hidden = false;
-  if (dock.showPopover && !dock.matches(':popover-open')) dock.showPopover();
+  if (reveal) {
+    dock.hidden = false;
+    if (dock.showPopover && !dock.matches(':popover-open')) dock.showPopover();
+  }
   return dock;
 }
-async function openVoipWebphone(feedback) {
+async function openVoipWebphone(feedback, background = false) {
   try {
-    const dock = voipPhoneDock();
-    dock.classList.remove('voip-dock-minimized');
+    const dock = voipPhoneDock(!background);
+    if (!background) dock.classList.remove('voip-dock-minimized');
     const existing = document.getElementById('voipWebphone');
     if (existing?.open && existing.querySelector('iframe')?.src) {
       existing.style.visibility = 'visible';
-      existing.focus();
+      if (!background) existing.focus();
       return;
     }
-    const result = await voipApi('webphone', 'POST', {});
+    const result = await (voipUi.webphoneTokenRequest ||= voipApi('webphone', 'POST', {}).finally(() => {
+      voipUi.webphoneTokenRequest = null;
+    }));
     if (typeof result.url !== 'string' || !result.url.startsWith('https://'))
       throw Error('Web telefonu bağlantısı alınamadı. VoIP ayarlarını kontrol edin.');
     let phone = document.getElementById('voipWebphone');
@@ -916,7 +928,8 @@ async function openVoipWebphone(feedback) {
       };
     }
     phone.style.visibility = 'visible';
-    phone.querySelector('iframe').src = result.url;
+    if (phone.querySelector('iframe').getAttribute('src') !== result.url)
+      phone.querySelector('iframe').src = result.url;
     if (!phone.open) phone.show();
   } catch (error) {
     feedback.textContent = error.message;
@@ -1020,6 +1033,17 @@ function showVoipActive(doc, call) {
     host.querySelector('[data-current-hangup]').hidden = ended;
     host.querySelector('[data-current-sync]').hidden = true;
     host.querySelector('[data-current-hold]').hidden = ended;
+    if (next.status === 'busy' && next.resultAt) {
+      clearInterval(voipUi.timer);
+      voipUi.disposeActive?.();
+      host.remove();
+      voipUi.activeId = '';
+      const dock = document.getElementById('voipPhoneDock');
+      if (dock?.hidePopover) dock.hidePopover();
+      if (dock) dock.hidden = true;
+      if (typeof toast === 'function') toast('Meşgul sonucu otomatik kaydedildi.');
+      return;
+    }
     host.querySelector('[data-current-save]').hidden = !ended;
     host.querySelector('[data-current-mute]').hidden = ended;
     if (ended) {
@@ -1180,7 +1204,10 @@ async function openVoipHistory(doc, phone = '') {
   const host = dialog.querySelector('[data-history-content]');
   const refresh = async () => {
     try {
-      const data = await voipApi('calls?documentId=' + encodeURIComponent(doc.id));
+      const data = await voipApi(
+        'calls?' +
+          (doc.id ? 'documentId=' + encodeURIComponent(doc.id) : 'phone=' + encodeURIComponent(phone)),
+      );
       if (!host.isConnected) return;
       host.innerHTML =
         data.calls
@@ -1452,18 +1479,27 @@ function openStandaloneVoip() {
         Date.now() - Date.parse(last.createdAt) < data.recentMinutes * 60000 &&
         !['unanswered', 'busy', 'failed'].includes(last.status);
       preview.innerHTML =
-        '<div class="voip-standalone-history"><strong>Son arama</strong>' +
-        (last
-          ? '<p>' +
-            esc(voipDate(last.createdAt)) +
-            ' · ' +
-            esc(last.staffName || '—') +
-            ' · ' +
-            esc(voipDuration(last.duration)) +
-            '</p><p>' +
-            esc(last.statusLabel || '') +
-            (last.result ? ' · ' + esc(last.result) : '') +
-            '</p>'
+        '<div class="voip-standalone-history"><strong>Son 5 arama</strong>' +
+        (calls.length
+          ? calls
+              .slice(0, 5)
+              .map(
+                (c) =>
+                  '<div class="voip-recent-call"><span>' +
+                  esc(voipDate(c.createdAt)) +
+                  ' · ' +
+                  esc(c.staffName || '—') +
+                  ' · ' +
+                  esc(voipDuration(c.duration)) +
+                  '</span><small>' +
+                  esc(c.statusLabel || c.status || '') +
+                  (c.result ? ' · ' + esc(c.result) : '') +
+                  '</small></div>',
+              )
+              .join('') +
+            '<button type="button" class="link" data-more-phone-history>Ayrıntılı geçmişi gör' +
+            (calls.length > 5 ? ' · Devamı' : '') +
+            '</button>'
           : '<p>Bu numara için geçmiş arama bulunamadı.</p>') +
         (recent
           ? '<p class="voip-notice">Bu numara yakın zamanda arandı. Tekrar aramadan önce kontrol edin.</p>'
@@ -1471,6 +1507,9 @@ function openStandaloneVoip() {
         '</div><button type="button" class="primary" data-dial>' +
         (recent ? 'Kontrol ettim, tekrar ara' : 'Ara') +
         '</button>';
+      preview
+        .querySelector('[data-more-phone-history]')
+        ?.addEventListener('click', () => openVoipHistory({ id: '' }, normalized));
       preview.querySelector('[data-dial]').onclick = async (e) => {
         e.target.disabled = true;
         feedback.textContent = 'Arama başlatılıyor…';
