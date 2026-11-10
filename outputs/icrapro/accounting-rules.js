@@ -10,6 +10,7 @@
       'Kira',
       'Vergi',
       'Ofis Giderleri',
+      'Yediemin Gideri',
       'Yemek',
       'Ulaşım',
       'Diğer',

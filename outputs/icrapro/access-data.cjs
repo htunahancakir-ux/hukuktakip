@@ -330,6 +330,7 @@ async function handleDataRoutes(ctx) {
         'clientParty',
         'debtor',
         'identity',
+        'officeIdentity',
         'additionalPhones',
         'additionalAddresses',
         'phone1',

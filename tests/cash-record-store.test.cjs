@@ -128,8 +128,19 @@ test('Scoped cash commands validate permissions, atomically transfer, deduplicat
     assert.equal(outgoing.status, 200);
     assert.equal(outgoing.body.accountBalances, undefined);
     assert.deepEqual(await accountBalances(pool), { bank: '2500', cash: '8000' });
-    const race = await Promise.all([post({ amount: 6000 }), post({ amount: 6000 })]);
+    const race = await Promise.all([
+      post({ amount: 6000, expenseCategory: 'Yediemin Gideri' }),
+      post({ amount: 6000, expenseCategory: 'Yediemin Gideri' }),
+    ]);
     assert.deepEqual(race.map((r) => r.status).sort(), [200, 400]);
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS n FROM han_data.ledger_entries WHERE body->>'expenseCategory'='Yediemin Gideri'",
+        )
+      ).rows[0].n,
+      1,
+    );
     const ledger = state.data['hanhukuk-accounting-v1'],
       after = structuredClone(ledger);
     after.accounts[0].name = 'Renamed';

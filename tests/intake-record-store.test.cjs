@@ -199,7 +199,7 @@ test('Intake allocates server numbers, isolates edits, searches all clients and 
       };
     };
     const old = pristine.data['icrapro-v1'].docs[0];
-    const saved = await patch(old, { ...old, notes: 'only selected changed' });
+    const saved = await patch(old, { ...old, notes: 'only selected changed', officeIdentity: '00123456789' });
     pool.connect = connect;
     assert.equal(saved.status, 200, JSON.stringify(saved.body));
     assert(
@@ -215,6 +215,7 @@ test('Intake allocates server numbers, isolates edits, searches all clients and 
       assert.deepEqual(editedState.data[key], pristine.data[key]);
     const edited = editedState.data['icrapro-v1'].docs.find((d) => d.id === 'd0');
     assert.equal(edited.futureField.retained, true);
+    assert.equal(edited.officeIdentity, '00123456789');
     assert.equal(edited.fileData, old.fileData);
     assert.deepEqual(edited.conversations, old.conversations);
     assert.deepEqual(editedState.deletedDocuments, pristine.deletedDocuments);
@@ -235,6 +236,7 @@ test('Intake allocates server numbers, isolates edits, searches all clients and 
       debtor: 'YENİ BORÇLU',
       identity: '30000000000',
       amount: 100,
+      officeIdentity: '',
       originalDocument: 'Alındı',
       recordedBy: 'p',
       receivedById: 'p',
@@ -265,6 +267,18 @@ test('Intake allocates server numbers, isolates edits, searches all clients and 
     assert.equal((await patch(null, create('bad-field', { status: 'İnfaz' }))).status, 400);
     const staff = await login('staff'),
       denied = await login('denied');
+    const officeDraft = (await store.readState()).data['icrapro-v1'].docs.find((d) => d.id === 'new1');
+    assert.equal(
+      (await patch(officeDraft, { ...officeDraft, officeIdentity: '00123456789' }, staff)).status,
+      200,
+    );
+    const officeSaved = (await store.readState()).data['icrapro-v1'].docs.find((d) => d.id === 'new1');
+    const clearedOffice = await patch(officeSaved, { ...officeSaved, officeIdentity: '' }, staff);
+    assert.equal(clearedOffice.status, 200, JSON.stringify(clearedOffice.body));
+    assert.equal(
+      (await store.readState()).data['icrapro-v1'].docs.find((d) => d.id === 'new1').officeIdentity,
+      '',
+    );
     assert.equal((await patch(null, create('denied'), denied)).status, 403);
     assert.equal((await patch(null, create('bad-assignment', { relatedStaff: 'p' }), staff)).status, 403);
     const staffSaved = await patch(null, create('staff-created'), staff);
