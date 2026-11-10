@@ -36,6 +36,60 @@
   top: 0;
   z-index: 1;
 }
+.voip-phone-dock > dialog.voip-standalone {
+  padding: 12px 14px;
+}
+.voip-phone-dock .voip-standalone .panelhead {
+  padding: 0 0 8px;
+  gap: 8px;
+  align-items: center;
+}
+.voip-phone-dock h2 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.3;
+}
+.voip-phone-dock .voip-standalone .panelhead p {
+  margin: 3px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.voip-phone-dock .voip-standalone-form {
+  display: flex;
+  margin: 8px 0 0;
+  gap: 8px;
+}
+.voip-phone-dock .voip-standalone-form .field {
+  margin: 0;
+  gap: 4px;
+  font-size: 12px;
+}
+.voip-phone-dock input,
+.voip-phone-dock button {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+.voip-phone-dock .voip-standalone-history {
+  padding: 8px;
+  margin: 8px 0;
+  font-size: 11px;
+}
+.voip-phone-dock .voip-webphone .panelhead {
+  padding: 7px 12px;
+}
+.voip-phone-dock .voip-webphone iframe {
+  display: block;
+  width: 133.3333%;
+  height: 680px;
+  zoom: 0.75;
+}
+@media (max-height: 760px) {
+  .voip-phone-dock .voip-webphone iframe {
+    zoom: 0.6;
+    width: 166.6667%;
+  }
+}
 .voip-dock-minimized .voip-webphone iframe,
 .voip-dock-minimized .voip-standalone,
 .voip-dock-minimized .voip-live-note,

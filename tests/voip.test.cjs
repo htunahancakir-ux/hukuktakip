@@ -215,7 +215,7 @@ test('standalone dialer shows last call before allowing a repeated call', async 
     dom.window.close();
   }
 });
-test('webphone is reachable from the header and restoring it does not reload an ongoing session', async () => {
+test('single dial entry opens the webphone and restoring it does not reload an ongoing session', async () => {
   const { JSDOM } = require('jsdom');
   const dom = new JSDOM('<div class="header-actions"></div><aside><nav></nav></aside>', {
     url: 'https://example.test',
@@ -243,13 +243,15 @@ test('webphone is reachable from the header and restoring it does not reload an 
     });
     w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
     w.setupVoipNavigation();
-    w.document.querySelector('[data-global-webphone]').click();
+    assert.equal(w.document.querySelector('[data-global-webphone]'), null);
+    w.document.querySelector('[data-standalone-voip]').click();
     await new Promise(setImmediate);
     const phone = w.document.querySelector('#voipWebphone');
     assert(phone.open);
     phone.querySelector('button').click();
     assert(w.document.getElementById('voipPhoneDock').classList.contains('voip-dock-minimized'));
-    w.document.querySelector('[data-global-webphone]').click();
+    assert.equal(w.document.querySelector('[data-global-webphone]'), null);
+    w.document.querySelector('[data-standalone-voip]').click();
     await new Promise(setImmediate);
     assert.equal(tokens, 1);
     assert(!w.document.getElementById('voipPhoneDock').classList.contains('voip-dock-minimized'));
