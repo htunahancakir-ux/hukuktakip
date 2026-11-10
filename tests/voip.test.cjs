@@ -1165,10 +1165,13 @@ test('canceling an in-flight originate persists intent and hangs up as soon as t
 
 test('cancel control is immediately visible while originate is pending', async () => {
   const { JSDOM } = require('jsdom');
-  const dom = new JSDOM('<div id="area"><span id="slot"><button id="launch">Ara</button></span></div>', {
-    url: 'https://example.test',
-    runScripts: 'dangerously',
-  });
+  const dom = new JSDOM(
+    '<div class="header-actions"></div><div id="area"><span id="slot"><button id="launch">Ara</button></span></div>',
+    {
+      url: 'https://example.test',
+      runScripts: 'dangerously',
+    },
+  );
   try {
     const w = dom.window;
     let release,
@@ -1196,7 +1199,9 @@ test('cancel control is immediately visible while originate is pending', async (
     await assert.rejects(
       w.voipStartCancelable({ requestId: 'second' }, w.document.getElementById('area'), () => {}),
     );
-    button.click();
+    const globalHangup = w.document.querySelector('.header-actions [data-global-hangup]');
+    assert(globalHangup, 'global hangup exists before originate completes');
+    globalHangup.click();
     await new Promise(setImmediate);
     assert.equal(cancellations, 1);
     assert.match(
@@ -1571,4 +1576,18 @@ test('outbound caller numbers receive stable line numbers and reject internal/de
     config,
   );
   assert.equal(inbound.outboundLine, undefined);
+});
+
+test('unanswered call saves its outcome automatically and preserves live note', () => {
+  const call = {
+    status: 'ringing',
+    draftNote: 'Sonra tekrar kontrol et',
+    createdAt: new Date().toISOString(),
+  };
+  updateEvent(call, { event_type: 'hangup', answered: false, hangup_cause: 'NO_ANSWER' });
+  assert.equal(call.result, 'Ulaşılamadı');
+  assert.equal(call.resultBy, 'Santral');
+  assert(call.resultAt);
+  assert.match(call.note, /Sonra tekrar kontrol et/);
+  assert.equal(call.draftNote, undefined);
 });

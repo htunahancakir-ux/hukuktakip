@@ -13,6 +13,23 @@ async function voipApi(path, method = 'GET', value) {
     throw Object.assign(Error(result.error || 'Telefon işlemi tamamlanamadı.'), { status: response.status });
   return result;
 }
+function voipGlobalHangup(action) {
+  voipUi.globalHangup = action;
+  let button = document.querySelector('[data-global-hangup]');
+  if (!action) {
+    button?.remove();
+    return;
+  }
+  if (!button) {
+    button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'voip-hangup';
+    button.dataset.globalHangup = '';
+    button.textContent = '☎ Sonlandır';
+    document.querySelector('.header-actions')?.prepend(button);
+  }
+  button.onclick = () => voipUi.globalHangup?.();
+}
 function voipCancelWait(frame, waiting) {
   frame.querySelector(':scope > .voip-cancel-wait')?.remove();
   for (const child of frame.children) child.inert = waiting;
@@ -53,6 +70,7 @@ async function voipStartCancelable(input, container, report, launchButton) {
       }
     }
   };
+  voipGlobalHangup(() => cancel.click());
   cancel.onclick = () => {
     if (requested) return;
     requested = true;
@@ -82,6 +100,7 @@ async function voipStartCancelable(input, container, report, launchButton) {
     else cancel.remove();
     voipCancelWait(frame, false);
     voipUi.startPending = false;
+    voipGlobalHangup(null);
   }
 }
 function voipDate(value) {
@@ -1088,6 +1107,7 @@ function showVoipActive(doc, call) {
   };
   voipUi.disposeActive = () => {
     resetHeaderCall();
+    voipGlobalHangup(null);
     clearInterval(heartbeatTimer);
     disposed = true;
     clearTimeout(draftTimer);
@@ -1137,7 +1157,10 @@ function showVoipActive(doc, call) {
       line.textContent =
         next.outboundLine && display ? next.outboundLine + '. hat · ' + display : 'Dış hat doğrulanıyor…';
     }
-    if (ended) resetHeaderCall();
+    if (ended) {
+      resetHeaderCall();
+      voipGlobalHangup(null);
+    }
     voipCancelWait(host, !ended && !next.cancelError && (next.cancelRequested || hangupPending));
     // Busy/canceled calls keep the registered webphone ready for the next attempt.
     if (ended && !wasEnded && next.status === 'completed') releaseVoipWebphone();
@@ -1147,7 +1170,8 @@ function showVoipActive(doc, call) {
     host.querySelector('[data-current-hold]').hidden = ended;
     if (
       (next.resultAt &&
-        (next.status === 'busy' || (next.result === 'Meşgul' && next.resultBy === 'Santral'))) ||
+        (next.status === 'busy' ||
+          (['Meşgul', 'Ulaşılamadı'].includes(next.result) && next.resultBy === 'Santral'))) ||
       (next.cancelRequested && ['unanswered', 'failed'].includes(next.status))
     ) {
       clearInterval(voipUi.timer);
@@ -1252,6 +1276,12 @@ function showVoipActive(doc, call) {
       event.target.disabled = false;
     }
   };
+  if (!ended)
+    voipGlobalHangup(() => {
+      host.hidden = false;
+      if (!host.open && typeof host.showModal === 'function') host.showModal();
+      host.querySelector('[data-current-hangup]')?.click();
+    });
   const sync = async () => {
     if (syncing || disposed || ended) return;
     syncing = true;
