@@ -1290,3 +1290,18 @@ dialog.voip-active-call {
 [data-borrower-panel='conversations'] > .sectiontitle {
   margin-top: 0 !important;
 }
+
+.voip-phone-dock > dialog.voip-active-call:modal {
+  position: fixed;
+  inset: auto 16px 16px auto;
+  width: 460px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  border: 1px solid #b9cad6;
+  border-radius: 12px;
+  box-shadow: 0 12px 50px #15354745;
+}
+.voip-active-call::backdrop {
+  background: transparent;
+}

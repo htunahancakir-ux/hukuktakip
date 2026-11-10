@@ -172,7 +172,7 @@
     event.preventDefault();
     let state = moved.get(dialog);
     if (!state) {
-      const target = dialog.closest('.voip-phone-dock') || dialog;
+      const target = dialog.matches(':modal') ? dialog : dialog.closest('.voip-phone-dock') || dialog;
       const value = getComputedStyle(target).translate;
       const parts = value && value !== 'none' ? value.split(/\s+/) : ['0', '0'];
       const rect = target.getBoundingClientRect();
