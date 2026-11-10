@@ -19,6 +19,25 @@
 .voip-phone-dock[hidden] {
   display: none !important;
 }
+/* Keep the provider iframe connected for audio without displaying its duplicate dialer. */
+.voip-phone-dock > dialog.voip-webphone {
+  display: none !important;
+}
+.voip-phone-dock button.voip-hangup {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #fff;
+}
+.voip-phone-dock button.voip-hangup:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+.voip-phone-dock .voip-workspace-actions {
+  margin: 0 0 10px;
+  gap: 6px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
 .voip-phone-window-actions {
   display: flex;
   gap: 6px;

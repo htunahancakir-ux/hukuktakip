@@ -889,9 +889,9 @@ function showVoipActive(doc, call) {
   host.hidden = false;
   host.innerHTML = `<div class="voip-workspace-heading"><div><span data-current-status></span><strong>${esc(voipPhone(call.phone))}</strong><small>${esc(call.documentNumber || doc.number || '')} · ${esc(call.debtorName || doc.debtor || '')}</small><time data-current-duration aria-label="Çağrı süresi">00:00</time></div><button type="button" class="link" data-current-minimize>Küçült</button></div>
     <div class="voip-workspace-feedback" data-current-feedback role="alert" hidden></div>
-    <form data-current-form><label class="voip-live-note">Görüşme notu<textarea data-optional="true" name="note" maxlength="3000" rows="4" placeholder="Görüşme sürerken notunuzu yazabilirsiniz…"></textarea></label><span class="voip-draft-status" data-draft-status role="status"></span>
+    <form data-current-form><div class="voip-workspace-actions"><button class="secondary" type="button" data-current-mute aria-pressed="false" title="Sessize al">🎙 Sessize al</button><button class="secondary" type="button" data-current-hold disabled title="Verimor’un harici bekletme kontrolü henüz doğrulanmadı.">Ⅱ Beklet</button><button class="link" type="button" data-current-sync hidden>Durumu doğrula</button><button class="voip-hangup" type="button" data-current-hangup title="Aramayı sonlandır">☎ Sonlandır</button><button class="primary" type="submit" data-current-save hidden>Tamam</button></div><label class="voip-live-note">Görüşme notu<textarea data-optional="true" name="note" maxlength="3000" rows="4" placeholder="Görüşme sürerken notunuzu yazabilirsiniz…"></textarea></label><span class="voip-draft-status" data-draft-status role="status"></span>
     <fieldset class="voip-outcomes" data-current-outcomes hidden><legend>Görüşme sonucu</legend><p data-current-suggestion hidden>Santral sonucu seçildi; gerekirse değiştirebilirsiniz.</p><div data-current-choices></div></fieldset>
-    <div class="voip-workspace-actions"><button class="secondary" type="button" data-current-mute aria-pressed="false" title="Sessize al">🎙 Sessize al</button><button class="link" type="button" data-current-sync>Durumu doğrula</button><button class="voip-hangup" type="button" data-current-hangup title="Aramayı sonlandır">☎ Sonlandır</button><button class="primary" type="submit" data-current-save hidden>Tamam</button></div></form>`;
+</form>`;
   const form = host.querySelector('form'),
     note = form.elements.note,
     feedback = host.querySelector('[data-current-feedback]'),
@@ -964,7 +964,8 @@ function showVoipActive(doc, call) {
     host.dataset.ended = String(ended);
     outcomes.hidden = !ended;
     host.querySelector('[data-current-hangup]').hidden = ended;
-    host.querySelector('[data-current-sync]').hidden = ended;
+    host.querySelector('[data-current-sync]').hidden = true;
+    host.querySelector('[data-current-hold]').hidden = ended;
     host.querySelector('[data-current-save]').hidden = !ended;
     host.querySelector('[data-current-mute]').hidden = ended;
     if (ended) {
@@ -1348,8 +1349,15 @@ function openStandaloneVoip() {
     voipPhoneDock().prepend(dialog);
   }
   dialog.innerHTML =
-    '<div class="panelhead"><div><h2>Numara ile arama</h2><p>Dosyasız arama · Aramadan önce Hazır durumunu bekleyin.</p></div><button type="button" class="secondary" data-close>Vazgeç</button></div><form class="voip-standalone-form" data-ignore-dirty><label class="field">Aranacak telefon numarası<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="05XX XXX XX XX" required></label><button type="submit" class="primary">Geçmişi kontrol et</button></form><div data-feedback role="alert"></div><div data-preview></div>';
-  dialog.querySelector('[data-close]').onclick = () => dialog.close();
+    '<div class="panelhead"><div><h2>Numara ile arama</h2><p>Dosyasız arama · Telefon bağlantısı arka planda açılır.</p></div><button type="button" class="secondary" data-close>Kapat</button></div><form class="voip-standalone-form" data-ignore-dirty><label class="field">Aranacak telefon numarası<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="05XX XXX XX XX" required></label><button type="submit" class="primary">Geçmişi kontrol et</button></form><div data-feedback role="alert"></div><div data-preview></div>';
+  dialog.querySelector('[data-close]').onclick = () => {
+    dialog.close();
+    if (!document.getElementById('voipActiveCall')) {
+      const dock = document.getElementById('voipPhoneDock');
+      if (dock?.hidePopover) dock.hidePopover();
+      if (dock) dock.hidden = true;
+    }
+  };
   const form = dialog.querySelector('form'),
     feedback = dialog.querySelector('[data-feedback]'),
     preview = dialog.querySelector('[data-preview]');
