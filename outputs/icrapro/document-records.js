@@ -509,7 +509,8 @@ function matchesDebtorColumns(doc) {
       !value ||
       (key === 'type'
         ? docType(doc) === value
-        : normalizeSearch(values[key]).includes(normalizeSearch(value))),
+        : normalizeSearch(values[key]).includes(normalizeSearch(value)) ||
+          (key === 'record' && matchesFolioNumber(doc.number, value))),
   );
 }
 
@@ -1289,7 +1290,9 @@ function filteredBorrowers(docs, filters, status, query, isAdmin) {
     )
       return false;
     if (
-      (filters.number && !norm(d.number).includes(norm(filters.number).trim())) ||
+      (filters.number &&
+        !norm(d.number).includes(norm(filters.number).trim()) &&
+        !matchesFolioNumber(d.number, filters.number)) ||
       (filters.debtor && !norm(d.debtor).includes(norm(filters.debtor).trim()))
     )
       return false;
