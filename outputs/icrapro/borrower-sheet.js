@@ -355,7 +355,7 @@ function editBorrower(id) {
     dialog.id = 'editBorrowerDialog';
     document.body.append(dialog);
   }
-  dialog.innerHTML = `<form id="editBorrowerForm"><div class="panelhead"><div><h2>Borçlu Bilgilerini Düzenle</h2><p>${esc(d.number)} · ${esc(docType(d))}</p></div><button type="button" class="secondary" id="cancelEditBorrower">Kapat</button></div><div class="formbody grid">${field('Ad Soyad / Unvan', 'debtor', 'text', d.debtor, true, true)}${field('TC Kimlik / Vergi No', 'identity', 'text', d.identity, true)}${field('Ofis TC', 'officeIdentity', 'text', d.officeIdentity).replace('<input ', '<input data-optional="true" ')}${field('Tel-1', 'phone1', 'tel', d.phone1, true)}${field('Tel-2', 'phone2', 'tel', d.phone2)}${field('Ref. Tel-1', 'referencePhone1', 'tel', d.referencePhone1)}${field('Ref. Tel-2', 'referencePhone2', 'tel', d.referencePhone2)}${field('Ofis Tel-1', 'officePhone1', 'tel', d.officePhone1)}${field('Ofis Tel-2', 'officePhone2', 'tel', d.officePhone2)}${propertyFields(d, 'editDebtor')}${clientCityField(d, 'editDebtor')}<label class="field full">Borçlu Açık Adres<textarea name="address" rows="3" required>${esc(d.address || '')}</textarea></label>${guarantorExtraAddress(d, 'address2', 'editDebtor2', 'Borçlu Adres-2')}${guarantorExtraAddress(d, 'officeAddress3', 'editDebtor3', 'Borçlu Adres (Ofis)-3')}<label class="field full">Açıklama / Not<textarea name="notes" rows="3" data-optional="true">${esc(d.notes || '')}</textarea></label></div><div class="actions"><button class="primary">Değişiklikleri Kaydet</button></div></form>`;
+  dialog.innerHTML = `<form id="editBorrowerForm"><div class="panelhead"><div><h2>Borçlu Bilgilerini Düzenle</h2><p>${esc(d.number)} · ${esc(docType(d))}</p></div><button type="button" class="secondary" id="cancelEditBorrower">Kapat</button></div><div class="formbody grid">${field('Ad Soyad / Unvan', 'debtor', 'text', d.debtor, true, true)}${field('TC Kimlik / Vergi No', 'identity', 'text', d.identity).replace('<input ', '<input data-optional="true" ')}${field('Ofis TC', 'officeIdentity', 'text', d.officeIdentity).replace('<input ', '<input data-optional="true" ')}${field('Tel-1', 'phone1', 'tel', d.phone1, true)}${field('Tel-2', 'phone2', 'tel', d.phone2)}${field('Ref. Tel-1', 'referencePhone1', 'tel', d.referencePhone1)}${field('Ref. Tel-2', 'referencePhone2', 'tel', d.referencePhone2)}${field('Ofis Tel-1', 'officePhone1', 'tel', d.officePhone1)}${field('Ofis Tel-2', 'officePhone2', 'tel', d.officePhone2)}${propertyFields(d, 'editDebtor')}${clientCityField(d, 'editDebtor')}<label class="field full">Borçlu Açık Adres<textarea name="address" rows="3" required>${esc(d.address || '')}</textarea></label>${guarantorExtraAddress(d, 'address2', 'editDebtor2', 'Borçlu Adres-2')}${guarantorExtraAddress(d, 'officeAddress3', 'editDebtor3', 'Borçlu Adres (Ofis)-3')}<label class="field full">Açıklama / Not<textarea name="notes" rows="3" data-optional="true">${esc(d.notes || '')}</textarea></label></div><div class="actions"><button class="primary">Değişiklikleri Kaydet</button></div></form>`;
   $('#cancelEditBorrower').onclick = () => dialog.close();
   if (!dialog.open) dialog.showModal();
   for (const prefix of ['editDebtor', 'editDebtor2', 'editDebtor3']) {
@@ -388,8 +388,13 @@ function editBorrower(id) {
     const value = Object.fromEntries(new FormData(form));
     if (!validatePropertyFields(value)) return;
     for (const key of Object.keys(value)) value[key] = value[key].trim();
-    if (!value.debtor || !value.phone1 || !value.address || !/^\d{10,11}$/.test(value.identity))
-      return toast('Kimlik, telefon ve adres bilgilerini tamamlayın.');
+    if (
+      !value.debtor ||
+      !value.phone1 ||
+      !value.address ||
+      (value.identity && !/^\d{10,11}$/.test(value.identity))
+    )
+      return toast('Ad, telefon, adres ve varsa TC bilgilerini kontrol edin.');
     const city = turkeyCities.find(
         (city) => city.toLocaleLowerCase('tr') === value.city.toLocaleLowerCase('tr'),
       ),
@@ -437,7 +442,11 @@ function editBorrower(id) {
     stats();
     const detail = document.getElementById('borrowerDetail');
     if (detail?.open) borrowerDetail(d.id);
-    toast('Borçlu bilgileri güncellendi.');
+    toast(
+      value.identity
+        ? 'Borçlu bilgileri güncellendi.'
+        : 'Borçlu bilgileri güncellendi. Uyarı: TC bilgisi girilmedi.',
+    );
   };
 }
 

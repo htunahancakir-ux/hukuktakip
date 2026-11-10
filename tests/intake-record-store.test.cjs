@@ -247,7 +247,10 @@ test('Intake allocates server numbers, isolates edits, searches all clients and 
       trackingDate: '1990-01-01',
       ...overrides,
     });
-    const attempts = await Promise.all([patch(null, create('new1')), patch(null, create('new2'))]);
+    const attempts = await Promise.all([
+      patch(null, create('new1', { identity: '' })),
+      patch(null, create('new2')),
+    ]);
     for (const result of attempts) assert.equal(result.status, 200, JSON.stringify(result.body));
     assert.deepEqual(attempts.map((r) => r.body.records[0].value.number).sort(), ['S-0201', 'S-0202']);
     for (const r of attempts) assert.notEqual(r.body.records[0].value.trackingDate, '1990-01-01');
