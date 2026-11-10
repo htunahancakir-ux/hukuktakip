@@ -4,7 +4,7 @@ const { sessionKey } = require('../../lib/session-policy.cjs');
 async function handleCeoPin(ctx) {
   const { url, req, res, u, body, send, fail, persistMetadata, passwordOK } = ctx;
   if (!url.pathname.startsWith('/api/ceo-pin/')) return false;
-  if (u?.role !== 'ceo' || u.readOnly) throw fail(403, 'CEO yetkisi gerekli.');
+  if (u?.role !== 'ceo') throw fail(403, 'CEO yetkisi gerekli.');
   const current = ctx.state.ceoPin;
   if (url.pathname === '/api/ceo-pin/status' && req.method === 'GET') {
     send(res, 200, {

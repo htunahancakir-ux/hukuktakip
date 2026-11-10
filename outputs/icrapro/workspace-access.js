@@ -35,6 +35,18 @@ async function userManagement(editId) {
       whatsapp.onclick = () => whatsappAccountDialog(account);
       b.after(whatsapp);
     });
+    document.querySelectorAll('#passwordUserRows tr').forEach((row, index) => {
+      const account = users.filter((u) =>
+        normalizeSearch(u.name + ' ' + u.username).includes(normalizeSearch(query)),
+      )[index];
+      if (!account) return;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'link';
+      button.textContent = 'E-posta / Cep Telefonu';
+      button.onclick = () => showUserContact(account);
+      row.lastElementChild.append(button);
+    });
   };
   $('#passwordUserSearch').oninput = renderRows;
   renderRows();

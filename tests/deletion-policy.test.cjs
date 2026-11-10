@@ -50,13 +50,14 @@ function context(state, user = owner) {
     },
   };
 }
-test('Only the pinned active owner has deletion capability, even among CEOs', () => {
+test('Every active CEO has deletion capability; other roles remain blocked', () => {
   assert(canDelete(owner));
+  assert(canDelete({ ...owner, id: 'other' }));
   for (const user of [
     null,
-    { ...owner, id: 'other' },
     { ...owner, role: 'admin' },
     { ...owner, active: false },
+    { id: 'accountant', role: 'staff', accountingAccess: true, active: true },
   ])
     assert(!canDelete(user));
 });
@@ -86,7 +87,6 @@ test('Nonowners cannot remove core records through bulk writes or hide financial
 test('Deletion list and command reject other users and direct document delete rejects admins', async () => {
   for (const user of [
     { id: 'admin', role: 'admin' },
-    { ...owner, id: 'another-ceo' },
     { id: 'staff', role: 'staff' },
   ]) {
     const { ctx } = context(fixture(), user);
@@ -149,7 +149,11 @@ test('Authenticated access exposes capability only to owner and enforces it on b
   const { executeAccess } = require('../lib/access-executor.cjs'),
     crypto = require('node:crypto');
   const { sessionKey } = require('../lib/session-policy.cjs');
-  for (const user of [owner, { id: 'admin', role: 'admin', name: 'Admin', active: true }]) {
+  for (const user of [
+    owner,
+    { ...owner, id: 'another-ceo' },
+    { id: 'admin', role: 'admin', name: 'Admin', active: true },
+  ]) {
     let state = fixture();
     state.users = [user];
     const req = {
@@ -179,7 +183,7 @@ test('Authenticated access exposes capability only to owner and enforces it on b
       Buffer.alloc(0),
       options,
     );
-    assert.equal(JSON.parse(session.body).user.canDelete, user.id === OWNER_ID);
+    assert.equal(JSON.parse(session.body).user.canDelete, user.role === 'ceo');
     const ledger = structuredClone(state.data['hanhukuk-accounting-v1']);
     ledger.entries = [];
     const tag =
@@ -193,7 +197,7 @@ test('Authenticated access exposes capability only to owner and enforces it on b
       Buffer.from(JSON.stringify({ value: ledger })),
       options,
     );
-    assert.equal(result.statusCode, user.id === OWNER_ID ? 200 : 403, result.body);
-    assert.equal(state.data['hanhukuk-accounting-v1'].entries.length, user.id === OWNER_ID ? 0 : 1);
+    assert.equal(result.statusCode, user.role === 'ceo' ? 200 : 403, result.body);
+    assert.equal(state.data['hanhukuk-accounting-v1'].entries.length, user.role === 'ceo' ? 0 : 1);
   }
 });

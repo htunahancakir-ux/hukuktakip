@@ -292,6 +292,7 @@ test('Turkish, phone and column filters preserve literal input and sorted cursor
     source.data['icrapro-v1'].docs.forEach((doc, i) =>
       Object.assign(doc, {
         debtor: i === 0 ? 'ÇAĞRI ÖZTÜRK' : 'Diğer',
+        number: i === 0 ? 'S-0003' : doc.number,
         trackingDate: i < 60 ? '2026-11-01' : undefined,
         due: '2026-12-01',
         relatedStaff: 'staff',
@@ -309,10 +310,17 @@ test('Turkish, phone and column filters preserve literal input and sorted cursor
       { query: '+90 532 123 45 67' },
       { query: '%_' },
       { columnDebtor: 'ÖZTÜRK' },
+      { number: 'S-003' },
+      { columnRecord: 's-003' },
+      { query: 'S-003' },
+      { query: 'S-3 ÖZTÜRK' },
     ]) {
       const result = await documentPage(pool, req, input);
       assert.equal(result.totals.count, '1', JSON.stringify(input));
       assert.equal(result.items[0].id, 'd00000');
+    }
+    for (const input of [{ number: 'S-4' }, { columnRecord: 'F-003' }, { query: 'S-003 missing' }]) {
+      assert.equal((await documentPage(pool, req, input)).totals.count, '0');
     }
     const column = await documentPage(pool, req, {
       columnStaff: 'sule',

@@ -20,7 +20,7 @@ test('Accounting UI loads bounded pages, preserves totals and edit baselines and
     hanRecordsEnabled: true,
     hanWorkspaceComplete: false,
     page: 'accounting',
-    hanAuth: { role: 'ceo' },
+    hanAuth: { role: 'staff', accountingAccess: true, canDelete: false },
     accounting: { accounts: [], entries: [{ id: 'existing' }] },
     hanDataBaselines: new Map([['hanhukuk-accounting-v1', baseline]]),
     accountingFilter: '',

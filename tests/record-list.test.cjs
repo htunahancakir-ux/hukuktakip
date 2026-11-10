@@ -5,6 +5,61 @@ const path = require('node:path');
 const { JSDOM } = require('jsdom');
 const { parsers } = require('prettier/plugins/babel');
 const root = path.resolve(__dirname, '../outputs/icrapro');
+
+test('Folio searches match omitted leading zeros in column, advanced and global filters', (t) => {
+  const dom = new JSDOM('', { runScripts: 'dangerously' });
+  t.after(() => dom.window.close());
+  const w = dom.window;
+  const doc = {
+    id: 'folio',
+    number: 'S-0003',
+    debtor: 'Synthetic',
+    client: 'c',
+    amount: 100,
+    status: 'İnfaz',
+  };
+  Object.assign(w, {
+    db: { clients: [{ id: 'c', name: 'Client' }] },
+    personnel: [],
+    debtorColumnFilters: { record: 'S-003' },
+    docType: () => 'Senet',
+    debtorStatus: (d) => d.status,
+    money: String,
+    displayDate: String,
+    borrowerTrackingDate: () => '',
+    clientPayoutClosureDate: () => '',
+    borrowerAmount: () => 10000,
+    docFinance: () => ({ target: 10000 }),
+  });
+  for (const [file, names] of [
+    [
+      'client-records.js',
+      [
+        'normalizeSearch',
+        'matchesFolioNumber',
+        'recordSearchText',
+        'matchesGlobalSearch',
+        'borrowerPhoneMatches',
+      ],
+    ],
+    ['document-records.js', ['matchesDebtorColumns', 'filteredBorrowers']],
+  ]) {
+    const source = fs.readFileSync(path.join(root, file), 'utf8');
+    for (const node of parsers.babel.parse(source).program.body)
+      if (node.type === 'FunctionDeclaration' && names.includes(node.id.name))
+        w.eval(source.slice(node.start, node.end));
+  }
+  for (const query of ['S-003', 's-3', 'S-0003']) {
+    w.debtorColumnFilters.record = query;
+    assert.equal(w.matchesDebtorColumns(doc), true);
+    assert.equal(w.matchesGlobalSearch(doc, w.db.clients[0], query), true);
+    assert.equal(w.filteredBorrowers([doc], { number: query }, 'Tümü', '', true).length, 1);
+  }
+  assert.equal(w.matchesFolioNumber(doc.number, 'F-003'), false);
+  assert.equal(w.matchesFolioNumber(doc.number, 'S-004'), false);
+  assert.equal(w.matchesFolioNumber('S-0034', 'S-003'), false);
+  assert.equal(w.filteredBorrowers([doc], { number: 'S-003' }, 'Derdest', '', true).length, 0);
+});
 test('Startup reads asynchronously and does not expose a partial or empty workspace after a failed request', async (t) => {
   const dom = new JSDOM('', { url: 'https://local-test.invalid', runScripts: 'dangerously' });
   t.after(() => dom.window.close());

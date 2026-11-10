@@ -5,6 +5,148 @@ const { createApplication } = require('../lib/application.cjs');
 const { importState, createStore } = require('../lib/postgres-store.cjs');
 const { importRecords, activateRecords } = require('../lib/record-store/storage.cjs');
 const { diff } = require('../outputs/icrapro/record-patch.js');
+
+test('Unchanged automatic charges preserve their timestamp; changed inputs are still recalculated', () => {
+  const { applyAutomaticLegalCharges } = require('../outputs/icrapro/legal-charges.cjs');
+  const doc = { id: 'automatic', docType: 'Senet', amount: 1000, due: '2026-11-01', status: 'Derdest' };
+  assert.equal(applyAutomaticLegalCharges(doc, [], '2026-11-10'), true);
+  doc.legalCalculation.calculatedAt = '2026-11-10T00:00:00.000Z';
+  const before = structuredClone(doc);
+  assert.equal(applyAutomaticLegalCharges(doc, [], '2026-11-10'), false);
+  assert.deepEqual(doc, before);
+  doc.amount = 2000;
+  assert.equal(applyAutomaticLegalCharges(doc, [], '2026-11-10'), true);
+  assert.equal(doc.legalCalculation.principal, 200000);
+  doc.due = '2026-11-02';
+  assert.equal(applyAutomaticLegalCharges(doc, [], '2026-11-10'), true);
+  assert.equal(doc.legalCalculation.start, '2026-11-02');
+  assert.equal(applyAutomaticLegalCharges(doc, [], '2026-11-11'), true);
+  assert.equal(doc.legalCalculation.end, '2026-11-11');
+});
+test('Manual interest survives scoped saves; only CEO can override closed-file locks', async () => {
+  const { pg, pool } = await database();
+  let server;
+  try {
+    const state = fixture();
+    state.users.push(
+      { ...state.users[0], id: 'admin', username: 'admin', role: 'admin' },
+      { ...state.users[0], id: 'staff', username: 'staff', role: 'staff' },
+    );
+    state.data['icrapro-v1'] = {
+      clients: [{ id: 'client', name: 'Faiz Testi' }],
+      docs: ['unpaid', 'paid', 'closed'].map((id) => ({
+        id,
+        number: id,
+        client: 'client',
+        debtor: id,
+        docType: 'Senet',
+        amount: 1000,
+        due: '2026-11-01',
+        status: id === 'closed' ? 'İnfaz' : 'Derdest',
+        financeInterest: 50,
+        financeFee: 100,
+      })),
+    };
+    state.data['hanhukuk-accounting-v1'].accounts = [{ id: 'cash', name: 'Kasa' }];
+    state.data['hanhukuk-finance-v1'] = ['paid', 'closed'].map((id) => ({
+      id: 'payment-' + id,
+      documentId: id,
+      type: 'payment',
+      accountId: 'cash',
+      amount: id === 'closed' ? 115000 : 10000,
+      date: '2026-11-02',
+    }));
+    require('../outputs/icrapro/legal-charges.cjs').applyAutomaticLegalCharges(
+      state.data['icrapro-v1'].docs[0],
+      [],
+      require('../lib/business-time.cjs').businessDate(),
+    );
+    await importState(pool, state);
+    await importRecords(pool);
+    await activateRecords(pool);
+    const store = createStore(pool, { records: true });
+    server = await serve(createApplication({ store }));
+    for (const username of ['test', 'admin', 'staff']) {
+      const login = await fetch(server.url + '/api/login', {
+        method: 'POST',
+        headers: { 'X-Han-Request': '1', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      assert.equal(login.status, 200);
+      const headers = {
+        'X-Han-Request': '1',
+        'Content-Type': 'application/json',
+        cookie: login.headers.get('set-cookie').split(';')[0],
+      };
+      const load = async (id) =>
+        (await fetch(server.url + '/api/records/document?id=' + id + '&section=context', { headers })).json();
+      const patch = (before, after) =>
+        fetch(server.url + '/api/data/patch?key=icrapro-v1', {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify(
+            diff('icrapro-v1', { docs: [before], clients: [] }, { docs: [after], clients: [] }),
+          ),
+        });
+      for (const id of ['unpaid', 'paid']) {
+        const before = (await load(id)).record;
+        const interest = username === 'admin' ? 450.75 : 325.25;
+        const after = { ...before, financeInterest: interest, financeFee: 125.5, financeTermsManual: true };
+        if (username === 'test' && id === 'unpaid') {
+          // A background save must not alter the unchanged automatic calculation
+          // and make the finance form's existing snapshot stale.
+          const background = await patch(before, { ...before, notes: 'Başka oturumun notu' });
+          assert.equal(background.status, 200, await background.text());
+          delete after.legalCalculation;
+          delete after.legalCalculationError;
+        }
+        const response = await patch(before, after);
+        if (username === 'staff') {
+          assert.equal(response.status, 403);
+          const flagResponse = await patch(before, { ...before, financeTermsManual: false });
+          assert.equal(flagResponse.status, 403);
+          continue;
+        }
+        const body = await response.json();
+        assert.equal(response.status, 200, JSON.stringify(body));
+        assert.equal(body.records[0].value.financeInterest, interest);
+        assert.equal(body.records[0].value.financeFee, 125.5);
+        const reloaded = (await load(id)).record;
+        assert.equal(reloaded.financeInterest, interest);
+        assert.equal(reloaded.financeTermsManual, true);
+        const noteResponse = await patch(reloaded, { ...reloaded, notes: 'Sonraki işlem' });
+        assert.equal(noteResponse.status, 200, await noteResponse.text());
+        const page = await (await fetch(server.url + '/api/records/documents?q=' + id, { headers })).json();
+        const row = page.items.find((item) => item.id === id);
+        assert.equal(row.targetCents, String(100000 + Math.round(interest * 100) + 12550));
+        assert.equal(row.remainingCents, String(Number(row.targetCents) - (id === 'paid' ? 10000 : 0)));
+        assert.equal(
+          (await store.readState()).data['icrapro-v1'].docs.find((doc) => doc.id === id).financeInterest,
+          interest,
+        );
+        if (username === 'test' && id === 'unpaid') {
+          const current = (await load(id)).record;
+          const concurrent = await patch(current, { ...current, financeInterest: interest + 10 });
+          assert.equal(concurrent.status, 200, await concurrent.text());
+          const stale = await patch(current, { ...current, financeInterest: interest + 20 });
+          assert.equal(stale.status, 409, 'Actual concurrent edits of interest must remain protected');
+          assert.equal((await load(id)).record.financeInterest, interest + 10);
+        }
+      }
+      const closed = (await load('closed')).record;
+      const closedEdit = await patch(closed, {
+        ...closed,
+        financeInterest: username === 'test' ? 400 : 500,
+        financeTermsManual: true,
+      });
+      assert.equal(closedEdit.status, username === 'test' ? 200 : 403);
+    }
+  } finally {
+    await server?.close();
+    await pg.close();
+  }
+});
+
 test('Active record storage preserves existing HTTP commands, audit, auth and scoped edits', async () => {
   const { pg, pool } = await database();
   let server;

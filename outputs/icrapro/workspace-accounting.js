@@ -283,7 +283,8 @@ function accountLedgerRows(rows) {
 let accountingScrollToLedger = false;
 function accountingPage(remote) {
   if (!Array.isArray(remote?.items) || !remote?.totals) remote = null;
-  if (window.hanAuth && !['ceo', 'admin'].includes(hanAuth.role)) return staffAccounting();
+  if (window.hanAuth && !(['ceo', 'admin'].includes(hanAuth.role) || hanAuth.accountingAccess === true))
+    return staffAccounting();
   if (window.hanRecordsEnabled && !remote) return loadRecordAccounting();
   const allRows = remote ? [] : accountLedgerRows(accountMovements()),
     rows = remote ? remote.items : filterAccountMovements(allRows, accountingFilter, movementFilters),

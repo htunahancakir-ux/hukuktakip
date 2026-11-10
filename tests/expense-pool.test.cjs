@@ -18,6 +18,7 @@ for (const records of [false, true]) {
     try {
       const state = fixture();
       state.users.push({ ...state.users[0], id: 'staff', username: 'staff', role: 'staff', permissions: [] });
+      state.users.push({ ...state.users[0], id: 'manager', username: 'manager', role: 'admin' });
       state.users.push({
         ...state.users[0],
         id: 'reader',
@@ -265,6 +266,7 @@ for (const records of [false, true]) {
             '/api/data/patch?key=icrapro-v1',
             'PUT',
             diff('icrapro-v1', updated.data['icrapro-v1'], tooLow),
+            'manager',
           )
         ).status,
         400,
@@ -277,6 +279,7 @@ for (const records of [false, true]) {
             '/api/data/patch?key=icrapro-v1',
             'PUT',
             diff('icrapro-v1', updated.data['icrapro-v1'], equalToPaid),
+            'manager',
           )
         ).status,
         400,
@@ -284,13 +287,18 @@ for (const records of [false, true]) {
       const closedAfter = structuredClone(termsBefore);
       closedAfter.docs.find((doc) => doc.id === 'closed').financeFee = 50;
       assert.equal(
-        (await request('/api/data/patch?key=icrapro-v1', 'PUT', diff('icrapro-v1', termsBefore, closedAfter)))
-          .status,
+        (
+          await request(
+            '/api/data/patch?key=icrapro-v1',
+            'PUT',
+            diff('icrapro-v1', termsBefore, closedAfter),
+            'manager',
+          )
+        ).status,
         403,
       );
       const deleted = await request('/api/operations/delete?type=accounting&q=Test');
-      // The fixture CEO is not the installation owner and cannot delete.
-      assert.equal(deleted.status, 403);
+      assert.equal(deleted.status, 200);
       const owner = require('../lib/deletion-policy.cjs').OWNER_ID;
       const fundingList = await request('/api/operations/delete?type=accounting&q=Test', 'GET', null, owner);
       const fundingRow = fundingList.body.items.find((item) => item.id === 'fund-1');

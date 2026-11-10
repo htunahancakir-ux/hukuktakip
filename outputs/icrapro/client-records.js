@@ -233,6 +233,11 @@ function normalizeSearch(value) {
     .trim();
 }
 
+function matchesFolioNumber(number, query) {
+  const canonical = (value) => normalizeSearch(value).replace(/^([a-z]+)-0*([0-9]+)$/, '$1-$2');
+  return /^[a-z]+-[0-9]+$/.test(normalizeSearch(query)) && canonical(number) === canonical(query);
+}
+
 function recordSearchText(doc, client) {
   const fields = (record) =>
     Object.entries(record || {})
@@ -298,7 +303,7 @@ function matchesGlobalSearch(doc, client, query) {
     normalizeSearch(query)
       .split(/\s+/)
       .filter(Boolean)
-      .every((term) => text.includes(term))
+      .every((term) => text.includes(term) || matchesFolioNumber(doc.number, term))
   )
     return true;
   return (

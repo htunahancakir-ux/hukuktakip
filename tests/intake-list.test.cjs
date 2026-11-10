@@ -3,6 +3,83 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
+const { parsers } = require('prettier/plugins/babel');
+
+test('Borrower TC is optional: blank saves with warning and filled values keep format validation', (t) => {
+  const dom = new JSDOM('', { runScripts: 'dangerously' });
+  t.after(() => dom.window.close());
+  const w = dom.window,
+    messages = [];
+  let saves = 0;
+  w.eval(fs.readFileSync('outputs/icrapro/html-safety.js', 'utf8'));
+  Object.assign(w, {
+    esc: w.escapeHtml,
+    structuredClone,
+    $: (s) => w.document.querySelector(s),
+    db: {
+      docs: [
+        {
+          id: 'd',
+          debtor: 'Synthetic',
+          identity: '',
+          officeIdentity: '00123456789',
+          phone1: '05321234567',
+          address: 'Address',
+        },
+      ],
+    },
+    docType: () => 'Senet',
+    propertyFields: () => '',
+    bindPropertyFields() {},
+    setupClientCity() {},
+    setupClientDistrict() {},
+    clientCityField: () =>
+      '<select name="city"><option>Test City</option></select><select name="district"><option>Test District</option></select>',
+    guarantorExtraAddress: (d, base) =>
+      `<select name="${base}City"></select><select name="${base}District"></select>`,
+    turkeyCities: ['Test City'],
+    turkeyDistricts: { 'Test City': ['Test District'] },
+    validatePropertyFields: () => true,
+    save: () => saves++,
+    stats() {},
+    page: 'test',
+    toast: (message) => messages.push(message),
+  });
+  w.HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  w.HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+  };
+  for (const [file, name] of [
+    ['form-inputs.js', 'field'],
+    ['borrower-sheet.js', 'editBorrower'],
+  ]) {
+    const source = fs.readFileSync('outputs/icrapro/' + file, 'utf8');
+    const node = parsers.babel
+      .parse(source)
+      .program.body.find((n) => n.type === 'FunctionDeclaration' && n.id.name === name);
+    w.eval(source.slice(node.start, node.end));
+  }
+  w.editBorrower('d');
+  let form = w.document.querySelector('#editBorrowerForm');
+  assert.equal(form.elements.identity.required, false);
+  assert.equal(form.elements.identity.dataset.optional, 'true');
+  form.requestSubmit();
+  assert.equal(saves, 1);
+  assert.match(messages.at(-1), /Uyarı: TC bilgisi girilmedi/);
+  assert.equal(w.db.docs[0].identity, '');
+  assert.equal(w.db.docs[0].officeIdentity, '00123456789');
+  w.editBorrower('d');
+  form = w.document.querySelector('#editBorrowerForm');
+  form.elements.identity.value = 'abc';
+  form.requestSubmit();
+  assert.equal(saves, 1);
+  form.elements.identity.value = '12345678901';
+  form.requestSubmit();
+  assert.equal(saves, 2);
+  assert.doesNotMatch(messages.at(-1), /Uyarı/);
+});
 const tick = async () => {
   for (let i = 0; i < 6; i++) await new Promise(setImmediate);
 };

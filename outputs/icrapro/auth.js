@@ -91,6 +91,7 @@ async function preloadServerData({ complete = false } = {}) {
 function authApi(url, method = 'GET', data) {
   if (
     window.hanAuth?.readOnly &&
+    window.hanAuth.role !== 'ceo' &&
     !['GET', 'HEAD'].includes(method) &&
     !(
       method === 'POST' &&
@@ -198,6 +199,7 @@ function hanCan(permission) {
     !!hanAuth &&
     (['ceo', 'admin'].includes(hanAuth.role) ||
       permission === 'documents' ||
+      (hanAuth.accountingAccess === true && ['cashIn', 'cashOut'].includes(permission)) ||
       hanAuth.permissions.includes(permission))
   );
 }
@@ -262,14 +264,7 @@ function showAccountPanel() {
     <div class="actions"><button type="button" class="secondary" id="openAccountTerms">Sözleşme geçmişim</button><span><button type="button" class="secondary" id="cancelAccountSettings">Vazgeç</button><button type="submit" class="primary">Şifreyi değiştir</button></span></div>
   </form>`;
   const form = document.getElementById('accountSettingsForm');
-  if (user.role === 'ceo') {
-    const pinButton = document.createElement('button');
-    pinButton.type = 'button';
-    pinButton.className = 'secondary';
-    pinButton.textContent = 'Güvenlik PIN’i Belirle / Değiştir';
-    pinButton.onclick = () => showCeoPinSettings();
-    form.querySelector('.account-settings-form').append(pinButton);
-  }
+  window.setupAccountContact?.(form);
   installPasswordVisibility(form);
   const close = () => modal.close();
   document.getElementById('closeAccountSettings').onclick = close;

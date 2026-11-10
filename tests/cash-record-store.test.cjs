@@ -40,6 +40,20 @@ test('Scoped cash commands validate permissions, atomically transfer, deduplicat
       ['no', []],
     ])
       state.users.push({ ...state.users[0], id, username: id, role: 'staff', permissions });
+    state.data['icrapro-personnel-v1'].push({
+      id: 'accountant-person',
+      name: 'Accountant',
+      department: 'Muhasebe',
+      active: true,
+    });
+    state.users.push({
+      ...state.users[0],
+      id: 'accountant',
+      username: 'accountant',
+      role: 'staff',
+      staffId: 'accountant-person',
+      permissions: [],
+    });
     await importState(pool, state);
     await importRecords(pool);
     await activateRecords(pool);
@@ -79,6 +93,15 @@ test('Scoped cash commands validate permissions, atomically transfer, deduplicat
     assert.equal((await post({}, 'no')).status, 403);
     assert.equal((await post({}, 'in')).status, 403);
     assert.equal((await post({ type: 'transfer', destination: 'bank' }, 'out')).status, 403);
+    assert.equal(
+      (await post({ type: 'transfer', destination: 'bank', amount: 1 }, 'accountant')).status,
+      200,
+    );
+    assert.equal(
+      (await post({ type: 'transfer', accountId: 'bank', destination: 'cash', amount: 1 }, 'accountant'))
+        .status,
+      200,
+    );
     for (const v of [
       { date: '2026-02-30' },
       { date: '2999-01-01' },
@@ -105,8 +128,19 @@ test('Scoped cash commands validate permissions, atomically transfer, deduplicat
     assert.equal(outgoing.status, 200);
     assert.equal(outgoing.body.accountBalances, undefined);
     assert.deepEqual(await accountBalances(pool), { bank: '2500', cash: '8000' });
-    const race = await Promise.all([post({ amount: 6000 }), post({ amount: 6000 })]);
+    const race = await Promise.all([
+      post({ amount: 6000, expenseCategory: 'Yediemin Gideri' }),
+      post({ amount: 6000, expenseCategory: 'Yediemin Gideri' }),
+    ]);
     assert.deepEqual(race.map((r) => r.status).sort(), [200, 400]);
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS n FROM han_data.ledger_entries WHERE body->>'expenseCategory'='Yediemin Gideri'",
+        )
+      ).rows[0].n,
+      1,
+    );
     const ledger = state.data['hanhukuk-accounting-v1'],
       after = structuredClone(ledger);
     after.accounts[0].name = 'Renamed';

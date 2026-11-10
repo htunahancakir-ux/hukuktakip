@@ -56,6 +56,20 @@ test('Accounting pages preserve all balances, transfers, exclusions and filters 
       { id: 'd', number: 'D-001', amount: 100, status: 'Derdest', fileData: 'DO-NOT-SEND' },
     ];
     state.users.push({ ...state.users[0], id: 'staff', username: 'staff', role: 'staff' });
+    state.data['icrapro-personnel-v1'].push({
+      id: 'accountant-person',
+      name: 'Accountant',
+      department: 'Muhasebe',
+      active: true,
+    });
+    state.users.push({
+      ...state.users[0],
+      id: 'accountant',
+      username: 'accountant',
+      role: 'staff',
+      staffId: 'accountant-person',
+      permissions: [],
+    });
     await importState(pool, state);
     await importRecords(pool);
     await activateRecords(pool);
@@ -69,6 +83,8 @@ test('Accounting pages preserve all balances, transfers, exclusions and filters 
     }
     const req = await session('test-ceo'),
       staff = await session('staff');
+    const accountant = await session('accountant');
+    assert.equal((await accountingPage(pool, accountant)).totals.count, '131');
     const ctx = vm.createContext({
       accounting: ledger,
       financeEvents: state.data['hanhukuk-finance-v1'],
@@ -150,6 +166,77 @@ test('Accounting pages preserve all balances, transfers, exclusions and filters 
     await assert.rejects(accountingPage(pool, { headers: {} }), { status: 401 });
     await assert.rejects(accountingPage(pool, req, { start: '2026-02-30' }), { status: 400 });
     server = await serve(createApplication({ store: createStore(pool, { records: true }) }));
+    const accountantHeaders = {
+      ...accountant.headers,
+      'X-Han-Request': '1',
+      'Content-Type': 'application/json',
+    };
+    const sessionResult = await fetch(server.url + '/api/session', { headers: accountant.headers }).then(
+      (r) => r.json(),
+    );
+    assert.equal(sessionResult.user.accountingAccess, true);
+    assert.equal(sessionResult.user.canDelete, false);
+    const patchAccount = (change, headers = accountantHeaders) =>
+      fetch(server.url + '/api/data/patch?key=hanhukuk-accounting-v1', {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ changes: [change] }),
+      });
+    const newAccount = { id: 'accountant-account', name: 'Accountant cash', type: 'cash' };
+    assert.equal(
+      (await patchAccount({ path: ['accounts'], id: newAccount.id, before: null, value: newAccount })).status,
+      200,
+    );
+    assert.equal(
+      (
+        await patchAccount({
+          path: ['accounts'],
+          id: newAccount.id,
+          field: 'name',
+          before: { value: newAccount.name },
+          after: { value: 'Updated cash' },
+        })
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
+        await patchAccount(
+          {
+            path: ['accounts'],
+            id: 'unauthorized',
+            before: null,
+            value: { ...newAccount, id: 'unauthorized' },
+          },
+          { ...accountantHeaders, ...staff.headers },
+        )
+      ).status,
+      403,
+    );
+    assert.equal(
+      (await fetch(server.url + '/api/operations/delete?type=accounting', { headers: accountant.headers }))
+        .status,
+      403,
+    );
+    assert.equal(
+      (
+        await patchAccount({
+          path: ['accounts'],
+          id: newAccount.id,
+          before: { ...newAccount, name: 'Updated cash' },
+          value: null,
+        })
+      ).status,
+      403,
+    );
+    assert.equal(
+      (await patchAccount({ path: ['entries'], id: 'l0', before: ledger.entries[0], value: null })).status,
+      403,
+    );
+    assert.equal(
+      (await fetch(server.url + '/api/records/accounting', { headers: accountant.headers })).status,
+      200,
+    );
     assert.equal((await fetch(server.url + '/api/records/accounting', { headers: req.headers })).status, 200);
     assert.equal(
       (await fetch(server.url + '/api/records/accounting', { headers: staff.headers })).status,

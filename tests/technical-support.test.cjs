@@ -80,8 +80,8 @@ test('technical support has CEO settings access and normalized records retain vi
   for (const route of ['/api/ai/config', '/api/voip/config', '/api/users'])
     assert.equal(
       (await fetch(app.url + route, { headers })).status,
-      423,
-      'Support must honor CEO PIN protection',
+      200,
+      'CEO support accounts have the same unrestricted access as other CEOs',
     );
   const unlock = await fetch(app.url + '/api/ceo-pin/verify', {
     method: 'POST',
