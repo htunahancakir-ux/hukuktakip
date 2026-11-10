@@ -766,6 +766,13 @@ test('live call workspace preserves typed notes across polling, then saves the c
     w.HTMLDialogElement.prototype.show = function () {
       this.open = true;
     };
+    w.HTMLDialogElement.prototype.close = function () {
+      this.open = false;
+    };
+    w.HTMLDialogElement.prototype.showModal = function () {
+      this.open = true;
+      this.dataset.modalPromoted = 'true';
+    };
     Object.assign(w, {
       hanAuth: { id: 'u', role: 'staff' },
       esc: (v) => String(v).replaceAll('<', '&lt;'),
@@ -799,6 +806,10 @@ test('live call workspace preserves typed notes across polling, then saves the c
         JSON.stringify(results),
     );
     w.showVoipActive({ id: 'd' }, call);
+    const phone = w.document.createElement('dialog');
+    phone.id = 'voipWebphone';
+    phone.innerHTML = '<iframe></iframe>';
+    w.document.getElementById('voipPhoneDock').append(phone);
     const textarea = w.document.querySelector('[data-current-form] textarea');
     textarea.value = 'Müşteri yarın dönüş yapacak.';
     textarea.dispatchEvent(new w.Event('input'));
@@ -814,6 +825,12 @@ test('live call workspace preserves typed notes across polling, then saves the c
     await new Promise((r) => setImmediate(r));
     assert.equal(w.document.querySelector('[data-current-outcomes]').hidden, false);
     assert.equal(textarea.value, draft);
+    assert.equal(w.document.getElementById('voipWebphone'), null, 'ended call releases microphone iframe');
+    assert.equal(
+      w.document.getElementById('voipActiveCall').dataset.modalPromoted,
+      'true',
+      'result form escapes borrower modal inertness',
+    );
     w.document.querySelector('[name="result"][value="Olumlu"]').checked = true;
     w.document
       .querySelector('form')

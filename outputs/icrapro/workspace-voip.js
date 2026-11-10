@@ -935,6 +935,13 @@ async function openVoipWebphone(feedback, background = false) {
     feedback.textContent = error.message;
   }
 }
+function releaseVoipWebphone() {
+  const phone = document.getElementById('voipWebphone');
+  if (phone) {
+    phone.querySelector('iframe')?.remove();
+    phone.remove();
+  }
+}
 function showVoipActive(doc, call) {
   let host = document.getElementById('voipActiveCall');
   if (host?.dataset.callId === call.id) {
@@ -1035,6 +1042,7 @@ function showVoipActive(doc, call) {
     host.querySelector('[data-current-status]').textContent =
       (next.statusLabel || 'Aranıyor') + (ended ? ' · ' + voipDuration(next.duration) : '');
     host.dataset.ended = String(ended);
+    if (ended && !wasEnded) releaseVoipWebphone();
     outcomes.hidden = !ended;
     host.querySelector('[data-current-hangup]').hidden = ended;
     host.querySelector('[data-current-sync]').hidden = true;
@@ -1093,6 +1101,12 @@ function showVoipActive(doc, call) {
       document.getElementById('voipPhoneDock')?.classList.remove('voip-dock-minimized');
       host.querySelector('[data-current-minimize]').textContent = 'Küçült';
       host.hidden = false;
+      // A non-modal dialog inside a popover remains inert behind borrower.showModal().
+      // Promote the result form to the top modal layer so notes and choices receive input.
+      if (typeof host.showModal === 'function') {
+        if (host.open) host.close();
+        host.showModal();
+      }
       message('Görüşme sona erdi. Sonucu seçip Tamam’a basın.', 'notice');
       if (document.activeElement !== note)
         host.querySelector('[name="result"]')?.focus({ preventScroll: true });
