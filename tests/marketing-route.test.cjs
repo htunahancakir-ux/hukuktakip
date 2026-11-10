@@ -426,7 +426,7 @@ test('Rota Bulma over HTTP: access, read-only, tenant data, visits, routes, audi
     await importRecords(pool);
     await activateRecords(pool);
     const googleCalls = [];
-    const placesFetch = async (url, init) => {
+    const mapsFetch = async (url, init) => {
       googleCalls.push({ url, init });
       // PGlite has one queued connection: a transaction held across this call would block here.
       await Promise.race([
@@ -456,7 +456,7 @@ test('Rota Bulma over HTTP: access, read-only, tenant data, visits, routes, audi
         nextPageToken: 'page-2',
       });
     };
-    const app = await serve(createApplication({ store: createStore(pool, { records: true }), placesFetch }));
+    const app = await serve(createApplication({ store: createStore(pool, { records: true }), mapsFetch }));
     t.after(async () => {
       await app.close();
       await pg.close();
@@ -673,7 +673,7 @@ test('local JSON mode serves Rota Bulma without a database and throttles paid se
     const app = await withEnvironment({ HANHUKUK_STATE_FILE: file }, () =>
       serve(
         createApplication({
-          placesFetch: async () => {
+          mapsFetch: async () => {
             searches++;
             return Response.json({ places: [googlePlace('ChIJlocal00001', 'Yerel Hırdavat')] });
           },
@@ -912,12 +912,22 @@ test('Google Haritalar settings never show the key and keep sector IDs when sect
     assert.equal(form.elements.apiKey.value, '');
     assert.equal(form.elements.sectors.value, 'Mobilya | mobilya mağazası\nHırdavat');
     form.elements.sectors.value = 'mobilya | mobilya\nPerde | perde mağazası\n\n';
+    form.elements.scraperUrl.value = 'http://127.0.0.1:8080';
+    form.elements.scraperUrl.dispatchEvent(new w.Event('input'));
+    form.elements.scraperAuth.value = 'Basic c2VjcmV0';
+    form.elements.defaultSource.value = 'scraper';
+    assert.equal(form.elements.scraperAuth.type, 'password');
     form.dispatchEvent(new w.Event('submit', { cancelable: true }));
     const saved = requests.find((item) => item.method === 'PUT');
     assert.deepEqual(saved.data, {
       enabled: true,
       apiKey: '',
       clearApiKey: false,
+      scraperEnabled: true,
+      scraperUrl: 'http://127.0.0.1:8080',
+      scraperAuth: 'Basic c2VjcmV0',
+      clearScraperAuth: false,
+      defaultSource: 'scraper',
       sectors: [
         { id: 'mobilya', label: 'mobilya', query: 'mobilya' },
         { label: 'Perde', query: 'perde mağazası' },

@@ -5,8 +5,23 @@ const marketingRouteState = {
   tab: 'search',
   overview: null,
   overviewStale: false,
-  form: { sector: '', customQuery: '', city: '', district: '', neighborhood: '', avenue: '', street: '' },
+  form: {
+    source: '',
+    depth: 'normal',
+    sector: '',
+    customQuery: '',
+    city: '',
+    district: '',
+    neighborhood: '',
+    avenue: '',
+    street: '',
+  },
   criteria: null,
+  // Source of the current result list: 'google' or 'scraper'.
+  source: 'google',
+  // A running scrape: { jobId, criteria, depth, startedAt }. Polling resumes when the page reopens.
+  job: null,
+  pollTimer: null,
   places: [],
   nextPageToken: '',
   outside: 0,
@@ -130,25 +145,48 @@ function marketingRoutePage() {
   else marketingSearchTab();
 }
 
+function marketingSources() {
+  const overview = marketingRouteState.overview;
+  // Older servers sent only `ready` for Google.
+  return (overview.sources || [{ id: 'google', label: 'Google Places API', ready: overview.ready }]).filter(
+    (source) => source.ready,
+  );
+}
+
 function marketingBlockedNotice() {
   const overview = marketingRouteState.overview;
-  if (!overview.ready)
+  if (!marketingSources().length)
     return overview.canConfigure
-      ? 'Google Haritalar bağlantısı kurulmadı. Ayarlar → Entegrasyonlar → Google Haritalar bölümünden API anahtarını girin. <button type="button" class="link" id="marketingOpenSettings">Ayarlara git</button>'
-      : 'Google Haritalar bağlantısı kurulmadı. CEO’nun Ayarlar → Entegrasyonlar → Google Haritalar bölümünden API anahtarını girmesi gerekiyor.';
-  if (marketingReadOnly()) return 'Bu hesap salt okunurdur. Ücretli Google Haritalar araması yapılamaz.';
+      ? 'Firma arama kaynağı kurulmadı. Ayarlar → Entegrasyonlar → Google Haritalar bölümünden Google API anahtarını veya harita tarama sunucusunu girin. <button type="button" class="link" id="marketingOpenSettings">Ayarlara git</button>'
+      : 'Firma arama kaynağı kurulmadı. CEO’nun Ayarlar → Entegrasyonlar → Google Haritalar bölümünden bir kaynak bağlaması gerekiyor.';
+  if (marketingReadOnly()) return 'Bu hesap salt okunurdur. Harita araması yapılamaz.';
   return '';
+}
+
+function marketingFormSource() {
+  const sources = marketingSources().map((source) => source.id);
+  const wanted = marketingRouteState.form.source || marketingRouteState.overview.defaultSource;
+  return sources.includes(wanted) ? wanted : sources[0] || 'google';
 }
 
 function marketingSearchTab() {
   const state = marketingRouteState,
     form = state.form,
-    blocked = marketingBlockedNotice();
+    blocked = marketingBlockedNotice(),
+    sources = marketingSources(),
+    source = marketingFormSource();
   const text = (name, label, placeholder) =>
     `<label class="field">${label}<input name="${name}" maxlength="80" autocomplete="off" value="${esc(form[name])}" placeholder="${esc(placeholder)}"></label>`;
   $('#marketingRouteBody').innerHTML =
     `${blocked ? `<div class="notice marketing-notice">${blocked}</div>` : ''}
     <form id="marketingSearchForm" class="formbody"><div class="grid marketing-search-grid">
+      <label class="field">Kaynak<select name="source" ${sources.length > 1 ? '' : 'disabled'}>${(sources.length
+        ? sources
+        : [{ id: 'google', label: 'Google Places API' }]
+      )
+        .map((item) => `<option value="${esc(item.id)}">${esc(item.label)}</option>`)
+        .join('')}</select></label>
+      <label class="field" id="marketingDepthField" ${source === 'scraper' ? '' : 'hidden'}>Tarama kapsamı<select name="depth"><option value="quick">Hızlı (ilk sonuçlar)</option><option value="normal">Normal</option><option value="wide">Geniş (daha çok firma, daha uzun sürer)</option></select><small>Tarama birkaç dakika sürer; sonuçlar hazır olunca liste kendiliğinden gelir.</small></label>
       <label class="field">Sektör *<select name="sector" required><option value="">Sektör seçin</option>${state.overview.sectors
         .map((sector) => `<option value="${esc(sector.id)}">${esc(sector.label)}</option>`)
         .join('')}<option value="custom">Diğer (elle yazın)</option></select></label>
@@ -169,6 +207,12 @@ function marketingSearchTab() {
   searchForm.elements.sector.onchange = () => {
     $('#marketingCustomSector').hidden = searchForm.elements.sector.value !== 'custom';
   };
+  searchForm.elements.source.value = source;
+  searchForm.elements.depth.value = form.depth;
+  searchForm.elements.source.onchange = () => {
+    form.source = searchForm.elements.source.value;
+    $('#marketingDepthField').hidden = form.source !== 'scraper';
+  };
   const settingsLink = document.getElementById('marketingOpenSettings');
   if (settingsLink)
     settingsLink.onclick = () => {
@@ -180,10 +224,116 @@ function marketingSearchTab() {
   searchForm.onsubmit = (event) => {
     event.preventDefault();
     const body = marketingSearchInput(searchForm);
-    if (body) marketingSearch(body);
+    if (!body) return;
+    form.source = searchForm.elements.source.value;
+    form.depth = searchForm.elements.depth.value;
+    if (form.source === 'scraper') marketingStartScrape(body, form.depth);
+    else marketingSearch(body);
   };
-  marketingRenderResults();
+  if (state.job) {
+    marketingRenderScrapeStatus();
+    marketingScheduleScrapePoll(0);
+  } else marketingRenderResults();
   marketingRenderPlan();
+}
+
+const marketingPollDelay = () => Number(globalThis.hanMarketingPollMs) || 10000;
+
+async function marketingStartScrape(body, depth) {
+  const state = marketingRouteState;
+  if (state.loading || state.job) return toast('Bir harita taraması zaten sürüyor.');
+  state.loading = true;
+  const button = document.getElementById('marketingSearchButton');
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Başlatılıyor…';
+  }
+  try {
+    const result = await marketingRouteRequest('/api/marketing/scrape', { ...body, depth });
+    state.job = { jobId: result.jobId, criteria: body, depth: result.depth || depth, startedAt: Date.now() };
+    state.criteria = body;
+    state.source = 'scraper';
+    state.places = [];
+    state.selected = new Set();
+    state.plan = null;
+    state.outside = 0;
+    state.nextPageToken = '';
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    state.loading = false;
+    if (button) {
+      button.disabled = !!marketingBlockedNotice() || !!state.job;
+      button.textContent = 'Bul';
+    }
+  }
+  if (state.job) {
+    marketingRenderScrapeStatus();
+    marketingRenderPlan();
+    marketingScheduleScrapePoll(marketingPollDelay());
+  }
+}
+
+function marketingRenderScrapeStatus() {
+  const state = marketingRouteState,
+    box = document.getElementById('marketingResults');
+  if (!box || !state.job) return;
+  const seconds = Math.max(0, Math.round((Date.now() - state.job.startedAt) / 1000));
+  const elapsed = Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
+  const depth = { quick: 'Hızlı', normal: 'Normal', wide: 'Geniş' }[state.job.depth] || 'Normal';
+  box.innerHTML = `<div class="formbody marketing-scrape-status" role="status" aria-live="polite">
+    <p><b>Harita taraması sürüyor</b> · ${esc(depth)} kapsam · geçen süre <span id="marketingScrapeElapsed">${elapsed}</span></p>
+    <p class="marketing-hint">Tarama genellikle birkaç dakika sürer. Sonuçlar hazır olunca liste kendiliğinden gelir; bu sırada başka bölüme geçip dönebilirsiniz.</p>
+    <button type="button" class="secondary" id="marketingScrapeCancel">Beklemeyi bırak</button></div>`;
+  const button = document.getElementById('marketingSearchButton');
+  if (button) button.disabled = true;
+  $('#marketingScrapeCancel').onclick = () => {
+    clearTimeout(state.pollTimer);
+    state.pollTimer = null;
+    state.job = null;
+    state.criteria = null;
+    marketingSearchTab();
+  };
+}
+
+function marketingScheduleScrapePoll(delay) {
+  const state = marketingRouteState;
+  clearTimeout(state.pollTimer);
+  state.pollTimer = setTimeout(marketingPollScrape, delay);
+}
+
+// Polls only while Rota Bulma is open; reopening the page resumes a running job.
+async function marketingPollScrape() {
+  const state = marketingRouteState,
+    job = state.job;
+  state.pollTimer = null;
+  if (!job || marketingView !== 'routes' || state.tab !== 'search') return;
+  let result;
+  try {
+    result = await marketingRouteRequest('/api/marketing/scrape-status', {
+      ...job.criteria,
+      jobId: job.jobId,
+    });
+  } catch (error) {
+    if (state.job === job) state.job = null;
+    toast(error.message);
+    if (marketingView === 'routes' && state.tab === 'search') marketingSearchTab();
+    return;
+  }
+  if (state.job !== job) return;
+  if (result.status !== 'ok') {
+    marketingRenderScrapeStatus();
+    return marketingScheduleScrapePoll(marketingPollDelay());
+  }
+  state.job = null;
+  state.places = result.places || [];
+  state.outside = result.outside || 0;
+  if (marketingView === 'routes' && state.tab === 'search' && document.getElementById('marketingResults')) {
+    const button = document.getElementById('marketingSearchButton');
+    if (button) button.disabled = !!marketingBlockedNotice();
+    marketingRenderResults();
+    marketingRenderPlan();
+  }
 }
 
 function marketingSearchInput(form) {
@@ -236,6 +386,7 @@ async function marketingSearch(body, more = false) {
     );
     if (!more) {
       state.criteria = body;
+      state.source = 'google';
       state.places = [];
       state.selected = new Set();
       state.plan = null;
@@ -340,7 +491,9 @@ function marketingRenderResults() {
     [sector, [criteria.neighborhood, criteria.district, criteria.city].filter(Boolean).join(' / ')].join(
       ' · ',
     ),
-  )}</h3></div>
+  )}</h3><small>Kaynak: ${esc(
+    state.source === 'scraper' ? 'Harita tarama (gosom)' : 'Google Places API',
+  )}</small></div>
     <div class="marketing-filters" id="marketingFilters">
       <label class="field">Başlangıç noktası<select name="originMode">${options(
         [
@@ -662,7 +815,21 @@ function marketingSavePlan({ quiet = false } = {}) {
         label: mode === 'office' ? marketingOfficeAddress() : mode === 'address' ? state.origin.label : '',
       },
       travelMode: plan.travelMode,
+      source: state.source,
       stops: plan.stops.map((stop) => stop.placeId),
+      // Scraped routes keep a copy of what was found; Google routes keep IDs only.
+      ...(state.source === 'scraper'
+        ? {
+            places: plan.stops.map(({ placeId, name, address, phone, lat, lng }) => ({
+              placeId,
+              name,
+              address,
+              phone,
+              lat,
+              lng,
+            })),
+          }
+        : {}),
     });
     plan.savedId = result.route.id;
     if (!state.overview.routes.some((item) => item.id === result.route.id))
@@ -987,18 +1154,19 @@ function mapsSettingsPage() {
   const sectors = config.sectors
     .map((sector) => (sector.query === sector.label ? sector.label : sector.label + ' | ' + sector.query))
     .join('\n');
-  const badge = config.ready ? 'Etkin' : config.apiKeySaved ? 'Kapalı' : 'Anahtar yok';
+  const ready = (config.sources || []).filter((source) => source.ready).map((source) => source.label);
+  const badge = ready.length ? ready.join(' + ') : 'Kaynak yok';
+  const scraperExample = config.allowLocal ? 'http://127.0.0.1:8080' : 'https://tarama.ornek.com';
   $('#content').innerHTML = `${settingsSectionTabs('maps')}<section class="panel">
-    <div class="panelhead"><div><h2>Google Haritalar</h2><p>Pazarlama → Rota Bulma’da firma araması için Google Places API bağlantısı.</p></div><span class="badge">${badge}</span></div>
+    <div class="panelhead"><div><h2>Google Haritalar</h2><p>Pazarlama → Rota Bulma’da firma araması için kaynaklar: Google Places API ve harita tarama (gosom).</p></div><span class="badge">${esc(badge)}</span></div>
     <form id="mapsConfigForm"><div class="formbody grid">
-      <label class="settings-check full"><input type="checkbox" name="enabled" ${config.enabled ? 'checked' : ''}> Rota Bulma’da Google Haritalar aramasını aç</label>
+      <label class="field full">Varsayılan kaynak<select name="defaultSource"><option value="google">Google Places API</option><option value="scraper">Harita tarama (gosom)</option></select><small>Rota Bulma’da kullanıcı hazır olan kaynaklar arasından seçebilir; bu, ilk seçili gelendir.</small></label>
+      <h3 class="full">1. Google Places API</h3>
+      <label class="settings-check full"><input type="checkbox" name="enabled" ${config.enabled && config.apiKeySaved ? 'checked' : ''}> Google Places API ile aramayı aç</label>
       <label class="field full">Google API anahtarı<input name="apiKey" type="password" maxlength="39" autocomplete="new-password" data-optional="true" placeholder="${
         config.apiKeySaved ? 'Kayıtlı anahtarı korumak için boş bırakın' : 'AIza ile başlayan anahtarı girin'
       }"><small>Anahtar şifrelenerek saklanır, hiçbir kullanıcıya veya tarayıcıya geri gönderilmez ve yedeklere alınmaz.</small></label>
       <label class="settings-check full" ${config.apiKeySaved ? '' : 'hidden'}><input type="checkbox" name="clearApiKey"> Kayıtlı Google API anahtarını sil</label>
-      <label class="field full">Sektörler<textarea name="sectors" rows="6" required>${esc(
-        sectors,
-      )}</textarea><small>Her satıra bir sektör yazın: <code>Görünen ad | Google’da aranacak ifade</code>. İfade yazılmazsa ad aranır. En fazla 30 sektör.</small></label>
       <div class="notice full">${
         config.encryptionReady
           ? 'Anahtar AES-256-GCM ile şifrelenir.'
@@ -1011,15 +1179,50 @@ function mapsSettingsPage() {
         <li>Kimlik bilgilerinden bir API anahtarı oluşturun; anahtarı yalnızca Places API (New) ile sınırlayın.</li>
         <li>Kotalar bölümünden günlük istek sınırı koyarak beklenmeyen maliyeti önleyin.</li>
       </ol></details>
+      <h3 class="full">2. Harita tarama (gosom)</h3>
+      <div class="notice full">Açık kaynak <b>gosom/google-maps-scraper</b> (MIT) sizin bilgisayarınızda veya sunucunuzda çalışır; yazılım ücretsizdir. Google Haritalar’ı taramak Google’ın kullanım koşullarına aykırıdır; yoğun kullanımda Google erişimi engelleyebilir. Firmaların telefonları kişisel veri olabilir (KVKK). Bu kaynağı bu riskleri bilerek açın.</div>
+      <label class="settings-check full"><input type="checkbox" name="scraperEnabled" ${config.scraperEnabled ? 'checked' : ''}> Harita tarama ile aramayı aç</label>
+      <label class="field full">Tarama sunucusu adresi<input name="scraperUrl" maxlength="300" autocomplete="off" data-optional="true" value="${esc(config.scraperUrl || '')}" placeholder="${esc(scraperExample)}"><small>${
+        config.allowLocal
+          ? 'Uygulama bu bilgisayarda çalıştığı için http://127.0.0.1:8080 gibi yerel bir adres kullanılabilir.'
+          : 'Uygulama bulutta çalıştığı için tarama sunucusuna internetten https:// ile ulaşılmalıdır.'
+      }</small></label>
+      <label class="field full">Erişim anahtarı (isteğe bağlı)<input name="scraperAuth" type="password" maxlength="500" autocomplete="new-password" data-optional="true" placeholder="${
+        config.scraperAuthSaved ? 'Kayıtlı anahtarı korumak için boş bırakın' : 'ör. Basic … veya Bearer …'
+      }"><small>Sunucunun önündeki parola korumasına gönderilen <code>Authorization</code> başlığı. Şifrelenerek saklanır ve geri gösterilmez.</small></label>
+      <label class="settings-check full" ${config.scraperAuthSaved ? '' : 'hidden'}><input type="checkbox" name="clearScraperAuth"> Kayıtlı erişim anahtarını sil</label>
+      <div class="full"><button class="secondary" type="button" id="mapsTestScraper">Tarama Sunucusunu Test Et</button><small id="mapsTestScraperStatus" role="status" aria-live="polite">Test yalnızca sunucuya bağlanır, tarama başlatmaz.</small></div>
+      <details class="full"><summary>Kurulum</summary><ol>
+        <li>Docker’ı kurun ve tarama sunucusunu başlatın:<br><code>docker run -d --name gmaps -p 127.0.0.1:8080:8080 -v gmapsdata:/gmapsdata -e DISABLE_TELEMETRY=1 gosom/google-maps-scraper -data-folder /gmapsdata</code></li>
+        <li>Uygulama bu bilgisayarda çalışıyorsa adres olarak <code>http://127.0.0.1:8080</code> girin.</li>
+        <li>Uygulama bulutta çalışıyorsa sunucuyu bir alan adıyla HTTPS ve parola koruması (ör. Caddy veya Nginx) arkasında yayınlayın; parolayı erişim anahtarı olarak girin (<code>Basic …</code>). Sunucuyu korumasız olarak internete açmayın.</li>
+      </ol></details>
+      <h3 class="full">Sektörler</h3>
+      <label class="field full">Sektör listesi<textarea name="sectors" rows="6" required>${esc(
+        sectors,
+      )}</textarea><small>Her satıra bir sektör yazın: <code>Görünen ad | aranacak ifade</code>. İfade yazılmazsa ad aranır. En fazla 30 sektör. Her iki kaynakta da kullanılır.</small></label>
     </div><div class="actions"><button class="primary" type="submit">Google Haritalar Ayarlarını Kaydet</button></div></form>
   </section>`;
   bindSettingsSectionTabs();
   const form = $('#mapsConfigForm');
   const ids = new Map(config.sectors.map((sector) => [sector.label.toLocaleLowerCase('tr'), sector.id]));
+  form.elements.defaultSource.value = config.defaultSource || 'google';
+  // Typing a new key or address means the person wants that source on.
+  form.elements.apiKey.addEventListener('input', () => {
+    if (form.elements.apiKey.value.trim()) form.elements.enabled.checked = true;
+  });
+  form.elements.scraperUrl.addEventListener('input', () => {
+    if (form.elements.scraperUrl.value.trim()) form.elements.scraperEnabled.checked = true;
+  });
   const input = () => ({
     enabled: form.elements.enabled.checked,
     apiKey: form.elements.apiKey.value.trim(),
     clearApiKey: form.elements.clearApiKey.checked,
+    scraperEnabled: form.elements.scraperEnabled.checked,
+    scraperUrl: form.elements.scraperUrl.value.trim(),
+    scraperAuth: form.elements.scraperAuth.value.trim(),
+    clearScraperAuth: form.elements.clearScraperAuth.checked,
+    defaultSource: form.elements.defaultSource.value,
     sectors: form.elements.sectors.value
       .split('\n')
       .map((line) => line.trim())
@@ -1040,6 +1243,20 @@ function mapsSettingsPage() {
     try {
       authApi('/api/marketing/test', 'POST', { apiKey: form.elements.apiKey.value.trim() });
       status.textContent = 'Bağlantı başarılı. Google bu anahtarla aramayı kabul etti.';
+    } catch (error) {
+      status.textContent = error.message;
+    }
+  };
+  $('#mapsTestScraper').onclick = () => {
+    const status = $('#mapsTestScraperStatus');
+    status.textContent = 'Test ediliyor…';
+    try {
+      authApi('/api/marketing/test', 'POST', {
+        source: 'scraper',
+        scraperUrl: form.elements.scraperUrl.value.trim(),
+        scraperAuth: form.elements.scraperAuth.value.trim(),
+      });
+      status.textContent = 'Bağlantı başarılı. Tarama sunucusu yanıt verdi.';
     } catch (error) {
       status.textContent = error.message;
     }

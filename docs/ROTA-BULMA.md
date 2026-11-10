@@ -5,9 +5,15 @@ adrese göre bulur, alt süzgeçlerle daraltır, seçilen firmalardan Google Har
 oluşturur ve rotayı WhatsApp'tan göndermeye hazırlar.
 
 Erişim, Pazarlama sayfasıyla aynıdır: CEO, yönetici ve birimi "Pazarlama" olan aktif personel.
-Salt okunur hesaplar ücretli arama yapamaz.
+Salt okunur hesaplar (CEO hariç) arama yapamaz.
 
-## Kurulum (CEO)
+Firma listesi için iki kaynak vardır; CEO birini veya ikisini açar, kullanıcı aramada seçer:
+
+1. **Google Places API** — resmî ve en güvenilir kaynak, anında sonuç; Google Cloud hesabı ister.
+2. **Harita tarama (gosom)** — açık kaynak `gosom/google-maps-scraper` (MIT, ücretsiz) sizin
+   bilgisayarınızda/sunucunuzda çalışır. Sonuçlar birkaç dakika sürer.
+
+## Kurulum: Google Places API (CEO)
 
 1. Google Cloud Console'da bir proje açın ve faturalandırmayı etkinleştirin.
 2. **Places API (New)** hizmetini etkinleştirin.
@@ -20,6 +26,33 @@ Salt okunur hesaplar ücretli arama yapamaz.
 Sunucuda `MAPS_ENCRYPTION_KEY` (64 onaltılık karakter) tanımlı olmalıdır; yoksa
 `BACKUP_ENCRYPTION_KEY` kullanılır. Anahtar AES-256-GCM ile şifrelenir, tarayıcıya hiç
 gönderilmez ve yedeklere alınmaz. Yedekten dönüşte anahtar yeniden girilir.
+
+## Kurulum: Harita tarama (gosom)
+
+**Uyarı:** Google Haritalar'ı taramak Google'ın kullanım koşullarına aykırıdır; yoğun kullanımda
+Google IP'yi engelleyebilir veya araç sayfa değişikliğiyle bozulabilir. Şahıs firmalarının
+telefonları kişisel veridir (KVKK). Kaynak bu riskler bilinerek açılmalıdır.
+
+1. Docker'ı kurun ve tarama sunucusunu başlatın:
+
+   ```
+   docker run -d --name gmaps -p 127.0.0.1:8080:8080 -v gmapsdata:/gmapsdata \
+     -e DISABLE_TELEMETRY=1 gosom/google-maps-scraper -data-folder /gmapsdata
+   ```
+
+   `DISABLE_TELEMETRY=1` aracın varsayılan olarak açık telemetrisini kapatır.
+2. **Uygulama bu bilgisayarda çalışıyorsa** adres olarak `http://127.0.0.1:8080` girin.
+3. **Uygulama bulutta (Vercel) çalışıyorsa** bulut sizin bilgisayarınıza erişemez: tarama
+   sunucusunu bir alan adıyla HTTPS ve parola koruması (Caddy/Nginx) arkasında yayınlayın,
+   adresi `https://…` olarak, parolayı **Erişim anahtarı** alanına `Basic …` biçiminde girin.
+   gosom'un kendi kimlik doğrulaması yoktur; korumasız olarak internete açmayın.
+4. **Ayarlar → Entegrasyonlar → Google Haritalar** → "2. Harita tarama" bölümünde adresi girip
+   **Tarama Sunucusunu Test Et**, sonra kaydedin. Varsayılan kaynağı da buradan seçin.
+
+Tarama kapsamı: Hızlı (yaklaşık 5 dk sınır), Normal (10 dk), Geniş (20 dk). Ekran 10 saniyede
+bir durumu sorar; sayfadan ayrılıp dönülürse bekleme kaldığı yerden sürer. Taramayla bulunan
+rotalar, Google anahtarı olmadan açılabilmesi için firma adı/adres/telefon/konum kopyasıyla
+saklanır. Uygulama bu uç noktaları IP başına 15 dakikada 20 tarama ve 300 durum sorgusuyla sınırlar.
 
 ## Kullanım
 
