@@ -179,15 +179,18 @@ test('standalone dialer shows last call before allowing a repeated call', async 
         },
       }),
     });
+    w.eval(await fs.readFile('outputs/icrapro/modal-dismissal.js', 'utf8'));
     w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
     w.setupVoipNavigation();
     w.document.querySelector('[data-standalone-voip]').click();
     const form = w.document.querySelector('.voip-standalone-form');
+    await new Promise((resolve) => setImmediate(resolve));
     form.elements.phone.value = '05320000009';
     form.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
     await new Promise((resolve) => setImmediate(resolve));
     assert.match(w.document.querySelector('[data-preview]').textContent, /Örnek Personel/);
     assert.match(w.document.querySelector('[data-dial]').textContent, /tekrar ara/);
+    assert.equal(w.modalDrafts(form.closest('dialog')).length, 0, 'Phone lookup is not an unsaved edit');
     assert.equal(starts, 0);
   } finally {
     dom.window.close();

@@ -1274,7 +1274,7 @@ function openStandaloneVoip() {
     document.body.append(dialog);
   }
   dialog.innerHTML =
-    '<div class="panelhead"><div><h2>Numara ile arama</h2><p>Dosyasız arama · Görüşme kaydı herhangi bir borçlu föyüne bağlanmaz.</p></div><button type="button" class="secondary" data-close>Vazgeç</button></div><form class="voip-standalone-form"><label class="field">Aranacak telefon numarası<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="05XX XXX XX XX" required></label><button type="submit" class="primary">Geçmişi kontrol et</button></form><div data-feedback role="alert"></div><div data-preview></div>';
+    '<div class="panelhead"><div><h2>Numara ile arama</h2><p>Dosyasız arama · Görüşme kaydı herhangi bir borçlu föyüne bağlanmaz.</p></div><button type="button" class="secondary" data-close>Vazgeç</button></div><form class="voip-standalone-form" data-ignore-dirty><label class="field">Aranacak telefon numarası<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="05XX XXX XX XX" required></label><button type="submit" class="primary">Geçmişi kontrol et</button></form><div data-feedback role="alert"></div><div data-preview></div>';
   dialog.querySelector('[data-close]').onclick = () => dialog.close();
   const form = dialog.querySelector('form'),
     feedback = dialog.querySelector('[data-feedback]'),
