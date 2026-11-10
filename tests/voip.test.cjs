@@ -743,7 +743,7 @@ test('UI keeps numbers, history and role-controlled audio together without prelo
 });
 test('live call workspace preserves typed notes across polling, then saves the chosen result after hangup', async () => {
   const { JSDOM } = require('jsdom');
-  const dom = new JSDOM('<dialog id="borrowerDetail" open></dialog>', {
+  const dom = new JSDOM('<dialog id="borrowerDetail" open><button data-open-voip>☎ Ara</button></dialog>', {
     url: 'https://example.test',
     runScripts: 'dangerously',
   });
@@ -822,7 +822,8 @@ test('live call workspace preserves typed notes across polling, then saves the c
     assert.equal(w.document.querySelector('textarea'), textarea, 'poll updates never replace the note input');
     assert.equal(textarea.value, 'Müşteri yarın dönüş yapacak.');
     w.document.querySelector('[data-current-minimize]').click();
-    assert.equal(w.document.querySelector('#voipActiveCall').hidden, false);
+    assert.equal(w.document.querySelector('#voipActiveCall').hidden, true);
+    assert.equal(w.document.querySelector('[data-open-voip]').textContent, '☎ Sonlandır');
     assert.equal(w.document.querySelector('[data-current-hangup]').hidden, false);
     await new Promise((r) => setImmediate(r));
     assert.equal(draft, textarea.value);
@@ -1530,4 +1531,44 @@ test('late hangup does not overwrite a provider-confirmed busy result', () => {
   updateEvent(call, { event_type: 'hangup', answered: true, duration: 0 });
   assert.equal(call.status, 'busy');
   assert.equal(call.result, 'Meşgul');
+});
+
+test('outbound caller numbers receive stable line numbers and reject internal/destination numbers', () => {
+  const config = {};
+  const a = {},
+    b = {},
+    c = {};
+  updateEvent(
+    a,
+    { event_type: 'ringing', direction: 'outbound', outbound_caller_id_number: '02161234567' },
+    config,
+  );
+  updateEvent(
+    b,
+    { event_type: 'ringing', direction: 'outbound', outbound_caller_id_number: '+90 216 234 56 78' },
+    config,
+  );
+  updateEvent(
+    c,
+    { event_type: 'ringing', direction: 'outbound', outbound_caller_id_number: '902161234567' },
+    config,
+  );
+  assert.equal(a.outboundLine, 1);
+  assert.equal(b.outboundLine, 2);
+  assert.equal(c.outboundLine, 1);
+  assert.equal(a.outboundNumber, '902161234567');
+  const invalid = {};
+  updateEvent(
+    invalid,
+    { event_type: 'ringing', outbound_caller_id_number: '1001', destination_number: '905321234567' },
+    config,
+  );
+  assert.equal(invalid.outboundNumber, undefined);
+  const inbound = {};
+  updateEvent(
+    inbound,
+    { event_type: 'ringing', direction: 'inbound', outbound_caller_id_number: '902161234567' },
+    config,
+  );
+  assert.equal(inbound.outboundLine, undefined);
 });

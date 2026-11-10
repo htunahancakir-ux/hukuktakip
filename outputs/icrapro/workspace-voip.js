@@ -1018,7 +1018,7 @@ function showVoipActive(doc, call) {
   host.hidden = false;
   host.innerHTML = `<div class="voip-workspace-heading"><div><span data-current-status></span><strong>${esc(voipPhone(call.phone))}</strong><small>${esc(call.documentNumber || doc.number || '')} · ${esc(call.debtorName || doc.debtor || '')}</small><time data-current-duration aria-label="Çağrı süresi">00:00</time></div><button type="button" class="link" data-current-minimize>Küçült</button></div>
     <div class="voip-workspace-feedback" data-current-feedback role="alert" hidden></div>
-    <form data-current-form><div class="voip-workspace-actions"><button class="secondary" type="button" data-current-mute aria-pressed="false" title="Sessize al">🎙 Sessize al</button><button class="secondary" type="button" data-current-hold disabled title="Verimor’un harici bekletme kontrolü henüz doğrulanmadı.">Ⅱ Beklet</button><button class="link" type="button" data-current-sync hidden>Durumu doğrula</button><button class="voip-hangup" type="button" data-current-hangup title="Aramayı sonlandır">☎ Sonlandır</button><button class="primary" type="submit" data-current-save hidden>Tamam</button></div><label class="voip-live-note">Görüşme notu<textarea data-optional="true" name="note" maxlength="3000" rows="4" placeholder="Görüşme sürerken notunuzu yazabilirsiniz…"></textarea></label><span class="voip-draft-status" data-draft-status role="status"></span>
+    <form data-current-form><div class="voip-workspace-actions"><button class="secondary" type="button" data-current-mute aria-pressed="false" title="Sessize al">🎙 Sessize al</button><button class="secondary" type="button" data-current-hold disabled title="Verimor’un harici bekletme kontrolü henüz doğrulanmadı.">Ⅱ Beklet</button><button class="link" type="button" data-current-sync hidden>Durumu doğrula</button><button class="voip-hangup" type="button" data-current-hangup title="Aramayı sonlandır">☎ Sonlandır</button><button class="primary" type="submit" data-current-save hidden>Tamam</button><span class="voip-outbound-line" data-outbound-line role="status"></span></div><label class="voip-live-note">Görüşme notu<textarea data-optional="true" name="note" maxlength="3000" rows="4" placeholder="Görüşme sürerken notunuzu yazabilirsiniz…"></textarea></label><span class="voip-draft-status" data-draft-status role="status"></span>
     <fieldset class="voip-outcomes" data-current-outcomes hidden><legend>Görüşme sonucu</legend><p data-current-suggestion hidden>Santral sonucu seçildi; gerekirse değiştirebilirsiniz.</p><div data-current-choices></div></fieldset>
 </form>`;
   const form = host.querySelector('form'),
@@ -1079,8 +1079,9 @@ function showVoipActive(doc, call) {
   };
   const heartbeatTimer = setInterval(heartbeat, 15000);
   heartbeat();
-  const headerCallButton = doc.id ? document.querySelector('#borrowerDetail [data-open-voip]') : null;
+  const getHeaderCallButton = () => document.querySelector('#borrowerDetail[open] [data-open-voip]');
   const resetHeaderCall = () => {
+    const headerCallButton = getHeaderCallButton();
     if (!headerCallButton) return;
     headerCallButton.textContent = '☎ Ara';
     headerCallButton.classList.remove('voip-hangup');
@@ -1095,6 +1096,7 @@ function showVoipActive(doc, call) {
   host.querySelector('[data-current-minimize]').onclick = () => {
     voipUi.minimized = !voipUi.minimized;
     host.classList.toggle('voip-call-minimized', voipUi.minimized);
+    const headerCallButton = getHeaderCallButton();
     if (headerCallButton && !ended) {
       if (voipUi.minimized) {
         headerCallButton.textContent = '☎ Sonlandır';
@@ -1111,12 +1113,30 @@ function showVoipActive(doc, call) {
     host.querySelector('[data-current-minimize]').textContent = voipUi.minimized ? 'Genişlet' : 'Küçült';
     if (draftTimer) saveDraft().catch(() => {});
   };
+  host.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    host.querySelector('[data-current-minimize]').click();
+  });
+  host.addEventListener('close', () => {
+    if (!ended && !disposed && !voipUi.minimized) host.querySelector('[data-current-minimize]').click();
+  });
   const update = (next) => {
     const wasEnded = ended;
     ended = !voipActiveStatuses.has(next.status);
     host.querySelector('[data-current-status]').textContent =
       (next.statusLabel || 'Aranıyor') + (ended ? ' · ' + voipDuration(next.duration) : '');
     host.dataset.ended = String(ended);
+    const line = host.querySelector('[data-outbound-line]');
+    if (line) {
+      line.hidden = ended;
+      const digits = (next.outboundNumber || '').replace(/^90/, '0');
+      const display =
+        digits.length === 11
+          ? digits.slice(0, 4) + ' ' + digits.slice(4, 7) + ' ' + digits.slice(7, 9) + ' ' + digits.slice(9)
+          : digits;
+      line.textContent =
+        next.outboundLine && display ? next.outboundLine + '. hat · ' + display : 'Dış hat doğrulanıyor…';
+    }
     if (ended) resetHeaderCall();
     voipCancelWait(host, !ended && !next.cancelError && (next.cancelRequested || hangupPending));
     // Busy/canceled calls keep the registered webphone ready for the next attempt.

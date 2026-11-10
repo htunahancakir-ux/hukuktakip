@@ -1339,3 +1339,13 @@ dialog.voip-active-call {
   color: #60788b;
   font-size: 14px;
 }
+
+.voip-outbound-line {
+  margin-left: 6px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #eef4f7;
+  color: #315767;
+  font-size: 12px;
+  white-space: nowrap;
+}
