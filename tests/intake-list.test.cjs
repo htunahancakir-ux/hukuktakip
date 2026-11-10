@@ -5,6 +5,107 @@ const path = require('node:path');
 const { JSDOM } = require('jsdom');
 const { parsers } = require('prettier/plugins/babel');
 
+test('Personnel attachment tab sits beside payroll and uploads multiple files to the selected person', async (t) => {
+  const dom = new JSDOM('<div id="content"></div>', {
+    url: 'https://test.invalid',
+    runScripts: 'dangerously',
+  });
+  t.after(() => dom.window.close());
+  const w = dom.window,
+    stored = [];
+  const people = [
+    { id: 'person-one', name: 'Person One', officialSalary: 1000 },
+    { id: 'person-two', name: 'Person Two', officialSalary: 2000 },
+  ];
+  const original = JSON.stringify(people);
+  w.eval(fs.readFileSync('outputs/icrapro/html-safety.js', 'utf8'));
+  Object.assign(w, {
+    structuredClone,
+    esc: w.escapeHtml,
+    $: (selector) => w.document.querySelector(selector),
+    hanAuth: { role: 'ceo' },
+    hanRecordsEnabled: true,
+    personnel: people,
+    personnelTab: 'files',
+    personnelAttachmentStaffId: '',
+    personnelPayrollTodayMonth: '2026-11',
+    bonus2Month: '2026-11',
+    dailyBonusMonth: '2026-11',
+    page: 'personnel',
+    businessDate: () => '2026-11-10',
+    renderActiveOperator() {},
+    loadCalculatedBonus2() {},
+    authApi: (path) => (path.startsWith('/api/users') ? [] : { rows: [] }),
+    toast() {},
+    db: { clients: [], docs: [] },
+    hanDataBaselines: new Map(),
+  });
+  for (const [file, names] of [
+    ['client-records.js', ['bindMultipleFileInput', 'readSelectedFileAttachments']],
+    ['workspace-record-list.js', ['saveRecordAttachments']],
+    ['personnel.js', ['personnelSettings', 'personnelAttachmentsPage', 'readPersonnelAttachments']],
+  ]) {
+    const source = fs.readFileSync('outputs/icrapro/' + file, 'utf8');
+    for (const node of parsers.babel.parse(source).program.body)
+      if (node.type === 'FunctionDeclaration' && names.includes(node.id.name))
+        w.eval(source.slice(node.start, node.end));
+  }
+  w.fetch = async (url, options = {}) => {
+    if (url === '/api/record-attachments') {
+      const body = JSON.parse(options.body);
+      assert.equal(body.ownerType, 'personnel');
+      assert.equal(body.ownerId, 'person-two');
+      stored.push({ id: 'personnel:person-two:' + body.attachment.id, ...body });
+      return { ok: true, json: async () => ({ ok: true }) };
+    }
+    const parsed = new URL(url, 'https://test.invalid');
+    assert.equal(parsed.searchParams.get('personnelId'), 'person-two');
+    const id = parsed.searchParams.get('attachmentId');
+    return {
+      ok: true,
+      json: async () =>
+        id
+          ? { attachment: stored.find((row) => row.id === id).attachment }
+          : {
+              items: stored.map((row) => ({
+                id: row.id,
+                name: row.attachment.name,
+                mime: row.attachment.mime,
+              })),
+            },
+    };
+  };
+  await w.personnelSettings();
+  const tab = w.document.querySelector('[data-staff-view=files]');
+  assert.equal(tab.textContent, 'Foto ve PDF Ekle');
+  assert.equal(tab.previousElementSibling.dataset.staffView, 'payroll');
+  assert.equal(w.document.querySelector('#personnelFilePicker').disabled, true);
+  const select = w.document.querySelector('#personnelFileOwner');
+  select.value = 'person-two';
+  select.dispatchEvent(new w.Event('change'));
+  await tick();
+  const input = w.document.querySelector('#personnelFilePicker');
+  for (const file of [
+    new w.File(['%PDF-1.4'], '<first>.pdf', { type: 'application/pdf' }),
+    new w.File(['photo'], 'photo.png', { type: 'image/png' }),
+  ]) {
+    Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+    input.dispatchEvent(new w.Event('change'));
+  }
+  await w.document.querySelector('#personnelFilesForm').onsubmit(new w.Event('submit', { cancelable: true }));
+  assert.equal(stored.length, 2);
+  assert.equal(w.document.querySelector('#personnelFileOwner').value, 'person-two');
+  assert.equal(w.document.querySelectorAll('[data-personnel-file-list] section').length, 2);
+  assert.equal(w.document.querySelector('first'), null);
+  await w.document.querySelector('[data-personnel-file-list] button').onclick();
+  assert.match(
+    w.document.querySelector('[data-personnel-file-list] a').href,
+    /^data:application\/pdf;base64,/,
+  );
+  assert.equal(w.document.querySelector('[data-personnel-file-list] a').download, '<first>.pdf');
+  assert.equal(JSON.stringify(people), original, 'personnel/payroll metadata must never receive file bodies');
+});
+
 test('File selections accumulate and keep stable attachment IDs for retries', async (t) => {
   const dom = new JSDOM('<form><input id="files" type="file" multiple></form>', {
     url: 'https://test.invalid',

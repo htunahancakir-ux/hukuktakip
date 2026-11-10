@@ -22,6 +22,28 @@ async function handleDataRoutes(ctx) {
     parkingToday,
     applyParkingFee,
   } = ctx;
+  if (url.pathname === '/api/personnel-attachments' && req.method === 'GET') {
+    if (!['ceo', 'admin'].includes(u.role)) throw fail(403, 'Personel ekleri için yönetici yetkisi gerekli.');
+    const personnelId = url.searchParams.get('personnelId'),
+      attachmentId = url.searchParams.get('attachmentId');
+    if (!ctx.state.data['icrapro-personnel-v1'].some((person) => person.id === personnelId))
+      throw fail(404, 'Personel bulunamadı.');
+    const files = (ctx.state.personnelAttachments || []).filter((row) => row.personnelId === personnelId);
+    if (attachmentId) {
+      const file = files.find((row) => row.id === attachmentId);
+      if (!file) throw fail(404, 'Ek bulunamadı.');
+      send(res, 200, { attachment: file.attachment });
+    } else
+      send(res, 200, {
+        items: files.map((row) => ({
+          id: row.id,
+          name: row.attachment.name,
+          mime: row.attachment.mime,
+          createdAt: row.attachment.createdAt,
+        })),
+      });
+    return true;
+  }
   if (url.pathname === '/api/record-attachments' && req.method === 'POST') {
     const result = require('../../lib/record-attachments.cjs').appendAttachment(
       ctx.state,

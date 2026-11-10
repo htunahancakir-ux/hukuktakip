@@ -1,5 +1,104 @@
 const { test } = require('node:test');
 
+test('Personnel files stay private, survive payroll edits and load one attachment at a time', async () => {
+  const crypto = require('node:crypto');
+  const { pg, pool } = await database();
+  let server;
+  try {
+    const state = fixture();
+    state.users.push(
+      { ...state.users[0], id: 'file-admin', username: 'file-admin', role: 'admin' },
+      { ...state.users[0], id: 'file-staff', username: 'file-staff', role: 'staff', permissions: [] },
+    );
+    state.data['icrapro-personnel-v1'] = [
+      { id: 'person-one', name: 'Person One', officialSalary: 1000, unofficialSalary: 0, active: true },
+      { id: 'person-two', name: 'Person Two', officialSalary: 2000, unofficialSalary: 0, active: false },
+    ];
+    await importState(pool, state);
+    await importRecords(pool);
+    await activateRecords(pool);
+    server = await serve(createApplication({ store: createStore(pool, { records: true }) }));
+    const headers = {};
+    for (const id of ['test-ceo', 'file-admin', 'file-staff']) {
+      const token = crypto.randomBytes(32).toString('hex');
+      await pool.query(
+        "INSERT INTO han_private.han_sessions(token_hash,account_id,device_type,expires_at) VALUES($1,$2,'desktop',$3)",
+        [crypto.createHash('sha256').update(token).digest('hex'), id, Date.now() + 600000],
+      );
+      headers[id] = {
+        cookie: 'han_session=' + token,
+        'Content-Type': 'application/json',
+        'X-Han-Request': '1',
+      };
+    }
+    const pdf = { id: 'staff-pdf', name: 'document.pdf', data: 'data:application/pdf;base64,JVBERi0x' },
+      photo = { id: 'staff-photo', name: 'photo.png', data: 'data:image/png;base64,iVBORw0KGgo=' };
+    const upload = (personnelId, attachment, user = 'test-ceo') =>
+      fetch(server.url + '/api/record-attachments', {
+        method: 'POST',
+        headers: headers[user],
+        body: JSON.stringify({ ownerType: 'personnel', ownerId: personnelId, attachment }),
+      });
+    for (const file of [pdf, photo]) {
+      const response = await upload('person-one', file);
+      assert.equal(response.status, 200, await response.text());
+    }
+    assert.equal((await upload('person-one', pdf)).status, 200);
+    assert.equal((await upload('person-two', pdf, 'file-admin')).status, 200);
+    assert.equal((await upload('person-one', { ...pdf, id: 'denied' }, 'file-staff')).status, 403);
+    const get = (params, user = 'test-ceo') =>
+      fetch(server.url + '/api/records/personnel-attachments?' + new URLSearchParams(params), {
+        headers: headers[user],
+      });
+    assert.equal((await get({ personnelId: 'person-one' }, 'file-staff')).status, 403);
+    const response = await get({ personnelId: 'person-one' }, 'file-admin');
+    assert.equal(response.status, 200);
+    const files = await response.json();
+    assert.equal(files.items.length, 2);
+    assert.equal(JSON.stringify(files).includes('base64,'), false);
+    const viewed = await get({ personnelId: 'person-one', attachmentId: files.items[0].id });
+    assert.equal(viewed.status, 200);
+    assert.ok([pdf.data, photo.data].includes((await viewed.json()).attachment.data));
+    assert.equal((await get({ personnelId: 'person-two', attachmentId: files.items[0].id })).status, 404);
+    const edit = await fetch(server.url + '/api/data/patch?key=icrapro-personnel-v1', {
+      method: 'PUT',
+      headers: headers['test-ceo'],
+      body: JSON.stringify({
+        changes: [
+          {
+            path: [],
+            id: 'person-one',
+            field: 'officialSalary',
+            before: { value: 1000 },
+            after: { value: 1200 },
+          },
+        ],
+      }),
+    });
+    assert.equal(edit.status, 200, await edit.text());
+    const exported = await require('../lib/record-store/storage.cjs').exportRecords(pool);
+    assert.equal(exported.personnelAttachments.length, 3);
+    assert.equal(exported.data['icrapro-personnel-v1'][0].officialSalary, 1200);
+    assert.equal(exported.data['icrapro-personnel-v1'][1].officialSalary, 2000);
+    assert.equal(exported.data['icrapro-personnel-v1'][0].attachments, undefined);
+    const { split, join } = require('../lib/record-store/codec.cjs');
+    const decomposed = split(exported);
+    assert.deepEqual(decomposed.metadata.personnelAttachments, []);
+    assert.deepEqual(join(decomposed.metadata, decomposed.rows), exported);
+    const bootstrap = await fetch(server.url + '/api/records/bootstrap', {
+      headers: headers['file-staff'],
+    }).then((r) => r.json());
+    assert.equal(JSON.stringify(bootstrap).includes('base64,'), false);
+    assert.ok(
+      (await pool.query("SELECT count(*)::int AS n FROM han_private.han_audit WHERE area='Personel Ekleri'"))
+        .rows[0].n >= 3,
+    );
+  } finally {
+    await server?.close();
+    await pg.close();
+  }
+});
+
 test('Multiple document and client attachments persist separately, preserve legacy files and safely retry', async () => {
   const crypto = require('node:crypto');
   const { pg, pool } = await database();

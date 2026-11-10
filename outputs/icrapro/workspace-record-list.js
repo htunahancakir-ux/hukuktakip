@@ -285,7 +285,7 @@ async function loadRecordPage(direction = 0) {
 }
 async function saveRecordAttachments(ownerType, record, files) {
   if (!record) throw Error('Eklerin bağlanacağı kayıt bulunamadı.');
-  const rows = ownerType === 'client' ? db.clients : db.docs;
+  const rows = ownerType === 'personnel' ? [] : ownerType === 'client' ? db.clients : db.docs;
   for (const file of files) {
     const response = await fetch('/api/record-attachments', {
       method: 'POST',
@@ -299,7 +299,7 @@ async function saveRecordAttachments(ownerType, record, files) {
         result.error || 'Kayıt kaydedildi, ancak bazı ekler yüklenemedi. Kaydet düğmesiyle tekrar deneyin.',
       );
     const targets = [record, rows.find((row) => row.id === record.id)];
-    const baseline = hanDataBaselines.get('icrapro-v1');
+    const baseline = ownerType === 'personnel' ? null : hanDataBaselines.get('icrapro-v1');
     if (baseline)
       targets.push(
         (ownerType === 'client' ? baseline.clients : baseline.docs).find((row) => row.id === record.id),
