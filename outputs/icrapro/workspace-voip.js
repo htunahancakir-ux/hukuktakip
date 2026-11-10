@@ -90,7 +90,7 @@ async function voipExtensionsPanel(before) {
       data.users
         .map(
           (u) =>
-            `<tr><td><strong>${esc(u.name)}</strong><small>${esc(u.username || '')} · ${u.role === 'ceo' ? 'CEO' : u.role === 'admin' ? 'Yönetici' : 'Personel'}</small></td><td><form data-extension-user="${esc(u.id)}" class="toolbar"><input aria-label="${esc(u.name)} dahili numarası" name="extension" type="text" inputmode="numeric" pattern="[0-9]{2,8}" maxlength="8" value="${esc(u.extension)}" placeholder="Atanmadı" style="width:120px"><button class="secondary" type="submit">Kaydet</button><span role="status"></span></form></td></tr>`,
+            `<tr><td><strong>${esc(u.name)}</strong><small>Kullanıcı: ${esc(u.username || '')} · ${u.role === 'ceo' ? 'CEO' : u.role === 'admin' ? 'Yönetici' : 'Personel'}</small></td><td><form data-extension-user="${esc(u.id)}" class="toolbar"><input aria-label="${esc(u.name)} dahili numarası" name="extension" type="text" inputmode="numeric" pattern="[0-9]{2,8}" maxlength="8" value="${esc(u.extension)}" placeholder="Atanmadı" data-optional="true" style="width:120px"><button class="secondary" type="submit">Kaydet</button><span role="status"></span></form></td></tr>`,
         )
         .join('') +
       '</tbody></table></div>';

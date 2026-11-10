@@ -167,20 +167,41 @@ test('manager extension panel saves a single user and shows the saved value', as
           name: 'Personel',
           username: 'staff',
           role: 'staff',
-          extension: input?.extension || '1002',
+          extension: input ? input.extension : '1002',
         },
       ],
     };
   };
   await w.voipExtensionsPanel(w.document.querySelector('#permissions'));
   const form = w.document.querySelector('form');
+  const personnelSource = await fs.readFile('outputs/icrapro/personnel.js', 'utf8');
+  w.eval(
+    personnelSource.slice(
+      personnelSource.indexOf('function mandatoryControls('),
+      personnelSource.indexOf('function validateSettingsDraft('),
+    ),
+  );
+  w.enforceRequired(form);
   form.elements.extension.value = '1000';
-  form.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+  form.requestSubmit();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(input.userId, 's');
   assert.equal(input.extension, '1000');
   assert.equal(form.querySelector('[role="status"]').textContent, 'Kaydedildi.');
   assert.equal(form.elements.extension.defaultValue, '1000');
+  form.elements.extension.value = '';
+  assert.equal(
+    form.checkValidity(),
+    true,
+    'Blank extensions remain optional after the application form upgrader',
+  );
+  form.requestSubmit();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(input.extension, '');
+  assert.equal(form.elements.extension.defaultValue, '');
+  assert.equal(form.querySelector('[role="status"]').textContent, 'Kaydedildi.');
+  form.elements.extension.value = 'abc';
+  assert.equal(form.checkValidity(), false, 'Nonempty extensions still require digits');
   dom.window.close();
 });
 test('reservation prevents concurrent dialing and replays request without another provider call', async () => {
