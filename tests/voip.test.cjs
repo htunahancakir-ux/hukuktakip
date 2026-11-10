@@ -72,8 +72,12 @@ function harness(fetcher) {
       actor = u;
     },
     jobs,
-    async call(route, method = 'GET', input) {
+    async call(route, method = 'GET', input, parsedForm = false) {
       const req = { method, headers: { 'content-type': 'application/json' }, raw: JSON.stringify(input) };
+      if (parsedForm) {
+        req.headers['content-type'] = 'application/x-www-form-urlencoded';
+        req.body = input;
+      }
       const response = {
         writeHead(status, headers) {
           this.status = status;
@@ -252,7 +256,10 @@ test('verified webhook updates call; duplicates and late ringing do not reopen a
   };
   await assert.rejects(h.call('webhook?token=' + '0'.repeat(64), 'POST', event), (e) => e.status === 401);
   const url = 'webhook?token=' + h.state.voipConfig.webhookSecret;
-  await h.call(url, 'POST', event);
+  assert.deepEqual(await h.call(url, 'POST', {}, true), { ok: true });
+  await assert.rejects(h.call('webhook?token=' + '0'.repeat(64), 'POST', {}, true), (e) => e.status === 401);
+  await assert.rejects(h.call(url, 'POST', { event_type: 'hangup' }, true), (e) => e.status === 400);
+  await h.call(url, 'POST', event, true);
   await h.call(url, 'POST', event);
   await h.call(url, 'POST', { ...event, event_type: 'ringing' });
   assert.equal(h.state.voipCalls[0].status, 'completed');
