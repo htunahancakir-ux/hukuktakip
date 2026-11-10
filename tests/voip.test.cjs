@@ -1166,7 +1166,7 @@ test('canceling an in-flight originate persists intent and hangs up as soon as t
 test('cancel control is immediately visible while originate is pending', async () => {
   const { JSDOM } = require('jsdom');
   const dom = new JSDOM(
-    '<div class="header-actions"></div><div id="area"><span id="slot"><button id="launch">Ara</button></span></div>',
+    '<div class="shell"><header><div class="header-actions"></div></header></div><div id="area"><span id="slot"><button id="launch">Ara</button></span></div>',
     {
       url: 'https://example.test',
       runScripts: 'dangerously',
@@ -1199,7 +1199,14 @@ test('cancel control is immediately visible while originate is pending', async (
     await assert.rejects(
       w.voipStartCancelable({ requestId: 'second' }, w.document.getElementById('area'), () => {}),
     );
-    const globalHangup = w.document.querySelector('.header-actions [data-global-hangup]');
+    const bar = w.document.getElementById('voipCallBar');
+    assert(bar, 'call bar exists before originate completes');
+    assert.equal(bar.parentElement.className, 'shell', 'the bar is part of the page shell');
+    assert.equal(bar.nextElementSibling.tagName, 'HEADER', 'the bar sits above the app header');
+    assert(w.document.body.classList.contains('voip-call-bar-open'));
+    assert.match(bar.querySelector('[data-bar-status]').textContent, /Aranıyor/);
+    assert.equal(bar.querySelector('[data-bar-mute]').hidden, true, 'no mute before a call exists');
+    const globalHangup = bar.querySelector('[data-global-hangup]');
     assert(globalHangup, 'global hangup exists before originate completes');
     globalHangup.click();
     await new Promise(setImmediate);
@@ -1208,9 +1215,13 @@ test('cancel control is immediately visible while originate is pending', async (
       w.document.querySelector('.voip-cancel-wait').textContent,
       /Kapanana kadar lütfen bekleyiniz/,
     );
+    assert.equal(globalHangup.disabled, true);
+    assert.match(bar.querySelector('[data-bar-status]').textContent, /İptal ediliyor/);
     release();
     assert.equal((await pending).call.cancelRequested, true);
     assert.equal(w.document.querySelector('[data-cancel-starting]'), null);
+    assert.equal(w.document.getElementById('voipCallBar'), null, 'the bar closes with the dial attempt');
+    assert.equal(w.document.body.classList.contains('voip-call-bar-open'), false);
   } finally {
     dom.window.close();
   }
@@ -1321,6 +1332,7 @@ test('confirmed automatically saved busy calls close without a second evaluation
     };
     w.showVoipActive({}, call);
     assert(w.document.getElementById('voipActiveCall'));
+    assert(w.document.getElementById('voipCallBar'), 'the bar shows while the call rings');
     w.showVoipActive(
       {},
       {
@@ -1332,6 +1344,7 @@ test('confirmed automatically saved busy calls close without a second evaluation
       },
     );
     assert.equal(w.document.getElementById('voipActiveCall'), null);
+    assert.equal(w.document.getElementById('voipCallBar'), null, 'busy closes the bar without a prompt');
     assert.equal(w.returnedToDial, true, 'busy returns to the originating dial screen');
     assert(w.document.querySelector('#voipWebphone iframe'), 'busy preserves registered webphone');
     assert.equal(w.document.getElementById('voipPhoneDock').hidden, true);
@@ -1590,4 +1603,216 @@ test('unanswered call saves its outcome automatically and preserves live note', 
   assert(call.resultAt);
   assert.match(call.note, /Sonra tekrar kontrol et/);
   assert.equal(call.draftNote, undefined);
+});
+
+// Browser harness shared by the call bar tests: dialog methods behave like a modal-capable browser.
+async function callBarWindow(extra = {}) {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM(
+    '<div class="shell"><header><div class="header-actions"></div></header><main id="content">Sayfa</main></div><dialog id="borrowerDetail" open><button data-open-voip>☎ Ara</button></dialog>',
+    { url: 'https://example.test', runScripts: 'dangerously' },
+  );
+  const w = dom.window;
+  const calls = [];
+  w.HTMLDialogElement.prototype.show = function () {
+    this.open = true;
+  };
+  w.HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+  };
+  w.HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  Object.assign(w, {
+    hanAuth: { id: 'u', role: 'staff' },
+    esc: (v) => String(v).replaceAll('<', '&lt;'),
+    fetch: async (url, options = {}) => {
+      const body = options.body && JSON.parse(options.body);
+      calls.push({ url: url.replace(/^\/api\/voip\//, ''), body });
+      if (extra.fetch) return extra.fetch(url, body);
+      return {
+        ok: true,
+        json: async () =>
+          url.endsWith('/mute')
+            ? { muted: body.muted }
+            : url.includes('calls?')
+              ? { calls: [], results: ['Olumlu'] }
+              : { ok: true },
+      };
+    },
+  });
+  // Top-level const values stay local to eval, so hand the UI state to the test explicitly.
+  w.eval(
+    (await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8')) + '\nwindow.voipUiForTest = voipUi;',
+  );
+  return { dom, w, calls };
+}
+const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
+const ui = (w) => w.voipUiForTest;
+
+test('call bar follows an active call on every screen and controls it while the call window is hidden', async () => {
+  const { dom, w, calls } = await callBarWindow();
+  try {
+    const call = {
+      id: 'bar-call',
+      documentId: 'd',
+      documentNumber: 'E-12',
+      phone: '905320000000',
+      status: 'ringing',
+      statusLabel: 'Çalıyor',
+      createdAt: new Date(Date.now() - 65000).toISOString(),
+      outboundLine: 2,
+      outboundNumber: '908501234567',
+    };
+    w.showVoipActive({ id: 'd', number: 'E-12', debtor: 'Ayşe Yılmaz' }, call);
+    const bar = w.document.getElementById('voipCallBar');
+    const field = (name) => bar.querySelector('[data-bar-' + name + ']');
+    assert(bar, 'the bar opens with the call');
+    assert.equal(bar.parentElement.className, 'shell');
+    assert.equal(bar.parentElement.firstElementChild, bar, 'above the header, at the very top of the shell');
+    assert.equal(field('name').textContent, 'Ayşe Yılmaz');
+    assert.equal(field('avatar').textContent, 'AY');
+    assert.match(field('detail').textContent, /0 \(532\) 000 00 00 · Föy E-12/);
+    assert.equal(field('status').textContent, 'Çalıyor');
+    assert.equal(bar.dataset.phase, 'ringing');
+    assert.match(field('time').textContent, /^01:0\d$/, 'timer counts from the dial moment');
+    assert.match(field('line').textContent, /2\. hat/);
+
+    // Changing menus or scrolling replaces page content only; the bar belongs to the shell.
+    w.document.getElementById('content').innerHTML = '<p>Başka menü</p>';
+    assert.equal(w.document.getElementById('voipCallBar'), bar);
+
+    // The provider answers: the same bar reflects it.
+    ui(w).updateActive({ ...call, status: 'answered', statusLabel: 'Görüşülüyor' });
+    assert.equal(bar.dataset.phase, 'answered');
+    assert.equal(field('status').textContent, 'Görüşülüyor');
+
+    // Muting from the bar goes through the confirmed provider call and mirrors on both controls.
+    const mute = bar.querySelector('[data-bar-mute]');
+    assert.equal(mute.hidden, false);
+    mute.click();
+    assert.equal(mute.disabled, true, 'busy while the provider confirms');
+    await settle();
+    assert(calls.some((entry) => entry.url === 'mute' && entry.body.muted === true));
+    assert.equal(mute.disabled, false);
+    assert.equal(mute.getAttribute('aria-pressed'), 'true');
+    assert.equal(w.document.querySelector('[data-current-mute]').getAttribute('aria-pressed'), 'true');
+
+    // Minimize hides the call window; the bar stays and can reopen it.
+    w.document.querySelector('[data-current-minimize]').click();
+    const host = w.document.getElementById('voipActiveCall');
+    assert.equal(host.hidden, true);
+    assert.equal(w.document.getElementById('voipCallBar'), bar, 'minimizing never removes the bar');
+    bar.querySelector('[data-bar-open]').click();
+    assert.equal(host.hidden, false);
+    assert.equal(host.open, true);
+    assert.equal(ui(w).minimized, false);
+    assert.equal(w.document.activeElement, host.querySelector('textarea'), 'notes receive focus');
+
+    // Hang up from the bar while the window is minimized again.
+    w.document.querySelector('[data-current-minimize]').click();
+    assert.equal(host.hidden, true);
+    bar.querySelector('[data-global-hangup]').click();
+    await settle();
+    assert(calls.some((entry) => entry.url === 'hangup' && entry.body.id === 'bar-call'));
+    assert.equal(field('status').textContent, 'Sonlandırılıyor…');
+    assert.equal(bar.dataset.phase, 'ending');
+    assert.equal(bar.querySelector('[data-global-hangup]').disabled, true);
+
+    // The provider confirms termination: the bar goes away and the result form takes over.
+    ui(w).updateActive({ ...call, status: 'completed', statusLabel: 'Görüşüldü', duration: 34 });
+    assert.equal(w.document.getElementById('voipCallBar'), null);
+    assert.equal(w.document.body.classList.contains('voip-call-bar-open'), false);
+    assert.equal(host.querySelector('[data-current-outcomes]').hidden, false);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('call bar closes without a prompt for busy and unreachable calls and survives a rejected second dial', async () => {
+  const { dom, w } = await callBarWindow({
+    fetch: async (url) =>
+      url.endsWith('/start')
+        ? { ok: false, status: 409, json: async () => ({ error: 'Zaten etkin bir aramanız var.' }) }
+        : { ok: true, json: async () => ({ ok: true }) },
+  });
+  try {
+    const call = { id: 'a', phone: '905320000000', status: 'ringing', createdAt: new Date().toISOString() };
+    w.showVoipActive({}, call);
+    const bar = w.document.getElementById('voipCallBar');
+    assert(bar);
+    // A second, rejected dial attempt must neither replace nor close the running call's bar.
+    await assert.rejects(
+      w.voipStartCancelable(
+        { requestId: 'second-dial-0001', phone: '905321111111' },
+        w.document.body,
+        () => {},
+      ),
+      /etkin bir aramanız var/,
+    );
+    assert.equal(w.document.getElementById('voipCallBar'), bar);
+    assert.match(bar.querySelector('[data-bar-name]').textContent, /0 \(532\) 000 00 00/);
+    assert.equal(bar.querySelector('[data-global-hangup]').hidden, false);
+
+    // Unreachable: the exchange reports the result itself, so no result form is shown.
+    ui(w).updateActive({
+      ...call,
+      status: 'unanswered',
+      result: 'Ulaşılamadı',
+      resultBy: 'Santral',
+      resultAt: new Date().toISOString(),
+      duration: 0,
+    });
+    assert.equal(w.document.getElementById('voipCallBar'), null);
+    assert.equal(
+      w.document.getElementById('voipActiveCall'),
+      null,
+      'no "choose a result and press OK" window',
+    );
+    assert.equal(w.document.body.classList.contains('voip-call-bar-open'), false);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('call bar writes names, details and statuses as text only', async () => {
+  const { dom, w } = await callBarWindow({
+    fetch: async () => ({ ok: true, json: async () => ({ ok: true }) }),
+  });
+  try {
+    w.voipStartCancelable(
+      { requestId: 'xss-dial-0001', phone: '905320000000' },
+      w.document.body,
+      () => {},
+      null,
+      { name: '<img src=x onerror="window.hacked=1">', detail: '<script>window.hacked=2</script>' },
+    ).catch(() => {});
+    const bar = w.document.getElementById('voipCallBar');
+    assert(bar);
+    assert.equal(bar.querySelector('[data-bar-name]').textContent, '<img src=x onerror="window.hacked=1">');
+    assert.match(bar.querySelector('[data-bar-detail]').textContent, /<script>/);
+    assert.equal(bar.querySelectorAll('img, script').length, 0);
+    assert.equal(w.hacked, undefined);
+    assert.match(
+      bar.querySelector('[data-bar-avatar]').textContent,
+      /^[\p{L}☎]{1,2}$/u,
+      'plain letters only',
+    );
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('call bar stays pinned at the top while the page scrolls and keeps the header below it', async () => {
+  const css = await fs.readFile('outputs/icrapro/voip.css', 'utf8');
+  const rule = (selector) =>
+    css.match(
+      new RegExp('(?:^|\\n)' + selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{([^}]*)\\}'),
+    )?.[1];
+  assert.match(rule('.voip-call-bar'), /position:\s*sticky/);
+  assert.match(rule('.voip-call-bar'), /top:\s*0/);
+  assert.match(rule('.voip-call-bar'), /height:\s*var\(--voip-bar-h\)/);
+  assert.match(rule('body.voip-call-bar-open .shell > header'), /top:\s*var\(--voip-bar-h\)/);
+  assert.match(rule('body.voip-call-bar-open'), /--voip-bar-h:\s*58px/);
+  assert.match(rule(':root'), /--voip-bar-h:\s*0px/);
 });

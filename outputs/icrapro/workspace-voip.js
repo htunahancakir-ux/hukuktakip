@@ -13,22 +13,102 @@ async function voipApi(path, method = 'GET', value) {
     throw Object.assign(Error(result.error || 'Telefon işlemi tamamlanamadı.'), { status: response.status });
   return result;
 }
-function voipGlobalHangup(action) {
-  voipUi.globalHangup = action;
-  let button = document.querySelector('[data-global-hangup]');
-  if (!action) {
-    button?.remove();
-    return;
+// Call bar: one always-visible strip at the top of the page shell, from the moment dialing
+// starts until the call closes. It belongs to the page, not to the call window, so it stays
+// reachable when that window is moved, minimized or hidden, when the page scrolls and on
+// every menu. Dynamic values are always written with textContent.
+const voipBarIcons = {
+  mic: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path><path class="voip-call-bar-slash" d="M4 4l16 16"></path></svg>',
+  note: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 20h4L19 9l-4-4L4 16z"></path><path d="M13 7l4 4"></path></svg>',
+};
+function voipInitials(name) {
+  const words = String(name || '')
+    .trim()
+    .split(/\s+/u)
+    .filter((word) => /^\p{L}/u.test(word));
+  if (!words.length) return '☎';
+  return (words[0][0] + (words.length > 1 ? words.at(-1)[0] : '')).toLocaleUpperCase('tr-TR');
+}
+function voipCallBarTick() {
+  const state = voipUi.bar,
+    time = document.querySelector('#voipCallBar [data-bar-time]');
+  if (state && time)
+    time.textContent = voipDuration(Math.max(0, Math.floor((Date.now() - state.startedAt) / 1000)));
+}
+function voipCallBarRender() {
+  const state = voipUi.bar;
+  if (!state) return;
+  let bar = document.getElementById('voipCallBar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'voipCallBar';
+    bar.className = 'voip-call-bar';
+    bar.setAttribute('role', 'region');
+    bar.setAttribute('aria-label', 'Aktif arama');
+    bar.innerHTML = `<div class="voip-call-bar-who"><span class="voip-call-bar-avatar" data-bar-avatar aria-hidden="true"></span><span class="voip-call-bar-text"><strong data-bar-name></strong><small data-bar-detail></small></span></div>
+      <div class="voip-call-bar-state"><span class="voip-call-bar-dot" aria-hidden="true"></span><span data-bar-status role="status"></span><time data-bar-time>00:00</time></div>
+      <span class="voip-call-bar-line" data-bar-line></span>
+      <div class="voip-call-bar-actions">
+        <button type="button" class="voip-call-bar-round" data-bar-mute aria-pressed="false" title="Sessize al" aria-label="Sessize al">${voipBarIcons.mic}</button>
+        <button type="button" class="voip-call-bar-round" data-bar-open title="Not ve sonuç penceresini aç" aria-label="Not ve sonuç penceresini aç">${voipBarIcons.note}</button>
+        <button type="button" class="voip-call-bar-hangup" data-global-hangup aria-label="Aramayı sonlandır"><span aria-hidden="true">☎</span> <span data-bar-hangup-label>Sonlandır</span></button>
+      </div>`;
+    (document.querySelector('.shell') || document.body).prepend(bar);
+    document.body.classList.add('voip-call-bar-open');
+    bar.querySelector('[data-global-hangup]').onclick = () => voipUi.bar?.hangup?.();
+    bar.querySelector('[data-bar-mute]').onclick = () => voipUi.bar?.mute?.();
+    bar.querySelector('[data-bar-open]').onclick = () => voipUi.bar?.open?.();
   }
-  if (!button) {
-    button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'voip-hangup';
-    button.dataset.globalHangup = '';
-    button.textContent = '☎ Sonlandır';
-    document.querySelector('.header-actions')?.prepend(button);
-  }
-  button.onclick = () => voipUi.globalHangup?.();
+  if (!voipUi.barTimer) voipUi.barTimer = setInterval(voipCallBarTick, 1000);
+  const dialing = state.phase === 'dialing',
+    hangup = bar.querySelector('[data-global-hangup]'),
+    mute = bar.querySelector('[data-bar-mute]'),
+    line = bar.querySelector('[data-bar-line]'),
+    detail = bar.querySelector('[data-bar-detail]');
+  bar.dataset.phase = state.ending ? 'ending' : state.phase || 'dialing';
+  bar.querySelector('[data-bar-avatar]').textContent = voipInitials(state.name);
+  bar.querySelector('[data-bar-name]').textContent = state.name || 'Arama';
+  detail.textContent = state.detail || '';
+  detail.hidden = !state.detail;
+  bar.querySelector('[data-bar-status]').textContent = state.ending
+    ? dialing
+      ? 'İptal ediliyor…'
+      : 'Sonlandırılıyor…'
+    : state.status || 'Aranıyor…';
+  line.textContent = state.line || '';
+  line.hidden = !state.line;
+  mute.hidden = !state.mute;
+  mute.disabled = !!state.muteBusy || !!state.ending;
+  mute.setAttribute('aria-pressed', String(!!state.muted));
+  bar.querySelector('[data-bar-open]').hidden = !state.open;
+  hangup.disabled = !!state.ending;
+  hangup.setAttribute('aria-label', state.ending ? 'Arama sonlandırılıyor' : 'Aramayı sonlandır');
+  bar.querySelector('[data-bar-hangup-label]').textContent = state.ending
+    ? dialing
+      ? 'İptal ediliyor…'
+      : 'Sonlandırılıyor…'
+    : 'Sonlandır';
+  voipCallBarTick();
+}
+function voipCallBarOpen(state) {
+  voipUi.bar = { startedAt: Date.now(), phase: 'dialing', ...state };
+  voipCallBarRender();
+}
+function voipCallBarUpdate(patch) {
+  if (!voipUi.bar) return;
+  voipUi.bar = { ...voipUi.bar, ...patch };
+  voipCallBarRender();
+}
+function voipCallBarClose() {
+  clearInterval(voipUi.barTimer);
+  voipUi.barTimer = null;
+  voipUi.bar = null;
+  document.getElementById('voipCallBar')?.remove();
+  document.body.classList.remove('voip-call-bar-open');
+}
+function voipCallLabel(doc, call) {
+  const number = call.documentNumber || (doc.id && doc.number !== 'Dosyasız arama' ? doc.number : '');
+  return number ? 'Föy ' + number : call.documentId || doc.id ? '' : 'Dosyasız arama';
 }
 function voipCancelWait(frame, waiting) {
   frame.querySelector(':scope > .voip-cancel-wait')?.remove();
@@ -42,7 +122,7 @@ function voipCancelWait(frame, waiting) {
     '<div><strong>Arama sonlandırılıyor…</strong><span>Kapanana kadar lütfen bekleyiniz.</span></div>';
   frame.append(notice);
 }
-async function voipStartCancelable(input, container, report, launchButton) {
+async function voipStartCancelable(input, container, report, launchButton, context = {}) {
   if (voipUi.startPending) throw Error('Arama başlatılıyor; mevcut işlemin bitmesini bekleyin.');
   voipUi.startPending = true;
   document.querySelectorAll('.local-feedback').forEach((el) => el.remove());
@@ -70,10 +150,21 @@ async function voipStartCancelable(input, container, report, launchButton) {
       }
     }
   };
-  voipGlobalHangup(() => cancel.click());
+  // A running call keeps its own bar; a failed second start must never replace or close it.
+  const ownsBar = !voipUi.bar;
+  if (ownsBar)
+    voipCallBarOpen({
+      owner: 'start',
+      phase: 'dialing',
+      status: 'Aranıyor…',
+      name: context.name || voipPhone(input.phone),
+      detail: [context.name ? voipPhone(input.phone) : '', context.detail || ''].filter(Boolean).join(' · '),
+      hangup: () => cancel.click(),
+    });
   cancel.onclick = () => {
     if (requested) return;
     requested = true;
+    if (ownsBar) voipCallBarUpdate({ ending: true });
     cancel.disabled = true;
     cancel.textContent = 'İptal ediliyor…';
     voipCancelWait(frame, true);
@@ -100,7 +191,7 @@ async function voipStartCancelable(input, container, report, launchButton) {
     else cancel.remove();
     voipCancelWait(frame, false);
     voipUi.startPending = false;
-    voipGlobalHangup(null);
+    if (ownsBar && voipUi.bar?.owner === 'start') voipCallBarClose();
   }
 }
 function voipDate(value) {
@@ -805,6 +896,7 @@ function setupBorrowerVoip(dialog, doc) {
             panel,
             (text) => message(text, 'notice'),
             [...panel.querySelectorAll('[data-dial-phone]')].find((b) => b.dataset.dialPhone === phone),
+            { name: doc.debtor || '', detail: voipCallLabel(doc, { documentId: doc.id }) },
           );
           confirmation = '';
           feedback = '';
@@ -1107,7 +1199,7 @@ function showVoipActive(doc, call) {
   };
   voipUi.disposeActive = () => {
     resetHeaderCall();
-    voipGlobalHangup(null);
+    voipCallBarClose();
     clearInterval(heartbeatTimer);
     disposed = true;
     clearTimeout(draftTimer);
@@ -1157,11 +1249,18 @@ function showVoipActive(doc, call) {
       line.textContent =
         next.outboundLine && display ? next.outboundLine + '. hat · ' + display : 'Dış hat doğrulanıyor…';
     }
+    const ending = !ended && !next.cancelError && (next.cancelRequested || hangupPending);
     if (ended) {
       resetHeaderCall();
-      voipGlobalHangup(null);
-    }
-    voipCancelWait(host, !ended && !next.cancelError && (next.cancelRequested || hangupPending));
+      voipCallBarClose();
+    } else
+      voipCallBarUpdate({
+        phase: { ringing: 'ringing', answered: 'answered', unknown: 'unknown' }[next.status] || 'dialing',
+        status: next.statusLabel || 'Aranıyor…',
+        line: line ? line.textContent : '',
+        ending,
+      });
+    voipCancelWait(host, ending);
     // Busy/canceled calls keep the registered webphone ready for the next attempt.
     if (ended && !wasEnded && next.status === 'completed') releaseVoipWebphone();
     outcomes.hidden = !ended;
@@ -1235,6 +1334,29 @@ function showVoipActive(doc, call) {
     }
   };
   voipUi.updateActive = update;
+  // The top bar controls this call from any screen, even while the window below is hidden.
+  const debtorName = call.debtorName || doc.debtor || '';
+  voipCallBarOpen({
+    phase: 'dialing',
+    startedAt: started,
+    name: debtorName || voipPhone(call.phone),
+    detail: [debtorName ? voipPhone(call.phone) : '', voipCallLabel(doc, call)].filter(Boolean).join(' · '),
+    muted,
+    mute: () => host.querySelector('[data-current-mute]')?.click(),
+    open: () => {
+      if (voipUi.minimized) host.querySelector('[data-current-minimize]').click();
+      else {
+        host.hidden = false;
+        if (!host.open && typeof host.showModal === 'function') host.showModal();
+      }
+      note.focus({ preventScroll: true });
+    },
+    hangup: () => {
+      host.hidden = false;
+      if (!host.open && typeof host.showModal === 'function') host.showModal();
+      host.querySelector('[data-current-hangup]')?.click();
+    },
+  });
   update(call);
   if (call.cancelRequested)
     message(
@@ -1245,10 +1367,12 @@ function showVoipActive(doc, call) {
   const muteLabel = () => {
     muteButton.setAttribute('aria-pressed', String(muted));
     muteButton.textContent = muted ? '🔇 Sesi aç' : '🎙 Sessize al';
+    voipCallBarUpdate({ muted });
   };
   muteLabel();
   muteButton.onclick = async () => {
     muteButton.disabled = true;
+    voipCallBarUpdate({ muteBusy: true });
     try {
       const result = await voipApi('mute', 'POST', { id: call.id, muted: !muted });
       muted = result.muted;
@@ -1257,12 +1381,14 @@ function showVoipActive(doc, call) {
       message(error.message);
     } finally {
       muteButton.disabled = false;
+      voipCallBarUpdate({ muteBusy: false });
     }
   };
   host.querySelector('[data-current-hangup]').onclick = async (event) => {
     event.target.disabled = true;
     hangupPending = true;
     voipCancelWait(host, true);
+    voipCallBarUpdate({ ending: true });
     try {
       await voipApi('hangup', 'POST', { id: call.id });
       message('Sonlandırma istendi. Santralden kapanış bilgisi bekleniyor.', 'notice');
@@ -1271,17 +1397,12 @@ function showVoipActive(doc, call) {
     } catch (error) {
       hangupPending = false;
       voipCancelWait(host, false);
+      voipCallBarUpdate({ ending: false });
       message(error.message);
     } finally {
       event.target.disabled = false;
     }
   };
-  if (!ended)
-    voipGlobalHangup(() => {
-      host.hidden = false;
-      if (!host.open && typeof host.showModal === 'function') host.showModal();
-      host.querySelector('[data-current-hangup]')?.click();
-    });
   const sync = async () => {
     if (syncing || disposed || ended) return;
     syncing = true;
