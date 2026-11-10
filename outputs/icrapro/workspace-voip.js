@@ -1194,9 +1194,7 @@ function showVoipActive(doc, call) {
   };
   if (!ended) voipUi.timer = setInterval(sync, 2500);
   if (call.cancelRequested && !call.cancelError && !ended) {
-    const dock = document.getElementById('voipPhoneDock');
-    if (dock?.hidePopover) dock.hidePopover();
-    if (dock) dock.hidden = true;
+    if (!voipUi.minimized) host.querySelector('[data-current-minimize]').click();
     if (typeof toast === 'function') toast('İptal isteği gönderildi; santral durumu kontrol ediliyor.');
     sync();
   }
