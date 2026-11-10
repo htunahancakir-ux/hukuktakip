@@ -19,6 +19,11 @@
 .voip-phone-dock[hidden] {
   display: none !important;
 }
+.voip-phone-window-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
 .voip-phone-dock > dialog.voip-webphone,
 .voip-phone-dock > dialog.voip-active-call,
 .voip-phone-dock > dialog.voip-standalone {

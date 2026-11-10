@@ -255,6 +255,12 @@ test('single dial entry opens the webphone and restoring it does not reload an o
     await new Promise(setImmediate);
     assert.equal(tokens, 1);
     assert(!w.document.getElementById('voipPhoneDock').classList.contains('voip-dock-minimized'));
+    phone.querySelector('[data-phone-close]').click();
+    assert.equal(w.document.getElementById('voipPhoneDock').hidden, true);
+    w.document.querySelector('[data-standalone-voip]').click();
+    await new Promise(setImmediate);
+    assert.equal(w.document.getElementById('voipPhoneDock').hidden, false);
+    assert.equal(tokens, 1, 'Closing the window preserves the phone session');
   } finally {
     dom.window.close();
   }

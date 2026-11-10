@@ -843,13 +843,22 @@ async function openVoipWebphone(feedback) {
       phone.id = 'voipWebphone';
       phone.className = 'voip-webphone';
       phone.innerHTML =
-        '<div class="panelhead"><h2>HAN HUKUK WEB TELEFON</h2><button type="button" class="secondary">Küçült</button></div><iframe title="HAN HUKUK web telefonu" allow="microphone; autoplay" referrerpolicy="no-referrer"></iframe>';
+        '<div class="panelhead"><h2>HAN HUKUK WEB TELEFON</h2><div class="voip-phone-window-actions"><button type="button" class="secondary" data-phone-minimize>Küçült</button><button type="button" class="secondary" data-phone-close>Kapat</button></div></div><iframe title="HAN HUKUK web telefonu" allow="microphone; autoplay" referrerpolicy="no-referrer"></iframe>';
       dock.append(phone);
       phone.querySelector('button').onclick = () => {
         dock.classList.toggle('voip-dock-minimized');
         phone.querySelector('button').textContent = dock.classList.contains('voip-dock-minimized')
           ? 'Genişlet'
           : 'Küçült';
+      };
+      phone.querySelector('[data-phone-close]').onclick = () => {
+        const active = document.getElementById('voipActiveCall');
+        if (active && active.dataset.ended !== 'true') {
+          if (!voipUi.minimized) active.querySelector('[data-current-minimize]')?.click();
+          return;
+        }
+        if (dock.hidePopover) dock.hidePopover();
+        dock.hidden = true;
       };
     }
     phone.style.visibility = 'visible';
