@@ -150,6 +150,7 @@ test('user management lists escaped contacts, filters by email and refreshes aft
       name: 'Diğer',
       username: 'other',
       role: 'staff',
+      active: false,
       email: '<img src=x onerror=alert(1)>',
       mobilePhone: '',
     },
@@ -161,6 +162,11 @@ test('user management lists escaped contacts, filters by email and refreshes aft
   await w.userManagement();
   assert.match(w.document.querySelector('thead').textContent, /E-POSTA.*CEP TELEFONU/);
   assert.match(w.document.querySelector('#passwordUserRows').textContent, /p@example.com/);
+  assert.equal(w.document.querySelector('[data-reset-password="other"]'), null);
+  const inactive = w.document.querySelector('#showInactiveUsers');
+  inactive.checked = true;
+  inactive.dispatchEvent(new w.Event('change'));
+  assert(w.document.querySelector('[data-reset-password="other"]'));
   assert.equal(w.document.querySelectorAll('img').length, 0);
   [...w.document.querySelectorAll('button')]
     .find((button) => button.textContent === 'E-posta / Cep Telefonu')

@@ -15,12 +15,19 @@ async function userManagement(editId) {
     `<div class="panel"><div class="panelhead"><div><h2>Personel Şifre Değiştirme / Sıfırlama</h2><p>Yeni hesap ve yetki işlemleri Personel bölümünden yapılır. Şifre sıfırlanınca kullanıcının açık oturumları kapatılır.</p></div></div>${selected ? `<form id="passwordResetForm"><div class="formbody grid"><p class="full"><b>${esc(selected.name)}</b> · ${esc(selected.username)}</p><label class="field">Yeni Şifre<input name="password" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></label><label class="field">Yeni Şifre Tekrar<input name="confirm" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></label></div><div class="actions"><button class="secondary" type="button" id="cancelPasswordReset">Vazgeç</button><button class="primary" type="submit">Şifreyi Sıfırla</button></div></form>` : ''}<div class="formbody"><label class="field">Personel / Kullanıcı Ara<input type="search" id="passwordUserSearch" placeholder="Ad, kullanıcı adı, e-posta veya telefon…"></label></div><div class="overflow"><table><thead><tr><th>AD SOYAD</th><th>KULLANICI ADI</th><th>E-POSTA</th><th>CEP TELEFONU</th><th>ROL</th><th>DURUM</th><th>ŞİFRE İŞLEMİ</th></tr></thead><tbody id="passwordUserRows"></tbody></table></div></div>`;
   $('#content').insertAdjacentHTML('afterbegin', userAuditTabs('users'));
   bindUserAuditTabs();
+  const inactiveToggle = document.createElement('label');
+  inactiveToggle.className = 'settings-check';
+  inactiveToggle.innerHTML = '<input type="checkbox" id="showInactiveUsers"> Pasif hesapları göster';
+  $('#passwordUserSearch').closest('label').after(inactiveToggle);
+  $('#showInactiveUsers').checked = selected?.active === false;
   const renderRows = () => {
     const query = $('#passwordUserSearch').value.trim().toLocaleLowerCase('tr');
-    const visibleUsers = users.filter((u) =>
-      normalizeSearch([u.name, u.username, u.email, u.mobilePhone].join(' ')).includes(
-        normalizeSearch(query),
-      ),
+    const visibleUsers = users.filter(
+      (u) =>
+        ($('#showInactiveUsers').checked || u.active !== false) &&
+        normalizeSearch([u.name, u.username, u.email, u.mobilePhone].join(' ')).includes(
+          normalizeSearch(query),
+        ),
     );
     $('#passwordUserRows').innerHTML =
       visibleUsers
@@ -55,6 +62,7 @@ async function userManagement(editId) {
     });
   };
   $('#passwordUserSearch').oninput = renderRows;
+  $('#showInactiveUsers').onchange = renderRows;
   renderRows();
   if (!selected) return;
   $('#cancelPasswordReset').onclick = () => userManagement();
