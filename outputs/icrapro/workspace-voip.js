@@ -44,7 +44,7 @@ async function voipStartCancelable(input, container, report) {
     cancellation = requestCancel().catch((error) => report(error.message));
   };
   try {
-    const result = await voipApi('start', 'POST', input);
+    const result = await voipApi('start', 'POST', { ...input, browserManaged: true });
     finished = true;
     if (requested) {
       await cancellation;
@@ -1011,7 +1011,13 @@ function showVoipActive(doc, call) {
     clearTimeout(draftTimer);
     draftTimer = setTimeout(() => saveDraft().catch(() => {}), 800);
   };
+  const heartbeat = () => {
+    if (!ended && !disposed) void voipApi('heartbeat', 'POST', { id: call.id }).catch(() => {});
+  };
+  const heartbeatTimer = setInterval(heartbeat, 15000);
+  heartbeat();
   voipUi.disposeActive = () => {
+    clearInterval(heartbeatTimer);
     disposed = true;
     clearTimeout(draftTimer);
     clearInterval(elapsed);

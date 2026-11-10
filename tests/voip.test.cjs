@@ -1378,3 +1378,68 @@ test('canceled call recovery clears active state only on explicit provider chann
     else process.env.VOIP_CRON_SECRET = previous;
   }
 });
+
+test('watchdog closes only stale browser calls and retains provider uncertainty', async () => {
+  process.env.VOIP_CRON_SECRET = 'watchdog-test';
+  const h = harness(async (url) => {
+    if (new URL(url).pathname.startsWith('/hangup/'))
+      return new Response('No such channel!', { status: 400 });
+    return new Response('{}');
+  });
+  const old = new Date(Date.now() - 180000).toISOString();
+  h.state.voipCalls.push(
+    {
+      id: 'stale-web',
+      userId: 'u',
+      status: 'ringing',
+      providerId: 'web',
+      browserManaged: true,
+      browserSeenAt: old,
+      createdAt: old,
+      draftNote: 'Notum',
+    },
+    {
+      id: 'fresh-web',
+      userId: 'u',
+      status: 'answered',
+      providerId: 'fresh',
+      browserManaged: true,
+      browserSeenAt: new Date().toISOString(),
+      createdAt: old,
+    },
+    { id: 'mobile', userId: 'u', status: 'answered', providerId: 'mobile', createdAt: old },
+  );
+  await assert.rejects(h.call('watchdog'), (e) => e.status === 401);
+  await h.call('watchdog', 'GET', undefined, false, { authorization: 'Bearer watchdog-test' });
+  assert.equal(h.state.voipCalls[0].status, 'failed');
+  assert.match(h.state.voipCalls[0].note, /Notum/);
+  assert.equal(h.state.voipCalls[0].endedAt, undefined);
+  assert.equal(h.state.voipCalls[1].status, 'answered');
+  assert.equal(h.state.voipCalls[2].status, 'answered');
+  delete process.env.VOIP_CRON_SECRET;
+});
+
+test('heartbeat renews only owner browser call and watchdog retries provider errors', async () => {
+  process.env.VOIP_CRON_SECRET = 'watchdog-test';
+  const h = harness(async () => new Response('error', { status: 400 }));
+  const old = new Date(Date.now() - 180000).toISOString();
+  h.state.voipCalls.push({
+    id: 'browser',
+    userId: 'u',
+    status: 'ringing',
+    providerId: 'web',
+    browserManaged: true,
+    browserSeenAt: old,
+    createdAt: old,
+  });
+  h.user = { id: 's', role: 'staff' };
+  await assert.rejects(h.call('heartbeat', 'POST', { id: 'browser' }), (e) => e.status === 403);
+  h.user = { id: 'u', role: 'ceo' };
+  await h.call('heartbeat', 'POST', { id: 'browser' });
+  assert(Date.parse(h.state.voipCalls[0].browserSeenAt) > Date.parse(old));
+  h.state.voipCalls[0].browserSeenAt = old;
+  await h.call('watchdog', 'GET', undefined, false, { authorization: 'Bearer watchdog-test' });
+  assert.equal(h.state.voipCalls[0].status, 'unknown');
+  assert.equal(h.state.voipCalls[0].endedAt, undefined);
+  delete process.env.VOIP_CRON_SECRET;
+});
