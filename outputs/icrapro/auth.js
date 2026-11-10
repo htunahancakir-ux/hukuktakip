@@ -745,3 +745,53 @@ setInterval(() => {
   )
     loadDueInstallmentsHome();
 }, 30000);
+
+// Large attachment responses travel in bounded JSON pieces.
+(() => {
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = async (input, options = {}) => {
+    const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url, location.href);
+    const method = options.method || input.method || 'GET';
+    if (url.origin !== location.origin || !url.pathname.startsWith('/api/') || method.toUpperCase() !== 'GET')
+      return originalFetch(input, options);
+    const headers = new Headers(options.headers || input.headers);
+    headers.set('X-Han-Chunk-Transport', '1');
+    const settings = { ...options, headers };
+    let response = await originalFetch(input, settings);
+    if (response.headers.get('X-Han-Chunked') !== '1') return response;
+    const initial = response;
+    let body = '',
+      hash,
+      total;
+    for (let index = 0; index < 256; index++) {
+      if (!response.ok || response.headers.get('X-Han-Chunked') !== '1')
+        throw Error('Dosya aktarımı kesildi. Yeniden deneyin.');
+      const part = await response.json();
+      hash ||= part.hash;
+      total ||= part.total;
+      if (
+        part.hash !== hash ||
+        part.total !== total ||
+        part.offset !== body.length ||
+        typeof part.chunk !== 'string' ||
+        !part.chunk.length
+      )
+        throw Error('Kayıt aktarım sırasında değişti. Yeniden açın.');
+      body += part.chunk;
+      if (body.length === total) {
+        const resultHeaders = new Headers(initial.headers);
+        resultHeaders.delete('Content-Length');
+        resultHeaders.delete('X-Han-Chunked');
+        return new Response(body, {
+          status: initial.status,
+          statusText: initial.statusText,
+          headers: resultHeaders,
+        });
+      }
+      if (body.length > total) throw Error('Geçersiz dosya aktarımı.');
+      url.searchParams.set('_hanChunk', String(body.length));
+      response = await originalFetch(url.href, settings);
+    }
+    throw Error('Dosya aktarımı sınırı aşıldı.');
+  };
+})();

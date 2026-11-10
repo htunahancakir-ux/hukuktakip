@@ -1,18 +1,6 @@
 (() => {
   const snapshots = new WeakMap();
-  const submitting = new WeakSet();
-  const committed = new WeakSet();
   let press = null;
-  let warning = null;
-
-  function submitters(form) {
-    return Array.from(form.elements).filter(
-      (el) =>
-        (el instanceof HTMLButtonElement || el instanceof HTMLInputElement) &&
-        el.type === 'submit' &&
-        !el.matches(':disabled'),
-    );
-  }
 
   function fields(form) {
     return Array.from(form.elements).filter(
@@ -67,7 +55,6 @@
   window.modalDrafts = (dialog, except) =>
     editableForms(dialog).filter((form) => form !== except && changed(form));
   window.modalFormSaved = (form) => {
-    committed.add(form);
     delete form.dataset.modalDirty;
     remember(form);
   };
@@ -90,109 +77,8 @@
     for (const dialog of refresh) rememberForms(dialog);
   }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['open'] });
 
-  function reveal(form) {
-    const panel = form.closest('[data-borrower-panel][hidden]');
-    if (panel)
-      form
-        .closest('dialog')
-        .querySelector('[data-borrower-tab="' + panel.dataset.borrowerPanel + '"]')
-        ?.click();
-  }
-
-  async function save(form, submitter) {
-    committed.delete(form);
-    const original = form.onsubmit;
-    let ran = false;
-    let result;
-    if (original)
-      form.onsubmit = function (event) {
-        ran = true;
-        result = original.call(this, event);
-        return result;
-      };
-    else
-      form.addEventListener(
-        'submit',
-        () => {
-          ran = true;
-        },
-        { once: true },
-      );
-    submitting.add(form);
-    try {
-      form.requestSubmit(submitter);
-      await result;
-      return ran && (committed.has(form) || !form.isConnected || !changed(form));
-    } finally {
-      if (original && form.onsubmit !== original) form.onsubmit = original;
-      submitting.delete(form);
-    }
-  }
-
   function dismiss(dialog) {
-    if (
-      !dialog.open ||
-      warning ||
-      editableForms(dialog).some(
-        (form) =>
-          submitting.has(form) ||
-          (changed(form) &&
-            !submitters(form).length &&
-            form.querySelector('button:disabled[type="submit"], button.primary:disabled')),
-      )
-    )
-      return;
-    const drafts = window.modalDrafts(dialog);
-    if (!drafts.length) return dialog.close();
-    const prompt = document.createElement('dialog');
-    warning = prompt;
-    prompt.className = 'unsaved-modal';
-    prompt.setAttribute('aria-labelledby', 'unsavedModalTitle');
-    prompt.innerHTML =
-      '<div class="panelhead"><h2 id="unsavedModalTitle">Kaydedilmemiş değişiklikler</h2></div>' +
-      '<div class="formbody"><p>Değişiklik yaptınız. Kapatmadan önce kaydetmek istiyor musunuz?</p>' +
-      (drafts.length > 1
-        ? '<p>Birden fazla form değişti. Önce birini kaydedin veya düzenlemeye dönün.</p>'
-        : '') +
-      '</div><div class="actions"><button type="button" class="secondary" data-edit autofocus>Düzenlemeye dön</button>' +
-      '<button type="button" class="secondary" data-discard>Kaydetmeden kapat</button><button type="button" class="primary" data-save>Kaydet</button></div>';
-    document.body.append(prompt);
-    prompt.addEventListener(
-      'close',
-      () => {
-        prompt.remove();
-        if (warning === prompt) warning = null;
-      },
-      { once: true },
-    );
-    prompt.querySelector('[data-edit]').onclick = () => prompt.close();
-    prompt.querySelector('[data-discard]').onclick = () => {
-      prompt.close();
-      dialog.close();
-    };
-    const button = prompt.querySelector('[data-save]');
-    const form = drafts[0];
-    const submitter = submitters(form)[0];
-    if (drafts.length > 1) button.textContent = 'İlk formu kaydet';
-    button.disabled = !submitter;
-    button.onclick = async () => {
-      prompt.close();
-      reveal(form);
-      const existing = new Set(document.querySelectorAll('dialog[open]'));
-      try {
-        if (
-          (await save(form, submitter)) &&
-          dialog.open &&
-          !window.modalDrafts(dialog).length &&
-          !Array.from(document.querySelectorAll('dialog[open]')).some((item) => !existing.has(item))
-        ) {
-          dialog.close();
-        }
-      } catch (error) {
-        if (typeof toast === 'function') toast(error.message || 'Değişiklikler kaydedilemedi.', dialog);
-      }
-    };
-    prompt.showModal();
+    if (dialog.open) dialog.close();
   }
 
   const activeModal = (event) =>
@@ -207,7 +93,7 @@
     (event) => {
       press = null;
       const dialog = activeModal(event);
-      if (dialog && dialog !== warning && event.button === 0 && outside(event, dialog)) press = dialog;
+      if (dialog && event.button === 0 && outside(event, dialog)) press = dialog;
     },
     true,
   );
@@ -217,7 +103,7 @@
       const dialog = activeModal(event);
       const wasOutside = press === dialog;
       press = null;
-      if (!dialog || dialog === warning) return;
+      if (!dialog) return;
       const close = event.target.closest?.('button');
       const closeButton =
         close?.closest('dialog') === dialog &&
@@ -233,7 +119,7 @@
   document.addEventListener(
     'cancel',
     (event) => {
-      if (!event.target.matches('dialog') || event.target === warning) return;
+      if (!event.target.matches('dialog')) return;
       event.preventDefault();
       const layer = event.target.querySelector('[data-modal-layer]:not([hidden])');
       if (layer) {
@@ -252,7 +138,9 @@
   let drag = null;
   function decorate(dialog) {
     if (!dialog.open) return;
-    const header = dialog.querySelector('.panelhead, .terms-gate-head') || dialog.querySelector('h1,h2,h3');
+    const header =
+      dialog.querySelector('.panelhead, .terms-gate-head, .voip-workspace-heading') ||
+      dialog.querySelector('h1,h2,h3');
     if (header && header.closest('dialog') === dialog) header.classList.add('modal-drag-handle');
   }
   function stop() {
@@ -268,8 +156,8 @@
     if (drag?.dialog === dialog) stop();
     const state = moved.get(dialog);
     if (!state) return;
-    if (state.original) dialog.style.setProperty('translate', state.original, state.priority);
-    else dialog.style.removeProperty('translate');
+    if (state.original) state.target.style.setProperty('translate', state.original, state.priority);
+    else state.target.style.removeProperty('translate');
     moved.delete(dialog);
   }
   document.addEventListener('pointerdown', (event) => {
@@ -284,15 +172,17 @@
     event.preventDefault();
     let state = moved.get(dialog);
     if (!state) {
-      const value = getComputedStyle(dialog).translate;
+      const target = dialog.matches(':modal') ? dialog : dialog.closest('.voip-phone-dock') || dialog;
+      const value = getComputedStyle(target).translate;
       const parts = value && value !== 'none' ? value.split(/\s+/) : ['0', '0'];
-      const rect = dialog.getBoundingClientRect();
+      const rect = target.getBoundingClientRect();
       const pixels = (v, size) => (parseFloat(v) || 0) * (v?.endsWith('%') ? size / 100 : 1);
       state = {
+        target,
         x: pixels(parts[0], rect.width),
         y: pixels(parts[1], rect.height),
-        original: dialog.style.getPropertyValue('translate'),
-        priority: dialog.style.getPropertyPriority('translate'),
+        original: target.style.getPropertyValue('translate'),
+        priority: target.style.getPropertyPriority('translate'),
       };
       moved.set(dialog, state);
     }
@@ -327,7 +217,7 @@
       const dy = Math.max(8 - rect.top, Math.min(innerHeight - 40 - rect.top, event.clientY - drag.y));
       state.x = drag.startX + dx;
       state.y = drag.startY + dy;
-      drag.dialog.style.setProperty('translate', `${state.x}px ${state.y}px`);
+      state.target.style.setProperty('translate', `${state.x}px ${state.y}px`);
     },
     { passive: false },
   );

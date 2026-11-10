@@ -72,8 +72,12 @@ function harness(fetcher) {
       actor = u;
     },
     jobs,
-    async call(route, method = 'GET', input, parsedForm = false) {
-      const req = { method, headers: { 'content-type': 'application/json' }, raw: JSON.stringify(input) };
+    async call(route, method = 'GET', input, parsedForm = false, headers = {}) {
+      const req = {
+        method,
+        headers: { 'content-type': 'application/json', ...headers },
+        raw: JSON.stringify(input),
+      };
       if (parsedForm) {
         req.headers['content-type'] = 'application/x-www-form-urlencoded';
         req.body = input;
@@ -100,7 +104,28 @@ test('phone normalization deduplicates numbers and excludes invalid values', () 
     2,
   );
 });
-test('standalone calls use documented JSON originate, retain privacy, and still prevent duplicate calls', async () => {
+test('known originate failures are actionable and unknown provider responses never expose secrets', async () => {
+  const offline = harness(async () => new Response('extension 1001 is not registered', { status: 400 }));
+  await assert.rejects(
+    offline.call('start', 'POST', {
+      documentId: 'd',
+      phone: '05320000000',
+      requestId: 'offline-request-001',
+    }),
+    /santrale bağlı değil/,
+  );
+  assert.match(offline.state.voipCalls[0].providerError, /santrale bağlı değil/);
+  const unknown = harness(async () => new Response('secret-token-should-not-leak', { status: 400 }));
+  await assert.rejects(
+    unknown.call('start', 'POST', {
+      documentId: 'd',
+      phone: '05320000000',
+      requestId: 'unknown-request-001',
+    }),
+    (e) => !e.message.includes('secret-token'),
+  );
+});
+test('standalone calls use documented GET originate, retain privacy, and still prevent duplicate calls', async () => {
   let sent;
   const h = harness(async (url, options) => {
     sent = { url: new URL(url), options };
@@ -111,14 +136,11 @@ test('standalone calls use documented JSON originate, retain privacy, and still 
     requestId: 'standalone-request-001',
   });
   assert.equal(call.documentId, '');
-  assert.equal(sent.options.method, 'POST');
-  assert.equal(sent.options.headers['Content-Type'], 'application/json');
-  assert.equal(sent.url.searchParams.has('destination'), false);
-  assert.deepEqual(JSON.parse(sent.options.body), {
-    extension: '1001',
-    destination: '905320000005',
-    manual_answer: false,
-  });
+  assert.equal(sent.options.method, 'GET');
+  assert.equal(sent.options.body, undefined);
+  assert.equal(sent.url.searchParams.get('extension'), '1001');
+  assert.equal(sent.url.searchParams.get('destination'), '905320000005');
+  assert.equal(sent.url.searchParams.get('manual_answer'), 'false');
   assert.equal((await h.call('calls?phone=05320000005')).calls[0].id, call.id);
   await assert.rejects(
     h.call('start', 'POST', { phone: '05320000005', requestId: 'standalone-request-002' }),
@@ -146,6 +168,7 @@ test('standalone dialer shows last call before allowing a repeated call', async 
     w.HTMLDialogElement.prototype.showModal = function () {
       this.open = true;
     };
+    w.HTMLDialogElement.prototype.show = w.HTMLDialogElement.prototype.showModal;
     w.HTMLDialogElement.prototype.close = function () {
       this.open = false;
     };
@@ -164,16 +187,14 @@ test('standalone dialer shows last call before allowing a repeated call', async 
             extension: '1000',
             recentMinutes: 1440,
             results: [],
-            calls: [
-              {
-                phone: '905320000009',
-                createdAt: new Date().toISOString(),
-                staffName: 'Örnek Personel',
-                status: 'completed',
-                statusLabel: 'Görüşüldü',
-                duration: 12,
-              },
-            ],
+            calls: Array.from({ length: 7 }, (_, index) => ({
+              phone: '905320000009',
+              createdAt: new Date(Date.now() - index * 1000).toISOString(),
+              staffName: 'Örnek Personel',
+              status: 'completed',
+              statusLabel: 'Görüşüldü',
+              duration: 12,
+            })),
             active: [],
           };
         },
@@ -189,6 +210,11 @@ test('standalone dialer shows last call before allowing a repeated call', async 
     form.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
     await new Promise((resolve) => setImmediate(resolve));
     assert.match(w.document.querySelector('[data-preview]').textContent, /Örnek Personel/);
+    assert.equal(w.document.querySelectorAll('.voip-recent-call').length, 5);
+    assert(w.document.querySelector('[data-more-phone-history]'));
+    w.document.querySelector('[data-more-phone-history]').click();
+    await new Promise(setImmediate);
+    assert.equal(w.document.querySelectorAll('#voipHistory .voip-call-entry').length, 7);
     assert.match(w.document.querySelector('[data-dial]').textContent, /tekrar ara/);
     assert.equal(w.modalDrafts(form.closest('dialog')).length, 0, 'Phone lookup is not an unsaved edit');
     assert.equal(starts, 0);
@@ -196,7 +222,7 @@ test('standalone dialer shows last call before allowing a repeated call', async 
     dom.window.close();
   }
 });
-test('webphone is reachable from the header and restoring it does not reload an ongoing session', async () => {
+test('single dial entry opens the webphone and restoring it does not reload an ongoing session', async () => {
   const { JSDOM } = require('jsdom');
   const dom = new JSDOM('<div class="header-actions"></div><aside><nav></nav></aside>', {
     url: 'https://example.test',
@@ -211,26 +237,37 @@ test('webphone is reachable from the header and restoring it does not reload an 
     Object.assign(w, {
       hanAuth: { id: 'u', role: 'ceo' },
       esc: String,
-      fetch: async () => {
-        tokens++;
+      fetch: async (url) => {
+        if (url.endsWith('/webphone')) tokens++;
         return {
           ok: true,
-          json: async () => ({ url: 'https://example.bulutsantralim.com/phone?token=preview' }),
+          json: async () =>
+            url.endsWith('/webphone')
+              ? { url: 'https://example.bulutsantralim.com/phone?token=preview' }
+              : { active: [] },
         };
       },
     });
     w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
     w.setupVoipNavigation();
-    w.document.querySelector('[data-global-webphone]').click();
+    assert.equal(w.document.querySelector('[data-global-webphone]'), null);
+    w.document.querySelector('[data-standalone-voip]').click();
     await new Promise(setImmediate);
     const phone = w.document.querySelector('#voipWebphone');
     assert(phone.open);
     phone.querySelector('button').click();
-    assert.equal(phone.style.visibility, 'hidden');
-    w.document.querySelector('[data-global-webphone]').click();
+    assert(w.document.getElementById('voipPhoneDock').classList.contains('voip-dock-minimized'));
+    assert.equal(w.document.querySelector('[data-global-webphone]'), null);
+    w.document.querySelector('[data-standalone-voip]').click();
     await new Promise(setImmediate);
     assert.equal(tokens, 1);
-    assert.equal(phone.style.visibility, 'visible');
+    assert(!w.document.getElementById('voipPhoneDock').classList.contains('voip-dock-minimized'));
+    phone.querySelector('[data-phone-close]').click();
+    assert.equal(w.document.getElementById('voipPhoneDock').hidden, true);
+    w.document.querySelector('[data-standalone-voip]').click();
+    await new Promise(setImmediate);
+    assert.equal(w.document.getElementById('voipPhoneDock').hidden, false);
+    assert.equal(tokens, 1, 'Closing the window preserves the phone session');
   } finally {
     dom.window.close();
   }
@@ -407,6 +444,36 @@ test('verified webhook updates call; duplicates and late ringing do not reopen a
   );
   await h.call('start', 'POST', { documentId: 'd', phone: '05320000001', requestId: 'request-000000004' });
 });
+test('hangup of an already closed channel verifies CDR instead of leaving a stuck active call', async () => {
+  let complete = true;
+  const h = harness(async (url) => {
+    const path = new URL(url).pathname;
+    if (path === '/originate') return new Response('00000000-0000-0000-0000-000000000001');
+    if (path.startsWith('/hangup/')) return new Response('No such channel!', { status: 400 });
+    return new Response(
+      JSON.stringify({
+        cdr: {
+          end_stamp: complete ? '2026-11-10 18:00:00 +0300' : null,
+          answer_stamp: '2026-11-10 17:59:48 +0300',
+          talk_duration: '00:00:12',
+          recording_present: false,
+        },
+      }),
+    );
+  });
+  const { call } = await h.call('start', 'POST', {
+    documentId: 'd',
+    phone: '05320000000',
+    requestId: 'closed-channel-001',
+  });
+  complete = false;
+  await assert.rejects(h.call('hangup', 'POST', { id: call.id }), (e) => e.status === 409);
+  assert.equal(h.state.voipCalls[0].status, 'ringing');
+  complete = true;
+  await h.call('hangup', 'POST', { id: call.id });
+  assert.equal(h.state.voipCalls[0].status, 'completed');
+  assert.equal(h.state.voipCalls[0].duration, 12);
+});
 test('recordings require manager or explicit current-assignee grant; reassignment revokes access', async () => {
   const h = harness();
   h.state.voipCalls.push({
@@ -466,8 +533,10 @@ test('live notes survive confirmed termination and final results reject prematur
     duration: 0,
   });
   assert.equal(h.state.voipCalls[0].status, 'busy');
-  assert.equal(h.state.voipCalls[0].draftNote, 'Görüşme sürerken alınan not');
-  await h.call('result', 'POST', { id: call.id, result: 'Meşgul', note: 'Görüşme sürerken alınan not' });
+  assert.equal(h.state.voipCalls[0].result, 'Meşgul');
+  assert.match(h.state.voipCalls[0].note, /Görüşme sürerken alınan not/);
+  assert.match(h.state.voipCalls[0].note, /Meşgul/);
+  assert(h.state.voipCalls[0].resultAt);
   assert.equal(h.state.voipCalls[0].draftNote, undefined);
   assert.equal((await h.call('recordings?status=busy&result=' + encodeURIComponent('Meşgul'))).total, 1);
   assert.equal((await h.call('recordings?status=completed')).total, 0);
@@ -476,6 +545,60 @@ test('live notes survive confirmed termination and final results reject prematur
     (e) => e.status === 409,
   );
 });
+test('mute requires call ownership, confirms provider success and rejects ended calls', async () => {
+  const requests = [];
+  let rejectMute = false;
+  const h = harness(async (url, init) => {
+    const target = new URL(url);
+    if (target.pathname === '/originate') return new Response('00000000-0000-0000-0000-000000000001');
+    requests.push({ path: target.pathname, state: target.searchParams.get('state'), method: init.method });
+    return new Response(rejectMute ? 'Unavailable' : 'OK', { status: rejectMute ? 400 : 200 });
+  });
+  const { call } = await h.call('start', 'POST', {
+    documentId: 'd',
+    phone: '05320000000',
+    requestId: 'mute-ownership-request',
+  });
+  h.user = { id: 's', role: 'staff', staffId: 'p' };
+  await assert.rejects(h.call('mute', 'POST', { id: call.id, muted: true }), (e) => e.status === 403);
+  assert.equal(requests.length, 0);
+  h.user = { id: 'u', role: 'ceo' };
+  await h.call('mute', 'POST', { id: call.id, muted: true });
+  assert.equal(h.state.voipCalls[0].muted, true);
+  assert.deepEqual(requests[0], {
+    path: '/mute/00000000-0000-0000-0000-000000000001',
+    state: 'on',
+    method: 'GET',
+  });
+  rejectMute = true;
+  await assert.rejects(h.call('mute', 'POST', { id: call.id, muted: false }));
+  assert.equal(h.state.voipCalls[0].muted, true);
+  h.state.voipCalls[0].status = 'completed';
+  await assert.rejects(h.call('mute', 'POST', { id: call.id, muted: false }), (e) => e.status === 409);
+  assert.equal(requests.length, 2);
+});
+
+test('absent provider recordings remain retryable and are distinguished from archive failures', async () => {
+  const h = harness(async () => new Response(JSON.stringify({ cdr: { recording_present: false } })));
+  const id = crypto.randomUUID();
+  h.state.voipCalls.push({
+    id,
+    providerId: crypto.randomUUID(),
+    documentId: 'd',
+    createdAt: new Date().toISOString(),
+    status: 'completed',
+    duration: 0,
+    recordingPresent: false,
+  });
+  await h.call('archive', 'POST', { id });
+  const saved = h.state.voipCalls[0];
+  assert.match(saved.archiveError, /Verimor bu çağrı için henüz ses kaydı sağlamadı/);
+  assert(!saved.archiveError.includes('depolama'));
+  assert(saved.nextArchiveAt);
+  assert.equal(saved.recordingMissing, undefined);
+  assert.equal(saved.archivedAt, undefined);
+});
+
 test('recordings are encrypted on disk, authenticate tampering and preserve original bytes', async () => {
   const dir = path.resolve('work/voip-test-' + crypto.randomUUID());
   const env = {};
@@ -620,7 +743,7 @@ test('UI keeps numbers, history and role-controlled audio together without prelo
 });
 test('live call workspace preserves typed notes across polling, then saves the chosen result after hangup', async () => {
   const { JSDOM } = require('jsdom');
-  const dom = new JSDOM('<dialog id="borrowerDetail" open></dialog>', {
+  const dom = new JSDOM('<dialog id="borrowerDetail" open><button data-open-voip>☎ Ara</button></dialog>', {
     url: 'https://example.test',
     runScripts: 'dangerously',
   });
@@ -642,6 +765,13 @@ test('live call workspace preserves typed notes across polling, then saves the c
   try {
     w.HTMLDialogElement.prototype.show = function () {
       this.open = true;
+    };
+    w.HTMLDialogElement.prototype.close = function () {
+      this.open = false;
+    };
+    w.HTMLDialogElement.prototype.showModal = function () {
+      this.open = true;
+      this.dataset.modalPromoted = 'true';
     };
     Object.assign(w, {
       hanAuth: { id: 'u', role: 'staff' },
@@ -676,6 +806,15 @@ test('live call workspace preserves typed notes across polling, then saves the c
         JSON.stringify(results),
     );
     w.showVoipActive({ id: 'd' }, call);
+    assert.equal(
+      w.document.getElementById('voipActiveCall').dataset.modalPromoted,
+      'true',
+      'live controls escape borrower modal inertness before hangup',
+    );
+    const phone = w.document.createElement('dialog');
+    phone.id = 'voipWebphone';
+    phone.innerHTML = '<iframe></iframe>';
+    w.document.getElementById('voipPhoneDock').append(phone);
     const textarea = w.document.querySelector('[data-current-form] textarea');
     textarea.value = 'Müşteri yarın dönüş yapacak.';
     textarea.dispatchEvent(new w.Event('input'));
@@ -683,12 +822,21 @@ test('live call workspace preserves typed notes across polling, then saves the c
     assert.equal(w.document.querySelector('textarea'), textarea, 'poll updates never replace the note input');
     assert.equal(textarea.value, 'Müşteri yarın dönüş yapacak.');
     w.document.querySelector('[data-current-minimize]').click();
+    assert.equal(w.document.querySelector('#voipActiveCall').hidden, true);
+    assert.equal(w.document.querySelector('[data-open-voip]').textContent, '☎ Sonlandır');
+    assert.equal(w.document.querySelector('[data-current-hangup]').hidden, false);
     await new Promise((r) => setImmediate(r));
     assert.equal(draft, textarea.value);
     w.document.querySelector('[data-current-hangup]').click();
     await new Promise((r) => setImmediate(r));
     assert.equal(w.document.querySelector('[data-current-outcomes]').hidden, false);
     assert.equal(textarea.value, draft);
+    assert.equal(w.document.getElementById('voipWebphone'), null, 'ended call releases microphone iframe');
+    assert.equal(
+      w.document.getElementById('voipActiveCall').dataset.modalPromoted,
+      'true',
+      'result form escapes borrower modal inertness',
+    );
     w.document.querySelector('[name="result"][value="Olumlu"]').checked = true;
     w.document
       .querySelector('form')
@@ -699,6 +847,51 @@ test('live call workspace preserves typed notes across polling, then saves the c
     assert.equal(w.document.getElementById('voipActiveCall'), null);
     w.showVoipActive({ id: 'd' }, { ...call, id: 'busy', status: 'busy', statusLabel: 'Meşgul' });
     assert.equal(w.document.querySelector('[name="result"]:checked').value, 'Meşgul');
+  } finally {
+    dom.window.close();
+  }
+});
+test('recovering an active call never nests its controls inside the minimized webphone', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM(
+    '<div class="header-actions"></div><aside><nav></nav></aside><dialog class="voip-webphone" open style="visibility:hidden"></dialog>',
+    { url: 'https://example.test', runScripts: 'dangerously' },
+  );
+  try {
+    const w = dom.window;
+    w.HTMLDialogElement.prototype.show = function () {
+      this.open = true;
+    };
+    Object.assign(w, {
+      hanAuth: { id: 'u', role: 'staff' },
+      esc: String,
+      fetch: async () => ({
+        ok: true,
+        json: async () => ({
+          active: [
+            {
+              id: 'recovered',
+              phone: '905320000000',
+              status: 'ringing',
+              statusLabel: 'Çalıyor',
+              documentId: '',
+            },
+          ],
+          results: [],
+        }),
+      }),
+    });
+    w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    w.setupVoipNavigation();
+    await new Promise(setImmediate);
+    const host = w.document.querySelector('#voipActiveCall');
+    assert.equal(host.parentElement.id, 'voipPhoneDock');
+    assert.equal(host.hidden, false);
+    host.querySelector('[data-current-minimize]').click();
+    assert.equal(host.hidden, false);
+    assert.equal(host.querySelector('[data-current-hangup]').hidden, false);
+    host.querySelector('[data-current-minimize]').click();
+    assert.equal(host.classList.contains('voip-call-minimized'), false);
   } finally {
     dom.window.close();
   }
@@ -934,4 +1127,467 @@ test('installed AI SDK uses the configured Gateway transcription model and uploa
   assert.match(sent.url, /^https:\/\/ai-gateway\.vercel\.sh\//);
   assert.equal(Buffer.from(sent.body.audio, 'base64').toString(), 'ID3 synthetic');
   assert.equal(result.text, 'Örnek AI metni');
+});
+
+test('canceling an in-flight originate persists intent and hangs up as soon as the provider ID arrives', async () => {
+  let release;
+  const requests = [];
+  const h = harness(async (url) => {
+    const path = new URL(url).pathname;
+    requests.push(path);
+    if (path === '/originate')
+      return await new Promise((resolve) => {
+        release = () => resolve(new Response('00000000-0000-0000-0000-000000000001'));
+      });
+    return new Response('OK');
+  });
+  const input = { documentId: 'd', phone: '05320000000', requestId: 'cancel-during-start-001' };
+  const starting = h.call('start', 'POST', input);
+  while (!release) await new Promise(setImmediate);
+  h.user = { id: 's', role: 'staff' };
+  await assert.rejects(
+    h.call('cancel-start', 'POST', { requestId: input.requestId }),
+    (e) => e.status === 409,
+  );
+  h.user = { id: 'u', role: 'ceo' };
+  await h.call('cancel-start', 'POST', { requestId: input.requestId });
+  assert.equal(h.state.voipCalls[0].cancelRequested, true);
+  release();
+  const result = await starting;
+  assert.equal(result.call.cancelRequested, true);
+  assert(requests.includes('/hangup/00000000-0000-0000-0000-000000000001'));
+  assert.equal(
+    result.call.status,
+    'ringing',
+    'Wait for confirmed provider termination instead of inventing an ended state',
+  );
+});
+
+test('cancel control is immediately visible while originate is pending', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM(
+    '<div class="header-actions"></div><div id="area"><span id="slot"><button id="launch">Ara</button></span></div>',
+    {
+      url: 'https://example.test',
+      runScripts: 'dangerously',
+    },
+  );
+  try {
+    const w = dom.window;
+    let release,
+      cancellations = 0;
+    w.fetch = async (url) => {
+      if (url.endsWith('/start'))
+        return await new Promise((resolve) => {
+          release = () =>
+            resolve({ ok: true, json: async () => ({ call: { id: 'call', status: 'ringing' } }) });
+        });
+      cancellations++;
+      return { ok: true, json: async () => ({ ok: true }) };
+    };
+    w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    const pending = w.voipStartCancelable(
+      { requestId: 'cancel-ui-start-001' },
+      w.document.getElementById('area'),
+      () => {},
+      w.document.getElementById('launch'),
+    );
+    const button = w.document.querySelector('[data-cancel-starting]');
+    assert(button && !button.disabled);
+    assert.equal(button.parentElement.id, 'slot', 'cancel replaces Ara in its original cell');
+    assert.equal(w.document.getElementById('launch'), null);
+    await assert.rejects(
+      w.voipStartCancelable({ requestId: 'second' }, w.document.getElementById('area'), () => {}),
+    );
+    const globalHangup = w.document.querySelector('.header-actions [data-global-hangup]');
+    assert(globalHangup, 'global hangup exists before originate completes');
+    globalHangup.click();
+    await new Promise(setImmediate);
+    assert.equal(cancellations, 1);
+    assert.match(
+      w.document.querySelector('.voip-cancel-wait').textContent,
+      /Kapanana kadar lütfen bekleyiniz/,
+    );
+    release();
+    assert.equal((await pending).call.cancelRequested, true);
+    assert.equal(w.document.querySelector('[data-cancel-starting]'), null);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('provider busy termination overrides an answered announcement and closes the active state', () => {
+  const call = {
+    status: 'answered',
+    createdAt: new Date().toISOString(),
+    answeredAt: new Date().toISOString(),
+  };
+  updateEvent(call, {
+    event_type: 'hangup',
+    answered: true,
+    failure_status: '486',
+    hangup_cause: 'USER_BUSY',
+    duration: 0,
+  });
+  assert.equal(call.status, 'busy');
+  assert(call.endedAt);
+});
+
+test('borrower calling initializes the shared background webphone without requiring standalone dialing', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM(
+    '<dialog open><div class="sheet-header-actions"></div><section data-borrower-panel="conversations"></section></dialog>',
+    {
+      url: 'https://example.test',
+      runScripts: 'dangerously',
+    },
+  );
+  try {
+    const w = dom.window;
+    let tokens = 0;
+    w.HTMLDialogElement.prototype.show = function () {
+      this.open = true;
+    };
+    Object.assign(w, {
+      hanAuth: { id: 'u', role: 'ceo' },
+      esc: String,
+      fetch: async (url) => ({
+        ok: true,
+        json: async () => {
+          if (url.endsWith('/webphone')) {
+            tokens++;
+            return { url: 'https://example.test/webphone?token=test' };
+          }
+          return {
+            webphone: true,
+            enabled: true,
+            extension: '1001',
+            phones: [],
+            calls: [],
+            active: [],
+            results: [],
+          };
+        },
+      }),
+    });
+    w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    w.setupBorrowerVoip(w.document.querySelector('dialog'), { id: 'd' });
+    w.document.querySelector('[data-open-voip]').click();
+    await new Promise(setImmediate);
+    await new Promise(setImmediate);
+    assert.equal(tokens, 1);
+    const frame = w.document.querySelector('#voipWebphone iframe');
+    assert(frame);
+    assert.equal(w.document.getElementById('voipPhoneDock').hidden, true);
+    assert.equal(w.document.querySelector('[data-open-webphone]'), null);
+    w.document.querySelector('[data-open-voip]').click();
+    w.document.querySelector('[data-open-voip]').click();
+    await new Promise(setImmediate);
+    assert.equal(tokens, 1);
+    assert.equal(w.document.querySelector('#voipWebphone iframe'), frame);
+    w.document.getElementById('voipWebphone').remove();
+    w.document.querySelector('[data-open-voip]').click();
+    w.document.querySelector('[data-open-voip]').click();
+    await new Promise(setImmediate);
+    await new Promise(setImmediate);
+    assert.equal(tokens, 2, 'removed phone reconnects instead of reusing a completed initialization');
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('confirmed automatically saved busy calls close without a second evaluation', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('', { url: 'https://example.test', runScripts: 'dangerously' });
+  try {
+    const w = dom.window;
+    w.HTMLDialogElement.prototype.show = function () {
+      this.open = true;
+    };
+    Object.assign(w, { esc: String });
+    w.eval(
+      (await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8')) +
+        '\nvoipUi.returnToDial = () => { window.returnedToDial = true; };',
+    );
+    const phone = w.document.createElement('dialog');
+    phone.id = 'voipWebphone';
+    phone.innerHTML = '<iframe></iframe>';
+    w.document.body.append(phone);
+    const call = {
+      id: 'busy-auto',
+      phone: '905320000000',
+      status: 'ringing',
+      createdAt: new Date().toISOString(),
+    };
+    w.showVoipActive({}, call);
+    assert(w.document.getElementById('voipActiveCall'));
+    w.showVoipActive(
+      {},
+      {
+        ...call,
+        status: 'busy',
+        result: 'Meşgul',
+        resultAt: new Date().toISOString(),
+        duration: 0,
+      },
+    );
+    assert.equal(w.document.getElementById('voipActiveCall'), null);
+    assert.equal(w.returnedToDial, true, 'busy returns to the originating dial screen');
+    assert(w.document.querySelector('#voipWebphone iframe'), 'busy preserves registered webphone');
+    assert.equal(w.document.getElementById('voipPhoneDock').hidden, true);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('server recovery requires its job credential and only closes a canceled call from completed CDR evidence', async () => {
+  const prior = process.env.VOIP_CRON_SECRET;
+  process.env.VOIP_CRON_SECRET = 'test-recovery-secret';
+  try {
+    let done = false;
+    const paths = [];
+    const h = harness(async (url) => {
+      const p = new URL(url).pathname;
+      paths.push(p);
+      if (p.startsWith('/hangup/')) return new Response('OK');
+      return new Response(
+        JSON.stringify({
+          cdr: {
+            end_stamp: done ? '2026-11-10 19:43:00 +0300' : null,
+            answer_stamp: null,
+            talk_duration: '00:00:00',
+            recording_present: false,
+          },
+        }),
+      );
+    });
+    h.state.voipCalls.push({
+      id: 'recovery-call',
+      providerId: 'provider-call',
+      userId: 'u',
+      status: 'ringing',
+      cancelRequested: true,
+      createdAt: new Date().toISOString(),
+      phone: '905320000000',
+    });
+    await assert.rejects(h.call('recover-call', 'POST', { id: 'recovery-call' }), (e) => e.status === 401);
+    const headers = { authorization: 'Bearer test-recovery-secret' };
+    await assert.rejects(
+      h.call('recover-call', 'POST', { id: 'recovery-call' }, false, headers),
+      (e) => e.status === 409,
+    );
+    assert.equal(h.state.voipCalls[0].status, 'ringing');
+    assert(paths.includes('/hangup/provider-call'));
+    done = true;
+    assert.equal(
+      (await h.call('recover-call', 'POST', { id: 'recovery-call' }, false, headers)).confirmed,
+      true,
+    );
+    assert.equal(h.state.voipCalls[0].status, 'unanswered');
+  } finally {
+    if (prior === undefined) delete process.env.VOIP_CRON_SECRET;
+    else process.env.VOIP_CRON_SECRET = prior;
+  }
+});
+
+test('canceled call recovery clears active state only on explicit provider channel-absent evidence', async () => {
+  const previous = process.env.VOIP_CRON_SECRET;
+  process.env.VOIP_CRON_SECRET = 'recovery-test-secret';
+  try {
+    let absent = false;
+    const h = harness(
+      async (url) =>
+        new Response(
+          new URL(url).pathname.startsWith('/hangup/') && absent
+            ? 'No such channel!'
+            : 'Unknown provider error',
+          { status: 400 },
+        ),
+    );
+    h.state.voipCalls.push({
+      id: 'recover-absent',
+      providerId: 'provider-id',
+      userId: 'u',
+      cancelRequested: true,
+      status: 'ringing',
+      createdAt: new Date().toISOString(),
+      draftNote: 'Korunacak not',
+      phone: '905320000000',
+    });
+    const headers = { authorization: 'Bearer recovery-test-secret' };
+    await assert.rejects(h.call('recover-call', 'POST', { id: 'recover-absent' }, false, headers));
+    assert.equal(h.state.voipCalls[0].status, 'unknown');
+    absent = true;
+    const result = await h.call('recover-call', 'POST', { id: 'recover-absent' }, false, headers);
+    assert.equal(result.confirmed, true);
+    assert.equal(result.detailsPending, true);
+    const saved = h.state.voipCalls[0];
+    assert.equal(saved.status, 'failed');
+    assert.equal(saved.endSource, 'provider-channel-missing');
+    assert.equal(saved.endedAt, undefined, 'Do not invent a provider end time');
+    assert.equal(saved.endDetailsPending, true);
+    assert.match(saved.note, /Korunacak not/);
+    assert(saved.closedConfirmedAt);
+    assert.equal((await h.call('calls?phone=05320000000')).active.length, 0);
+  } finally {
+    if (previous === undefined) delete process.env.VOIP_CRON_SECRET;
+    else process.env.VOIP_CRON_SECRET = previous;
+  }
+});
+
+test('watchdog closes only stale browser calls and retains provider uncertainty', async () => {
+  process.env.VOIP_CRON_SECRET = 'watchdog-test';
+  const h = harness(async (url) => {
+    if (new URL(url).pathname.startsWith('/hangup/'))
+      return new Response('No such channel!', { status: 400 });
+    return new Response('{}');
+  });
+  const old = new Date(Date.now() - 180000).toISOString();
+  h.state.voipCalls.push(
+    {
+      id: 'stale-web',
+      userId: 'u',
+      status: 'ringing',
+      providerId: 'web',
+      browserManaged: true,
+      browserSeenAt: old,
+      createdAt: old,
+      draftNote: 'Notum',
+    },
+    {
+      id: 'fresh-web',
+      userId: 'u',
+      status: 'answered',
+      providerId: 'fresh',
+      browserManaged: true,
+      browserSeenAt: new Date().toISOString(),
+      createdAt: old,
+    },
+    { id: 'mobile', userId: 'u', status: 'answered', providerId: 'mobile', createdAt: old },
+  );
+  await assert.rejects(h.call('watchdog'), (e) => e.status === 401);
+  await h.call('watchdog', 'GET', undefined, false, { authorization: 'Bearer watchdog-test' });
+  assert.equal(h.state.voipCalls[0].status, 'failed');
+  assert.match(h.state.voipCalls[0].note, /Notum/);
+  assert.equal(h.state.voipCalls[0].endedAt, undefined);
+  assert.equal(h.state.voipCalls[1].status, 'answered');
+  assert.equal(h.state.voipCalls[2].status, 'answered');
+  delete process.env.VOIP_CRON_SECRET;
+});
+
+test('heartbeat renews only owner browser call and watchdog retries provider errors', async () => {
+  process.env.VOIP_CRON_SECRET = 'watchdog-test';
+  const h = harness(async () => new Response('error', { status: 400 }));
+  const old = new Date(Date.now() - 180000).toISOString();
+  h.state.voipCalls.push({
+    id: 'browser',
+    userId: 'u',
+    status: 'ringing',
+    providerId: 'web',
+    browserManaged: true,
+    browserSeenAt: old,
+    createdAt: old,
+  });
+  h.user = { id: 's', role: 'staff' };
+  await assert.rejects(h.call('heartbeat', 'POST', { id: 'browser' }), (e) => e.status === 403);
+  h.user = { id: 'u', role: 'ceo' };
+  await h.call('heartbeat', 'POST', { id: 'browser' });
+  assert(Date.parse(h.state.voipCalls[0].browserSeenAt) > Date.parse(old));
+  h.state.voipCalls[0].browserSeenAt = old;
+  await h.call('watchdog', 'GET', undefined, false, { authorization: 'Bearer watchdog-test' });
+  assert.equal(h.state.voipCalls[0].status, 'unknown');
+  assert.equal(h.state.voipCalls[0].endedAt, undefined);
+  delete process.env.VOIP_CRON_SECRET;
+});
+
+test('closing standalone dialer releases phone and ignores a late webphone token', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('', { url: 'https://example.test', runScripts: 'dangerously' });
+  const w = dom.window;
+  let resolveToken;
+  try {
+    w.HTMLDialogElement.prototype.show = function () {
+      this.open = true;
+    };
+    w.HTMLDialogElement.prototype.close = function () {
+      this.open = false;
+    };
+    Object.assign(w, {
+      esc: String,
+      fetch: () =>
+        new Promise((resolve) => {
+          resolveToken = resolve;
+        }),
+    });
+    w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    w.openStandaloneVoip();
+    w.document.querySelector('#voipStandalone [data-close]').click();
+    resolveToken({ ok: true, json: async () => ({ url: 'https://example.test/phone' }) });
+    await new Promise(setImmediate);
+    assert.equal(w.document.querySelector('#voipWebphone iframe'), null);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('late hangup does not overwrite a provider-confirmed busy result', () => {
+  const call = { status: 'ringing', createdAt: new Date().toISOString() };
+  updateEvent(call, { event_type: 'hangup', failure_status: '486', answered: false });
+  updateEvent(call, { event_type: 'hangup', answered: true, duration: 0 });
+  assert.equal(call.status, 'busy');
+  assert.equal(call.result, 'Meşgul');
+});
+
+test('outbound caller numbers receive stable line numbers and reject internal/destination numbers', () => {
+  const config = {};
+  const a = {},
+    b = {},
+    c = {};
+  updateEvent(
+    a,
+    { event_type: 'ringing', direction: 'outbound', outbound_caller_id_number: '02161234567' },
+    config,
+  );
+  updateEvent(
+    b,
+    { event_type: 'ringing', direction: 'outbound', outbound_caller_id_number: '+90 216 234 56 78' },
+    config,
+  );
+  updateEvent(
+    c,
+    { event_type: 'ringing', direction: 'outbound', outbound_caller_id_number: '902161234567' },
+    config,
+  );
+  assert.equal(a.outboundLine, 1);
+  assert.equal(b.outboundLine, 2);
+  assert.equal(c.outboundLine, 1);
+  assert.equal(a.outboundNumber, '902161234567');
+  const invalid = {};
+  updateEvent(
+    invalid,
+    { event_type: 'ringing', outbound_caller_id_number: '1001', destination_number: '905321234567' },
+    config,
+  );
+  assert.equal(invalid.outboundNumber, undefined);
+  const inbound = {};
+  updateEvent(
+    inbound,
+    { event_type: 'ringing', direction: 'inbound', outbound_caller_id_number: '902161234567' },
+    config,
+  );
+  assert.equal(inbound.outboundLine, undefined);
+});
+
+test('unanswered call saves its outcome automatically and preserves live note', () => {
+  const call = {
+    status: 'ringing',
+    draftNote: 'Sonra tekrar kontrol et',
+    createdAt: new Date().toISOString(),
+  };
+  updateEvent(call, { event_type: 'hangup', answered: false, hangup_cause: 'NO_ANSWER' });
+  assert.equal(call.result, 'Ulaşılamadı');
+  assert.equal(call.resultBy, 'Santral');
+  assert(call.resultAt);
+  assert.match(call.note, /Sonra tekrar kontrol et/);
+  assert.equal(call.draftNote, undefined);
 });

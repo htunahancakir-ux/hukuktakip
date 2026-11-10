@@ -10,6 +10,32 @@ function pointer(w, target, type, x, y, id = 1) {
   Object.defineProperty(e, 'pointerId', { value: id });
   target.dispatchEvent(e);
 }
+test('closing edited forms never opens another save prompt or submits the form', async (t) => {
+  const dom = new JSDOM(
+    '<dialog open><form data-track-draft><input name="name" value="Önceki"><input name="password" type="password"><button>Kaydet</button></form></dialog>',
+    { runScripts: 'dangerously', url: 'https://example.test' },
+  );
+  t.after(() => dom.window.close());
+  const w = dom.window,
+    dialog = w.document.querySelector('dialog'),
+    form = dialog.querySelector('form');
+  let submitted = 0;
+  form.onsubmit = (event) => {
+    event.preventDefault();
+    submitted++;
+  };
+  w.HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+  };
+  w.eval(fs.readFileSync('outputs/icrapro/modal-dismissal.js', 'utf8'));
+  await tick();
+  form.elements.name.value = 'Değişti';
+  form.elements.password.value = 'Synthetic-Test-Only';
+  dialog.dispatchEvent(new w.Event('cancel', { bubbles: false, cancelable: true }));
+  assert.equal(dialog.open, false);
+  assert.equal(submitted, 0);
+  assert.equal(w.document.querySelector('.unsaved-modal'), null);
+});
 test('Pencereler başlıktan sürüklenir, sınırda erişilebilir kalır ve yeniden açılınca sıfırlanır', async (t) => {
   const dom = new JSDOM(
     '<dialog open><div class="panelhead"><h2>Hesap</h2><button>Kapat</button><input></div></dialog>',
@@ -54,4 +80,41 @@ test('Pencereler başlıktan sürüklenir, sınırda erişilebilir kalır ve yen
   w.document.body.append(second);
   await tick();
   assert(second.querySelector('h2').classList.contains('modal-drag-handle'));
+});
+
+test('phone dock frame and content move together from the dialog heading', async (t) => {
+  const dom = new JSDOM(
+    '<div class="voip-phone-dock"><dialog open><div class="panelhead"><h2>Numara ile arama</h2></div><form><input></form></dialog></div>',
+    { runScripts: 'dangerously', url: 'https://example.test' },
+  );
+  t.after(() => dom.window.close());
+  const w = dom.window,
+    dock = w.document.querySelector('.voip-phone-dock'),
+    dialog = dock.querySelector('dialog'),
+    header = dialog.querySelector('.panelhead');
+  dock.getBoundingClientRect = () => ({
+    left: 100,
+    top: 100,
+    right: 500,
+    bottom: 400,
+    width: 400,
+    height: 300,
+  });
+  header.getBoundingClientRect = () => ({
+    left: 100,
+    top: 100,
+    right: 500,
+    bottom: 150,
+    width: 400,
+    height: 50,
+  });
+  w.eval(fs.readFileSync('outputs/icrapro/modal-dismissal.js', 'utf8'));
+  await tick();
+  pointer(w, header, 'pointerdown', 120, 110);
+  pointer(w, w.document, 'pointermove', 220, 160);
+  pointer(w, w.document, 'pointerup', 220, 160);
+  assert.equal(dock.style.translate, '100px 50px');
+  assert.equal(dialog.style.translate, '');
+  w.dispatchEvent(new w.Event('resize'));
+  assert.equal(dock.style.translate, '');
 });

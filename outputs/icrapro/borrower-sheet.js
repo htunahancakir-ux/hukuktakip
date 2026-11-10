@@ -1188,7 +1188,7 @@ function borrowerAttachmentPreviews(d) {
     );
   }
   return (
-    '<section class="full"><h3>Fotoğraf ve PDF Ekleri</h3><label class="field">Fotoğraf / PDF Ekle (birden fazla seçebilirsiniz)<input type="file" data-borrower-files data-optional="true" multiple accept="application/pdf,image/png,image/jpeg,image/webp"><small>Her dosya en fazla 3 MB. Yeni dosyalar mevcut eklere eklenir.</small></label><button type="button" class="secondary" data-save-borrower-files>Seçilen Dosyaları Ekle</button></section>' +
+    '<section class="full"><h3>Fotoğraf ve PDF Ekleri</h3><label class="field">Fotoğraf / PDF Ekle (birden fazla seçebilirsiniz)<input type="file" data-borrower-files data-optional="true" multiple accept="application/pdf,image/png,image/jpeg,image/webp"><small>Her dosya en fazla 10 MB. Yeni dosyalar mevcut eklere eklenir.</small></label><button type="button" class="secondary" data-save-borrower-files>Seçilen Dosyaları Ekle</button></section>' +
     (previews.join('') || '<p class="notice">Henüz fotoğraf veya PDF eklenmedi.</p>')
   );
 }
@@ -1202,7 +1202,7 @@ function bindBorrowerAttachmentUpload(dialog, record) {
     button.disabled = true;
     input.disabled = true;
     try {
-      const files = await readSelectedFileAttachments(input, 'auto', 3);
+      const files = await readSelectedFileAttachments(input, 'auto', 10);
       if (!files.length) return toast('Önce fotoğraf veya PDF seçin.');
       if (window.hanRecordsEnabled) await saveRecordAttachments('document', record, files);
       else {

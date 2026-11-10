@@ -1,6 +1,135 @@
 .voip-active-call[hidden] {
   display: none !important;
 }
+.voip-phone-dock {
+  position: fixed;
+  inset: auto 16px 16px auto;
+  margin: 0;
+  padding: 0;
+  width: 460px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  background: white;
+  border: 1px solid #b9cad6;
+  border-radius: 12px;
+  box-shadow: 0 12px 50px #15354745;
+  z-index: 2147483646;
+}
+.voip-phone-dock[hidden] {
+  display: none !important;
+}
+/* Keep the provider iframe connected for audio without displaying its duplicate dialer. */
+.voip-phone-dock > dialog.voip-webphone {
+  display: none !important;
+}
+.voip-phone-dock button.voip-hangup {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #fff;
+}
+.voip-phone-dock button.voip-hangup:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+.voip-phone-dock .voip-workspace-actions {
+  margin: 0 0 10px;
+  gap: 6px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+.voip-phone-window-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.voip-phone-dock > dialog.voip-webphone,
+.voip-phone-dock > dialog.voip-active-call,
+.voip-phone-dock > dialog.voip-standalone {
+  position: static;
+  inset: auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.voip-phone-dock > dialog.voip-active-call {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.voip-phone-dock > dialog.voip-standalone {
+  padding: 12px 14px;
+}
+.voip-phone-dock .voip-standalone .panelhead {
+  padding: 0 0 8px;
+  gap: 8px;
+  align-items: center;
+}
+.voip-phone-dock h2 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.3;
+}
+.voip-phone-dock .voip-standalone .panelhead p {
+  margin: 3px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.voip-phone-dock .voip-standalone-form {
+  display: flex;
+  margin: 8px 0 0;
+  gap: 8px;
+}
+.voip-phone-dock .voip-standalone-form .field {
+  margin: 0;
+  gap: 4px;
+  font-size: 12px;
+}
+.voip-phone-dock input,
+.voip-phone-dock button {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+.voip-phone-dock .voip-standalone-history {
+  padding: 8px;
+  margin: 8px 0;
+  font-size: 11px;
+}
+.voip-phone-dock .voip-webphone .panelhead {
+  padding: 7px 12px;
+}
+.voip-phone-dock .voip-webphone iframe {
+  display: block;
+  width: 133.3333%;
+  height: 680px;
+  zoom: 0.75;
+}
+@media (max-height: 760px) {
+  .voip-phone-dock .voip-webphone iframe {
+    zoom: 0.6;
+    width: 166.6667%;
+  }
+}
+.voip-dock-minimized .voip-webphone iframe,
+.voip-dock-minimized .voip-standalone,
+.voip-dock-minimized .voip-live-note,
+.voip-dock-minimized .voip-draft-status,
+.voip-dock-minimized .voip-outcomes,
+.voip-dock-minimized [data-current-sync] {
+  display: none;
+}
+.voip-dock-minimized:has(.voip-active-call) .voip-webphone {
+  display: none;
+}
+.voip-workspace-heading time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 18px;
+}
 .integration-tabs {
   margin-top: -12px;
   background: #edf3f8;
@@ -79,6 +208,15 @@
 }
 .voip-standalone-history p {
   margin: 6px 0;
+}
+.voip-recent-call {
+  padding: 7px 0;
+  border-bottom: 1px solid #dbe5eb;
+  line-height: 1.4;
+}
+.voip-recent-call small {
+  display: block;
+  color: #64748b;
 }
 @media (max-width: 600px) {
   .voip-standalone-form,
@@ -617,6 +755,11 @@ dialog.voip-active-call {
 .voip-active-call [hidden] {
   display: none !important;
 }
+.voip-call-minimized .voip-live-note,
+.voip-call-minimized .voip-draft-status,
+.voip-call-minimized .voip-outcomes {
+  display: none;
+}
 .voip-workspace-heading {
   display: flex;
   align-items: flex-start;
@@ -742,6 +885,9 @@ dialog.voip-active-call {
   outline-offset: 2px;
 }
 .voip-workspace-actions {
+  position: sticky;
+  bottom: 0;
+  background: white;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1143,4 +1289,63 @@ dialog.voip-active-call {
 }
 [data-borrower-panel='conversations'] > .sectiontitle {
   margin-top: 0 !important;
+}
+
+.voip-phone-dock > dialog.voip-active-call:modal {
+  position: fixed;
+  inset: auto 16px 16px auto;
+  width: 460px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  border: 1px solid #b9cad6;
+  border-radius: 12px;
+  box-shadow: 0 12px 50px #15354745;
+}
+.voip-active-call::backdrop {
+  background: transparent;
+}
+
+.voip-number-panel > .local-feedback {
+  position: static;
+  margin: 10px 16px;
+  padding: 9px 12px;
+  font-size: 12px;
+  z-index: auto;
+}
+
+.voip-cancel-wait {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(255 255 255 / 96%);
+  border-radius: inherit;
+  text-align: center;
+  cursor: wait;
+}
+.voip-cancel-wait strong,
+.voip-cancel-wait span {
+  display: block;
+}
+.voip-cancel-wait strong {
+  color: #173c4a;
+  font-size: 18px;
+  margin-bottom: 10px;
+}
+.voip-cancel-wait span {
+  color: #60788b;
+  font-size: 14px;
+}
+
+.voip-outbound-line {
+  margin-left: 6px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #eef4f7;
+  color: #315767;
+  font-size: 12px;
+  white-space: nowrap;
 }

@@ -37,6 +37,28 @@ test('standalone VoIP calls persist without a document and are scoped by destina
       userId: 'other',
     });
     assert.equal(other.length, 0);
+    await transaction(
+      pool,
+      false,
+      (tx) => {
+        assert.equal(tx.state.voipCalls[0].id, call.id);
+        tx.state.voipCalls[0].cancelRequested = true;
+        tx.saveState(tx.state);
+      },
+      { cancelRequest: true, requestId: call.requestId, userId: call.userId },
+    );
+    const canceled = await transaction(pool, false, (tx) => tx.state.voipCalls, {
+      cancelRequest: true,
+      requestId: call.requestId,
+      userId: call.userId,
+    });
+    assert.equal(canceled[0].cancelRequested, true);
+    const unauthorized = await transaction(pool, false, (tx) => tx.state.voipCalls, {
+      cancelRequest: true,
+      requestId: call.requestId,
+      userId: 'other',
+    });
+    assert.equal(unauthorized.length, 0);
   } finally {
     await pg.close();
   }

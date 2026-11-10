@@ -287,17 +287,24 @@ async function saveRecordAttachments(ownerType, record, files) {
   if (!record) throw Error('Eklerin bağlanacağı kayıt bulunamadı.');
   const rows = ownerType === 'personnel' ? [] : ownerType === 'client' ? db.clients : db.docs;
   for (const file of files) {
-    const response = await fetch('/api/record-attachments', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', 'X-Han-Request': '1' },
-      body: JSON.stringify({ ownerType, ownerId: record.id, attachment: file }),
-    });
-    const result = await response.json();
-    if (!response.ok)
-      throw Error(
-        result.error || 'Kayıt kaydedildi, ancak bazı ekler yüklenemedi. Kaydet düğmesiyle tekrar deneyin.',
-      );
+    const size = 524288;
+    const parts = Math.ceil(file.data.length / size);
+    for (let part = 0; part < parts; part++) {
+      const response = await fetch('/api/record-attachments', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-Han-Request': '1' },
+        body: JSON.stringify({
+          ownerType,
+          ownerId: record.id,
+          part,
+          parts,
+          attachment: { ...file, data: file.data.slice(part * size, (part + 1) * size) },
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw Error(result.error || 'Ek yüklenemedi. Yeniden deneyin.');
+    }
     const targets = [record, rows.find((row) => row.id === record.id)];
     const baseline = ownerType === 'personnel' ? null : hanDataBaselines.get('icrapro-v1');
     if (baseline)
@@ -323,8 +330,8 @@ async function recordAction(id, callback) {
     const context = await response.json();
     if (!response.ok) throw Error(context.error || 'Dosya yüklenemedi.');
     if (context.accountBalances) window.hanAccountBalances = context.accountBalances;
-    // Separate responses keep two valid 3 MB files below the platform's
-    // per-response limit. Publish no partial edit context if a fetch fails.
+    // Load attachments separately; large JSON responses use chunked transport.
+    // Publish no partial edit context if a fetch fails.
     const loadedAttachments = await Promise.all(
       (context.attachments || []).map(async (attachment) => {
         const response = await fetch(
