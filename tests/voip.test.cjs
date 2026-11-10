@@ -72,8 +72,12 @@ function harness(fetcher) {
       actor = u;
     },
     jobs,
-    async call(route, method = 'GET', input, parsedForm = false) {
-      const req = { method, headers: { 'content-type': 'application/json' }, raw: JSON.stringify(input) };
+    async call(route, method = 'GET', input, parsedForm = false, headers = {}) {
+      const req = {
+        method,
+        headers: { 'content-type': 'application/json', ...headers },
+        raw: JSON.stringify(input),
+      };
       if (parsedForm) {
         req.headers['content-type'] = 'application/x-www-form-urlencoded';
         req.body = input;
@@ -1277,5 +1281,55 @@ test('confirmed automatically saved busy calls close without a second evaluation
     assert.equal(w.document.getElementById('voipPhoneDock').hidden, true);
   } finally {
     dom.window.close();
+  }
+});
+
+test('server recovery requires its job credential and only closes a canceled call from completed CDR evidence', async () => {
+  const prior = process.env.VOIP_CRON_SECRET;
+  process.env.VOIP_CRON_SECRET = 'test-recovery-secret';
+  try {
+    let done = false;
+    const paths = [];
+    const h = harness(async (url) => {
+      const p = new URL(url).pathname;
+      paths.push(p);
+      if (p.startsWith('/hangup/')) return new Response('OK');
+      return new Response(
+        JSON.stringify({
+          cdr: {
+            end_stamp: done ? '2026-11-10 19:43:00 +0300' : null,
+            answer_stamp: null,
+            talk_duration: '00:00:00',
+            recording_present: false,
+          },
+        }),
+      );
+    });
+    h.state.voipCalls.push({
+      id: 'recovery-call',
+      providerId: 'provider-call',
+      userId: 'u',
+      status: 'ringing',
+      cancelRequested: true,
+      createdAt: new Date().toISOString(),
+      phone: '905320000000',
+    });
+    await assert.rejects(h.call('recover-call', 'POST', { id: 'recovery-call' }), (e) => e.status === 401);
+    const headers = { authorization: 'Bearer test-recovery-secret' };
+    await assert.rejects(
+      h.call('recover-call', 'POST', { id: 'recovery-call' }, false, headers),
+      (e) => e.status === 409,
+    );
+    assert.equal(h.state.voipCalls[0].status, 'ringing');
+    assert(paths.includes('/hangup/provider-call'));
+    done = true;
+    assert.equal(
+      (await h.call('recover-call', 'POST', { id: 'recovery-call' }, false, headers)).confirmed,
+      true,
+    );
+    assert.equal(h.state.voipCalls[0].status, 'unanswered');
+  } finally {
+    if (prior === undefined) delete process.env.VOIP_CRON_SECRET;
+    else process.env.VOIP_CRON_SECRET = prior;
   }
 });
