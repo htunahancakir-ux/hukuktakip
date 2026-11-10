@@ -201,6 +201,7 @@ function stats() {
 }
 
 function render() {
+  window.refreshContactReminder?.();
   if (typeof recordPageNeedsCompatibility === 'function' && recordPageNeedsCompatibility()) {
     const requestedPage = page;
     $('#content').textContent = 'Çalışma verileri yükleniyor…';

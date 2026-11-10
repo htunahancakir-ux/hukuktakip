@@ -290,6 +290,15 @@ async function handlePersonnelRoutes(ctx) {
       Number(record.commissionRate || 0) > 100
     )
       throw fail(400, 'Prim oranı 0–100 arasında olmalı.');
+    const contact = require('../../lib/account-contact.cjs');
+    const old = next.data['icrapro-personnel-v1'][index];
+    for (const key of ['email', 'mobilePhone'])
+      if (!Object.hasOwn(record, key) && old && Object.hasOwn(old, key)) record[key] = old[key];
+    if (Object.hasOwn(record, 'email') || Object.hasOwn(record, 'mobilePhone')) {
+      const values = contact.validate({ email: record.email, mobilePhone: record.mobilePhone }, fail);
+      Object.assign(record, values);
+      if (user) Object.assign(user, values);
+    }
     if (index < 0) next.data['icrapro-personnel-v1'].push(record);
     else next.data['icrapro-personnel-v1'][index] = record;
     persist(next);

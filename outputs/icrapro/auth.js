@@ -264,6 +264,7 @@ function showAccountPanel() {
     <div class="actions"><button type="button" class="secondary" id="openAccountTerms">Sözleşme geçmişim</button><span><button type="button" class="secondary" id="cancelAccountSettings">Vazgeç</button><button type="submit" class="primary">Şifreyi değiştir</button></span></div>
   </form>`;
   const form = document.getElementById('accountSettingsForm');
+  window.setupAccountContact?.(form);
   installPasswordVisibility(form);
   const close = () => modal.close();
   document.getElementById('closeAccountSettings').onclick = close;

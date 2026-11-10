@@ -91,6 +91,7 @@ async function handleSessionRoutes(ctx) {
 }
 
 async function handleAccountRoutes(ctx) {
+  if (await require('../../lib/account-contact.cjs').handleContact(ctx)) return true;
   const {
     req,
     res,
