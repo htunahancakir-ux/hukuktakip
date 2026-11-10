@@ -1,5 +1,6 @@
 window.hanPinProofs = {};
 function ceoPinScope(url) {
+  if (window.hanAuth?.role === 'ceo') return null;
   const p = new URL(url, location.origin).pathname;
   if (p === '/api/operations/delete') return 'delete';
   if (
@@ -25,49 +26,8 @@ function ceoPinScope(url) {
     return 'integrations';
   return null;
 }
-let ceoPinPending = null;
-async function requireCeoPin(scope) {
-  if (window.hanAuth?.role !== 'ceo') return true;
-  const config = authApi('/api/ceo-pin/status');
-  if (!config.configured || !config.scopes.includes(scope) || config.unlocked) return true;
-  if (ceoPinPending) return ceoPinPending;
-  ceoPinPending = new Promise((resolve) => {
-    const dialog = document.createElement('dialog');
-    dialog.style.cssText =
-      'width:min(340px,calc(100vw - 32px));max-width:340px;min-width:0;padding:0;border-radius:14px;';
-    dialog.innerHTML =
-      '<form><div class="panelhead"><h2>Güvenlik PIN’i</h2></div><div class="formbody"><label class="field">4 haneli PIN<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="off" required></label><p role="status"></p></div><div class="actions"><button type="button" class="secondary">Vazgeç</button><button type="submit" class="primary">Doğrula</button></div></form>';
-    document.body.append(dialog);
-    let accepted = false;
-    dialog.addEventListener('close', () => {
-      dialog.remove();
-      resolve(accepted);
-    });
-    dialog.querySelector('button[type="button"]').onclick = () => dialog.close();
-    dialog.querySelector('form').onsubmit = (event) => {
-      event.preventDefault();
-      const form = event.target;
-      try {
-        const result = authApi('/api/ceo-pin/verify', 'POST', { scope, pin: form.elements.pin.value });
-        form.elements.pin.value = '';
-        if (!result.ok) {
-          dialog.querySelector('[role="status"]').textContent = result.error;
-          return;
-        }
-        accepted = true;
-        dialog.close();
-      } catch (error) {
-        dialog.querySelector('[role="status"]').textContent = error.message;
-      }
-    };
-    dialog.showModal();
-    dialog.querySelector('input').focus();
-  });
-  try {
-    return await ceoPinPending;
-  } finally {
-    ceoPinPending = null;
-  }
+async function requireCeoPin() {
+  return true;
 }
 
 function showCeoPinSettings() {

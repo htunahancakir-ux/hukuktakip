@@ -221,9 +221,11 @@ test('Intake allocates server numbers, isolates edits, searches all clients and 
     assert.equal((await patch(old, { ...old, notes: 'stale' })).status, 409);
     assert.equal(
       (await patch(edited, { ...edited, amount: 110 })).status,
-      409,
-      'financially active principal locked even for CEO',
+      200,
+      'CEO can edit financially active principal',
     );
+    const ceoEdited = (await store.readState()).data['icrapro-v1'].docs.find((d) => d.id === 'd0');
+    assert.equal((await patch(ceoEdited, { ...ceoEdited, amount: 100 })).status, 200);
     assert.equal((await patch(edited, { ...edited, number: 'S-9999' })).status, 400);
 
     const create = (id, overrides = {}) => ({

@@ -86,6 +86,7 @@ document.addEventListener(
   true,
 );
 function applyStaffBreakStatus(activeBreak, observedAt = Date.now()) {
+  if (hanAuth?.role === 'ceo') activeBreak = null;
   if (hanAuth?.role !== 'staff') return;
   if (observedAt < staffBreakUpdatedAt) return;
   staffBreakUpdatedAt = observedAt;

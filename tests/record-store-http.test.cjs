@@ -23,7 +23,7 @@ test('Unchanged automatic charges preserve their timestamp; changed inputs are s
   assert.equal(applyAutomaticLegalCharges(doc, [], '2026-11-11'), true);
   assert.equal(doc.legalCalculation.end, '2026-11-11');
 });
-test('CEO/admin manual interest survives scoped saves, reloads and balance reports; staff/closed files stay locked', async () => {
+test('Manual interest survives scoped saves; only CEO can override closed-file locks', async () => {
   const { pg, pool } = await database();
   let server;
   try {
@@ -134,8 +134,12 @@ test('CEO/admin manual interest survives scoped saves, reloads and balance repor
         }
       }
       const closed = (await load('closed')).record;
-      const denied = await patch(closed, { ...closed, financeInterest: 400, financeTermsManual: true });
-      assert.equal(denied.status, 403);
+      const closedEdit = await patch(closed, {
+        ...closed,
+        financeInterest: username === 'test' ? 400 : 500,
+        financeTermsManual: true,
+      });
+      assert.equal(closedEdit.status, username === 'test' ? 200 : 403);
     }
   } finally {
     await server?.close();

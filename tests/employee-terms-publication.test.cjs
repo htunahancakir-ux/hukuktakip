@@ -206,10 +206,11 @@ test('Publishing in active record storage keeps business data and sessions, gate
     for (const cookie of Object.values(cookies)) {
       const session = await (await request('session', cookie)).json();
       assert.ok(session.user, 'publishing must not log anyone out');
-      assert.equal(session.employeeTermsRequired, true);
-      assert.equal((await request('records/bootstrap', cookie)).status, 428);
+      const required = session.user.role !== 'ceo';
+      assert.equal(session.employeeTermsRequired, required);
+      assert.equal((await request('records/bootstrap', cookie)).status, required ? 428 : 200);
       const current = await (await request('employee-terms/current', cookie)).json();
-      assert.equal(current.required, true);
+      assert.equal(current.required, required);
       assert.equal(current.document.version, '1.3.0');
     }
     assert.equal((await request('employee-terms/settings', cookies.test, 'PUT', payload)).status, 409);

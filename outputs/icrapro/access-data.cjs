@@ -163,7 +163,8 @@ async function handleDataRoutes(ctx) {
           )
         )
           continue;
-        if (before.status === 'İnfaz') throw fail(403, 'İnfaz edilmiş dosyada faiz ve ücret değiştirilemez.');
+        if (u.role !== 'ceo' && before.status === 'İnfaz')
+          throw fail(403, 'İnfaz edilmiş dosyada faiz ve ücret değiştirilemez.');
         const amounts = [doc.amount, doc.financeInterest, doc.financeFee].map((value) =>
           Math.round(Number(value || 0) * 100),
         );
@@ -180,7 +181,7 @@ async function handleDataRoutes(ctx) {
           0,
           amounts.reduce((sum, value) => sum + value, 0) + expense - Number(doc.debtDiscountCents || 0),
         );
-        if (!Number.isSafeInteger(total) || (received > 0 && received >= total))
+        if (!Number.isSafeInteger(total) || (u.role !== 'ceo' && received > 0 && received >= total))
           throw fail(400, 'Yeni toplam borç, alınmış tahsilattan yüksek olmalıdır.');
       }
     }

@@ -72,7 +72,7 @@ test('Yönetici tahsilatlı açık dosyada faiz ve ücreti değiştirebilir; per
     ['ceo', 'Derdest', true],
     ['staff', 'Derdest', false],
     ['admin', 'İnfaz', false],
-    ['ceo', 'İnfaz', false],
+    ['ceo', 'İnfaz', true],
   ]) {
     const { dom, w } = setup(role, status);
     try {

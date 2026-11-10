@@ -374,6 +374,7 @@ function intake(editId, showNew = false, recordReady = false) {
     if (d.issued && d.due && d.issued > d.due) return toast('Vade tarihi düzenleme tarihinden önce olamaz.');
     if (
       original &&
+      hanAuth.role !== 'ceo' &&
       (financeEvents.some((e) => e.documentId === original.id) || original.repaymentPlan) &&
       ['amount', 'due', 'parkingCommissionRate', 'parkingEntry', 'vehicleKind'].some((key) =>
         ['due', 'parkingEntry', 'vehicleKind'].includes(key)
@@ -929,7 +930,7 @@ function populateIntakeEdit(d) {
     e.preventDefault();
     intake();
   };
-  if (financeEvents.some((e) => e.documentId === d.id) || d.repaymentPlan) {
+  if (hanAuth.role !== 'ceo' && (financeEvents.some((e) => e.documentId === d.id) || d.repaymentPlan)) {
     form.dataset.financeLocked = 'true';
     for (const name of ['amount', 'due', 'parkingCommissionRate', 'parkingEntry', 'vehicleKind'])
       if (form.elements[name]) {

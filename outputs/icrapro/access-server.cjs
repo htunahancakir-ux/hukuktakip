@@ -101,10 +101,10 @@ function createAccess(stateFile, options = {}) {
     permissions: ['ceo', 'admin'].includes(u.role) ? permissions : u.permissions,
     accountingAccess: accountingStaff(u, state.data['icrapro-personnel-v1']),
     active: u.active,
-    readOnly: u.readOnly === true,
+    readOnly: u.role !== 'ceo' && u.readOnly === true,
     testAccount: u.testAccount === true,
-    canDelete: u.readOnly !== true && canDelete(u),
-    activeBreak: u.activeBreak || null,
+    canDelete: (u.role === 'ceo' || u.readOnly !== true) && canDelete(u),
+    activeBreak: u.role === 'ceo' ? null : u.activeBreak || null,
   });
   function userEnabled(u) {
     if (options.userEnabled) return options.userEnabled(u);
@@ -287,6 +287,7 @@ function createAccess(stateFile, options = {}) {
       if (readOnlyDenied(u, req.method, url.pathname)) throw fail(403, READ_ONLY_MESSAGE);
       if (
         u?.activeBreak &&
+        u.role !== 'ceo' &&
         ![
           '/api/staff-breaks',
           '/api/logout',
@@ -304,9 +305,12 @@ function createAccess(stateFile, options = {}) {
         });
         return true;
       }
-      const termsRequired = options.employeeTermsRequired
-        ? options.employeeTermsRequired(u)
-        : requiresEmployeeTerms(state, u);
+      const termsRequired =
+        u?.role === 'ceo'
+          ? false
+          : options.employeeTermsRequired
+            ? options.employeeTermsRequired(u)
+            : requiresEmployeeTerms(state, u);
       if (
         u &&
         !u.readOnly &&
