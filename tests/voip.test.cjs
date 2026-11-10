@@ -1333,3 +1333,48 @@ test('server recovery requires its job credential and only closes a canceled cal
     else process.env.VOIP_CRON_SECRET = prior;
   }
 });
+
+test('canceled call recovery clears active state only on explicit provider channel-absent evidence', async () => {
+  const previous = process.env.VOIP_CRON_SECRET;
+  process.env.VOIP_CRON_SECRET = 'recovery-test-secret';
+  try {
+    let absent = false;
+    const h = harness(
+      async (url) =>
+        new Response(
+          new URL(url).pathname.startsWith('/hangup/') && absent
+            ? 'No such channel!'
+            : 'Unknown provider error',
+          { status: 400 },
+        ),
+    );
+    h.state.voipCalls.push({
+      id: 'recover-absent',
+      providerId: 'provider-id',
+      userId: 'u',
+      cancelRequested: true,
+      status: 'ringing',
+      createdAt: new Date().toISOString(),
+      draftNote: 'Korunacak not',
+      phone: '905320000000',
+    });
+    const headers = { authorization: 'Bearer recovery-test-secret' };
+    await assert.rejects(h.call('recover-call', 'POST', { id: 'recover-absent' }, false, headers));
+    assert.equal(h.state.voipCalls[0].status, 'unknown');
+    absent = true;
+    const result = await h.call('recover-call', 'POST', { id: 'recover-absent' }, false, headers);
+    assert.equal(result.confirmed, true);
+    assert.equal(result.detailsPending, true);
+    const saved = h.state.voipCalls[0];
+    assert.equal(saved.status, 'failed');
+    assert.equal(saved.endSource, 'provider-channel-missing');
+    assert.equal(saved.endedAt, undefined, 'Do not invent a provider end time');
+    assert.equal(saved.endDetailsPending, true);
+    assert.match(saved.note, /Korunacak not/);
+    assert(saved.closedConfirmedAt);
+    assert.equal((await h.call('calls?phone=05320000000')).active.length, 0);
+  } finally {
+    if (previous === undefined) delete process.env.VOIP_CRON_SECRET;
+    else process.env.VOIP_CRON_SECRET = previous;
+  }
+});
