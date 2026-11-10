@@ -211,11 +211,14 @@ test('webphone is reachable from the header and restoring it does not reload an 
     Object.assign(w, {
       hanAuth: { id: 'u', role: 'ceo' },
       esc: String,
-      fetch: async () => {
-        tokens++;
+      fetch: async (url) => {
+        if (url.endsWith('/webphone')) tokens++;
         return {
           ok: true,
-          json: async () => ({ url: 'https://example.bulutsantralim.com/phone?token=preview' }),
+          json: async () =>
+            url.endsWith('/webphone')
+              ? { url: 'https://example.bulutsantralim.com/phone?token=preview' }
+              : { active: [] },
         };
       },
     });
@@ -683,6 +686,8 @@ test('live call workspace preserves typed notes across polling, then saves the c
     assert.equal(w.document.querySelector('textarea'), textarea, 'poll updates never replace the note input');
     assert.equal(textarea.value, 'Müşteri yarın dönüş yapacak.');
     w.document.querySelector('[data-current-minimize]').click();
+    assert.equal(w.document.querySelector('#voipActiveCall').hidden, false);
+    assert.equal(w.document.querySelector('[data-current-hangup]').hidden, false);
     await new Promise((r) => setImmediate(r));
     assert.equal(draft, textarea.value);
     w.document.querySelector('[data-current-hangup]').click();
@@ -699,6 +704,51 @@ test('live call workspace preserves typed notes across polling, then saves the c
     assert.equal(w.document.getElementById('voipActiveCall'), null);
     w.showVoipActive({ id: 'd' }, { ...call, id: 'busy', status: 'busy', statusLabel: 'Meşgul' });
     assert.equal(w.document.querySelector('[name="result"]:checked').value, 'Meşgul');
+  } finally {
+    dom.window.close();
+  }
+});
+test('recovering an active call never nests its controls inside the minimized webphone', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM(
+    '<div class="header-actions"></div><aside><nav></nav></aside><dialog class="voip-webphone" open style="visibility:hidden"></dialog>',
+    { url: 'https://example.test', runScripts: 'dangerously' },
+  );
+  try {
+    const w = dom.window;
+    w.HTMLDialogElement.prototype.show = function () {
+      this.open = true;
+    };
+    Object.assign(w, {
+      hanAuth: { id: 'u', role: 'staff' },
+      esc: String,
+      fetch: async () => ({
+        ok: true,
+        json: async () => ({
+          active: [
+            {
+              id: 'recovered',
+              phone: '905320000000',
+              status: 'ringing',
+              statusLabel: 'Çalıyor',
+              documentId: '',
+            },
+          ],
+          results: [],
+        }),
+      }),
+    });
+    w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    w.setupVoipNavigation();
+    await new Promise(setImmediate);
+    const host = w.document.querySelector('#voipActiveCall');
+    assert.equal(host.parentElement, w.document.body);
+    assert.equal(host.hidden, false);
+    host.querySelector('[data-current-minimize]').click();
+    assert.equal(host.hidden, false);
+    assert.equal(host.querySelector('[data-current-hangup]').hidden, false);
+    host.querySelector('[data-current-minimize]').click();
+    assert.equal(host.classList.contains('voip-call-minimized'), false);
   } finally {
     dom.window.close();
   }

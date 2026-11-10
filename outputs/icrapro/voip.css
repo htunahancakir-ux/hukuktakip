@@ -617,6 +617,11 @@ dialog.voip-active-call {
 .voip-active-call [hidden] {
   display: none !important;
 }
+.voip-call-minimized .voip-live-note,
+.voip-call-minimized .voip-draft-status,
+.voip-call-minimized .voip-outcomes {
+  display: none;
+}
 .voip-workspace-heading {
   display: flex;
   align-items: flex-start;

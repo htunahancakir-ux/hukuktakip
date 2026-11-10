@@ -522,7 +522,7 @@ function setupBorrowerVoip(dialog, doc) {
     clearInterval(timer);
     voipUi.panelOpen = false;
     const dock = document.getElementById('voipActiveCall');
-    if (dock) dock.hidden = !!voipUi.minimized;
+    if (dock) dock.hidden = false;
   }
   function outside(event) {
     if (!wrap.isConnected) {
@@ -775,7 +775,7 @@ function setupBorrowerVoip(dialog, doc) {
     voipUi.panelOpen = true;
     feedback = '';
     const dock = document.getElementById('voipActiveCall');
-    if (dock) dock.hidden = true;
+    if (dock) dock.hidden = false;
     panel.innerHTML = '<div class="voip-panel-empty" role="status">Son aramalar yükleniyor…</div>';
     refresh();
     timer = setInterval(() => {
@@ -842,7 +842,7 @@ async function openVoipWebphone(feedback) {
 function showVoipActive(doc, call) {
   let host = document.getElementById('voipActiveCall');
   if (host?.dataset.callId === call.id) {
-    host.hidden = !!voipUi.minimized || !!voipUi.panelOpen;
+    host.hidden = false;
     voipUi.updateActive(call);
     return;
   }
@@ -857,7 +857,7 @@ function showVoipActive(doc, call) {
   host.dataset.callId = call.id;
   const owner = document.getElementById('borrowerDetail')?.open
     ? document.getElementById('borrowerDetail')
-    : document.querySelector('dialog[open]');
+    : document.querySelector('dialog[open]:not(.voip-webphone):not(.voip-active-call)');
   (owner || document.body).append(host);
   owner?.addEventListener(
     'close',
@@ -867,7 +867,7 @@ function showVoipActive(doc, call) {
     { once: true },
   );
   if (!host.open) host.show();
-  host.hidden = !!voipUi.minimized || !!voipUi.panelOpen;
+  host.hidden = false;
   host.innerHTML = `<div class="voip-workspace-heading"><div><span data-current-status></span><strong>${esc(voipPhone(call.phone))}</strong><small>${esc(call.documentNumber || doc.number || '')} · ${esc(call.debtorName || doc.debtor || '')}</small></div><button type="button" class="link" data-current-minimize>Küçült</button></div>
     <div class="voip-workspace-feedback" data-current-feedback role="alert" hidden></div>
     <form data-current-form><label class="voip-live-note">Görüşme notu<textarea data-optional="true" name="note" maxlength="3000" rows="4" placeholder="Görüşme sürerken notunuzu yazabilirsiniz…"></textarea></label><span class="voip-draft-status" data-draft-status role="status"></span>
@@ -921,8 +921,9 @@ function showVoipActive(doc, call) {
     clearTimeout(draftTimer);
   };
   host.querySelector('[data-current-minimize]').onclick = () => {
-    voipUi.minimized = true;
-    host.hidden = true;
+    voipUi.minimized = !voipUi.minimized;
+    host.classList.toggle('voip-call-minimized', voipUi.minimized);
+    host.querySelector('[data-current-minimize]').textContent = voipUi.minimized ? 'Genişlet' : 'Küçült';
     if (draftTimer) saveDraft().catch(() => {});
   };
   const update = (next) => {
@@ -964,6 +965,8 @@ function showVoipActive(doc, call) {
         .querySelector('.voip-number-panel:not([hidden])')
         ?.dispatchEvent(new Event('modal-layer-dismiss'));
       voipUi.minimized = false;
+      host.classList.remove('voip-call-minimized');
+      host.querySelector('[data-current-minimize]').textContent = 'Küçült';
       host.hidden = false;
       message('Görüşme sona erdi. Sonucu seçip Tamam’a basın.', 'notice');
       if (document.activeElement !== note)
@@ -1385,6 +1388,17 @@ function setupVoipNavigation() {
     dial.textContent = '☎ Numara ara';
     dial.onclick = openStandaloneVoip;
     document.querySelector('.header-actions')?.prepend(dial);
+    voipApi('calls')
+      .then((data) => {
+        if (voipUi.activeId || !data.active?.length) return;
+        voipUi.results = data.results || [];
+        const call = data.active[0];
+        showVoipActive(
+          { id: call.documentId, number: call.documentNumber || 'Dosyasız arama', debtor: call.debtorName },
+          call,
+        );
+      })
+      .catch(() => {});
   }
   if (!['ceo', 'admin'].includes(hanAuth.role) || document.querySelector('[data-page="callRecordings"]'))
     return;
