@@ -44,7 +44,7 @@ async function readPersonnelAttachments(personnelId, attachmentId = '') {
 async function personnelAttachmentsPage(host, ownerId) {
   if (!host || !['ceo', 'admin'].includes(window.hanAuth?.role)) return;
 
-  host.innerHTML = `<div class="panel"><div class="panelhead"><div><h2>Foto ve PDF Ekle</h2><p>Bu personele ait fotoğraf ve PDF dosyalarını ekleyin veya görüntüleyin.</p></div></div><form id="personnelFilesForm" class="formbody"><div class="grid"><label class="field full">Fotoğraf / PDF Ekle<input id="personnelFilePicker" type="file" multiple data-optional="true" accept="application/pdf,image/jpeg,image/png,image/webp" ${ownerId ? '' : 'disabled'}><small>PDF, JPG, PNG veya WEBP · Her dosya en fazla 3 MB. Yeni dosyalar mevcut eklere eklenir.</small></label></div><div class="actions"><button type="submit" class="primary" ${ownerId ? '' : 'disabled'}>Seçilen Dosyaları Ekle</button></div><p role="status" data-personnel-file-status></p></form><div class="formbody" data-personnel-file-list>${ownerId ? 'Ekler yükleniyor…' : 'Ekleri görmek ve yüklemek için personel seçin.'}</div></div>`;
+  host.innerHTML = `<div class="panel"><div class="panelhead"><div><h2>Foto ve PDF Ekle</h2><p>Bu personele ait fotoğraf ve PDF dosyalarını ekleyin veya görüntüleyin.</p></div></div><form id="personnelFilesForm" class="formbody"><div class="grid"><label class="field full">Fotoğraf / PDF Ekle<input id="personnelFilePicker" type="file" multiple data-optional="true" accept="application/pdf,image/jpeg,image/png,image/webp" ${ownerId ? '' : 'disabled'}><small>PDF, JPG, PNG veya WEBP · Her dosya en fazla 10 MB. Yeni dosyalar mevcut eklere eklenir.</small></label></div><div class="actions"><button type="submit" class="primary" ${ownerId ? '' : 'disabled'}>Seçilen Dosyaları Ekle</button></div><p role="status" data-personnel-file-status></p></form><div class="formbody" data-personnel-file-list>${ownerId ? 'Ekler yükleniyor…' : 'Ekleri görmek ve yüklemek için personel seçin.'}</div></div>`;
   const form = host.querySelector('#personnelFilesForm'),
     input = form.querySelector('#personnelFilePicker'),
     button = form.querySelector('button[type=submit]'),
@@ -58,7 +58,7 @@ async function personnelAttachmentsPage(host, ownerId) {
     button.disabled = true;
     input.disabled = true;
     try {
-      const files = await readSelectedFileAttachments(input, 'auto', 3);
+      const files = await readSelectedFileAttachments(input, 'auto', 10);
       if (!files.length) {
         status.textContent = 'Önce fotoğraf veya PDF seçin.';
         return;

@@ -150,12 +150,27 @@ test('Multiple document and client attachments persist separately, preserve lega
       data: 'data:image/png;base64,' + Buffer.alloc(1700000, 66).toString('base64'),
     };
     assert.ok(JSON.stringify([pdf, photo]).length > 4 * 1024 * 1024);
-    const post = (ownerType, ownerId, attachment, actor = ceo) =>
-      fetch(server.url + '/api/record-attachments', {
-        method: 'POST',
-        headers: actor,
-        body: JSON.stringify({ ownerType, ownerId, attachment }),
-      });
+    const post = async (ownerType, ownerId, attachment, actor = ceo) => {
+      const size = 524288,
+        parts = Math.ceil(attachment.data.length / size);
+      let response;
+      for (let part = 0; part < parts; part++) {
+        response = await fetch(server.url + '/api/record-attachments', {
+          method: 'POST',
+          headers: actor,
+          body: JSON.stringify({
+            ownerType,
+            ownerId,
+            part,
+            parts,
+            attachment: { ...attachment, data: attachment.data.slice(part * size, (part + 1) * size) },
+          }),
+        });
+        if (!response.ok) return response;
+        if (part < parts - 1) await response.text();
+      }
+      return response;
+    };
     for (const [kind, id] of [
       ['document', 'attachment-doc'],
       ['client', 'attachment-client'],
@@ -172,9 +187,27 @@ test('Multiple document and client attachments persist separately, preserve lega
     assert.equal((await post('client', 'attachment-client', { ...pdf, id: 'denied' }, staff)).status, 403);
     const edge = {
       id: 'edge',
-      name: 'three-megabytes.pdf',
-      data: 'data:application/pdf;base64,' + Buffer.alloc(3 * 1024 * 1024, 67).toString('base64'),
+      name: 'ten-megabytes.pdf',
+      data: 'data:application/pdf;base64,' + Buffer.alloc(10 * 1024 * 1024, 67).toString('base64'),
     };
+    assert.throws(
+      () =>
+        require('../lib/record-attachments.cjs').appendAttachment(
+          state,
+          {
+            ownerType: 'document',
+            ownerId: 'attachment-doc',
+            attachment: {
+              id: 'oversized',
+              name: 'large.pdf',
+              data: 'data:application/pdf;base64,' + Buffer.alloc(10 * 1024 * 1024 + 1).toString('base64'),
+            },
+          },
+          state.users[0],
+          () => true,
+        ),
+      /boyutu/,
+    );
     const edgeResponse = await post('document', 'attachment-doc', edge);
     assert.equal(edgeResponse.status, 200, await edgeResponse.text());
     assert.equal(
@@ -204,6 +237,31 @@ test('Multiple document and client attachments persist separately, preserve lega
       );
       assert.equal(response.status, 200);
       const loaded = await response.json();
+      if (loaded.field === 'attachments' && loaded.value.name === edge.name) {
+        let text = '',
+          hash;
+        for (;;) {
+          const partResponse = await fetch(
+            server.url +
+              '/api/records/document?' +
+              new URLSearchParams({
+                id: 'attachment-doc',
+                section: 'attachment',
+                attachmentId: file.id,
+                _hanChunk: String(text.length),
+              }),
+            { headers: { ...ceo, 'X-Han-Chunk-Transport': '1' } },
+          );
+          assert.equal(partResponse.headers.get('X-Han-Chunked'), '1');
+          const part = await partResponse.json();
+          assert.equal(part.offset, text.length);
+          hash ||= part.hash;
+          assert.equal(part.hash, hash);
+          text += part.chunk;
+          if (text.length === part.total) break;
+        }
+        assert.deepEqual(JSON.parse(text), loaded);
+      }
       if (loaded.field === 'attachments')
         assert.ok([pdf.data, photo.data, edge.data].includes(loaded.value.data));
     }
@@ -213,7 +271,7 @@ test('Multiple document and client attachments persist separately, preserve lega
     assert.equal(doc.photoData, state.data['icrapro-v1'].docs[0].photoData);
     assert.deepEqual(
       doc.attachments.map((f) => f.name),
-      ['first.pdf', 'second.png', 'three-megabytes.pdf'],
+      ['first.pdf', 'second.png', 'ten-megabytes.pdf'],
     );
     assert.equal(exported.data['icrapro-v1'].clients[0].attachments.length, 2);
   } finally {
