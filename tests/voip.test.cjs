@@ -1493,3 +1493,33 @@ test('heartbeat renews only owner browser call and watchdog retries provider err
   assert.equal(h.state.voipCalls[0].endedAt, undefined);
   delete process.env.VOIP_CRON_SECRET;
 });
+
+test('closing standalone dialer releases phone and ignores a late webphone token', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('', { url: 'https://example.test', runScripts: 'dangerously' });
+  const w = dom.window;
+  let resolveToken;
+  try {
+    w.HTMLDialogElement.prototype.show = function () {
+      this.open = true;
+    };
+    w.HTMLDialogElement.prototype.close = function () {
+      this.open = false;
+    };
+    Object.assign(w, {
+      esc: String,
+      fetch: () =>
+        new Promise((resolve) => {
+          resolveToken = resolve;
+        }),
+    });
+    w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    w.openStandaloneVoip();
+    w.document.querySelector('#voipStandalone [data-close]').click();
+    resolveToken({ ok: true, json: async () => ({ url: 'https://example.test/phone' }) });
+    await new Promise(setImmediate);
+    assert.equal(w.document.querySelector('#voipWebphone iframe'), null);
+  } finally {
+    dom.window.close();
+  }
+});

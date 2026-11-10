@@ -917,6 +917,7 @@ function voipPhoneDock(reveal = true) {
   return dock;
 }
 async function openVoipWebphone(feedback, background = false) {
+  const generation = voipUi.phoneGeneration || 0;
   try {
     const dock = voipPhoneDock(!background);
     if (!background) dock.classList.remove('voip-dock-minimized');
@@ -929,6 +930,7 @@ async function openVoipWebphone(feedback, background = false) {
     const result = await (voipUi.webphoneTokenRequest ||= voipApi('webphone', 'POST', {}).finally(() => {
       voipUi.webphoneTokenRequest = null;
     }));
+    if (generation !== (voipUi.phoneGeneration || 0)) return;
     if (typeof result.url !== 'string' || !result.url.startsWith('https://'))
       throw Error('Web telefonu bağlantısı alınamadı. VoIP ayarlarını kontrol edin.');
     let phone = document.getElementById('voipWebphone');
@@ -964,6 +966,7 @@ async function openVoipWebphone(feedback, background = false) {
   }
 }
 function releaseVoipWebphone() {
+  voipUi.phoneGeneration = (voipUi.phoneGeneration || 0) + 1;
   const phone = document.getElementById('voipWebphone');
   if (phone) {
     phone.querySelector('iframe')?.remove();
@@ -1523,7 +1526,8 @@ function openStandaloneVoip() {
     '<div class="panelhead"><div><h2>Numara ile arama</h2><p>Dosyasız arama · Telefon bağlantısı arka planda açılır.</p></div><button type="button" class="secondary" data-close>Kapat</button></div><form class="voip-standalone-form" data-ignore-dirty><label class="field">Aranacak telefon numarası<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="05XX XXX XX XX" required></label><button type="submit" class="primary">Geçmişi kontrol et</button></form><div data-feedback role="alert"></div><div data-preview></div>';
   dialog.querySelector('[data-close]').onclick = () => {
     dialog.close();
-    if (!document.getElementById('voipActiveCall')) {
+    if (!document.getElementById('voipActiveCall') && !voipUi.startPending) {
+      releaseVoipWebphone();
       const dock = document.getElementById('voipPhoneDock');
       if (dock?.hidePopover) dock.hidePopover();
       if (dock) dock.hidden = true;
