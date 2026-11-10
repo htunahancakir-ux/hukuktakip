@@ -96,6 +96,41 @@ test('phone normalization deduplicates numbers and excludes invalid values', () 
     2,
   );
 });
+test('only managers change user extensions; provider secrets and other assignments remain protected', async () => {
+  const h = harness();
+  const original = structuredClone(h.state.voipConfig);
+  h.user = { id: 's', role: 'staff', staffId: 'p' };
+  await assert.rejects(h.call('extensions', 'PUT', { userId: 's', extension: '1000' }), /yalnızca CEO/);
+  await assert.rejects(h.call('extensions'), /yalnızca CEO/);
+  await assert.rejects(h.call('config', 'PUT', { extensions: { s: '1000' } }), /yalnızca CEO/);
+  assert.deepEqual(h.state.voipConfig, original);
+  h.user = { id: 'a', name: 'Yönetici', role: 'admin' };
+  const listed = await h.call('extensions');
+  assert.equal(listed.users.length, 2);
+  assert(!JSON.stringify(listed).includes(original.sealedKey));
+  await h.call('extensions', 'PUT', { userId: 's', extension: '1000' });
+  assert.equal(h.state.voipConfig.extensions.s, '1000');
+  assert.equal(h.state.voipConfig.extensions.u, '1001');
+  assert.equal(h.state.voipConfig.sealedKey, original.sealedKey);
+  assert.equal(h.state.voipConfig.webhookSecret, original.webhookSecret);
+  await assert.rejects(
+    h.call('extensions', 'PUT', { userId: 's', extension: '1001' }),
+    /başka bir kullanıcı/,
+  );
+  await assert.rejects(h.call('extensions', 'PUT', { userId: 's', extension: 'abc' }), /2–8/);
+  await assert.rejects(
+    h.call('extensions', 'PUT', { userId: 's', extension: '1000', apiKey: 'forged' }),
+    /yalnızca dahili/,
+  );
+  const updated = configure(h.state.voipConfig, { provider: 'verimor' }, h.state.users);
+  assert.equal(
+    updated.extensions.s,
+    '1000',
+    'Saving provider settings must preserve current manager assignments',
+  );
+  await h.call('extensions', 'PUT', { userId: 's', extension: '' });
+  assert.equal(h.state.voipConfig.extensions.s, undefined);
+});
 test('configuration keeps keys encrypted and validates provider, host and duplicate extensions', () => {
   const cfg = configure({}, { provider: 'verimor', apiKey: 'secret', extensions: {} }, []);
   assert(!cfg.sealedKey.includes('secret'));
@@ -114,6 +149,39 @@ test('configuration keeps keys encrypted and validates provider, host and duplic
       ]),
     /iki kullanıcı/,
   );
+});
+test('manager extension panel saves a single user and shows the saved value', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('<main><section id="permissions"></section></main>', { runScripts: 'outside-only' }),
+    w = dom.window;
+  w.esc = (value) => String(value || '');
+  w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+  let input;
+  w.voipApi = async (path, method, value) => {
+    assert.equal(path, 'extensions');
+    if (method === 'PUT') input = value;
+    return {
+      users: [
+        {
+          id: 's',
+          name: 'Personel',
+          username: 'staff',
+          role: 'staff',
+          extension: input?.extension || '1002',
+        },
+      ],
+    };
+  };
+  await w.voipExtensionsPanel(w.document.querySelector('#permissions'));
+  const form = w.document.querySelector('form');
+  form.elements.extension.value = '1000';
+  form.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(input.userId, 's');
+  assert.equal(input.extension, '1000');
+  assert.equal(form.querySelector('[role="status"]').textContent, 'Kaydedildi.');
+  assert.equal(form.elements.extension.defaultValue, '1000');
+  dom.window.close();
 });
 test('reservation prevents concurrent dialing and replays request without another provider call', async () => {
   let release,

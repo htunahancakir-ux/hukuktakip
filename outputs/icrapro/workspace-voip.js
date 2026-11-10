@@ -51,8 +51,7 @@ function voipSettingsPage() {
       <label class="field full">Web telefonu adresi<input data-optional="true" name="webphoneUrl" type="url" value="${esc(config.webphoneUrl || '')}" placeholder="Verimor’un verdiği HTTPS iframe adresi"><small>Tokensız adresi girin. Dahiliye Verimor personel hesabı atanmış olmalı. Masa telefonu / softphone kullanıyorsanız boş bırakabilirsiniz.</small></label>
       <label class="field">Tekrar arama uyarısı (dakika)<input data-optional="true" name="recentMinutes" type="number" min="1" max="10080" value="${config.recentMinutes}"><small>Görüşülen numaralar için uyarır; ulaşılamayan veya meşgul numaralarda onay istemez.</small></label>
       <label class="settings-check"><input data-optional="true" name="clearKey" type="checkbox"> Kayıtlı API anahtarını sil</label>
-      <div class="full"><h3>Personel dahilileri</h3><p>Her uygulama kullanıcısını kendi Verimor dahilisine bağlayın.</p></div>
-      ${config.users.map((u) => `<label class="field">${esc(u.name)}<input data-optional="true" inputmode="numeric" pattern="[0-9]{2,8}" maxlength="8" data-voip-extension="${esc(u.id)}" value="${esc(config.extensions?.[u.id] || '')}" placeholder="1001"></label>`).join('')}
+      <div class="notice full">Dahili numaralarını Ayarlar → Yetkilendirme → Telefon Dahilileri bölümünden CEO veya yöneticiler değiştirebilir.</div>
       <div class="notice full"><strong>Ses kaydı ve arşiv</strong><p>Verimor’da ilgili dahililerin görüşme kaydını açın. Hazır kayıtlar yeniden sıkıştırılmadan, şifreli arşive alınır ve 5 yıl saklanacak şekilde işaretlenir. CEO ve yönetici dinleyebilir; dosya sorumlularına Ayarlar → Yetkilendirme bölümünden dinleme yetkisi verilebilir.</p><p>${config.archiveReady ? 'Kalıcı depolama kullanılabilir.' : 'Bulutta kalıcı arşiv için R2 ortam değişkenlerini tamamlayın.'} ${config.encryptionReady ? 'Şifreleme anahtarı hazır.' : 'Sunucuda VOIP_ENCRYPTION_KEY tanımlanmalı: 64 haneli hex anahtar.'}</p></div>
       <label class="field full">Çağrı bildirim adresi<input readonly value="${esc(config.webhookPath ? location.origin + config.webhookPath : 'İlk kayıttan sonra oluşur.')}"><small>Verimor CRM entegrasyonunda çalma, cevaplanma ve kapanma bildirimleri için bu adresi kullanın. Adres gizli bildirim anahtarı içerir.</small></label>
     </div><p id="voipConfigStatus" role="status"></p><div class="actions"><button class="primary" type="submit">VoIP Ayarlarını Kaydet</button></div></form>`;
@@ -64,12 +63,6 @@ function voipSettingsPage() {
         const value = Object.fromEntries(new FormData(form));
         value.enabled = form.elements.enabled.checked;
         value.clearKey = form.elements.clearKey.checked;
-        value.extensions = Object.fromEntries(
-          [...form.querySelectorAll('[data-voip-extension]')].map((i) => [
-            i.dataset.voipExtension,
-            i.value.trim(),
-          ]),
-        );
         try {
           await voipApi('config', 'PUT', value);
           voipSettingsPage();
@@ -83,6 +76,53 @@ function voipSettingsPage() {
       if (host.isConnected) host.textContent = error.message;
     });
 }
+async function voipExtensionsPanel(before) {
+  const panel = document.createElement('section');
+  panel.className = 'panel formbody';
+  panel.style.marginBottom = '16px';
+  before.before(panel);
+  panel.textContent = 'Telefon dahilileri yükleniyor…';
+  try {
+    const data = await voipApi('extensions');
+    if (!panel.isConnected) return;
+    panel.innerHTML =
+      '<h2>Telefon Dahilileri</h2><p>Yalnızca CEO ve yöneticiler değiştirebilir. Personel kendi dahilisini değiştiremez. Buradaki numara Verimor’da tanımlı dahiliyle aynı olmalıdır; bu işlem Verimor’da yeni dahili oluşturmaz.</p><div class="overflow"><table><thead><tr><th>Kullanıcı</th><th>Dahili / İşlem</th></tr></thead><tbody>' +
+      data.users
+        .map(
+          (u) =>
+            `<tr><td><strong>${esc(u.name)}</strong><small>${esc(u.username || '')} · ${u.role === 'ceo' ? 'CEO' : u.role === 'admin' ? 'Yönetici' : 'Personel'}</small></td><td><form data-extension-user="${esc(u.id)}" class="toolbar"><input aria-label="${esc(u.name)} dahili numarası" name="extension" type="text" inputmode="numeric" pattern="[0-9]{2,8}" maxlength="8" value="${esc(u.extension)}" placeholder="Atanmadı" style="width:120px"><button class="secondary" type="submit">Kaydet</button><span role="status"></span></form></td></tr>`,
+        )
+        .join('') +
+      '</tbody></table></div>';
+    panel.querySelectorAll('form').forEach(
+      (form) =>
+        (form.onsubmit = async (event) => {
+          event.preventDefault();
+          const button = form.querySelector('button'),
+            status = form.querySelector('[role="status"]');
+          button.disabled = true;
+          status.textContent = 'Kaydediliyor…';
+          try {
+            const saved = await voipApi('extensions', 'PUT', {
+              userId: form.dataset.extensionUser,
+              extension: form.elements.extension.value.trim(),
+            });
+            form.elements.extension.value = saved.users.find(
+              (u) => u.id === form.dataset.extensionUser,
+            ).extension;
+            form.elements.extension.defaultValue = form.elements.extension.value;
+            status.textContent = 'Kaydedildi.';
+          } catch (error) {
+            status.textContent = error.message;
+          } finally {
+            button.disabled = false;
+          }
+        }),
+    );
+  } catch (error) {
+    if (panel.isConnected) panel.textContent = error.message;
+  }
+}
 function voipPermissionsPage() {
   if (!['ceo', 'admin'].includes(hanAuth.role)) return;
   $('#content').innerHTML =
@@ -90,6 +130,7 @@ function voipPermissionsPage() {
     '<section class="panel"><div class="panelhead"><div><h2>Ses kayıtlarını dinleme yetkisi</h2><p>CEO ve yöneticiler tüm görüşme kayıtlarını dinleyebilir.</p></div></div><div class="formbody"><p>Yetki verilen personel yalnızca şu anda dosya sorumlusu olduğu föylerin kayıtlarını dinleyebilir. Başka personele devredilen dosyaların kayıtlarına erişemez.</p><div id="voipPermissionsRows" aria-live="polite">Yükleniyor…</div></div></section>';
   bindSettingsSectionTabs();
   const host = $('#voipPermissionsRows');
+  voipExtensionsPanel(host.closest('section'));
   const refresh = async () => {
     try {
       const data = await voipApi('permissions');
