@@ -296,6 +296,82 @@ function bindSettingsSectionTabs() {
   );
 }
 
+// Yedekleme sıklığı: daily at chosen hours, weekly on a chosen day (no hour asked), or every
+// 30 days. Times are Istanbul time.
+const BACKUP_WEEKDAYS = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
+function backupScheduleFields(schedule = { type: 'interval', days: 1 }) {
+  const type =
+    schedule.type === 'interval'
+      ? schedule.days === 7
+        ? 'weekly'
+        : schedule.days === 30
+          ? 'monthly'
+          : 'daily'
+      : schedule.type;
+  const times = schedule.type === 'daily' ? schedule.times : ['03:00'];
+  const weekday = schedule.type === 'weekly' ? schedule.weekday : 1;
+  return `<div class="field full backup-schedule"><span>Yedekleme sıklığı</span>
+    <select name="frequency" aria-label="Yedekleme sıklığı">
+      <option value="daily" ${type === 'daily' ? 'selected' : ''}>Günlük — belirlediğim saatlerde</option>
+      <option value="weekly" ${type === 'weekly' ? 'selected' : ''}>Haftalık — belirlediğim günde</option>
+      <option value="monthly" ${type === 'monthly' ? 'selected' : ''}>Her 30 günde bir</option>
+    </select>
+    <div data-backup-daily><span>Saatler</span><div class="backup-times">${times
+      .map((t) => backupTimeField(t))
+      .join('')}</div><button type="button" class="link" data-backup-add-time>＋ Saat ekle</button>
+      <small>Günde en fazla 6 saat, aralarında en az 1 saat olmalı.</small></div>
+    <label data-backup-weekly>Gün<select name="weekday">${BACKUP_WEEKDAYS.map(
+      (day, i) => `<option value="${i + 1}" ${weekday === i + 1 ? 'selected' : ''}>${day}</option>`,
+    ).join('')}</select><small>O gün içinde alınır; saat seçmeniz gerekmez.</small></label>
+    <small>Saatler Türkiye saatidir. Bulutta yedek zamanı uygulama kullanılırken birkaç dakikada bir ve her sabah 06.00 civarında kontrol edilir; seçilen saat gelince ilk kontrolde alınır. Kimsenin uygulamayı kullanmadığı gece saatlerinin yedeği sabah 06.00 civarında alınır.</small>
+  </div>`;
+}
+function backupTimeField(value) {
+  return `<span class="backup-time"><input type="time" name="backupTime" value="${esc(value)}" required aria-label="Yedek saati"><button type="button" class="link" data-backup-remove-time aria-label="Saati kaldır">✕</button></span>`;
+}
+function bindBackupSchedule(form) {
+  const show = () => {
+    const kind = form.elements.frequency.value;
+    form.querySelector('[data-backup-daily]').hidden = kind !== 'daily';
+    form.querySelector('[data-backup-weekly]').hidden = kind !== 'weekly';
+    form.querySelectorAll('[name="backupTime"]').forEach((input) => (input.disabled = kind !== 'daily'));
+    const removable = form.querySelectorAll('[data-backup-remove-time]');
+    removable.forEach((button) => (button.hidden = removable.length < 2));
+    form.querySelector('[data-backup-add-time]').hidden = removable.length >= 6;
+  };
+  const wire = () =>
+    form.querySelectorAll('[data-backup-remove-time]').forEach(
+      (button) =>
+        (button.onclick = () => {
+          button.closest('.backup-time').remove();
+          show();
+        }),
+    );
+  form.elements.frequency.onchange = show;
+  form.querySelector('[data-backup-add-time]').onclick = () => {
+    // Suggest an hour that is not in the list yet: an hour after the last one.
+    const taken = [...form.querySelectorAll('[name="backupTime"]')].map((input) => input.value);
+    let minutes = taken.length
+      ? (Number(taken.at(-1).slice(0, 2)) * 60 + Number(taken.at(-1).slice(3, 5)) + 60) % 1440
+      : 540;
+    const label = (m) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+    for (let i = 0; i < 24 && taken.includes(label(minutes)); i++) minutes = (minutes + 60) % 1440;
+    form.querySelector('.backup-times').insertAdjacentHTML('beforeend', backupTimeField(label(minutes)));
+    wire();
+    show();
+  };
+  wire();
+  show();
+}
+function readBackupSchedule(form) {
+  const kind = form.elements.frequency.value;
+  if (kind === 'weekly') return { type: 'weekly', weekday: Number(form.elements.weekday.value) };
+  if (kind === 'monthly') return { type: 'interval', days: 30 };
+  const times = [...form.querySelectorAll('[name="backupTime"]')].map((input) => input.value).filter(Boolean);
+  if (!times.length) throw Error('En az bir yedek saati girin.');
+  if (new Set(times).size !== times.length) throw Error('Aynı saat iki kez girilmiş.');
+  return { type: 'daily', times };
+}
 function backupSettingsPage() {
   let status;
   try {
@@ -309,7 +385,7 @@ function backupSettingsPage() {
     <div class="panel"><div class="panelhead"><div><h2>Yedekleme</h2><p>Uygulama verilerinin şifreli kopyasını Cloudflare R2'ye kaydedin.</p></div></div>
     <div class="formbody"><form id="backupSettingsForm" class="grid">
       <label class="settings-check full"><input name="enabled" type="checkbox" ${status.enabled ? 'checked' : ''}> Otomatik yedeklemeyi aç</label>
-      <label class="field">Yedekleme aralığı<select name="intervalDays"><option value="1" ${status.intervalDays === 1 ? 'selected' : ''}>Her gün</option><option value="7" ${status.intervalDays === 7 ? 'selected' : ''}>Her 7 günde bir</option><option value="30" ${status.intervalDays === 30 ? 'selected' : ''}>Her 30 günde bir</option></select><small>Bulutta her gün 06.00 civarında kontrol edilir; seçilen aralık dolunca yedek alınır.</small></label>
+      ${backupScheduleFields(status.schedule)}
       <div class="full"><p><b>Cloudflare R2:</b> ${status.r2Configured && status.encryptionConfigured ? 'Bağlantı ayarları hazır' : 'Erişim ve şifreleme anahtarları bekleniyor'} · <b>Kova:</b> ${esc(status.bucket)}</p>
       <p><b>Son başarılı yedek:</b> ${backupDate(status.lastSuccessAt)} · <b>Son R2 kopyası:</b> ${backupDate(status.lastR2At)}</p>
       ${!status.scheduleConfigured ? '<p role="alert">Bulut zamanlayıcısı henüz yapılandırılmadı.</p>' : ''}
@@ -338,6 +414,7 @@ function backupSettingsPage() {
       }</div>
     </section>`;
   bindSettingsSectionTabs();
+  bindBackupSchedule($('#backupSettingsForm'));
   bindBackupFiles(status.lastDownload);
   $('#backupSettingsForm').onsubmit = (event) => {
     event.preventDefault();
@@ -345,7 +422,7 @@ function backupSettingsPage() {
       const form = event.target;
       authApi('/api/backups', 'PUT', {
         enabled: form.elements.enabled.checked,
-        intervalDays: Number(form.elements.intervalDays.value),
+        schedule: readBackupSchedule(form),
       });
       refreshBackupIndicator();
       settings();

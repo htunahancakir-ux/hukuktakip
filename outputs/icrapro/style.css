@@ -246,3 +246,8 @@ aside > .brand-home strong { min-width: 0; letter-spacing: 0; }
 #staffBreakLock .actions { justify-content: center; }
 
 #staffBreakLock .staff-break-unlock { margin-top: 20px; text-align: left; }
+
+.backup-schedule { display: grid; gap: 8px; }
+.backup-schedule [hidden] { display: none !important; }
+.backup-times { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0; }
+.backup-time { display: inline-flex; align-items: center; gap: 4px; }
