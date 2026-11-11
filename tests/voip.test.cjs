@@ -3240,3 +3240,56 @@ test('an inbound call left ringing for minutes is closed as unanswered at the ne
   assert.equal(call.status, 'unanswered');
   assert.equal(call.endSource, 'ring-timeout');
 });
+
+test('answered inbound calls the exchange no longer shows as talking are closed automatically', async () => {
+  let talking = true;
+  const asked = [];
+  const h = inboundHarness(async (url) => {
+    const u = new URL(url);
+    asked.push(u.pathname);
+    if (u.pathname === '/user_statuses')
+      return new Response(JSON.stringify([{ user: 1002, status: talking ? 'TALKING' : 'AVAILABLE' }]));
+    if (u.pathname.startsWith('/cdrs/')) return new Response('not found', { status: 404 });
+    return new Response('[]');
+  });
+  h.user = { id: 's', name: 'Personel', role: 'staff', staffId: 'p' };
+  await h.call(hookUrl(h), 'POST', inbound());
+  await h.call(hookUrl(h), 'POST', inbound({ event_type: 'answer', connected_user: '1002' }));
+  // Younger than a minute: not checked yet.
+  assert.equal((await h.call('incoming')).call.status, 'answered');
+  assert.ok(!asked.includes('/user_statuses'));
+  inboundCalls(h)[0].answeredAt = new Date(Date.now() - 2 * 60000).toISOString();
+  // Still talking: stays open.
+  assert.equal((await h.call('incoming')).call.status, 'answered');
+  assert.equal(asked.filter((p) => p === '/user_statuses').length, 1);
+  // Checked at most every 30 s from the screen.
+  await h.call('incoming');
+  assert.equal(asked.filter((p) => p === '/user_statuses').length, 1);
+  // The hangup event is lost and the extension is free again: the next check closes it.
+  talking = false;
+  inboundCalls(h)[0].statusCheckedAt = new Date(Date.now() - 60000).toISOString();
+  assert.equal((await h.call('incoming')).call, null);
+  const call = inboundCalls(h)[0];
+  assert.equal(call.status, 'completed');
+  assert.equal(call.endSource, 'extension-idle');
+});
+
+test('the background job closes inbound calls stuck as answered and ringing calls over two minutes', async () => {
+  process.env.VOIP_CRON_SECRET ||= 'test-cron-secret-0123456789';
+  const h = inboundHarness(async (url) => {
+    const u = new URL(url);
+    if (u.pathname === '/user_statuses') return new Response('[{"user":1002,"status":"UNREGISTERED"}]');
+    return new Response('not found', { status: 404 });
+  });
+  await h.call(hookUrl(h), 'POST', inbound());
+  await h.call(hookUrl(h), 'POST', inbound({ event_type: 'answer', connected_user: '1002' }));
+  await h.call(hookUrl(h), 'POST', inbound({ call_uuid: 'in-uuid-0002', caller_id_number: '05320000001' }));
+  const [answered, ringing] = inboundCalls(h);
+  answered.answeredAt = new Date(Date.now() - 5 * 60000).toISOString();
+  ringing.createdAt = new Date(Date.now() - 150000).toISOString();
+  const result = await h.call('cron', 'POST', {}, false, { authorization: 'Bearer ' + process.env.VOIP_CRON_SECRET });
+  assert.equal(result.inboundClosed, 1);
+  const [a, r] = inboundCalls(h);
+  assert.deepEqual([a.status, a.endSource], ['completed', 'extension-idle']);
+  assert.deepEqual([r.status, r.endSource], ['unanswered', 'ring-timeout']);
+});
