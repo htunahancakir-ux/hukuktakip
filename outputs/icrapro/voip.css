@@ -1590,3 +1590,16 @@ body.voip-call-bar-open .shell > header {
 .voip-diagnosis li[data-ok='yes'] { border-color: #a9d8b8; background: #f2fbf5; }
 .voip-diagnosis li span { color: #4a5865; overflow-wrap: anywhere; }
 .voip-diagnosis-wait { font-size: 13px; color: #4a5865; margin: 8px 0 0; }
+
+.voip-incoming { position: sticky; top: 0; z-index: 60; display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: #0f5132; color: #fff; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18); }
+.voip-incoming strong { display: block; font-size: 15px; }
+.voip-incoming small { display: block; opacity: 0.85; font-size: 12px; }
+.voip-incoming > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.voip-incoming-pulse { font-size: 20px; animation: voip-incoming-pulse 1s ease-in-out infinite; }
+@keyframes voip-incoming-pulse { 50% { transform: scale(1.18); } }
+@media (prefers-reduced-motion: reduce) { .voip-incoming-pulse { animation: none; } }
+.voip-inbound-notice { margin: 8px 16px 0; }
+.voip-transfer-box { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin: 8px 0; }
+.voip-transfer-box label { display: grid; gap: 4px; font-size: 13px; }
+.voip-inbound-settings { display: grid; gap: 10px; }
+.voip-inbound-users { display: flex; flex-wrap: wrap; gap: 6px 16px; }

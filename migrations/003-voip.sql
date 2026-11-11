@@ -34,6 +34,12 @@ CREATE TABLE IF NOT EXISTS han_private.voip_recording_access (
   user_id text PRIMARY KEY, body jsonb NOT NULL
 );
 REVOKE ALL ON han_private.voip_recording_access FROM PUBLIC;
+-- Last check-in of each user's always-connected web phone; decides who can take a call now.
+CREATE TABLE IF NOT EXISTS han_private.voip_presence (
+  user_id text PRIMARY KEY, seen_at timestamptz NOT NULL
+);
+REVOKE ALL ON han_private.voip_presence FROM PUBLIC;
+ALTER TABLE han_private.voip_presence ENABLE ROW LEVEL SECURITY;
 ALTER TABLE han_private.voip_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE han_private.voip_calls ENABLE ROW LEVEL SECURITY;
 ALTER TABLE han_private.voip_recording_access ENABLE ROW LEVEL SECURITY;
