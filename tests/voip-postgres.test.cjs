@@ -520,3 +520,166 @@ test('inbound answer in Postgres records the answering staff name', async () => 
     await pg.close();
   }
 });
+test('inbound check-ins persist as presence and routing through the real store picks the reachable last caller', async () => {
+  const { pg, pool } = await database();
+  process.env.VOIP_ENCRYPTION_KEY ||= 'ab'.repeat(32);
+  const { createVoipHandler, configure } = require('../lib/voip.cjs');
+  try {
+    const state = fixture();
+    state.data['icrapro-v1'].clients = [{ id: 'c', name: 'Örnek müvekkil' }];
+    state.data['icrapro-v1'].docs = [
+      { id: 'd', client: 'c', phone1: '05320000000', relatedStaff: 'p', number: 'D-1', debtor: 'Örnek borçlu' },
+    ];
+    state.users.push({
+      ...state.users[0],
+      id: 's',
+      name: 'Test staff',
+      username: 'staff',
+      role: 'staff',
+      staffId: 'p',
+    });
+    state.data['icrapro-personnel-v1'] = [{ id: 'p', name: 'Test staff', active: true }];
+    await importState(pool, state);
+    await transaction(
+      pool,
+      false,
+      (tx) => {
+        tx.state.voipConfig = configure(
+          {},
+          {
+            provider: 'verimor',
+            enabled: true,
+            apiKey: 'test-only-secret',
+            domainId: '123',
+            webphoneUrl: 'https://oim.verimor.com.tr/webphone',
+            extensions: { 'test-ceo': '1001', s: '1002' },
+            inboundUsers: ['test-ceo', 's'],
+            inboundFallback: 'queue/201',
+          },
+          state.users,
+        );
+        tx.state.voipCalls.push({
+          id: 'out-seed',
+          requestId: 'seed-outbound-0001',
+          provider: 'verimor',
+          providerId: 'out-uuid-0001',
+          documentId: 'd',
+          phone: '905320000000',
+          userId: 's',
+          staffName: 'Test staff',
+          extension: '1002',
+          createdAt: new Date(Date.now() - 3 * 86400000).toISOString(),
+          status: 'completed',
+          duration: 30,
+          result: 'Olumlu',
+          note: '',
+          recordingPresent: false,
+        });
+        tx.saveState(tx.state);
+      },
+      { configWrite: true },
+    );
+    const secret = (await pool.query('SELECT body FROM han_private.voip_config WHERE id=1')).rows[0].body
+      .webhookSecret;
+    let actor = { id: 's', name: 'Test staff', role: 'staff', staffId: 'p' };
+    const h = createVoipHandler({
+      transaction: (work, scope) => transaction(pool, false, work, scope),
+      authenticatedUser: async () => ({ ...actor }),
+      readBody: async (req) => Buffer.from(req.raw || '{}'),
+      fetcher: async () => new Response('', { status: 404 }),
+      recordings: { available: false },
+    });
+    const call = async (route, method = 'GET', input) => {
+      const res = {
+        writeHead(status) {
+          this.status = status;
+        },
+        end(value) {
+          this.body = value;
+        },
+      };
+      await h(
+        { method, headers: { 'content-type': 'application/json' }, raw: JSON.stringify(input) },
+        res,
+        new URL('http://localhost/api/voip/' + route),
+      );
+      return JSON.parse(res.body);
+    };
+    const route = (cli = '05320000000') =>
+      call('route?token=' + secret + '&uuid=route-pg-0001&cli=' + cli + '&cld=908501234567&step=1');
+    const presence = async () =>
+      (await pool.query('SELECT user_id,seen_at FROM han_private.voip_presence ORDER BY user_id')).rows;
+    // Nobody has checked in: the fallback target answers.
+    assert.deepEqual(await route(), { transfer: { target: 'queue/201' } });
+    await assert.rejects(
+      call('route?token=' + 'a'.repeat(64) + '&cli=05320000000'),
+      (e) => e.status === 401,
+    );
+    const first = await call('incoming');
+    assert.equal(first.alwaysOn, true);
+    assert.equal(first.call, null);
+    let rows = await presence();
+    assert.deepEqual(
+      rows.map((r) => r.user_id),
+      ['s'],
+    );
+    const seenAt = rows[0].seen_at.getTime();
+    // A second check-in within 10 seconds writes nothing.
+    await call('incoming');
+    assert.equal((await presence())[0].seen_at.getTime(), seenAt);
+    // s called this number last and is reachable.
+    assert.deepEqual(await route(), { transfer: { target: 'user/1002' } });
+    // A ringing inbound call on 1002 is offered to s through the store.
+    await call('webhook?token=' + secret, 'POST', {
+      domain_id: '123',
+      event_type: 'ringing',
+      direction: 'inbound',
+      call_uuid: 'in-uuid-pg-0200',
+      caller_id_number: '05551112233',
+      destination_number: '908501234567',
+      dialed_user: '1002',
+    });
+    const offered = await call('incoming');
+    assert.equal(offered.call?.status, 'ringing');
+    assert.equal(offered.call?.direction, 'inbound');
+    actor = { id: 'test-ceo', name: 'Test', role: 'ceo' };
+    assert.equal((await call('incoming')).call, null, 'not ringing on 1001');
+    assert.deepEqual(
+      (await presence()).map((r) => r.user_id),
+      ['s', 'test-ceo'],
+    );
+    // s's check-in goes stale: the other reachable inbound user is chosen.
+    await pool.query(
+      "UPDATE han_private.voip_presence SET seen_at=CURRENT_TIMESTAMP-interval '60 seconds' WHERE user_id='s'",
+    );
+    assert.deepEqual(await route(), { transfer: { target: 'user/1001' } });
+    // Everyone stale: fallback.
+    await pool.query("UPDATE han_private.voip_presence SET seen_at=CURRENT_TIMESTAMP-interval '60 seconds'");
+    assert.deepEqual(await route(), { transfer: { target: 'queue/201' } });
+    // A stale check-in is refreshed by the next poll.
+    actor = { id: 's', name: 'Test staff', role: 'staff', staffId: 'p' };
+    await call('incoming');
+    rows = await presence();
+    assert.ok(Date.now() - rows.find((r) => r.user_id === 's').seen_at.getTime() < 10000);
+    assert.deepEqual(await route(), { transfer: { target: 'user/1002' } });
+    // s busy on an answered call: test-ceo is stale, so the fallback answers.
+    await call('webhook?token=' + secret, 'POST', {
+      domain_id: '123',
+      event_type: 'answer',
+      direction: 'inbound',
+      call_uuid: 'in-uuid-pg-0200',
+      caller_id_number: '05551112233',
+      destination_number: '908501234567',
+      connected_user: '1002',
+    });
+    assert.deepEqual(await route(), { transfer: { target: 'queue/201' } });
+    // Transfer targets read presence from the table.
+    const { targets } = await call('transfer-targets');
+    assert.deepEqual(
+      targets.map((t) => [t.id, t.extension, t.online]),
+      [['test-ceo', '1001', false]],
+    );
+  } finally {
+    await pg.close();
+  }
+});

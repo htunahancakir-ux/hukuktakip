@@ -1603,3 +1603,33 @@ body.voip-call-bar-open .shell > header {
 .voip-transfer-box label { display: grid; gap: 4px; font-size: 13px; }
 .voip-inbound-settings { display: grid; gap: 10px; }
 .voip-inbound-users { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+
+/* An inbound call rings: Verimor's web phone (normally hidden) is shown so it can be answered. */
+.voip-answer-hint { display: none; margin: 0; padding: 8px 12px; background: #e9f7ef; color: #0f5132; font-size: 13px; font-weight: 600; }
+.voip-phone-dock > dialog.voip-webphone.voip-answering,
+dialog.voip-webphone.voip-answering {
+  display: block !important;
+  position: fixed;
+  inset: auto 16px 16px auto;
+  margin: 0;
+  padding: 0;
+  width: 340px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  background: #fff;
+  border: 2px solid #0f5132;
+  border-radius: 12px;
+  box-shadow: 0 12px 50px #15354770;
+}
+.voip-webphone.voip-answering .voip-answer-hint { display: block; }
+.voip-phone-dock .voip-webphone.voip-answering iframe,
+.voip-webphone.voip-answering iframe {
+  display: block !important;
+  width: 100%;
+  height: min(620px, calc(100dvh - 120px));
+  zoom: 1;
+}
+.voip-webphone.voip-answering::backdrop { background: rgba(15, 31, 45, 0.25); }
+.voip-phone-dock.voip-dock-answering { background: transparent; border: 0; box-shadow: none; }
+#voipIncoming[popover] { position: fixed; inset: 0 0 auto 0; margin: 0; width: 100%; max-width: none; border: 0; z-index: 2147483647; }

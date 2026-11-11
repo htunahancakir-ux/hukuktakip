@@ -2800,3 +2800,409 @@ test('recordings archive filters by call direction', async () => {
   assert.notEqual(outboundOnly.calls[0].direction, 'inbound');
   assert.equal((await h.call('recordings')).calls.length, 2);
 });
+// ---- Inbound routing, check-ins, incoming strip and transfer ----
+const WEBPHONE = 'https://oim.verimor.com.tr/webphone';
+function inboundHarness(fetcher = noRecording, inboundUsers = ['u', 's'], extra = {}) {
+  const h = harness(fetcher);
+  Object.assign(h.state.voipConfig, { webphoneUrl: WEBPHONE, inboundUsers, ...extra });
+  return h;
+}
+const CEO = { id: 'u', name: 'CEO', role: 'ceo' };
+const STAFF = { id: 's', name: 'Personel', role: 'staff', staffId: 'p' };
+const routeUrl = (h, cli = '05320000000', token = h.state.voipConfig.webhookSecret) =>
+  'route?token=' + token + '&uuid=route-uuid-0001&cli=' + cli + '&cld=908501234567&step=1';
+async function checkIn(h, user) {
+  h.user = user;
+  const value = await h.call('incoming');
+  h.user = CEO;
+  return value;
+}
+
+test('configure keeps only inbound users with an extension, validates the fallback and exposes the routing address', async () => {
+  const h = harness(noRecording);
+  const base = { provider: 'verimor', enabled: true, domainId: '123', extensions: { u: '1001' } };
+  await h.call('config', 'PUT', {
+    ...base,
+    inboundUsers: ['u', 's', 'ghost', 'u'],
+    inboundFallback: 'queue/201',
+  });
+  assert.deepEqual(h.state.voipConfig.inboundUsers, ['u'], 's has no extension now; ghost is unknown');
+  assert.equal(h.state.voipConfig.inboundFallback, 'queue/201');
+  const config = await h.call('config');
+  assert.equal(config.routePath, '/api/voip/route?token=' + h.state.voipConfig.webhookSecret);
+  assert.match(config.routePath, /^\/api\/voip\/route\?token=[a-f0-9]{64}$/);
+  assert.deepEqual(config.inboundUsers, ['u']);
+  assert.equal(config.inboundFallback, 'queue/201');
+  assert.equal(config.sealedKey, undefined);
+  assert.equal(config.webhookSecret, undefined);
+  for (const fallback of [
+    'queue/abc',
+    'queue/',
+    'user/1001;drop',
+    'external/5321234567',
+    'external/053212345678',
+    'http://x',
+  ])
+    await assert.rejects(
+      h.call('config', 'PUT', { ...base, inboundFallback: fallback }),
+      (e) => e.status === 400,
+      fallback,
+    );
+  await assert.rejects(h.call('config', 'PUT', { ...base, inboundUsers: 'u' }), (e) => e.status === 400);
+  for (const fallback of ['group/700', 'user/1001', 'ivr/1', 'voicemail/1001', 'external/05321234567']) {
+    await h.call('config', 'PUT', { ...base, inboundFallback: fallback });
+    assert.equal(h.state.voipConfig.inboundFallback, fallback);
+  }
+  // Omitted values keep what was saved.
+  await h.call('config', 'PUT', { ...base, extensions: { u: '1001', s: '1002' }, inboundUsers: ['s', 'u'] });
+  await h.call('config', 'PUT', { ...base, extensions: { u: '1001', s: '1002' } });
+  assert.deepEqual(h.state.voipConfig.inboundUsers, ['s', 'u']);
+  assert.equal(h.state.voipConfig.inboundFallback, 'external/05321234567');
+  // Removing an extension drops that user from inbound users.
+  await h.call('config', 'PUT', { ...base, extensions: { s: '1002' } });
+  assert.deepEqual(h.state.voipConfig.inboundUsers, ['s']);
+  h.user = STAFF;
+  await assert.rejects(h.call('config'), (e) => e.status === 403);
+});
+
+test('route sends a call to the last caller when reachable, else another reachable inbound user, else the fallback', async () => {
+  const h = inboundHarness(noRecording, ['u', 's']);
+  seedOutbound(h); // s called 0532 000 00 00 three days ago
+  await assert.rejects(h.call(routeUrl(h, '05320000000', 'a'.repeat(64))), (e) => e.status === 401);
+  await assert.rejects(h.call('route?cli=05320000000'), (e) => e.status === 401);
+  // Nobody checked in and no fallback: still the last caller's extension.
+  assert.deepEqual(await h.call(routeUrl(h)), { transfer: { target: 'user/1002' } });
+  h.state.voipConfig.inboundFallback = 'queue/201';
+  assert.deepEqual(await h.call(routeUrl(h)), { transfer: { target: 'queue/201' } });
+  // Both check in; the last caller wins even though u comes first in the list.
+  assert.equal((await checkIn(h, STAFF)).alwaysOn, true);
+  assert.equal((await checkIn(h, CEO)).alwaysOn, true);
+  assert.deepEqual(await h.call(routeUrl(h)), { transfer: { target: 'user/1002' } });
+  // s is on another (outbound) call: the other reachable inbound user takes it.
+  h.state.voipCalls.push({
+    id: 'busy-s',
+    requestId: 'busy-s-request',
+    providerId: 'busy-s-uuid',
+    documentId: '',
+    phone: '905559998877',
+    userId: 's',
+    createdAt: new Date().toISOString(),
+    status: 'answered',
+  });
+  assert.deepEqual(await h.call(routeUrl(h)), { transfer: { target: 'user/1001' } });
+  // An unknown number goes to whoever is reachable.
+  assert.deepEqual(await h.call(routeUrl(h, '05551112233')), { transfer: { target: 'user/1001' } });
+  // u is talking to an inbound caller: nobody is reachable, the fallback answers.
+  h.state.voipCalls.push({
+    id: 'busy-u',
+    requestId: 'in:busy-u',
+    providerId: 'busy-u-uuid',
+    direction: 'inbound',
+    documentId: '',
+    phone: '905551110000',
+    userId: 'u',
+    createdAt: new Date().toISOString(),
+    status: 'answered',
+  });
+  assert.deepEqual(await h.call(routeUrl(h)), { transfer: { target: 'queue/201' } });
+});
+
+test('route only counts check-ins from inbound users, uses the first inbound user without a fallback and 409s when nothing is set', async () => {
+  const h = inboundHarness(noRecording, ['u']);
+  // s is not an inbound user: checking in does nothing and the call is never routed to s.
+  assert.deepEqual(await checkIn(h, STAFF), { alwaysOn: false, call: null });
+  seedOutbound(h);
+  assert.deepEqual(await h.call(routeUrl(h)), { transfer: { target: 'user/1001' } });
+  await checkIn(h, CEO);
+  assert.deepEqual(await h.call(routeUrl(h, '05551112233')), { transfer: { target: 'user/1001' } });
+  const none = inboundHarness(noRecording, []);
+  await assert.rejects(none.call(routeUrl(none)), (e) => e.status === 409);
+  none.state.voipConfig.inboundFallback = 'group/700';
+  assert.deepEqual(await none.call(routeUrl(none)), { transfer: { target: 'group/700' } });
+});
+
+test('incoming returns the call ringing on or answered by the user and records the check-in', async () => {
+  const h = inboundHarness(noRecording, ['u', 's']);
+  seedOutbound(h);
+  const url = hookUrl(h);
+  // Not an inbound user (or no web phone) → no always-on phone.
+  h.state.voipConfig.inboundUsers = ['s'];
+  assert.deepEqual(await checkIn(h, CEO), { alwaysOn: false, call: null });
+  h.state.voipConfig.inboundUsers = ['u', 's'];
+  h.state.voipConfig.webphoneUrl = '';
+  assert.deepEqual(await checkIn(h, STAFF), { alwaysOn: false, call: null });
+  h.state.voipConfig.webphoneUrl = WEBPHONE;
+  let staff = await checkIn(h, STAFF);
+  assert.equal(staff.alwaysOn, true);
+  assert.equal(staff.call, null);
+  assert.ok(staff.results.includes('Olumlu'));
+  await h.call(url, 'POST', inbound({ dialed_user: '1002' }));
+  staff = await checkIn(h, STAFF);
+  assert.equal(staff.call.status, 'ringing');
+  assert.equal(staff.call.direction, 'inbound');
+  assert.equal(staff.call.debtorName, 'Test borçlu');
+  assert.equal(staff.call.documentNumber, 'D-1');
+  assert.equal(staff.call.ownerName, 'Personel');
+  assert.equal(staff.call.providerId, undefined, 'provider ids stay on the server');
+  assert.equal(staff.call.requestId, undefined);
+  assert.equal((await checkIn(h, CEO)).call, null, 'not ringing on 1001');
+  await h.call(url, 'POST', inbound({ event_type: 'answer', connected_user: '1002' }));
+  staff = await checkIn(h, STAFF);
+  assert.equal(staff.call.status, 'answered');
+  assert.equal(staff.call.userId, 's');
+  assert.equal((await checkIn(h, CEO)).call, null);
+  // Transfer targets list everyone else with an extension and who is checked in.
+  h.user = STAFF;
+  assert.deepEqual((await h.call('transfer-targets')).targets, [
+    { id: 'u', extension: '1001', name: 'CEO', online: true },
+  ]);
+  // Ended calls are no longer offered.
+  await h.call(url, 'POST', inbound({ event_type: 'hangup', answered: 'true', duration: '5' }));
+  assert.equal((await checkIn(h, STAFF)).call, null);
+});
+
+test('transfer hands an answered call to another extension and refuses everything else', async () => {
+  const requests = [];
+  const h = inboundHarness(async (url) => {
+    requests.push(new URL(url));
+    if (new URL(url).pathname.startsWith('/transfer/')) return new Response('OK');
+    return new Response('not found', { status: 404 });
+  });
+  h.state.users.push({ id: 'x', active: true, name: 'Diğer', role: 'staff', staffId: 'q' });
+  const url = hookUrl(h);
+  await h.call(url, 'POST', inbound({ dialed_user: '1002' }));
+  const [c] = inboundCalls(h);
+  // A ringing call belongs to nobody yet: staff may not act on it; a manager learns it is not answered.
+  h.user = STAFF;
+  await assert.rejects(h.call('transfer', 'POST', { id: c.id, userId: 'u' }), (e) => e.status === 403);
+  h.user = CEO;
+  await assert.rejects(h.call('transfer', 'POST', { id: c.id, userId: 's' }), (e) => e.status === 409);
+  h.user = STAFF;
+  await h.call(url, 'POST', inbound({ event_type: 'answer', connected_user: '1002' }));
+  await assert.rejects(h.call('transfer', 'POST', { id: c.id, userId: 's' }), (e) => e.status === 400);
+  await assert.rejects(h.call('transfer', 'POST', { id: c.id, userId: 'x' }), (e) => e.status === 400);
+  await assert.rejects(h.call('transfer', 'POST', { id: c.id, userId: '' }), (e) => e.status === 400);
+  h.user = { id: 'x', name: 'Diğer', role: 'staff', staffId: 'q' };
+  await assert.rejects(h.call('transfer', 'POST', { id: c.id, userId: 'u' }), (e) => e.status === 403);
+  assert.equal(requests.length, 0, 'nothing reached Verimor');
+  h.user = STAFF;
+  assert.deepEqual(await h.call('transfer', 'POST', { id: c.id, userId: 'u' }), { ok: true });
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].pathname, '/transfer/in-uuid-0001');
+  assert.equal(requests[0].searchParams.get('user_number'), '1001');
+  assert.ok(requests[0].searchParams.get('key'), 'the API key is sent');
+  assert.deepEqual(
+    { ...inboundCalls(h)[0].transferredTo, at: undefined },
+    { userId: 'u', extension: '1001', at: undefined },
+  );
+  // The next answer by 1001 moves the call (and its evaluation) to u.
+  await h.call(url, 'POST', inbound({ event_type: 'answer', connected_user: '1001' }));
+  assert.equal(inboundCalls(h)[0].userId, 'u');
+  assert.deepEqual(inboundCalls(h)[0].handlers, ['s', 'u']);
+  // A manager may transfer someone else's call.
+  h.user = CEO;
+  assert.deepEqual(await h.call('transfer', 'POST', { id: c.id, userId: 's' }), { ok: true });
+  assert.equal(requests.at(-1).searchParams.get('user_number'), '1002');
+});
+
+test('checking an inbound call against its call record keeps the incoming labels', async () => {
+  const h = inboundHarness(async (url) => {
+    if (new URL(url).pathname === '/cdrs/in-uuid-0001')
+      return new Response(
+        JSON.stringify({
+          cdr: {
+            direction: 'Gelen',
+            caller_id_number: '905320000000',
+            end_stamp: '2026-11-10 18:00:00 +0300',
+            answer_stamp: '2026-11-10 17:59:30 +0300',
+            talk_duration: '00:00:30',
+            hangup_cause: 'NORMAL_CLEARING',
+            recording_present: false,
+          },
+        }),
+      );
+    return new Response('not found', { status: 404 });
+  });
+  const url = hookUrl(h);
+  await h.call(url, 'POST', inbound());
+  await h.call(url, 'POST', inbound({ event_type: 'answer', connected_user: '1002' }));
+  h.user = STAFF;
+  const [c] = inboundCalls(h);
+  assert.deepEqual(await h.call('sync', 'POST', { id: c.id }), { ok: true });
+  await Promise.allSettled(h.jobs);
+  const [after] = inboundCalls(h);
+  assert.equal(after.status, 'completed');
+  assert.equal(after.duration, 30);
+  assert.equal(after.userId, 's');
+  assert.equal(after.outboundNumber, undefined, 'no outbound line is assigned to an incoming call');
+  assert.equal(after.result, '', 'no automatic outbound outcome');
+  const listed = (await h.call('calls?documentId=d')).calls.find((x) => x.id === c.id);
+  assert.equal(listed.statusLabel, 'Gelen arama – görüşüldü');
+  assert.equal(listed.direction, 'inbound');
+});
+
+test('always-on phone shows the incoming strip, opens the call window when I answer and closes it after a transfer', async () => {
+  let current = null;
+  const ringing = {
+    id: 'in-call-1',
+    direction: 'inbound',
+    documentId: 'd',
+    documentNumber: 'D-1',
+    debtorName: 'Test borçlu',
+    clientName: 'Test müvekkil',
+    ownerName: 'Personel',
+    phone: '905320000000',
+    userId: '',
+    status: 'ringing',
+    statusLabel: 'Gelen arama – çalıyor',
+    createdAt: new Date().toISOString(),
+  };
+  const { dom, w, calls } = await callBarWindow({
+    fetch: (url) => ({
+      ok: true,
+      json: async () =>
+        url.endsWith('/incoming')
+          ? { alwaysOn: true, call: current, results: ['Olumlu'] }
+          : url.endsWith('/webphone')
+            ? { url: WEBPHONE + '?token=W' + 'a1'.repeat(15) }
+            : url.endsWith('/transfer-targets')
+              ? { targets: [{ id: 's', extension: '1002', name: 'Personel', online: true }] }
+              : { ok: true },
+    }),
+  });
+  try {
+    await w.voipInboundPoll();
+    await settle();
+    assert.equal(w.document.getElementById('voipIncoming'), null, 'no call, no strip');
+    assert.equal(ui(w).alwaysOn, true);
+    const phone = w.document.getElementById('voipWebphone');
+    assert(phone, 'the web phone is registered in the background');
+    assert.match(phone.querySelector('iframe').src, /^https:\/\/oim\.verimor\.com\.tr\/webphone\?token=W/);
+
+    current = ringing;
+    await w.voipInboundPoll();
+    await settle();
+    const strip = w.document.getElementById('voipIncoming');
+    assert(strip, 'the strip shows the ringing call');
+    assert.match(strip.textContent, /Gelen arama: Test borçlu/);
+    assert.match(strip.textContent, /Föy D-1/);
+    assert.match(strip.textContent, /Son arayan: Personel/);
+    assert.equal(w.document.getElementById('voipPhoneDock').hidden, false, 'the web phone is revealed');
+    assert.equal(strip.querySelector('[data-incoming-open]').textContent, 'Telefonu göster');
+    assert.equal(phone.dataset.answering, 'true', 'the web phone is raised for answering');
+    assert.equal(phone.classList.contains('voip-answering'), true);
+    // Polling again with the same call keeps the same strip.
+    await w.voipInboundPoll();
+    assert.equal(w.document.getElementById('voipIncoming'), strip);
+
+    current = {
+      ...ringing,
+      status: 'answered',
+      statusLabel: 'Gelen arama – görüşülüyor',
+      userId: 'u',
+      staffName: 'CEO',
+      answeredAt: new Date().toISOString(),
+    };
+    await w.voipInboundPoll();
+    await settle();
+    assert.equal(w.document.getElementById('voipIncoming'), null);
+    const host = w.document.getElementById('voipActiveCall');
+    assert(host, 'the call window opens for the answered call');
+    assert.equal(phone.dataset.answering, undefined, 'the answering modal is released');
+    assert.equal(host.dataset.callId, 'in-call-1');
+    const transfer = host.querySelector('[data-current-transfer]');
+    assert.equal(transfer.hidden, false, 'Aktar is offered while answered');
+
+    // Aktar lists colleagues and asks the server to transfer.
+    transfer.click();
+    await settle();
+    const box = host.querySelector('[data-transfer-box]');
+    assert(box);
+    assert.match(box.textContent, /Personel · 1002 · bağlı/);
+    box.querySelector('[data-transfer-go]').click();
+    await settle();
+    assert(calls.some((c) => c.url === 'transfer' && c.body.id === 'in-call-1' && c.body.userId === 's'));
+    assert.equal(host.querySelector('[data-transfer-box]'), null);
+
+    // The call disappears from the check-in: no strip; the call window stays until the call ends.
+    current = null;
+    await w.voipInboundPoll();
+    await settle();
+    assert.equal(w.document.getElementById('voipIncoming'), null);
+
+    // The colleague answers: the call belongs to them now and my window closes.
+    ui(w).updateActive({ ...ringing, status: 'answered', userId: 's', staffName: 'Personel' });
+    assert.equal(w.document.getElementById('voipActiveCall'), null);
+    assert.equal(ui(w).activeId, '');
+  } finally {
+    try {
+      w.clearTimeout(ui(w).inboundTimer);
+      await settle();
+    } finally {
+      dom.window.close();
+    }
+  }
+});
+
+test('always-on phone stays registered after a call; a ringing call that stops ringing removes the strip', async () => {
+  let current = null;
+  let alwaysOn = true;
+  const ringing = {
+    id: 'in-call-2',
+    direction: 'inbound',
+    documentId: '',
+    phone: '905551112233',
+    userId: '',
+    status: 'ringing',
+    statusLabel: 'Gelen arama – çalıyor',
+    createdAt: new Date().toISOString(),
+  };
+  const { dom, w } = await callBarWindow({
+    fetch: (url) => ({
+      ok: true,
+      json: async () =>
+        url.endsWith('/incoming')
+          ? alwaysOn
+            ? { alwaysOn: true, call: current, results: ['Olumlu'] }
+            : { alwaysOn: false, call: null }
+          : url.endsWith('/webphone')
+            ? { url: WEBPHONE + '?token=W' + 'b2'.repeat(15) }
+            : { ok: true },
+    }),
+  });
+  try {
+    current = ringing;
+    await w.voipInboundPoll();
+    await settle();
+    const strip = w.document.getElementById('voipIncoming');
+    assert.match(strip.textContent, /Gelen arama: 0 \(555\) 111 22 33/);
+    assert.match(strip.textContent, /Kayıtlı bir föyle eşleşmedi/);
+    current = null;
+    await w.voipInboundPoll();
+    await settle();
+    assert.equal(w.document.getElementById('voipIncoming'), null);
+    assert.equal(w.document.getElementById('voipPhoneDock').hidden, true, 'the revealed phone is tucked away');
+    assert(w.document.getElementById('voipWebphone'), 'but stays registered');
+
+    // A finished call does not tear the web phone down for always-on staff.
+    current = { ...ringing, status: 'answered', userId: 'u', answeredAt: new Date().toISOString() };
+    await w.voipInboundPoll();
+    await settle();
+    assert(w.document.getElementById('voipActiveCall'));
+    ui(w).updateActive({ ...current, status: 'completed', statusLabel: 'Gelen arama – görüşüldü', duration: 12 });
+    assert.equal(ui(w).releaseTimer ?? null, null, 'no teardown is scheduled');
+    assert(w.document.getElementById('voipWebphone'));
+
+    // Leaving the inbound list turns the always-on phone off.
+    alwaysOn = false;
+    await w.voipInboundPoll();
+    assert.equal(ui(w).alwaysOn, false);
+  } finally {
+    try {
+      w.clearTimeout(ui(w).inboundTimer);
+      await settle();
+    } finally {
+      dom.window.close();
+    }
+  }
+});

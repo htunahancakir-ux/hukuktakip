@@ -1354,15 +1354,22 @@ async function openVoipWebphone(feedback, background = false) {
       phone.id = 'voipWebphone';
       phone.className = 'voip-webphone';
       phone.innerHTML =
-        '<div class="panelhead"><h2>HAN HUKUK WEB TELEFON</h2><div class="voip-phone-window-actions"><button type="button" class="secondary" data-phone-minimize>Küçült</button><button type="button" class="secondary" data-phone-close>Kapat</button></div></div><iframe title="HAN HUKUK web telefonu" allow="microphone; autoplay" referrerpolicy="no-referrer"></iframe>';
+        '<div class="panelhead"><h2>HAN HUKUK WEB TELEFON</h2><div class="voip-phone-window-actions"><button type="button" class="secondary" data-phone-minimize>Küçült</button><button type="button" class="secondary" data-phone-close>Kapat</button></div></div><p class="voip-answer-hint" role="status">Gelen aramayı açmak için aşağıdaki telefonda yeşil düğmeye basın.</p><iframe title="HAN HUKUK web telefonu" allow="microphone; autoplay" referrerpolicy="no-referrer"></iframe>';
       dock.append(phone);
+      // Esc must not close the phone while it waits to be answered: that would reload it.
+      phone.addEventListener('cancel', (event) => {
+        if (phone.dataset.answering) event.preventDefault();
+      });
       phone.querySelector('button').onclick = () => {
+        // While answering, both header buttons only put the phone back out of the way.
+        if (phone.dataset.answering) return voipWebphoneAnswering(false);
         dock.classList.toggle('voip-dock-minimized');
         phone.querySelector('button').textContent = dock.classList.contains('voip-dock-minimized')
           ? 'Genişlet'
           : 'Küçült';
       };
       phone.querySelector('[data-phone-close]').onclick = () => {
+        if (phone.dataset.answering) return voipWebphoneAnswering(false);
         const active = document.getElementById('voipActiveCall');
         if (active && active.dataset.ended !== 'true') {
           if (!voipUi.minimized) active.querySelector('[data-current-minimize]')?.click();
@@ -1745,14 +1752,15 @@ function showVoipActive(doc, call) {
       host.querySelector('.voip-workspace-actions').after(box);
       box.querySelector('[data-transfer-cancel]').onclick = () => box.remove();
       box.querySelector('[data-transfer-go]').onclick = async (go) => {
-        go.currentTarget.disabled = true;
+        const send = go.currentTarget;
+        send.disabled = true;
         try {
           await voipApi('transfer', 'POST', { id: call.id, userId: box.querySelector('select').value });
           box.remove();
           message('Aktarma istendi. Karşı taraf açınca görüşme ve değerlendirmesi ona geçer.', 'notice');
         } catch (error) {
           message(error.message);
-          go.currentTarget.disabled = false;
+          send.disabled = false;
         }
       };
     } catch (error) {
@@ -2307,10 +2315,52 @@ function voipInboundNotice(text, canAsk = false) {
     else note.querySelector('span').textContent = 'Gelen aramaları alabilmek için: ' + mic.message;
   });
 }
+// Verimor's web phone is normally kept hidden (the app has its own call controls), but an inbound
+// call can only be answered with the green button inside it. While a call rings it is shown on top
+// as a modal, so it stays clickable even when a borrower file (itself modal) is open.
+function voipWebphoneAnswering(on) {
+  const phone = document.getElementById('voipWebphone');
+  const dock = document.getElementById('voipPhoneDock');
+  if (!phone) return;
+  if (on) {
+    phone.dataset.answering = 'true';
+    phone.classList.add('voip-answering');
+    phone.style.visibility = 'visible';
+    dock?.classList.add('voip-dock-answering');
+    dock?.classList.remove('voip-dock-minimized');
+    if (phone.dataset.modal !== 'true' && typeof phone.showModal === 'function') {
+      if (phone.open) phone.close();
+      phone.showModal();
+      phone.dataset.modal = 'true';
+    }
+    return;
+  }
+  if (!phone.dataset.answering) return;
+  delete phone.dataset.answering;
+  phone.classList.remove('voip-answering');
+  dock?.classList.remove('voip-dock-answering');
+  if (phone.dataset.modal === 'true') {
+    delete phone.dataset.modal;
+    phone.close();
+    phone.show();
+  }
+}
+// Re-showing a popover puts it last in the top layer, i.e. above every dialog opened since.
+function voipInboundRaise() {
+  const strip = document.getElementById('voipIncoming');
+  if (!strip || typeof strip.showPopover !== 'function') return;
+  try {
+    if (strip.matches(':popover-open')) strip.hidePopover();
+    strip.showPopover();
+  } catch {
+    /* an unsupported browser keeps it as a plain banner */
+  }
+}
 function voipInboundShow(call) {
   let strip = document.getElementById('voipIncoming');
   if (call?.status === 'answered') {
     strip?.remove();
+    voipWebphoneAnswering(false);
     if (voipUi.activeId !== call.id) {
       voipUi.minimized = false;
       showVoipActive(
@@ -2322,6 +2372,7 @@ function voipInboundShow(call) {
   }
   if (call?.status !== 'ringing') {
     strip?.remove();
+    voipWebphoneAnswering(false);
     // The phone window was brought up for the ringing call; tuck it away again.
     if (voipUi.inboundRevealed && !document.getElementById('voipActiveCall')) {
       voipUi.inboundRevealed = false;
@@ -2331,11 +2382,12 @@ function voipInboundShow(call) {
     }
     return;
   }
-  if (strip?.dataset.callId === call.id) return;
+  if (strip?.dataset.callId === call.id) return voipInboundRaise();
   strip?.remove();
   strip = document.createElement('div');
   strip.id = 'voipIncoming';
   strip.className = 'voip-incoming';
+  strip.setAttribute('popover', 'manual');
   strip.dataset.callId = call.id;
   strip.setAttribute('role', 'alert');
   const who = call.debtorName || (call.phone ? voipPhone(call.phone) : call.callerNumber || 'Gizli numara');
@@ -2350,24 +2402,24 @@ function voipInboundShow(call) {
     esc(who) +
     '</strong><small>' +
     esc(detail.join(' · ') || 'Kayıtlı bir föyle eşleşmedi') +
-    '</small></div><button type="button" class="primary" data-incoming-open>Telefonu aç</button>';
-  strip.querySelector('[data-incoming-open]').onclick = () => {
-    voipPhoneDock().classList.remove('voip-dock-minimized');
+    '</small><small>Açmak için sağ alttaki telefonda yeşil düğmeye basın.</small></div><button type="button" class="primary" data-incoming-open>Telefonu göster</button>';
+  const showPhone = () =>
     openVoipWebphone({
       set textContent(text) {
         voipInboundNotice(text);
       },
+    }).then(() => {
+      if (document.getElementById('voipIncoming')?.dataset.callId !== call.id) return;
+      voipWebphoneAnswering(true);
+      voipInboundRaise();
     });
-  };
-  (document.querySelector('.shell') || document.body).prepend(strip);
+  strip.querySelector('[data-incoming-open]').onclick = showPhone;
+  document.body.append(strip);
+  voipInboundRaise();
   // Answering is done in Verimor's own web phone window, so bring it up.
   voipUi.inboundRevealed = true;
   voipPhoneDock().classList.remove('voip-dock-minimized');
-  openVoipWebphone({
-    set textContent(text) {
-      voipInboundNotice(text);
-    },
-  });
+  showPhone();
 }
 function setupVoipNavigation() {
   document.querySelector('[data-global-webphone]')?.remove();
