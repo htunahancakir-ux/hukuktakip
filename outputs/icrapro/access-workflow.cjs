@@ -290,16 +290,19 @@ async function handleWorkflowRoutes(ctx) {
     return true;
   }
   if (url.pathname === '/api/payment-promises' && req.method === 'GET') {
+    // Staff see promises on files assigned to them; the CEO and admins see every file's, with
+    // the responsible staff member. Promises not yet due (at most 30 days ahead) are listed as
+    // upcoming after the due and overdue ones.
     const today = parkingToday(),
       staffId = u.staffId || '',
+      manager = ['ceo', 'admin'].includes(u.role),
+      staffName = (id) => ctx.state.data['icrapro-personnel-v1'].find((p) => p.id === id)?.name || '',
       rows = ctx.state.data['icrapro-v1'].docs
         .filter(
           (d) =>
-            staffId &&
-            d.relatedStaff === staffId &&
+            (manager || (staffId && d.relatedStaff === staffId)) &&
             !['İnfaz', 'İade'].includes(d.status) &&
-            d.paymentPromise &&
-            d.paymentPromise.date <= today,
+            d.paymentPromise,
         )
         .map((d) => {
           const p = d.paymentPromise,
@@ -315,11 +318,13 @@ async function handleWorkflowRoutes(ctx) {
             amount: p.amount,
             description: p.description,
             remaining: Math.max(0, p.amount - paid),
+            upcoming: p.date > today,
+            ...(manager ? { staffName: staffName(d.relatedStaff) } : {}),
           };
         })
         .filter((p) => p.remaining > 0)
-        .sort((a, b) => a.date.localeCompare(b.date));
-    send(res, 200, { today, rows });
+        .sort((a, b) => Number(a.upcoming) - Number(b.upcoming) || a.date.localeCompare(b.date));
+    send(res, 200, { today, rows, manager });
     return true;
   }
   if (url.pathname === '/api/payment-promises/context' && req.method === 'GET') {
