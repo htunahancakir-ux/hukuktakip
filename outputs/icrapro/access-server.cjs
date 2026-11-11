@@ -18,6 +18,7 @@ const { searchWorkspace } = require('../../lib/workspace-search.cjs');
 const { notificationSummary } = require('../../lib/notification-summary.cjs');
 const { handleWhatsAppRoutes } = require('./access-whatsapp.cjs');
 const { handleSmsRoutes } = require('./access-sms.cjs');
+const { handleFeedbackRoutes } = require('./access-feedback.cjs');
 const { handleAiRoutes } = require('./access-ai.cjs');
 const { activeArchives } = require('../../lib/document-archive.cjs');
 const { prepareState } = require('../../lib/state-invariants.cjs');
@@ -392,6 +393,7 @@ function createAccess(stateFile, options = {}) {
       if (await require('./access-ceo-pin.cjs').handleCeoPin(ctx)) return true;
       if (await handleAiRoutes(ctx)) return true;
       if (await handleSmsRoutes(ctx)) return true;
+      if (await handleFeedbackRoutes(ctx)) return true;
       if (url.pathname === '/api/notifications' && req.method === 'GET') {
         send(res, 200, notificationSummary(state, u, url.searchParams.get('after')));
         return true;

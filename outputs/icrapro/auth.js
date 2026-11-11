@@ -485,6 +485,7 @@ async function launchApplication() {
   hanStartupData = null;
   accessMenu();
   setupVoipNavigation();
+  setupFeedbackButton();
   refreshBackupIndicator();
   startPresenceHeartbeat();
   if (embeddedIntake) return;
