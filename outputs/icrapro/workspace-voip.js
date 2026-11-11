@@ -10,9 +10,153 @@ async function voipApi(path, method = 'GET', value) {
   });
   const result = await response.json();
   if (!response.ok)
-    throw Object.assign(Error(result.error || 'Telefon işlemi tamamlanamadı.'), { status: response.status });
+    throw Object.assign(Error(result.error || 'Telefon işlemi tamamlanamadı.'), {
+      status: response.status,
+      reason: result.reason,
+    });
   return result;
 }
+
+// ---------- Microphone, browser and connection checks ----------
+// The web phone is Verimor's page inside an iframe; this page cannot see whether it reached
+// "Hazır". What it can check: browser support, the microphone (permission, device, in use),
+// whether this computer reaches Verimor at all, and what Verimor says about the extension.
+const VOIP_MIC_MESSAGES = {
+  browser: 'Bu tarayıcı web telefonunu desteklemiyor. Güncel Google Chrome veya Microsoft Edge kullanın.',
+  insecure: 'Web telefonu yalnızca güvenli (https) bağlantıyla açılan sayfada çalışır.',
+  denied:
+    'Mikrofon izni engellenmiş. Adres çubuğunun solundaki kilit (site bilgileri) simgesine tıklayın, "Mikrofon" için "İzin ver"i seçin ve sayfayı yenileyin.',
+  prompt:
+    'Arama için mikrofon izni gerekiyor. "Mikrofona izin ver"e basıp tarayıcının sorusuna "İzin ver" deyin.',
+  nodevice: 'Bilgisayarda mikrofon veya kulaklık bulunamadı. Mikrofonlu kulaklığı takıp tekrar deneyin.',
+  busy: 'Mikrofon açılamadı. Başka bir uygulama (Teams, Zoom, WhatsApp vb.) kullanıyor olabilir ya da Windows mikrofon erişimini kapatmış olabilir (Ayarlar → Gizlilik ve güvenlik → Mikrofon).',
+};
+const VOIP_FIREWALL_HINT =
+  'Bu bilgisayardan Verimor’a ulaşılamıyor. Kurum ağının güvenlik duvarı, antivirüs web koruması, VPN veya proxy engelliyor olabilir. Bilgi işlem sorumlusundan oim.verimor.com.tr, *.verimor.com.tr ve *.bulutsantralim.com adreslerine HTTPS/WSS (443) erişimine ve web telefonunun ses trafiğine (WebRTC, UDP) izin vermesini isteyin.';
+const VOIP_EXTENSION_STATUS = {
+  AVAILABLE: [true, 'Verimor dahilinizi çevrimiçi ve müsait görüyor.'],
+  TALKING: [true, 'Verimor dahilinizi şu anda bir görüşmede görüyor.'],
+  UNREGISTERED: [
+    false,
+    'Verimor dahilinizi çevrimdışı görüyor: web telefonu santrale bağlanamamış. Web telefonu penceresini açıp "Hazır" olmasını bekleyin; olmuyorsa yukarıdaki maddeleri kontrol edin.',
+  ],
+  SS_DND: [false, 'Dahilinizde "Rahatsız etmeyin" açık. Verimor panelinden kapatın.'],
+  RATE_LIMITED: [
+    null,
+    'Verimor durum sorgusu sınırına takıldı (dakikada 2). Bir dakika sonra tekrar deneyin.',
+  ],
+  UNKNOWN: [null, 'Verimor dahili durumunu bildirmedi.'],
+};
+function voipBrowserProblem() {
+  if (!window.isSecureContext) return 'insecure';
+  if (
+    !navigator.mediaDevices?.getUserMedia ||
+    typeof window.RTCPeerConnection !== 'function' ||
+    typeof window.WebSocket !== 'function'
+  )
+    return 'browser';
+  return '';
+}
+// `ask`: may show the browser's permission prompt (only from a click). The permission is asked
+// on this page so it also covers the embedded web phone, which cannot show its own prompt well
+// while it is minimized.
+async function voipMicrophoneCheck({ ask = false } = {}) {
+  if (voipUi.micOk) return { ok: true };
+  const browser = voipBrowserProblem();
+  if (browser) return { ok: false, kind: browser, message: VOIP_MIC_MESSAGES[browser] };
+  let state = 'unknown';
+  try {
+    state = (await navigator.permissions.query({ name: 'microphone' })).state;
+  } catch {
+    // Firefox and older browsers cannot be asked; fall through to trying the microphone.
+  }
+  if (state === 'denied') return { ok: false, kind: 'denied', message: VOIP_MIC_MESSAGES.denied };
+  if (state === 'granted' && !ask) {
+    const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+    if (!devices.some((d) => d.kind === 'audioinput'))
+      return { ok: false, kind: 'nodevice', message: VOIP_MIC_MESSAGES.nodevice };
+    return { ok: true };
+  }
+  if (!ask) return { ok: false, kind: 'prompt', message: VOIP_MIC_MESSAGES.prompt };
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((track) => track.stop());
+    voipUi.micOk = true;
+    // A web phone that loaded before the permission existed may not retry; reload it.
+    if (state !== 'granted' && document.getElementById('voipWebphone')) releaseVoipWebphone();
+    return { ok: true, granted: state !== 'granted' };
+  } catch (error) {
+    const kind = ['NotAllowedError', 'SecurityError', 'PermissionDeniedError'].includes(error?.name)
+      ? 'denied'
+      : ['NotFoundError', 'OverconstrainedError', 'DevicesNotFoundError'].includes(error?.name)
+        ? 'nodevice'
+        : 'busy';
+    return { ok: false, kind, message: VOIP_MIC_MESSAGES[kind] };
+  }
+}
+// Any HTTP answer (even an error page) proves the network path; only a blocked or failed
+// connection rejects.
+async function voipReachVerimor() {
+  try {
+    await fetch('https://oim.verimor.com.tr/favicon.ico?t=' + Date.now(), {
+      mode: 'no-cors',
+      cache: 'no-store',
+      credentials: 'omit',
+      signal: AbortSignal.timeout(6000),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function voipDiagnose({ ask = false } = {}) {
+  const [mic, reach, status] = await Promise.all([
+    voipMicrophoneCheck({ ask }),
+    voipReachVerimor(),
+    voipApi('phone-status').catch((error) => ({ status: 'UNKNOWN', error: error.message })),
+  ]);
+  const [statusOk, statusText] = VOIP_EXTENSION_STATUS[status.status] || VOIP_EXTENSION_STATUS.UNKNOWN;
+  return [
+    ['Tarayıcı ve mikrofon', mic.ok, mic.ok ? 'Mikrofon kullanılabilir.' : mic.message],
+    ['Verimor’a erişim', reach, reach ? 'Bu bilgisayardan Verimor’a ulaşılabiliyor.' : VOIP_FIREWALL_HINT],
+    ['Verimor’daki dahili durumu', statusOk, status.error || statusText],
+    [
+      'Aynı dahili',
+      null,
+      'Bir dahili aynı anda tek bilgisayarda kullanılmalı. Başka bir bilgisayarda web telefonu açıksa kapatın.',
+    ],
+  ];
+}
+function voipDiagnosisMarkup(rows) {
+  return (
+    '<ul class="voip-diagnosis">' +
+    rows
+      .map(
+        ([title, ok, text]) =>
+          '<li data-ok="' +
+          (ok === true ? 'yes' : ok === false ? 'no' : 'info') +
+          '"><strong>' +
+          (ok === true ? '✓ ' : ok === false ? '✕ ' : 'ℹ ') +
+          esc(title) +
+          '</strong><span>' +
+          esc(text) +
+          '</span></li>',
+      )
+      .join('') +
+    '</ul>'
+  );
+}
+// Fills `host` with the checklist; `ask` only from a click.
+async function voipShowDiagnosis(host, { ask = false } = {}) {
+  if (!host) return;
+  host.hidden = false;
+  host.innerHTML = '<p class="voip-diagnosis-wait" role="status">Bağlantı kontrol ediliyor…</p>';
+  const markup = voipDiagnosisMarkup(await voipDiagnose({ ask }));
+  if (host.isConnected) host.innerHTML = markup;
+  return markup;
+}
+const voipNeedsDiagnosis = (error) =>
+  error?.reason === 'extension_unregistered' || String(error?.reason || '').startsWith('microphone_');
 // Call bar: one always-visible strip at the top of the page shell, from the moment dialing
 // starts until the call closes. It belongs to the page, not to the call window, so it stays
 // reachable when that window is moved, minimized or hidden, when the page scrolls and on
@@ -138,6 +282,7 @@ async function voipStartCancelable(input, container, report, launchButton, conte
   else container.append(cancel);
   let requested = false,
     finished = false,
+    sent = false,
     cancellation;
   const requestCancel = async () => {
     while (true) {
@@ -168,11 +313,19 @@ async function voipStartCancelable(input, container, report, launchButton, conte
     cancel.disabled = true;
     cancel.textContent = 'İptal ediliyor…';
     voipCancelWait(frame, true);
+    // Canceled while the microphone was still being asked for: nothing reached the switchboard.
+    if (!sent) return;
     report('İptal istendi; santralin çağrıyı kapatması bekleniyor.');
     cancellation = requestCancel().catch((error) => report(error.message));
   };
   try {
-    const result = await voipApi('start', 'POST', { ...input, browserManaged: true });
+    // Microphone first: a call the user cannot speak into is useless. The cancel control above
+    // is already visible while the browser asks.
+    const mic = await voipMicrophoneCheck({ ask: true });
+    if (!mic.ok) throw Object.assign(Error(mic.message), { reason: 'microphone_' + mic.kind });
+    if (requested) throw Error('Arama iptal edildi.');
+    sent = true;
+    const result = await voipApi('start', 'POST', { ...input, browserManaged: true, waitForPhone: true });
     finished = true;
     if (requested) {
       await cancellation;
@@ -705,6 +858,7 @@ function setupBorrowerVoip(dialog, doc) {
     feedback = '',
     tone = 'error',
     confirmation = '',
+    trouble = '',
     addingPhone = false;
   let phoneOpening;
   function message(text, type = 'error') {
@@ -762,11 +916,16 @@ function setupBorrowerVoip(dialog, doc) {
         '<div class="voip-panel-heading"><div><strong>Telefonla ara</strong><span>' +
         data.phones.length +
         ' numara · Verimor</span></div>' +
+        '<button type="button" class="link" data-voip-diagnose>Bağlantı testi</button>' +
         (!hanAuth.readOnly
           ? '<button type="button" class="secondary" data-add-phone>＋ Numara ekle</button>'
           : '') +
         '</div>' +
-        '<div class="voip-panel-messages"><div data-voip-feedback role="alert" aria-live="assertive" hidden></div><div data-voip-repeat hidden></div></div>' +
+        '<div class="voip-panel-messages"><div data-voip-feedback role="alert" aria-live="assertive" hidden></div><div data-voip-repeat hidden></div><div class="voip-mic-notice" data-voip-mic hidden></div><div data-voip-trouble ' +
+        (trouble ? '' : 'hidden') +
+        '>' +
+        trouble +
+        '</div></div>' +
         '<div class="voip-panel-columns" aria-hidden="true"><span>Numara</span><span>Son arama</span><span>İşlem</span></div><div class="voip-number-list">' +
         (data.phones
           .map((p) => {
@@ -838,6 +997,45 @@ function setupBorrowerVoip(dialog, doc) {
           'notice',
         );
       else if (!data.extension) message('Kullanıcınıza telefon dahilisi atanmalı.', 'notice');
+      if (data.enabled && data.extension) {
+        // Ask for the microphone before the first call, not in the middle of it.
+        voipMicrophoneCheck().then((mic) => {
+          const area = panel.querySelector('[data-voip-mic]');
+          if (!area || mic.ok) {
+            if (area) area.hidden = true;
+            return;
+          }
+          area.hidden = false;
+          area.innerHTML =
+            '<span>' +
+            esc(mic.message) +
+            '</span>' +
+            (['prompt', 'busy', 'nodevice'].includes(mic.kind)
+              ? '<button type="button" class="secondary" data-voip-mic-allow>Mikrofona izin ver</button>'
+              : '');
+          area.querySelector('[data-voip-mic-allow]')?.addEventListener('click', async () => {
+            const asked = await voipMicrophoneCheck({ ask: true });
+            if (asked.ok) {
+              area.hidden = true;
+              message('Mikrofon hazır. Web telefonu "Hazır" olduğunda arayabilirsiniz.', 'notice');
+              if (data.webphone && !phoneOpening)
+                phoneOpening = openVoipWebphone(
+                  {
+                    set textContent(text) {
+                      message(text);
+                    },
+                  },
+                  true,
+                ).finally(() => {
+                  phoneOpening = null;
+                });
+            } else area.querySelector('span').textContent = asked.message;
+          });
+        });
+      }
+      panel.querySelector('[data-voip-diagnose]')?.addEventListener('click', async () => {
+        trouble = await voipShowDiagnosis(panel.querySelector('[data-voip-trouble]'), { ask: true });
+      });
       panel.querySelector('[data-add-phone]')?.addEventListener('click', () => {
         addingPhone = true;
         const form = document.createElement('form');
@@ -901,7 +1099,11 @@ function setupBorrowerVoip(dialog, doc) {
         busy = true;
         confirmation = '';
         panel.querySelector('[data-voip-repeat]').hidden = true;
-        message('Arama başlatılıyor…', 'notice');
+        trouble = '';
+        message(
+          'Arama başlatılıyor… Web telefonu yeni açıldıysa santrale bağlanması birkaç saniye sürebilir.',
+          'notice',
+        );
         panel.querySelectorAll('[data-dial-phone]').forEach((b) => (b.disabled = true));
         try {
           const result = await voipStartCancelable(
@@ -918,6 +1120,7 @@ function setupBorrowerVoip(dialog, doc) {
           );
           confirmation = '';
           feedback = '';
+          trouble = '';
           voipUi.returnToDial = () => {
             if (wrap.isConnected && dialog.open && panel.hidden) trigger.click();
           };
@@ -925,6 +1128,17 @@ function setupBorrowerVoip(dialog, doc) {
           showVoipActive(doc, result.call);
         } catch (error) {
           message(error.message);
+          if (voipNeedsDiagnosis(error)) {
+            trouble = '<p class="voip-diagnosis-wait" role="status">Bağlantı kontrol ediliyor…</p>';
+            voipDiagnose().then((rows) => {
+              trouble = voipDiagnosisMarkup(rows);
+              const area = panel.querySelector('[data-voip-trouble]');
+              if (area) {
+                area.innerHTML = trouble;
+                area.hidden = false;
+              }
+            });
+          }
         } finally {
           busy = false;
           await refresh();
@@ -1772,7 +1986,9 @@ function openStandaloneVoip(anchor = document.querySelector('[data-standalone-vo
     dock.prepend(dialog);
   }
   dialog.innerHTML =
-    '<div class="panelhead"><div><h2>Numara ile arama</h2><p>Dosyasız arama · Telefon bağlantısı arka planda açılır.</p></div><button type="button" class="secondary" data-close>Kapat</button></div><form class="voip-standalone-form" data-ignore-dirty><label class="field">Aranacak telefon numarası<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="05XX XXX XX XX" required></label><button type="submit" class="primary">Geçmişi kontrol et</button></form><div data-feedback role="alert"></div><div data-preview></div>';
+    '<div class="panelhead"><div><h2>Numara ile arama</h2><p>Dosyasız arama · Telefon bağlantısı arka planda açılır.</p></div><div class="toolbar"><button type="button" class="link" data-voip-diagnose>Bağlantı testi</button><button type="button" class="secondary" data-close>Kapat</button></div></div><form class="voip-standalone-form" data-ignore-dirty><label class="field">Aranacak telefon numarası<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="05XX XXX XX XX" required></label><button type="submit" class="primary">Geçmişi kontrol et</button></form><div data-feedback role="alert"></div><div data-voip-trouble hidden></div><div data-preview></div>';
+  dialog.querySelector('[data-voip-diagnose]').onclick = () =>
+    voipShowDiagnosis(dialog.querySelector('[data-voip-trouble]'), { ask: true });
   dialog.querySelector('[data-close]').onclick = () => {
     dialog.close();
     if (!document.getElementById('voipActiveCall') && !voipUi.startPending) {
@@ -1877,6 +2093,7 @@ function openStandaloneVoip(anchor = document.querySelector('[data-standalone-vo
         } catch (error) {
           feedback.textContent = error.message;
           e.target.disabled = false;
+          if (voipNeedsDiagnosis(error)) voipShowDiagnosis(dialog.querySelector('[data-voip-trouble]'));
         }
       };
     } catch (error) {
