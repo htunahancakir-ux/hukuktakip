@@ -3388,3 +3388,21 @@ test('the fallback target is chosen from a list with an explanation and saved as
     w.close();
   }
 });
+
+test('a call from a debtor rings the file assignee first, then the last caller, then anyone reachable', async () => {
+  // File d is assigned to staff p (user s, ext 1002); the last call to the number was made by u (1001).
+  const h = inboundHarness();
+  seedOutbound(h, { userId: 'u', staffName: 'CEO', extension: '1001', requestId: 'seed-outbound-by-ceo' });
+  h.user = CEO;
+  await checkIn(h, STAFF);
+  await checkIn(h, CEO);
+  assert.deepEqual(await h.call(routeUrl(h)), { transfer: { target: 'user/1002' } }, 'assignee before last caller');
+
+  // The assignee is on another call: the last caller is next.
+  h.state.voipCalls.push({ id: crypto.randomUUID(), requestId: 'busy-0001', userId: 's', phone: '905559990000', status: 'answered', createdAt: new Date().toISOString() });
+  assert.deepEqual(await h.call(routeUrl(h)), { transfer: { target: 'user/1001' } }, 'last caller when the assignee is busy');
+
+  // A number on no file with no previous call: anyone reachable.
+  h.state.voipCalls = h.state.voipCalls.filter((c) => c.requestId !== 'busy-0001');
+  assert.deepEqual(await h.call(routeUrl(h, '05551112233')), { transfer: { target: 'user/1001' } });
+});

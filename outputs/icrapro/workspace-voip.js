@@ -380,7 +380,7 @@ const VOIP_FALLBACK_TYPES = [
   ['external', 'Cep telefonu'],
 ];
 const VOIP_FALLBACK_HELP = {
-  '': 'Yedek hedef yok: kimse ulaşılamazsa arama borçluyu son arayan personelin dahilisine gider; o da bağlı değilse hiçbir yer çalmaz ve arama cevapsız kalır. Bir yedek hedef seçmeniz önerilir.',
+  '': 'Yedek hedef yok: kimse ulaşılamazsa arama föy sorumlusunun (yoksa son arayan personelin) dahilisine gider; o da bağlı değilse hiçbir yer çalmaz ve arama cevapsız kalır. Bir yedek hedef seçmeniz önerilir.',
   group:
     "Verimor'daki çağrı grubunun numarası (ör. 700). Gruptaki bütün dahililer aynı anda çalar; ilk açan konuşur. Gelen aramaları karşılayabilecek herkesi (sekreter, masa telefonu, softphone) bir gruba koymanız önerilir.",
   queue:
@@ -478,7 +478,7 @@ function voipSettingsPage() {
           </div>
           <small data-fallback-help></small>
         </div>
-        <label class="field full">Gelen arama yönlendirme adresi<input readonly value="${esc(config.routePath ? location.origin + config.routePath : 'İlk kayıttan sonra oluşur.')}"><small>Verimor → Gelen Arama Yönetimi'nde dış hattın hedefini "Santral Programlama API" yapın ve bu adresi girin. Arama, borçluyu en son arayan personele; o bağlı veya boş değilse işaretli başka bir personele, o da yoksa yedek hedefe gider.</small></label>
+        <label class="field full">Gelen arama yönlendirme adresi<input readonly value="${esc(config.routePath ? location.origin + config.routePath : 'İlk kayıttan sonra oluşur.')}"><small>Verimor → Gelen Arama Yönetimi'nde dış hattın hedefini "Santral Programlama API" yapın ve bu adresi girin. Arama önce borçlunun föyünün sorumlusuna, o bağlı veya boş değilse borçluyu en son arayan personele, sonra işaretli başka bir personele, o da yoksa yedek hedefe gider.</small></label>
       </fieldset>
       <label class="field full">Çağrı bildirim adresi<input readonly value="${esc(config.webhookPath ? location.origin + config.webhookPath : 'İlk kayıttan sonra oluşur.')}"><small>Verimor CRM entegrasyonunda çalma, cevaplanma ve kapanma bildirimleri için bu adresi kullanın. Adres gizli bildirim anahtarı içerir.</small></label>
     </div><p id="voipConfigStatus" role="status"></p><div class="actions"><button class="primary" type="submit">VoIP Ayarlarını Kaydet</button></div></form>`;
