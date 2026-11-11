@@ -17,7 +17,7 @@ async function personnelLedgerPage(host, staffId = '') {
     const data = await readPersonnelLedger(staffId, request.signal);
     if (!host.isConnected || request.signal.aborted) return;
     host.innerHTML =
-      '<div class="panel personnel-ledger"><div class="panelhead"><div><h2>Personel Cari Hesabı</h2><p>Başlangıç: 1 Kasım 2026 · Maaş avansı: ayda bir, yalnız maaşın en fazla %25’i.</p></div></div><div class="formbody"><label class="field">Personel<select data-ledger-person><option value="">Personel seçin</option>' +
+      '<div class="panel personnel-ledger"><div class="panelhead"><div><h2>Personel Cari Hesabı</h2><p>Başlangıç: 1 Kasım 2026 · Maaş avansı: ayda bir, maaş + Prim 1 toplamının en fazla %25’i.</p></div></div><div class="formbody"><label class="field">Personel<select data-ledger-person><option value="">Personel seçin</option>' +
       data.people
         .map(
           (person) =>
@@ -261,7 +261,9 @@ function setupPayrollCashFields(form) {
         form.elements.amount.max = String(limit / 100);
         section.querySelector('[data-payroll-cash-limit]').textContent =
           limit > 0
-            ? 'En fazla ' + money(limit / 100) + (advance ? ' · Ayda bir, maaşın %25’i.' : '')
+            ? 'En fazla ' +
+              money(limit / 100) +
+              (advance ? ' · Ayda bir, maaş + Prim 1 toplamının %25’i.' : '')
             : advance
               ? 'Bu ay avans hakkı yok veya kullanıldı.'
               : 'Ödenebilir kapanmış ay yok.';

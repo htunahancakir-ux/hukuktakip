@@ -57,7 +57,7 @@ test('Monthly accruals are idempotent; new bonuses post differences; advances an
   let data = ledger.details(state, 'p', '2026-11-01');
   assert.equal(data.balance, 4100000);
   assert.equal(data.payable, 0);
-  assert.equal(data.advanceLimit, 1000000);
+  assert.equal(data.advanceLimit, 1025000);
   assert(state.personnelLedger.accruals.every((row) => row.date === '2026-11-01'));
   const count = state.personnelLedger.accruals.length;
   syncPayrollPeriods(state, '2026-11-01');
@@ -67,8 +67,12 @@ test('Monthly accruals are idempotent; new bonuses post differences; advances an
   assert.equal(ledger.details(state, 'p', '2026-11-15').balance, 4150000);
   assert.equal(state.personnelLedger.accruals.at(-1).date, '2026-11-15');
   assert.throws(
-    () => ledger.validatePayment(state, payment('too-large', { amount: 1000001 }), ceo, '2026-11-15'),
+    () => ledger.validatePayment(state, payment('too-large', { amount: 1025001 }), ceo, '2026-11-15'),
     /%25/,
+  );
+  assert.equal(
+    ledger.validatePayment(state, payment('exact-limit', { amount: 1025000 }), ceo, '2026-11-15').payrollKind,
+    'salaryAdvance',
   );
   ledger.validatePayment(state, payment('advance'), ceo, '2026-11-15');
   state.data['hanhukuk-accounting-v1'].entries.push({ ...payment('advance'), payrollKind: 'salaryAdvance' });
@@ -83,7 +87,7 @@ test('Monthly accruals are idempotent; new bonuses post differences; advances an
   syncPayrollPeriods(state, '2026-12-03');
   data = ledger.details(state, 'p', '2026-12-03');
   assert.equal(data.payable, 3150000);
-  assert.equal(data.advanceLimit, 1000000);
+  assert.equal(data.advanceLimit, 1025000);
   const current = data.currentEarned;
   const normal = payment('normal', { expenseCategory: 'Maaş', date: '2026-12-03', amount: 3150000 });
   assert.equal(ledger.validatePayment(state, normal, ceo, '2026-12-03').payrollKind, 'salaryPayment');
@@ -166,14 +170,14 @@ test('Record API serializes simultaneous advances, keeps salary payments in clos
       });
       return { status: r.status, body: await r.json() };
     }
-    assert.equal((await get()).advanceLimit, 1000000);
+    assert.equal((await get()).advanceLimit, 1025000);
     const staff = await login('staff');
     assert.equal(
       (await fetch(server.url + '/api/records/personnel-ledger?staffId=p', { headers: staff })).status,
       403,
     );
     assert.equal((await post(payment('forbidden'), staff)).status, 403);
-    assert.equal((await post(payment('excess', { amount: 1000001 }))).status, 400);
+    assert.equal((await post(payment('excess', { amount: 1025001 }))).status, 400);
     const attempts = await Promise.all([post(payment('race-one')), post(payment('race-two'))]);
     assert.deepEqual(attempts.map((r) => r.status).sort(), [200, 409], JSON.stringify(attempts));
     const accepted = attempts[0].status === 200 ? 'race-one' : 'race-two';
@@ -229,7 +233,7 @@ test('Record API serializes simultaneous advances, keeps salary payments in clos
       form.elements.mode.value = 'salaryAdvance';
       form.elements.mode.onchange();
       assert.equal(form.elements.payrollMonth.value, '2026-12');
-      assert.equal(form.elements.amount.max, '10000');
+      assert.equal(form.elements.amount.max, '10250');
       form.elements.mode.value = 'salaryPayment';
       form.elements.mode.onchange();
       form.elements.accountId.value = 'cash';
