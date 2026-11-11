@@ -229,7 +229,7 @@ function bindBackupFiles(lastDownload) {
 }
 
 function settingsSectionTabs(active) {
-  const integration = ['ai', 'voip', 'whatsapp'].includes(active);
+  const integration = ['ai', 'voip', 'whatsapp', 'sms'].includes(active);
   const tabs = [
     ['firm', 'Firma Bilgileri'],
     ['contact', 'İletişim ve Adres'],
@@ -252,6 +252,7 @@ function settingsSectionTabs(active) {
           ['ai', 'Yapay Zekâ'],
           ['voip', 'VoIP / Telefon'],
           ['whatsapp', 'WhatsApp Business'],
+          ['sms', 'SMS (Verimor)'],
         ]
           .map(
             ([id, label]) =>
@@ -358,7 +359,7 @@ let settingsRenderId = 0;
 settings = async function () {
   const renderId = ++settingsRenderId;
   const requestedTab = settingsTab;
-  const pinScope = ['integrations', 'voip', 'ai', 'whatsapp'].includes(settingsTab)
+  const pinScope = ['integrations', 'voip', 'ai', 'whatsapp', 'sms'].includes(settingsTab)
     ? 'integrations'
     : settingsTab === 'permissions'
       ? 'permissions'
@@ -374,6 +375,7 @@ settings = async function () {
   if (settingsTab === 'backup') return backupSettingsPage();
   if (settingsTab === 'audit') return auditSettingsPage();
   if (settingsTab === 'whatsapp') return whatsappSettingsPage();
+  if (settingsTab === 'sms') return smsSettingsPage();
   if (settingsTab === 'ai') return aiSettingsPage();
   if (settingsTab === 'employeeTerms') return employeeTermsSettingsPage();
   originalSettings();

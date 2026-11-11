@@ -17,6 +17,7 @@ const {
 const { searchWorkspace } = require('../../lib/workspace-search.cjs');
 const { notificationSummary } = require('../../lib/notification-summary.cjs');
 const { handleWhatsAppRoutes } = require('./access-whatsapp.cjs');
+const { handleSmsRoutes } = require('./access-sms.cjs');
 const { handleAiRoutes } = require('./access-ai.cjs');
 const { activeArchives } = require('../../lib/document-archive.cjs');
 const { prepareState } = require('../../lib/state-invariants.cjs');
@@ -374,7 +375,11 @@ function createAccess(stateFile, options = {}) {
         return true;
       if (await handleEmployeeTermsRoutes(ctx)) return true;
       if (
-        ['/api/password-reset/request', '/api/password-reset/complete'].includes(url.pathname) &&
+        [
+          '/api/password-reset/request',
+          '/api/password-reset/complete',
+          '/api/password-reset/sms-complete',
+        ].includes(url.pathname) &&
         (await handleWhatsAppRoutes(ctx))
       )
         return true;
@@ -386,6 +391,7 @@ function createAccess(stateFile, options = {}) {
       if (!u) throw fail(401, 'Giriş yapın.');
       if (await require('./access-ceo-pin.cjs').handleCeoPin(ctx)) return true;
       if (await handleAiRoutes(ctx)) return true;
+      if (await handleSmsRoutes(ctx)) return true;
       if (url.pathname === '/api/notifications' && req.method === 'GET') {
         send(res, 200, notificationSummary(state, u, url.searchParams.get('after')));
         return true;
