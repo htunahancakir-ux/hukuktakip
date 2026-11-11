@@ -133,6 +133,27 @@ test('Intake allocates server numbers, isolates edits, searches all clients and 
     const lookup = await get('/api/records/search?kind=client');
     assert.equal(lookup.items.length, 50);
     assert.equal(lookup.more, true);
+    const allClients = [...lookup.items];
+    let clientCursor = lookup.next;
+    while (clientCursor) {
+      const page = await get('/api/records/search?' + new URLSearchParams({ kind: 'client', after: clientCursor }));
+      allClients.push(...page.items);
+      clientCursor = page.next;
+    }
+    assert.equal(allClients.length, 123);
+    assert.equal(new Set(allClients.map((item) => item.id)).size, 123);
+    const matchingClients = [];
+    clientCursor = '';
+    do {
+      const page = await get('/api/records/search?' + new URLSearchParams({ kind: 'client', q: 'Client', after: clientCursor }));
+      matchingClients.push(...page.items);
+      clientCursor = page.next;
+    } while (clientCursor);
+    assert.equal(new Set(matchingClients.map((item) => item.id)).size, 123);
+    for (const after of [Buffer.from('null').toString('base64url'), lookup.next]) {
+      const response = await fetch(server.url + '/api/records/search?' + new URLSearchParams({ kind: 'client', q: 'different', after }), { headers });
+      assert.equal(response.status, 400);
+    }
     const found = await get('/api/records/search?kind=client&id=c122');
     assert.equal(found.items.length, 1);
     assert.equal(found.items[0].id, 'c122');

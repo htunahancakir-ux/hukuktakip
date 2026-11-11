@@ -402,13 +402,16 @@ test('Intake UI pages records, keeps totals complete and never saves search/rece
     }
     if (parsed.pathname === '/api/records/search') {
       const id = parsed.searchParams.get('id');
+      const start = Number(parsed.searchParams.get('after') || 0);
+      const end = Math.min(start + 50, 123);
       return {
         ok: true,
         json: async () => ({
-          more: !id,
+          more: !id && end < 123,
+          next: !id && end < 123 ? String(end) : null,
           items: id
             ? [{ id, name: 'Selected client', identity: '10000000080' }]
-            : Array.from({ length: 50 }, (_, i) => ({ id: 'c' + i, name: 'Client ' + i })),
+            : Array.from({ length: end - start }, (_, i) => ({ id: 'c' + (start + i), name: start + i === 80 ? 'Selected client' : 'Client ' + (start + i) })),
         }),
       };
     }
@@ -457,8 +460,9 @@ test('Intake UI pages records, keeps totals complete and never saves search/rece
   w.bindIntakeClientSelect(w.$('#clientSearch'), w.$('#pick'), 'Select', w.$('#hint'));
   await tick();
   assert.equal(w.$('#pick').value, 'c80', 'selection outside first 50 must survive lookup');
-  assert.equal(w.$('#pick').options.length, 52);
-  assert.match(w.$('#hint').textContent, /50/);
+  assert.equal(w.$('#pick').options.length, 124);
+  assert.equal(new Set(Array.from(w.$('#pick').options, (option) => option.value)).size, 124);
+  assert.match(w.$('#hint').textContent, /123/);
   assert.equal(w.db.clients.length, 0, 'search projections never contaminate editable records');
   assert.equal(w.db.docs.length, 0);
   w.selected = 'c80';

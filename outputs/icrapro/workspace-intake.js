@@ -29,16 +29,28 @@ async function ensureIntakeClient(id) {
   return client;
 }
 function bindIntakeClientSelect(input, select, emptyLabel, result) {
+  select._intakeClientRequest?.abort();
   let timer, controller;
   const search = async () => {
     controller?.abort();
     const request = new AbortController();
     controller = request;
+    select._intakeClientRequest = request;
+    const query = input.value;
     try {
-      const response = await readIntakeJson(
-        '/api/records/search?' + new URLSearchParams({ kind: 'client', q: input.value }),
-        request.signal,
-      );
+      const items = new Map(),
+        cursors = new Set();
+      let after = '';
+      do {
+        const params = new URLSearchParams({ kind: 'client', q: query });
+        if (after) params.set('after', after);
+        const response = await readIntakeJson('/api/records/search?' + params, request.signal);
+        for (const item of response.items) items.set(item.id, item);
+        after = response.next || '';
+        if (after && cursors.has(after)) throw Error('Müvekkil listesi tamamlanamadı. Yeniden deneyin.');
+        cursors.add(after);
+      } while (after && !request.signal.aborted);
+      const response = { items: [...items.values()] };
       if (request.signal.aborted || !select.isConnected) return;
       const value = select.value,
         current = [...select.options].find((o) => o.value === value);
@@ -49,10 +61,7 @@ function bindIntakeClientSelect(input, select, emptyLabel, result) {
         select.append(new Option(item.name || item.label, item.id));
       }
       select.value = value;
-      if (result)
-        result.textContent = response.more
-          ? 'İlk 50 eşleşme gösteriliyor; aramayı daraltabilirsiniz.'
-          : response.items.length + ' eşleşme';
+      if (result) result.textContent = response.items.length + ' eşleşme';
     } catch (error) {
       if (!request.signal.aborted && input.isConnected) toast(error.message);
     }
