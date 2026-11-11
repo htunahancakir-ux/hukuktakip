@@ -2540,3 +2540,263 @@ test('the result window closes before the server answers and comes back unchange
     dom.window.close();
   }
 });
+// ---- Inbound calls (a debtor calling the office) ----
+const inbound = (extra = {}) => ({
+  domain_id: '123',
+  event_type: 'ringing',
+  direction: 'inbound',
+  call_uuid: 'in-uuid-0001',
+  caller_id_number: '05320000000',
+  destination_number: '908501234567',
+  dialed_user: '1002',
+  ...extra,
+});
+const hookUrl = (h) => 'webhook?token=' + h.state.voipConfig.webhookSecret;
+const noRecording = async () => new Response('not found', { status: 404 });
+function seedOutbound(h, extra = {}) {
+  h.state.voipCalls.push({
+    id: crypto.randomUUID(),
+    requestId: 'seed-outbound-0001',
+    provider: 'verimor',
+    providerId: 'out-uuid-0001',
+    documentId: 'd',
+    documentNumber: 'D-1',
+    clientName: 'Test müvekkil',
+    debtorName: 'Test borçlu',
+    phone: '905320000000',
+    userId: 's',
+    staffName: 'Personel',
+    extension: '1002',
+    createdAt: new Date(Date.now() - 3 * 86400000).toISOString(),
+    endedAt: new Date(Date.now() - 3 * 86400000 + 60000).toISOString(),
+    status: 'completed',
+    duration: 30,
+    result: 'Olumlu',
+    note: '',
+    recordingPresent: false,
+    ...extra,
+  });
+}
+const inboundCalls = (h) => h.state.voipCalls.filter((c) => c.direction === 'inbound');
+test('inbound call from a number called before joins its file and earlier caller; answer and hangup complete it once', async () => {
+  const h = harness(noRecording);
+  seedOutbound(h);
+  const url = hookUrl(h);
+  assert.deepEqual(await h.call(url, 'POST', inbound()), { ok: true });
+  let [c] = inboundCalls(h);
+  assert.equal(inboundCalls(h).length, 1);
+  assert.equal(c.direction, 'inbound');
+  assert.equal(c.phone, '905320000000');
+  assert.equal(c.status, 'ringing');
+  assert.equal(c.requestId, 'in:in-uuid-0001');
+  assert.equal(c.documentId, 'd');
+  assert.equal(c.documentNumber, 'D-1');
+  assert.equal(c.debtorName, 'Test borçlu');
+  assert.equal(c.clientName, 'Test müvekkil');
+  assert.equal(c.ownerUserId, 's');
+  assert.equal(c.ownerName, 'Personel');
+  assert.equal(c.userId, '');
+  await h.call(url, 'POST', inbound({ event_type: 'answer', connected_user: '1002' }));
+  [c] = inboundCalls(h);
+  assert.equal(c.status, 'answered');
+  assert.equal(c.userId, 's');
+  assert.equal(c.staffName, 'Personel');
+  assert.equal(c.extension, '1002');
+  const hangup = inbound({
+    event_type: 'hangup',
+    answered: 'true',
+    duration: '42',
+    recording_present: 'true',
+  });
+  await h.call(url, 'POST', hangup);
+  await Promise.allSettled(h.jobs);
+  await h.call(url, 'POST', hangup);
+  await Promise.allSettled(h.jobs);
+  assert.equal(inboundCalls(h).length, 1);
+  assert.equal(h.state.voipCalls.length, 2);
+  [c] = inboundCalls(h);
+  assert.equal(c.status, 'completed');
+  assert.equal(c.duration, 42);
+  assert.equal(c.recordingPresent, true);
+  assert.equal(c.userId, 's');
+});
+test('missed inbound call is unanswered, labelled as incoming and not active for anyone', async () => {
+  const h = harness(noRecording);
+  const url = hookUrl(h);
+  await h.call(url, 'POST', inbound());
+  await h.call(url, 'POST', inbound({ event_type: 'hangup', answered: 'false', duration: '0' }));
+  const [c] = inboundCalls(h);
+  assert.equal(c.status, 'unanswered');
+  assert.equal(c.userId, '');
+  const view = await h.call('calls?documentId=d');
+  const listed = view.calls.find((x) => x.id === c.id);
+  assert.ok(listed, 'inbound call is listed on its file');
+  assert.equal(listed.statusLabel, 'Gelen arama – cevapsız');
+  assert.equal(listed.direction, 'inbound');
+  assert.equal(view.active.length, 0);
+});
+test('inbound caller matching: single file falls back to its staff; unknown and foreign/hidden numbers stay unattached', async () => {
+  const h = harness(noRecording);
+  const url = hookUrl(h);
+  await h.call(url, 'POST', inbound({ call_uuid: 'in-uuid-0031', caller_id_number: '05320000001' }));
+  await h.call(url, 'POST', inbound({ call_uuid: 'in-uuid-0032', caller_id_number: '05559998877' }));
+  await h.call(url, 'POST', inbound({ call_uuid: 'in-uuid-0033', caller_id_number: '004930123456' }));
+  await h.call(url, 'POST', inbound({ call_uuid: 'in-uuid-0034', caller_id_number: '' }));
+  const by = (uuid) => h.state.voipCalls.find((c) => c.providerId === uuid);
+  assert.equal(by('in-uuid-0031').documentId, 'd');
+  assert.equal(by('in-uuid-0031').ownerUserId, 's');
+  assert.equal(by('in-uuid-0031').phone, '905320000001');
+  assert.equal(by('in-uuid-0032').documentId, '');
+  assert.equal(by('in-uuid-0032').ownerUserId, '');
+  assert.equal(by('in-uuid-0032').phone, '905559998877');
+  assert.equal(by('in-uuid-0033').phone, '');
+  assert.equal(by('in-uuid-0033').callerNumber, '004930123456');
+  assert.equal(by('in-uuid-0033').documentId, '');
+  assert.equal(by('in-uuid-0034').phone, '');
+  assert.equal(by('in-uuid-0034').documentId, '');
+  assert.ok(!by('in-uuid-0034').callerNumber, 'no caller number is invented for a hidden caller');
+});
+test('transferred inbound call moves to the extension that answered last and keeps both handlers', async () => {
+  const h = harness(noRecording);
+  const url = hookUrl(h);
+  await h.call(url, 'POST', inbound());
+  await h.call(url, 'POST', inbound({ event_type: 'answer', connected_user: '1001' }));
+  assert.equal(inboundCalls(h)[0].userId, 'u');
+  await h.call(url, 'POST', inbound({ event_type: 'answer', connected_user: '1002' }));
+  await h.call(url, 'POST', inbound({ event_type: 'hangup', answered: 'true', duration: '20' }));
+  const [c] = inboundCalls(h);
+  assert.equal(c.status, 'completed');
+  assert.equal(c.userId, 's');
+  assert.equal(c.extension, '1002');
+  assert.deepEqual(c.handlers, ['u', 's']);
+});
+test('an answered inbound call never blocks starting an outbound call, and active lists only the outbound one', async () => {
+  const h = harness(async () => new Response('00000000-0000-0000-0000-000000000005'));
+  const url = hookUrl(h);
+  await h.call(url, 'POST', inbound({ dialed_user: '1001' }));
+  await h.call(url, 'POST', inbound({ event_type: 'answer', connected_user: '1001' }));
+  assert.equal(inboundCalls(h)[0].status, 'answered');
+  assert.equal(inboundCalls(h)[0].userId, 'u');
+  const { call } = await h.call('start', 'POST', {
+    documentId: 'd',
+    phone: '05320000001',
+    requestId: 'request-inbound-005',
+  });
+  assert.ok(call.id);
+  const { active } = await h.call('calls?documentId=d');
+  assert.deepEqual(
+    active.map((c) => c.id),
+    [call.id],
+  );
+  assert.notEqual(active[0].direction, 'inbound');
+});
+test('user_hangup is acknowledged and changes neither outbound nor inbound calls', async () => {
+  const h = harness(async () => new Response('00000000-0000-0000-0000-000000000006'));
+  const url = hookUrl(h);
+  const { call } = await h.call('start', 'POST', {
+    documentId: 'd',
+    phone: '05320000000',
+    requestId: 'request-inbound-006',
+  });
+  const outboundBefore = structuredClone(h.state.voipCalls.find((c) => c.id === call.id));
+  assert.deepEqual(
+    await h.call(url, 'POST', {
+      domain_id: '123',
+      event_type: 'user_hangup',
+      call_uuid: '00000000-0000-0000-0000-000000000006',
+    }),
+    { ok: true },
+  );
+  assert.deepEqual(
+    h.state.voipCalls.find((c) => c.id === call.id),
+    outboundBefore,
+  );
+  await h.call(url, 'POST', inbound({ call_uuid: 'in-uuid-0006', caller_id_number: '05559998877' }));
+  const inboundBefore = structuredClone(inboundCalls(h)[0]);
+  assert.deepEqual(
+    await h.call(
+      url,
+      'POST',
+      inbound({ event_type: 'user_hangup', call_uuid: 'in-uuid-0006', caller_id_number: '05559998877' }),
+    ),
+    { ok: true },
+  );
+  assert.deepEqual(inboundCalls(h)[0], inboundBefore);
+  assert.equal(inboundCalls(h)[0].status, 'ringing');
+  // A user_hangup for an unknown call creates nothing.
+  await h.call(url, 'POST', inbound({ event_type: 'user_hangup', call_uuid: 'in-uuid-0099' }));
+  assert.equal(inboundCalls(h).length, 1);
+});
+test('the extension leg of a call the app is still dialing does not create an inbound record', async () => {
+  let release;
+  const h = harness(async () => {
+    await new Promise((r) => {
+      release = r;
+    });
+    return new Response('00000000-0000-0000-0000-000000000007');
+  });
+  const url = hookUrl(h);
+  const pending = h.call('start', 'POST', {
+    documentId: 'd',
+    phone: '05320000000',
+    requestId: 'request-inbound-007',
+  });
+  while (!release) await new Promise((r) => setImmediate(r));
+  const dialing = h.state.voipCalls[0];
+  assert.equal(dialing.status, 'starting');
+  assert.ok(!dialing.providerId);
+  assert.deepEqual(await h.call(url, 'POST', inbound({ call_uuid: 'in-uuid-0007', dialed_user: '1001' })), {
+    ok: true,
+  });
+  assert.equal(inboundCalls(h).length, 0);
+  release();
+  await pending;
+  assert.equal(inboundCalls(h).length, 0);
+  assert.equal(h.state.voipCalls.length, 1);
+});
+test('conversation merge shows finished inbound calls with incoming labels and skips ringing ones', () => {
+  const { merge } = require('../lib/voip-conversations.cjs');
+  const base = {
+    phone: '905320000000',
+    staffName: '',
+    userId: '',
+    duration: 0,
+    createdAt: '2026-11-10T09:00:00Z',
+  };
+  const rows = merge(
+    [],
+    [
+      { ...base, id: 'in-done', direction: 'inbound', status: 'completed', userId: 's', duration: 42 },
+      { ...base, id: 'in-missed', direction: 'inbound', status: 'unanswered' },
+      { ...base, id: 'in-ringing', direction: 'inbound', status: 'ringing' },
+    ],
+  );
+  assert.deepEqual(
+    rows.map((r) => r.voipCallId),
+    ['in-done', 'in-missed'],
+  );
+  assert.equal(rows[0].direction, 'inbound');
+  assert.equal(rows[0].result, 'Gelen arama – görüşüldü');
+  assert.equal(rows[1].direction, 'inbound');
+  assert.equal(rows[1].result, 'Gelen arama – cevapsız');
+});
+test('inbound webhook with a wrong token is rejected and records nothing', async () => {
+  const h = harness(noRecording);
+  await assert.rejects(h.call('webhook?token=' + 'a'.repeat(64), 'POST', inbound()), (e) => e.status === 401);
+  await assert.rejects(h.call('webhook', 'POST', inbound()), (e) => e.status === 401);
+  assert.equal(h.state.voipCalls.length, 0);
+});
+test('recordings archive filters by call direction', async () => {
+  const h = harness(noRecording);
+  seedOutbound(h);
+  const url = hookUrl(h);
+  await h.call(url, 'POST', inbound());
+  await h.call(url, 'POST', inbound({ event_type: 'hangup', answered: 'false', duration: '0' }));
+  const inboundOnly = await h.call('recordings?flow=inbound');
+  assert.equal(inboundOnly.calls.length, 1);
+  assert.equal(inboundOnly.calls[0].direction, 'inbound');
+  const outboundOnly = await h.call('recordings?flow=outbound');
+  assert.equal(outboundOnly.calls.length, 1);
+  assert.notEqual(outboundOnly.calls[0].direction, 'inbound');
+  assert.equal((await h.call('recordings')).calls.length, 2);
+});

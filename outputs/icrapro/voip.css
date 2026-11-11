@@ -681,6 +681,18 @@ dialog.voip-webphone {
   background: #e5f0fc;
   color: #245d8b;
 }
+.voip-direction-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #e8f1fb;
+  color: #1f5f99;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
 .voip-result-label {
   font-size: 10px;
   color: #476273;

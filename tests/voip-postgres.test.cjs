@@ -252,3 +252,271 @@ test('dedicated VoIP tables preserve snapshot, paginate history and enforce acti
     await pg.close();
   }
 });
+test('inbound calls persist through the real webhook, keep their file and earlier caller, and never collide with dialing', async () => {
+  const { pg, pool } = await database();
+  process.env.VOIP_ENCRYPTION_KEY ||= 'ab'.repeat(32);
+  const { createVoipHandler, configure } = require('../lib/voip.cjs');
+  try {
+    const state = fixture();
+    state.data['icrapro-v1'].clients = [{ id: 'c', name: 'Örnek müvekkil' }];
+    state.data['icrapro-v1'].docs = [
+      {
+        id: 'd',
+        client: 'c',
+        phone1: '05320000000',
+        relatedStaff: 'p',
+        number: 'D-1',
+        debtor: 'Örnek borçlu',
+      },
+    ];
+    state.users.push({
+      ...state.users[0],
+      id: 's',
+      name: 'Test staff',
+      username: 'staff',
+      role: 'staff',
+      staffId: 'p',
+    });
+    state.data['icrapro-personnel-v1'] = [{ id: 'p', name: 'Test staff', active: true }];
+    await importState(pool, state);
+    await transaction(
+      pool,
+      false,
+      (tx) => {
+        tx.state.voipConfig = configure(
+          {},
+          {
+            provider: 'verimor',
+            enabled: true,
+            apiKey: 'test-only-secret',
+            domainId: '123',
+            extensions: { 'test-ceo': '1001', s: '1002' },
+          },
+          state.users,
+        );
+        // A finished call staff member "s" made to the debtor three days ago.
+        tx.state.voipCalls.push({
+          id: 'out-seed',
+          requestId: 'seed-outbound-0001',
+          provider: 'verimor',
+          providerId: 'out-uuid-0001',
+          documentId: 'd',
+          documentNumber: 'D-1',
+          clientName: 'Örnek müvekkil',
+          debtorName: 'Örnek borçlu',
+          phone: '905320000000',
+          userId: 's',
+          staffName: 'Test staff',
+          extension: '1002',
+          createdAt: new Date(Date.now() - 3 * 86400000).toISOString(),
+          status: 'completed',
+          duration: 30,
+          result: 'Olumlu',
+          note: '',
+          recordingPresent: false,
+        });
+        tx.saveState(tx.state);
+      },
+      { configWrite: true },
+    );
+    const secret = (await pool.query('SELECT body FROM han_private.voip_config WHERE id=1')).rows[0].body
+      .webhookSecret;
+    let actor = { id: 's', name: 'Test staff', role: 'staff', staffId: 'p' };
+    const jobs = [];
+    const h = createVoipHandler({
+      transaction: (work, scope) => transaction(pool, false, work, scope),
+      authenticatedUser: async () => ({ ...actor }),
+      readBody: async (req) => Buffer.from(req.raw || '{}'),
+      fetcher: async () => new Response('00000000-0000-0000-0000-0000000000a1'),
+      background: (p) => jobs.push(p),
+      recordings: { available: false },
+    });
+    const call = async (route, method, input) => {
+      const res = {
+        writeHead(status) {
+          this.status = status;
+        },
+        end(value) {
+          this.body = value;
+        },
+      };
+      await h(
+        { method, headers: { 'content-type': 'application/json' }, raw: JSON.stringify(input) },
+        res,
+        new URL('http://localhost/api/voip/' + route),
+      );
+      return JSON.parse(res.body);
+    };
+    const hook = (extra) =>
+      call('webhook?token=' + secret, 'POST', {
+        domain_id: '123',
+        event_type: 'ringing',
+        direction: 'inbound',
+        call_uuid: 'in-uuid-pg-0001',
+        caller_id_number: '05320000000',
+        destination_number: '908501234567',
+        dialed_user: '1001',
+        ...extra,
+      });
+    const row = async (uuid) =>
+      (
+        await pool.query(
+          "SELECT document_id,user_id,phone,status,request_id,body FROM han_private.voip_calls WHERE body->>'providerId'=$1",
+          [uuid],
+        )
+      ).rows;
+    assert.deepEqual(await hook(), { ok: true });
+    let [r] = await row('in-uuid-pg-0001');
+    assert.equal(r.body.direction, 'inbound');
+    assert.equal(r.document_id, 'd');
+    assert.equal(r.phone, '905320000000');
+    assert.equal(r.request_id, 'in:in-uuid-pg-0001');
+    assert.equal(r.status, 'ringing');
+    assert.equal(r.body.ownerUserId, 's');
+    assert.equal(r.body.ownerName, 'Test staff');
+    assert.equal(r.body.clientName, 'Örnek müvekkil');
+    assert.equal(r.user_id, '');
+    await hook({ event_type: 'answer', connected_user: '1001' });
+    [r] = await row('in-uuid-pg-0001');
+    assert.equal(r.status, 'answered');
+    assert.equal(r.user_id, 'test-ceo');
+    assert.equal(r.body.extension, '1001');
+    // While the CEO talks to the debtor, staff can still dial the same number.
+    const started = await call('start', 'POST', {
+      documentId: 'd',
+      phone: '05320000000',
+      requestId: 'request-pg-inbound-01',
+      confirmRecent: true,
+    });
+    assert.ok(started.call?.id, 'outbound start is not blocked by the active inbound call');
+    const active = (
+      await pool.query(
+        "SELECT body->>'direction' AS direction,user_id FROM han_private.voip_calls WHERE phone='905320000000' AND status IN ('starting','ringing','answered','unknown') ORDER BY user_id",
+      )
+    ).rows;
+    assert.deepEqual(
+      active.map((a) => [a.direction || 'outbound', a.user_id]),
+      [
+        ['outbound', 's'],
+        ['inbound', 'test-ceo'],
+      ],
+    );
+    await hook({ event_type: 'hangup', answered: 'true', duration: '42' });
+    await Promise.allSettled(jobs);
+    [r] = await row('in-uuid-pg-0001');
+    assert.equal(r.status, 'completed');
+    assert.equal(r.user_id, 'test-ceo');
+    assert.equal(r.body.ownerUserId, 's');
+    assert.equal(r.body.duration, 42);
+    assert.equal((await row('in-uuid-pg-0001')).length, 1);
+    // Two callers ringing at once (nobody answered yet) coexist, then both are missed.
+    await hook({ call_uuid: 'in-uuid-pg-0002', caller_id_number: '05551112233' });
+    await hook({ call_uuid: 'in-uuid-pg-0003', caller_id_number: '05554445566' });
+    const ringing = (
+      await pool.query(
+        "SELECT phone,user_id FROM han_private.voip_calls WHERE body->>'direction'='inbound' AND status='ringing' ORDER BY phone",
+      )
+    ).rows;
+    assert.deepEqual(ringing, [
+      { phone: '905551112233', user_id: '' },
+      { phone: '905554445566', user_id: '' },
+    ]);
+    await hook({
+      call_uuid: 'in-uuid-pg-0002',
+      caller_id_number: '05551112233',
+      event_type: 'hangup',
+      answered: 'false',
+      duration: '0',
+    });
+    await hook({
+      call_uuid: 'in-uuid-pg-0003',
+      caller_id_number: '05554445566',
+      event_type: 'hangup',
+      answered: 'false',
+      duration: '0',
+    });
+    assert.equal((await row('in-uuid-pg-0002'))[0].status, 'unanswered');
+    assert.equal((await row('in-uuid-pg-0003'))[0].status, 'unanswered');
+    assert.equal((await row('in-uuid-pg-0002'))[0].document_id, '');
+  } finally {
+    await pg.close();
+  }
+});
+test('inbound answer in Postgres records the answering staff name', async () => {
+  const { pg, pool } = await database();
+  process.env.VOIP_ENCRYPTION_KEY ||= 'ab'.repeat(32);
+  const { createVoipHandler, configure } = require('../lib/voip.cjs');
+  try {
+    const state = fixture();
+    state.users.push({
+      ...state.users[0],
+      id: 's',
+      name: 'Test staff',
+      username: 'staff',
+      role: 'staff',
+      staffId: 'p',
+    });
+    // A staff account is enabled only while its personnel record is active.
+    state.data['icrapro-personnel-v1'].push({ id: 'p', name: 'Test staff', active: true });
+    await importState(pool, state);
+    await transaction(
+      pool,
+      false,
+      (tx) => {
+        tx.state.voipConfig = configure(
+          {},
+          {
+            provider: 'verimor',
+            enabled: true,
+            apiKey: 'test-only-secret',
+            domainId: '123',
+            extensions: { s: '1002' },
+          },
+          state.users,
+        );
+        tx.saveState(tx.state);
+      },
+      { configWrite: true },
+    );
+    const secret = (await pool.query('SELECT body FROM han_private.voip_config WHERE id=1')).rows[0].body
+      .webhookSecret;
+    const h = createVoipHandler({
+      transaction: (work, scope) => transaction(pool, false, work, scope),
+      authenticatedUser: async () => ({ id: 'test-ceo', role: 'ceo', name: 'Test' }),
+      readBody: async (req) => Buffer.from(req.raw || '{}'),
+      fetcher: async () => new Response('', { status: 404 }),
+      recordings: { available: false },
+    });
+    const hook = async (extra) => {
+      const res = {
+        writeHead() {},
+        end(v) {
+          this.body = v;
+        },
+      };
+      const event = {
+        domain_id: '123',
+        event_type: 'ringing',
+        direction: 'inbound',
+        call_uuid: 'in-uuid-pg-0100',
+        caller_id_number: '05551112233',
+        destination_number: '908501234567',
+        ...extra,
+      };
+      await h(
+        { method: 'POST', headers: { 'content-type': 'application/json' }, raw: JSON.stringify(event) },
+        res,
+        new URL('http://localhost/api/voip/webhook?token=' + secret),
+      );
+    };
+    await hook();
+    await hook({ event_type: 'answer', connected_user: '1002' });
+    const { rows } = await pool.query(
+      "SELECT user_id,body FROM han_private.voip_calls WHERE body->>'providerId'='in-uuid-pg-0100'",
+    );
+    assert.equal(rows[0].user_id, 's');
+    assert.equal(rows[0].body.staffName, 'Test staff');
+  } finally {
+    await pg.close();
+  }
+});

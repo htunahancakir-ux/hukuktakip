@@ -27,7 +27,7 @@ Ses dosyası uygulama veritabanına veya tarayıcı depolamasına yazılmaz. Ver
 
 Kaynak MP3 yeniden kodlanmaz/sıkıştırılmaz; SHA-256 özeti, boyutu, arşivlenme zamanı ve 5 yıl sonraki `retainUntil` saklanır. İndirilen dosyanın adı müvekkil, föy, İstanbul tarih-saat, telefon, personel ve benzersiz çağrı kimliğini içerir. Nesne anahtarına kişisel bilgiler konulmaz. Otomatik silme yapılmaz; saklama süresinin sonunda silme politikası ayrıca uygulanmalıdır.
 
-Webhook ses indirmesini beklemez. Arşiv işi veritabanında kalır; yarım kalmış bir iş iki dakika sonra yeniden alınabilir, başarısız indirmeler artan aralıklarla tekrar denenir. Kayıt gecikirse tamamlanmış çağrının CDR'ı da kontrol edilir. 24 saat sonra hâlâ kayıt yoksa manuel inceleme gerekir; diğer işler ilerlemeye devam eder. Yönetici Durumu Doğrula/Arşivlemeyi Yeniden Dene ile tekrar kontrol edebilir. Bu sürüm, uygulama üzerinden başlatılan çağrıları eşleştirir; santralden bağımsız başlatılan çağrıları otomatik içe aktarma kapsam dışındadır.
+Webhook ses indirmesini beklemez. Arşiv işi veritabanında kalır; yarım kalmış bir iş iki dakika sonra yeniden alınabilir, başarısız indirmeler artan aralıklarla tekrar denenir. Kayıt gecikirse tamamlanmış çağrının CDR'ı da kontrol edilir. 24 saat sonra hâlâ kayıt yoksa manuel inceleme gerekir; diğer işler ilerlemeye devam eder. Yönetici Durumu Doğrula/Arşivlemeyi Yeniden Dene ile tekrar kontrol edebilir. Bu sürüm, uygulama üzerinden başlatılan çağrıları önceki gibi eşleştirir; dışarıdan gelen aramalar ise artık kaydedilir (bkz. "Gelen aramalar" bölümü). Santralden bağımsız başlatılan giden çağrıları otomatik içe aktarma kapsam dışındadır.
 
 Arama rezervasyonu, sağlayıcı isteğinden önce ayrı transaction'da yazılır. Telefon ve kullanıcı için aktif çağrı benzersiz indeksleri ile istek kimliği tekrarı kontrolü bulunur. Sağlayıcı çağrısı transaction dışında yapılır ve otomatik tekrar aranmaz. Belirsiz ağ hatası yeniden aramayı engeller; santralden doğrulama gerekir.
 
@@ -50,3 +50,17 @@ Ses sıkıştırılmaz veya yeniden kodlanmaz. 20 MiB üzerindeki MP3, kare sın
 R2 kalıcı şifreli arşivdir. Yakın tarihli (son 30 gün) ve İnfaz olmamış dosyaların sesleri arşivleme sırasında ayrıca sunucunun şifreli geçici önbelleğine alınır. Önbellek 256 MiB/256 nesne ile sınırlıdır; en eski kullanılan kopyalar elenir ve 24 saatlik kullanılmayan kopyalar temizlenir. Bu katman kalıcı saklama garantisi değildir; sunucu yeniden başlasa dahi R2 asılları korunur. Tarayıcı listeyi açarken ses indirmez.
 
 Dinleme isteğinde dosyanın güncel durumu okunur. İnfaz dosyasının önbellek kopyası kullanılmaz ve o sunucudaki kopya kaldırılır; ses şifreli R2 arşivinden istek üzerine yüklenir. Diğer sunucularda kalmış geçici kopyalar da durum denetimi nedeniyle sunulmaz ve önbellek temizliğiyle elenir. Arşiv sesleri Verimor'dan tekrar alınmasına veya sağlayıcının saklama süresine bağımlı değildir.
+
+## Gelen aramalar (1. aşama: yakala ve kaydet)
+
+- Verimor olay bildirimi `direction=inbound` olaylarını da gönderir; eşleşen kayıt yoksa uygulama bir "gelen arama" kaydı oluşturur (`direction: 'inbound'`). Yeni bir Verimor ayarı gerekmez: aynı "Bildirilecek URL" kullanılır.
+- Arayan numara bir borçlu föyünde kayıtlıysa veya daha önce arandıysa kayıt o föye bağlanır; `ownerUserId` o numarayı en son arayan personeldir (hiç aranmadıysa föy sorumlusu). Numara birden çok föyde kayıtlıysa ve hiç aranmadıysa föy boş kalır, adaylar `candidateDocuments` alanında tutulur.
+- Durumlar: `ringing` → "Gelen arama – çalıyor", `answered` → "Gelen arama – görüşülüyor", `completed` → "Gelen arama – görüşüldü", `unanswered` → "Gelen arama – cevapsız". Cevaplayan dahilinin kullanıcısı `userId` olur; arama başka dahiliye aktarılırsa son cevaplayan kişi `userId` olur, hepsi `handlers` listesinde tutulur.
+- Gelen aramalar föyün görüşme geçmişinde ve Görüşme Kayıtları sayfasında "Gelen" rozetiyle görünür; kayıtlar sayfasında yön filtresi (`flow=inbound|outbound`) vardır. Ses kaydı varsa giden aramalarla aynı şekilde arşivlenir ve aynı dinleme yetkisi uygulanır.
+- Gelen arama, kullanıcının "etkin giden arama" yerini tutmaz ve aynı numaraya/aynı kullanıcıya arama başlatmayı engellemez. Veritabanındaki tekil indeksler buna göre değişti (`voip_active_outbound_phone`, `voip_active_outbound_user`): **canlıya almadan önce `npm run db:migrate` çalıştırılmalıdır**; çalıştırılmazsa aynı anda çalan iki gelen aramanın ikincisi kaydedilemez.
+- `user_hangup` olayı artık 400 yerine kabul edilir ve kaydı değiştirmez.
+- Bu aşamanın sınırları:
+  - Gelen arama için ekranda bildirim/değerlendirme penceresi yok (2. aşama).
+  - Gelen aramalar henüz bir dahilide çalmıyor; web telefonu yalnızca arama yaparken açık. Web telefonunun sürekli bağlı tutulması ve "Santral Programlama API" ile son arayan personele yönlendirme 3. aşamadadır.
+  - Bildirimi kaçan aramalar için santral arama kayıtlarından (CDR) tamamlama henüz yok.
+  - Gerçek Verimor hesabında gelen arama olay alanları henüz doğrulanmadı; sunucu günlüğündeki `VoIP inbound event` satırları (yalnızca alan adları, numara içermez) bu doğrulama içindir.
