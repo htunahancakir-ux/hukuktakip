@@ -565,11 +565,12 @@ function startPresenceHeartbeat() {
 
 function installPasswordVisibility(form) {
   form.querySelectorAll('input[type="password"]').forEach((input, index) => {
+    if (input.parentElement.classList.contains('password-input-wrap')) return;
     const wrapper = document.createElement('span');
     wrapper.className = 'password-input-wrap';
     input.parentNode.insertBefore(wrapper, input);
     wrapper.append(input);
-    input.id = input.id || 'login-password-' + index;
+    input.id = input.id || (form.id || 'password-form') + '-password-' + index;
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'password-visibility';

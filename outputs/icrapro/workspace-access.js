@@ -65,6 +65,7 @@ async function userManagement(editId) {
   $('#showInactiveUsers').onchange = renderRows;
   renderRows();
   if (!selected) return;
+  installPasswordVisibility($('#passwordResetForm'));
   $('#cancelPasswordReset').onclick = () => userManagement();
   $('#passwordResetForm').onsubmit = (e) => {
     e.preventDefault();

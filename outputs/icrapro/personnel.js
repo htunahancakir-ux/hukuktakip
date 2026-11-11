@@ -241,6 +241,8 @@ async function openPersonnelRecord(editId) {
   setupPersonnelPhoneRelationships(form, current);
   setupPersonnelCompensationTabs(form, current, editId);
   setupPersonnelDepartmentRole(form, loginAccount, !!editId);
+  if (typeof installPasswordVisibility === 'function')
+    installPasswordVisibility(dialog.querySelector('#personnelForm'));
   setupClientCity('staff');
   setupClientDistrict('staff');
   form.onsubmit = (e) => {
