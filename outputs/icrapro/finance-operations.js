@@ -1,3 +1,14 @@
+function turnoverStaffField() {
+  const field = staffSelect('Ciro Personeli (isteğe bağlı)', 'turnoverStaffId')
+    .replace('<select ', '<select data-optional="true" ')
+    .replace('Personel seçin', 'Dosya sorumlusu')
+    .replace('</select>', '<option value="__other__">Diğer</option></select>');
+  return (
+    field +
+    '<label class="field" data-turnover-other hidden>Diğer Ciro Türü<select name="turnoverOther" data-optional="true" disabled><option value="">Seçin</option><option value="turnover:hukuk-reddiyat">Hukuk Reddiyat</option><option value="turnover:temlik-reddiyat">Temlik Reddiyat</option><option value="turnover:bonus">Bonus</option></select><small>İNS sıralamasına dahil edilir; personel primi hesaplanmaz.</small></label>'
+  );
+}
+
 function saveDocumentFinance(record) {
   if (!window.hanRecordsEnabled) return save();
   const key = 'icrapro-v1';
@@ -275,7 +286,7 @@ function financialOperations(id, mode) {
     locked = hanAuth.role !== 'ceo' && financeEvents.some((e) => e.documentId === id && e.type === 'payment'),
     termsLocked = hanAuth.role !== 'ceo' && d.status === 'İnfaz';
   $('#modal').innerHTML =
-    `<div class="panelhead"><div><h2>${esc(d.number)} · Finansal İşlemler</h2><p><span class="debtor-name-emphasis">${esc(d.debtor)}</span> · Kalan: ${money(f.remaining / 100)} · Masraf: ${money(f.expenses / 100)}</p></div><button class="link" id="closeFinance">Kapat</button></div><form id="financeTerms"><div class="formbody"><h3 class="sectiontitle">Alacak Bileşenleri</h3>${parkingCommissionMarkup(d, f)}<button type="button" class="secondary" id="openLegalCalculator" ${locked ? 'disabled' : ''}>Vade Tarihinden Yasal Faiz ve İcra Vekâlet Ücreti Hesapla</button><p>${isParkingDocument(d) ? 'Yalnız anapara üzerinden tahsilat yapılır.' : d.financeTermsManual === true ? 'Faiz ve ücret tutarları kullanıcı tarafından belirlendi; otomatik hesap uygulanmaz.' : d.legalCalculationError ? esc(d.legalCalculationError) : d.legalCalculation ? 'Yasal faiz ve icra vekâlet ücreti toplam borca dahildir. Hesap tarihi: ' + esc(displayDate(d.legalCalculation.end)) : ''}</p><p>Anapara: ${money(d.amount)} · Masraf: ${money(f.expenses / 100)} · Toplam Borç: ${money(f.target / 100)}</p><div class="grid">${field('Faiz Tutarı (₺)', 'interest', 'number', isParkingDocument(d) ? 0 : (d.financeInterest ?? 0), true)}${field('Avukatlık / Hizmet Ücreti (₺)', 'fee', 'number', isParkingDocument(d) ? 0 : (d.financeFee ?? 0), true)}</div><p>${termsLocked ? 'İnfaz edilmiş dosyada tutarlar kilitlidir.' : 'Faiz ve ücret tutarlarını kayıtlı evraka göre girin.'}</p></div><div class="actions"><button class="secondary" ${locked ? 'disabled' : ''}>Tutarları Kaydet</button></div></form><form id="financeEntry"><div class="formbody"><h3 class="sectiontitle">Tahsilat Kaydet</h3></div><input type="hidden" name="type" value="payment"><div class="formbody grid">${field('İşlem Tarihi', 'date', 'date', businessDate(), true, true)}${field('Tutar (₺)', 'amount', 'number', '', true)}${collectionAccountField()}${['ceo', 'admin'].includes(hanAuth.role) ? staffSelect('Ciro Personeli (isteğe bağlı)', 'turnoverStaffId').replace('<select ', '<select data-optional="true" ').replace('Personel seçin', 'Dosya sorumlusu') : ''}${field('Açıklama / Dekont No', 'note', 'text', '', true)}</div><div class="actions"><button type="button" class="secondary" id="latestCollectionReceipt" ${financeEvents.some((e) => e.documentId === id && e.type === 'payment') ? '' : 'disabled'}>Tahsilat Makbuzu</button><button class="primary">İşlemi Kaydet</button></div></form><form id="expenseEntry"><div class="formbody"><h3 class="sectiontitle">Masraf Ekle</h3><p>Toplam kayıtlı masraf: <b>${money(f.expenses / 100)}</b></p><div class="notice">Borca Eklemeden Kaydet yalnızca masraf kaydı oluşturur. Masrafı Borca Ekle toplam ve kalan borcu artırır.</div><input type="hidden" name="type" value="expense"><div class="grid">${field('Masraf Tarihi', 'date', 'date', businessDate(), true, true)}${field('Masraf Tutarı (₺)', 'amount', 'number', '', true)}${collectionAccountField('out')}${field('Masraf Açıklaması', 'note', 'text', '', true, true)}</div></div><div class="actions"><button type="submit" class="secondary" name="saveMode" value="costOnly">Borca Eklemeden Kaydet</button><button type="submit" class="primary" name="saveMode" value="addToDebt">Masrafı Borca Ekle</button></div></form>${financeHistoryMarkup(id)}`;
+    `<div class="panelhead"><div><h2>${esc(d.number)} · Finansal İşlemler</h2><p><span class="debtor-name-emphasis">${esc(d.debtor)}</span> · Kalan: ${money(f.remaining / 100)} · Masraf: ${money(f.expenses / 100)}</p></div><button class="link" id="closeFinance">Kapat</button></div><form id="financeTerms"><div class="formbody"><h3 class="sectiontitle">Alacak Bileşenleri</h3>${parkingCommissionMarkup(d, f)}<button type="button" class="secondary" id="openLegalCalculator" ${locked ? 'disabled' : ''}>Vade Tarihinden Yasal Faiz ve İcra Vekâlet Ücreti Hesapla</button><p>${isParkingDocument(d) ? 'Yalnız anapara üzerinden tahsilat yapılır.' : d.financeTermsManual === true ? 'Faiz ve ücret tutarları kullanıcı tarafından belirlendi; otomatik hesap uygulanmaz.' : d.legalCalculationError ? esc(d.legalCalculationError) : d.legalCalculation ? 'Yasal faiz ve icra vekâlet ücreti toplam borca dahildir. Hesap tarihi: ' + esc(displayDate(d.legalCalculation.end)) : ''}</p><p>Anapara: ${money(d.amount)} · Masraf: ${money(f.expenses / 100)} · Toplam Borç: ${money(f.target / 100)}</p><div class="grid">${field('Faiz Tutarı (₺)', 'interest', 'number', isParkingDocument(d) ? 0 : (d.financeInterest ?? 0), true)}${field('Avukatlık / Hizmet Ücreti (₺)', 'fee', 'number', isParkingDocument(d) ? 0 : (d.financeFee ?? 0), true)}</div><p>${termsLocked ? 'İnfaz edilmiş dosyada tutarlar kilitlidir.' : 'Faiz ve ücret tutarlarını kayıtlı evraka göre girin.'}</p></div><div class="actions"><button class="secondary" ${locked ? 'disabled' : ''}>Tutarları Kaydet</button></div></form><form id="financeEntry"><div class="formbody"><h3 class="sectiontitle">Tahsilat Kaydet</h3></div><input type="hidden" name="type" value="payment"><div class="formbody grid">${field('İşlem Tarihi', 'date', 'date', businessDate(), true, true)}${field('Tutar (₺)', 'amount', 'number', '', true)}${collectionAccountField()}${['ceo', 'admin'].includes(hanAuth.role) ? turnoverStaffField() : ''}${field('Açıklama / Dekont No', 'note', 'text', '', true)}</div><div class="actions"><button type="button" class="secondary" id="latestCollectionReceipt" ${financeEvents.some((e) => e.documentId === id && e.type === 'payment') ? '' : 'disabled'}>Tahsilat Makbuzu</button><button class="primary">İşlemi Kaydet</button></div></form><form id="expenseEntry"><div class="formbody"><h3 class="sectiontitle">Masraf Ekle</h3><p>Toplam kayıtlı masraf: <b>${money(f.expenses / 100)}</b></p><div class="notice">Borca Eklemeden Kaydet yalnızca masraf kaydı oluşturur. Masrafı Borca Ekle toplam ve kalan borcu artırır.</div><input type="hidden" name="type" value="expense"><div class="grid">${field('Masraf Tarihi', 'date', 'date', businessDate(), true, true)}${field('Masraf Tutarı (₺)', 'amount', 'number', '', true)}${collectionAccountField('out')}${field('Masraf Açıklaması', 'note', 'text', '', true, true)}</div></div><div class="actions"><button type="submit" class="secondary" name="saveMode" value="costOnly">Borca Eklemeden Kaydet</button><button type="submit" class="primary" name="saveMode" value="addToDebt">Masrafı Borca Ekle</button></div></form>${financeHistoryMarkup(id)}`;
   setupFinanceOperationTabs();
   bindFinanceHistory();
   const expenseForm = document.getElementById('expenseEntry');
@@ -350,6 +361,20 @@ function financialOperations(id, mode) {
     financialOperations(id);
     toast('Alacak tutarları kaydedildi.');
   };
+  const turnoverSelect = document.getElementById('financeEntry').elements.turnoverStaffId;
+  if (turnoverSelect) {
+    const other = document.getElementById('financeEntry').elements.turnoverOther;
+    const update = () => {
+      const selected = turnoverSelect.value === '__other__';
+      other.closest('label').hidden = !selected;
+      other.disabled = !selected;
+      other.required = selected;
+      other.dataset.optional = String(!selected);
+      if (!selected) other.value = '';
+    };
+    turnoverSelect.onchange = update;
+    update();
+  }
   const expensePoolRequestId = crypto.randomUUID();
   const saveFinanceEntry = (e) => {
     e.preventDefault();
@@ -436,10 +461,17 @@ function financialOperations(id, mode) {
       closedAmount: closes ? live.target : 0,
     };
     if (v.type === 'payment' && v.turnoverStaffId) {
-      const staff = personnel.find((person) => person.id === v.turnoverStaffId && person.active);
-      if (!staff) return toast('Aktif bir ciro personeli seçin.');
-      event.turnoverStaffId = staff.id;
-      event.turnoverStaffName = staff.name;
+      if (v.turnoverStaffId === '__other__') {
+        const option = e.target.elements.turnoverOther.selectedOptions[0];
+        if (!option?.value) return toast('Diğer ciro türünü seçin.');
+        event.turnoverStaffId = option.value;
+        event.turnoverStaffName = option.textContent;
+      } else {
+        const staff = personnel.find((person) => person.id === v.turnoverStaffId && person.active);
+        if (!staff) return toast('Aktif bir ciro personeli seçin.');
+        event.turnoverStaffId = staff.id;
+        event.turnoverStaffName = staff.name;
+      }
     }
     financeEvents.push(event);
     try {

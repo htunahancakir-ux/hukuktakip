@@ -244,14 +244,17 @@ async function handleDataRoutes(ctx) {
           priorIds.add(event.id);
           event.operatorId = u.id;
           event.operatorName = u.name;
+          delete event.turnoverCategory;
           if (event.turnoverStaffId) {
             if (event.type !== 'payment' || !['ceo', 'admin'].includes(u.role))
               throw fail(403, 'Ciro personelini yalnızca yönetici seçebilir.');
             const staff = ctx.state.data['icrapro-personnel-v1'].find(
               (person) => person.id === event.turnoverStaffId && person.active,
             );
-            if (!staff) throw fail(400, 'Aktif bir ciro personeli seçin.');
-            event.turnoverStaffName = staff.name;
+            const category = require('../../lib/turnover-categories.cjs').categoryName(event.turnoverStaffId);
+            if (!staff && !category) throw fail(400, 'Aktif personel veya geçerli bir ciro türü seçin.');
+            event.turnoverStaffName = category || staff.name;
+            if (category) event.turnoverCategory = event.turnoverStaffId;
           } else {
             delete event.turnoverStaffId;
             delete event.turnoverStaffName;
@@ -260,6 +263,7 @@ async function handleDataRoutes(ctx) {
             const document = ctx.state.data['icrapro-v1'].docs.find((d) => d.id === event.documentId);
             event.collectionStaffId = event.turnoverStaffId || document?.relatedStaff || '';
             event.collectionStaffName =
+              (event.turnoverCategory ? event.turnoverStaffName : '') ||
               ctx.state.data['icrapro-personnel-v1'].find((p) => p.id === event.collectionStaffId)?.name ||
               '';
           }
