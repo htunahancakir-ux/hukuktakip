@@ -3206,3 +3206,37 @@ test('always-on phone stays registered after a call; a ringing call that stops r
     }
   }
 });
+
+test('Sonlandır closes an inbound call whose channel is gone even when the exchange has no call record', async () => {
+  const h = inboundHarness(async (url) => {
+    const path = new URL(url).pathname;
+    if (path.startsWith('/hangup/')) return new Response('No such channel!', { status: 400 });
+    if (path.startsWith('/cdrs/')) return new Response('not found', { status: 404 });
+    return new Response('[]');
+  });
+  h.user = { id: 's', name: 'Personel', role: 'staff', staffId: 'p' };
+  await h.call(hookUrl(h), 'POST', inbound());
+  await h.call(hookUrl(h), 'POST', inbound({ event_type: 'answer', connected_user: '1002' }));
+  // The hangup event never arrives; the person presses Sonlandır.
+  const call = inboundCalls(h)[0];
+  assert.equal(call.status, 'answered');
+  assert.deepEqual(await h.call('hangup', 'POST', { id: call.id }), { ok: true });
+  const closed = inboundCalls(h)[0];
+  assert.equal(closed.status, 'completed', 'answered, so it ends as a finished conversation');
+  assert.equal(closed.endSource, 'channel-gone');
+  assert.ok(closed.endedAt);
+  const listed = await h.call('calls?documentId=d');
+  assert.deepEqual(listed.active, [], 'nothing stays "in progress"');
+});
+
+test('an inbound call left ringing for minutes is closed as unanswered at the next check-in', async () => {
+  const h = inboundHarness();
+  h.user = { id: 's', name: 'Personel', role: 'staff', staffId: 'p' };
+  await h.call(hookUrl(h), 'POST', inbound());
+  inboundCalls(h)[0].createdAt = new Date(Date.now() - 4 * 60000).toISOString();
+  const polled = await h.call('incoming');
+  assert.equal(polled.call, null, 'not offered as ringing any more');
+  const call = inboundCalls(h)[0];
+  assert.equal(call.status, 'unanswered');
+  assert.equal(call.endSource, 'ring-timeout');
+});
