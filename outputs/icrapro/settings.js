@@ -228,19 +228,38 @@ function bindBackupFiles(lastDownload) {
   refresh();
 }
 
+// VoIP has two pages: the connection settings (CEO only) and "Dahililer ve yetkiler" (phone
+// extensions and recording access, CEO and admins). Admins see only the second one under
+// Entegrasyonlar → VoIP.
 function settingsSectionTabs(active) {
-  const integration = ['ai', 'voip', 'whatsapp', 'sms'].includes(active);
+  const ceo = hanAuth.role === 'ceo';
+  const manager = ['ceo', 'admin'].includes(hanAuth.role);
+  const integration = ['ai', 'voip', 'whatsapp', 'sms', 'permissions'].includes(active);
+  const voipPage = ['voip', 'permissions'].includes(active);
   const tabs = [
     ['firm', 'Firma Bilgileri'],
     ['contact', 'İletişim ve Adres'],
     ['preferences', 'Uygulama Tercihleri'],
     ['staff', 'Personel'],
-    ...(['ceo', 'admin'].includes(hanAuth.role) ? [['permissions', 'Yetkilendirme']] : []),
     ['audit', 'İşlem Kayıtları'],
     ['employeeTerms', 'Gizlilik Sözleşmesi'],
-    ...(hanAuth.role === 'ceo' ? [['integrations', 'Entegrasyonlar']] : []),
+    ...(manager ? [['integrations', 'Entegrasyonlar']] : []),
     ['backup', 'Yedekleme'],
   ];
+  const integrationTabs = ceo
+    ? [
+        ['ai', 'Yapay Zekâ'],
+        ['voip', 'VoIP / Telefon'],
+        ['whatsapp', 'WhatsApp Business'],
+        ['sms', 'SMS (Verimor)'],
+      ]
+    : [['permissions', 'VoIP / Telefon']];
+  const voipTabs = ceo
+    ? [
+        ['voip', 'Bağlantı ayarları'],
+        ['permissions', 'Dahililer ve yetkiler'],
+      ]
+    : [['permissions', 'Dahililer ve yetkiler']];
   return `<div class="settings-tabs" role="tablist" aria-label="Ayar sekmeleri">${tabs
     .map(
       ([key, label]) =>
@@ -248,17 +267,21 @@ function settingsSectionTabs(active) {
     )
     .join('')}</div>${
     integration
-      ? `<div class="settings-tabs integration-tabs" role="tablist" aria-label="Entegrasyonlar">${[
-          ['ai', 'Yapay Zekâ'],
-          ['voip', 'VoIP / Telefon'],
-          ['whatsapp', 'WhatsApp Business'],
-          ['sms', 'SMS (Verimor)'],
-        ]
-          .map(
-            ([id, label]) =>
-              `<button type="button" id="tab-${id}" role="tab" aria-selected="${id === active}" data-settings-tab="${id}" class="${id === active ? 'selected' : ''}">${label}</button>`,
-          )
-          .join('')}</div>`
+      ? `<div class="settings-tabs integration-tabs" role="tablist" aria-label="Entegrasyonlar">${integrationTabs
+          .map(([id, label]) => {
+            const selected = id === active || (voipPage && ['voip', 'permissions'].includes(id));
+            return `<button type="button" id="tab-${id}" role="tab" aria-selected="${selected}" data-settings-tab="${id}" class="${selected ? 'selected' : ''}">${label}</button>`;
+          })
+          .join('')}</div>${
+          voipPage
+            ? `<div class="settings-tabs integration-tabs voip-tabs" role="tablist" aria-label="VoIP / Telefon">${voipTabs
+                .map(
+                  ([id, label]) =>
+                    `<button type="button" id="tab-voip-${id}" role="tab" aria-selected="${id === active}" data-settings-tab="${id}" class="${id === active ? 'selected' : ''}">${label}</button>`,
+                )
+                .join('')}</div>`
+            : ''
+        }`
       : ''
   }`;
 }
@@ -358,6 +381,8 @@ const originalSettings = settings;
 let settingsRenderId = 0;
 settings = async function () {
   const renderId = ++settingsRenderId;
+  // Admins have only the VoIP extensions and recording access page under Entegrasyonlar.
+  if (['integrations', 'voip'].includes(settingsTab) && hanAuth.role !== 'ceo') settingsTab = 'permissions';
   const requestedTab = settingsTab;
   const pinScope = ['integrations', 'voip', 'ai', 'whatsapp', 'sms'].includes(settingsTab)
     ? 'integrations'

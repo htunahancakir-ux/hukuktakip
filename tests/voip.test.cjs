@@ -3458,3 +3458,36 @@ test('a call from a debtor rings the file assignee first, then the last caller, 
   h.state.voipCalls = h.state.voipCalls.filter((c) => c.requestId !== 'busy-0001');
   assert.deepEqual(await h.call(routeUrl(h, '05551112233')), { transfer: { target: 'user/1001' } });
 });
+
+test('VoIP settings: connection settings and "Dahililer ve yetkiler" are two tabs under Entegrasyonlar → VoIP', async () => {
+  const { JSDOM } = require('jsdom');
+  const src = await fs.readFile('outputs/icrapro/settings.js', 'utf8');
+  const tabs = src.slice(src.indexOf('// VoIP has two pages'), src.indexOf('function bindSettingsSectionTabs'));
+  const render = (role, active) => {
+    const dom = new JSDOM('', { runScripts: 'outside-only' });
+    const w = dom.window;
+    w.hanAuth = { role };
+    w.esc = (v) => String(v);
+    w.eval(tabs);
+    w.document.body.innerHTML = w.settingsSectionTabs(active);
+    const rows = [...w.document.querySelectorAll('.settings-tabs')].map((row) =>
+      [...row.querySelectorAll('button')].map((b) => (b.classList.contains('selected') ? '*' : '') + b.textContent),
+    );
+    w.close();
+    return rows;
+  };
+  const ceo = render('ceo', 'permissions');
+  assert.ok(!ceo[0].some((t) => t.includes('Yetkilendirme')), 'no top-level Yetkilendirme tab');
+  assert.ok(ceo[0].includes('*Entegrasyonlar'));
+  assert.ok(ceo[1].includes('*VoIP / Telefon'));
+  assert.deepEqual(ceo[2], ['Bağlantı ayarları', '*Dahililer ve yetkiler']);
+  assert.deepEqual(render('ceo', 'voip')[2], ['*Bağlantı ayarları', 'Dahililer ve yetkiler']);
+  assert.equal(render('ceo', 'sms').length, 2, 'no VoIP row on other integrations');
+
+  const admin = render('admin', 'permissions');
+  assert.ok(admin[0].includes('*Entegrasyonlar'), 'admins keep access to extensions and recording rights');
+  assert.deepEqual(admin[1], ['*VoIP / Telefon']);
+  assert.deepEqual(admin[2], ['*Dahililer ve yetkiler'], 'admins do not see the CEO-only connection settings');
+
+  assert.ok(!render('staff', 'firm')[0].includes('Entegrasyonlar'));
+});
