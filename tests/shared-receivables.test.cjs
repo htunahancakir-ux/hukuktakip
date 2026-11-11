@@ -123,14 +123,50 @@ test('The intake editor keeps one borrower with multiple separately typed rows',
     const form = w.document.querySelector('form');
     form.elements.docType.onchange = () => {};
     w.setupReceivables(form, null);
-    form.querySelector('[data-doc-type="Senet"]').click();
+    const ledger = form.querySelector('.receivable-table-scroll');
+    const menuEvent = new w.MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 100,
+      clientY: 100,
+    });
+    ledger.dispatchEvent(menuEvent);
+    assert.equal(menuEvent.defaultPrevented, true);
+    const menu = w.document.querySelector('[role="menu"]');
+    assert(menu);
+    assert.equal(menu.querySelectorAll('[role="menuitem"]').length, 8);
+    [...menu.querySelectorAll('button')].find((button) => button.textContent === 'Senet').click();
+    assert.equal(w.document.querySelector('[role="menu"]'), null);
+    assert.equal(form.querySelector('[data-claim-field="due"]').required, true);
     form.querySelector('[data-doc-type="Çek"]').click();
     const rows = form.querySelectorAll('[data-receivable-rows]>section');
     rows.forEach((row, i) => {
       row.querySelector('[data-claim-field="amount"]').value = String((i + 1) * 1000);
       row.querySelector('[data-claim-field="due"]').value = i ? '2026-11-05' : '2026-11-01';
       row.querySelector('[data-claim-field="serial"]').value = 'N' + i;
+      row.querySelector('[data-claim-field="amount"]').dispatchEvent(new w.Event('input', { bubbles: true }));
     });
+    assert.equal(form.querySelectorAll('[data-select-claim]').length, 2);
+    assert.equal(form.querySelector('[data-receivable-gross]').textContent, '3.000,00');
+    assert.equal(rows[0].hidden, true);
+    assert.equal(rows[1].hidden, false);
+    form.querySelector('[data-select-claim] button').click();
+    assert.equal(rows[0].hidden, false);
+    assert.equal(rows[1].hidden, true);
+    rows[0].querySelector('[data-claim-field="preTrackingPayment"]').value = '100';
+    rows[0]
+      .querySelector('[data-claim-field="preTrackingPayment"]')
+      .dispatchEvent(new w.Event('input', { bubbles: true }));
+    assert.match(form.querySelector('[data-receivable-total]').textContent, /2\.900,00 TL/);
+    form
+      .querySelector('[data-select-claim] button')
+      .dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    assert.equal(rows[1].hidden, false);
+    const firstDue = rows[0].querySelector('[data-claim-field="due"]');
+    firstDue.value = '';
+    assert.equal(form._prepareRequiredValidation(), true);
+    assert.equal(rows[0].hidden, false, 'required validation reveals the incomplete document');
+    firstDue.value = '2026-11-01';
     const saved = form.readReceivables();
     assert.equal(saved.length, 2);
     assert.deepEqual(
@@ -140,6 +176,7 @@ test('The intake editor keeps one borrower with multiple separately typed rows',
     assert.equal(form.querySelectorAll('[name="debtor"]').length, 1);
     rows[1].querySelector('[data-remove-claim]').click();
     assert.equal(form.readReceivables().length, 1);
+    assert.equal(rows[0].hidden, false, 'removing the active document keeps another editor visible');
   } finally {
     dom.window.close();
   }

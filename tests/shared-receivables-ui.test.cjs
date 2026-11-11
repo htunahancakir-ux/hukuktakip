@@ -74,10 +74,24 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
   w.bindPropertyFields = () => {};
   w.validatePropertyFields = () => true;
   w.offerSameIdentityChain = () => {};
+  w.renderClientScope = () => {};
   w.save = () => w.localStorage.setItem('icrapro-v1', JSON.stringify(w.db));
   w.save();
-  w.intake(undefined, true);
+  w.intake();
   let form = w.$('#intakeForm');
+  assert.equal(form.hidden, false, 'intake opens a blank folio directly');
+  assert.equal(form.classList.contains('intake-borrower-sheet'), true);
+  const tabs = form.querySelectorAll('.intake-sheet-tabs button');
+  assert.equal(tabs[0].textContent, 'Kimlik ve İletişim');
+  assert.equal(tabs[1].textContent, 'Alacak');
+  assert.equal(form.dataset.activeFormTab, 'debtor');
+  assert.equal(form.querySelector('[data-draft-balance="9"]').textContent, '0');
+  const inlinePhone = form.querySelector('[data-draft-meta="phone1"]');
+  inlinePhone.value = '05551234567';
+  inlinePhone.dispatchEvent(new w.Event('input', { bubbles: true }));
+  assert.equal(form.elements.phone1.value, '05551234567');
+  form.elements.phone1.value = '';
+  assert.equal(form.querySelectorAll('[data-select-claim]').length, 0);
   for (const [key, value] of Object.entries({
     client: 'c',
     debtor: 'Borrower',
@@ -102,6 +116,7 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
   };
   add('Senet', '1000', '2026-11-01');
   add('Cari Ekstre', '2000', '2026-11-05');
+  assert.equal(form.dataset.activeFormTab, 'claims');
   w.enforceRequired(form);
   assert.deepEqual(
     [...form.querySelectorAll('input,select,textarea')]
@@ -154,4 +169,11 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
   assert.equal(converted.receivables.length, 2);
   assert.equal(converted.receivables[0].amount, 1000);
   assert.equal(converted.receivables[0].preTrackingPayment, 100);
+  w.$('#newIntakeDocument').click();
+  form = w.$('#intakeForm');
+  assert.equal(form.hidden, false);
+  assert.equal(form.elements.client.value, '');
+  assert.equal(form.elements.debtor.value, '');
+  assert.equal(form.querySelectorAll('[data-select-claim]').length, 0);
+  assert.equal(w.db.docs.length, 2, 'opening a blank folio preserves saved records');
 });
