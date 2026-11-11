@@ -570,10 +570,11 @@ function voipCallMarkup(call, results) {
     <div class="voip-entry-feedback" role="status"></div></article>`;
 }
 async function completeVoipConversation(call, values) {
-  if (!call.documentId) {
-    await voipApi('result', 'POST', { id: call.id, ...values });
-    return;
-  }
+  return sendVoipConversation(call, values, await prepareVoipConversation(call, values));
+}
+// The interactive part of saving a result: a callback plan or a payment promise is asked for here.
+async function prepareVoipConversation(call, values) {
+  if (!call.documentId) return null;
   const doc = (typeof db !== 'undefined' && db.docs.find((d) => d.id === call.documentId)) || {
     id: call.documentId,
     number: call.documentNumber,
@@ -602,6 +603,18 @@ async function completeVoipConversation(call, values) {
     if (!promise) throw Error('Ödeme sözü tamamlanmadı. Görüşme notunuz korunuyor.');
     input.paymentPromiseId = promise.id;
   }
+  return input;
+}
+// The network part. For a borrower call the server also refreshes the conversation report (and
+// asks the AI provider when one is set up), which can take a few seconds.
+async function sendVoipConversation(call, values, input) {
+  if (!call.documentId) {
+    await voipApi('result', 'POST', { id: call.id, ...values });
+    return;
+  }
+  const doc = (typeof db !== 'undefined' && db.docs.find((d) => d.id === call.documentId)) || {
+    id: call.documentId,
+  };
   const response = await fetch('/api/documents/conversations', {
     method: 'POST',
     credentials: 'same-origin',
@@ -1297,6 +1310,9 @@ function voipPhoneDock(reveal = true, anchor = null) {
   return dock;
 }
 async function openVoipWebphone(feedback, background = false) {
+  // A pending idle teardown is canceled: the same registered web phone serves the next call.
+  clearTimeout(voipUi.releaseTimer);
+  voipUi.releaseTimer = null;
   const generation = voipUi.phoneGeneration || 0;
   try {
     const dock = voipPhoneDock(!background);
@@ -1345,7 +1361,28 @@ async function openVoipWebphone(feedback, background = false) {
     feedback.textContent = error.message;
   }
 }
+// Removing Verimor's web phone (it unregisters and closes its audio) right as a call ends competes
+// with the result window. Hide it now and remove it once the browser is idle; a new call before
+// then simply keeps using it.
+function releaseVoipWebphoneSoon() {
+  clearTimeout(voipUi.releaseTimer);
+  const phone = document.getElementById('voipWebphone');
+  if (!phone) return;
+  phone.style.visibility = 'hidden';
+  voipUi.releaseTimer = setTimeout(() => {
+    voipUi.releaseTimer = null;
+    const run = () => {
+      const active = document.getElementById('voipActiveCall');
+      if (voipUi.startPending || (active && active.dataset.ended !== 'true')) return;
+      releaseVoipWebphone();
+    };
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 3000 });
+    else run();
+  }, 1500);
+}
 function releaseVoipWebphone() {
+  clearTimeout(voipUi.releaseTimer);
+  voipUi.releaseTimer = null;
   voipUi.phoneGeneration = (voipUi.phoneGeneration || 0) + 1;
   const phone = document.getElementById('voipWebphone');
   if (phone) {
@@ -1524,7 +1561,7 @@ function showVoipActive(doc, call) {
       });
     voipCancelWait(host, ending);
     // Busy/canceled calls keep the registered webphone ready for the next attempt.
-    if (ended && !wasEnded && next.status === 'completed') releaseVoipWebphone();
+    if (ended && !wasEnded && next.status === 'completed') releaseVoipWebphoneSoon();
     outcomes.hidden = !ended;
     host.querySelector('[data-current-hangup]').hidden = ended;
     host.querySelector('[data-current-sync]').hidden = true;
@@ -1701,24 +1738,41 @@ function showVoipActive(doc, call) {
       message(error.message);
     }
   };
+  let prepared = null;
   form.onsubmit = async (event) => {
     event.preventDefault();
     const result = form.querySelector('[name="result"]:checked')?.value;
     if (!ended || !result) return message('Görüşme bittikten sonra bir sonuç seçin.');
     clearTimeout(draftTimer);
-    const button = host.querySelector('[data-current-save]');
+    const values = { result, note: note.value };
+    // Only the extra questions (callback plan, payment promise) wait for the user. A retry after
+    // a failed save reuses what was already answered for the same result.
+    if (prepared?.result !== result) {
+      try {
+        prepared = { result, input: await prepareVoipConversation(call, values) };
+      } catch (error) {
+        return message(error.message);
+      }
+    }
     form.querySelectorAll('input,textarea,button').forEach((input) => {
       input.disabled = true;
     });
+    // Close at once and give the screen back. A new call must not dispose this window while its
+    // save is still running, so it leaves the active-call slot.
+    voipUi.disposeActive();
+    if (host.open) host.close();
+    host.hidden = true;
+    host.removeAttribute('id');
+    voipUi.activeId = '';
+    const dock = document.getElementById('voipPhoneDock');
+    if (dock && !document.getElementById('voipActiveCall') && !voipUi.startPending) {
+      if (dock.hidePopover) dock.hidePopover();
+      dock.hidden = true;
+    }
     try {
       await saveQueue.catch(() => {});
-      await completeVoipConversation(call, { result, note: note.value });
-      voipUi.disposeActive();
+      await sendVoipConversation(call, values, prepared.input);
       host.remove();
-      voipUi.activeId = '';
-      const dock = document.getElementById('voipPhoneDock');
-      if (dock?.hidePopover) dock.hidePopover();
-      if (dock) dock.hidden = true;
       if (typeof toast === 'function') {
         const panel = document.querySelector('.voip-number-panel:not([hidden])');
         toast('Görüşme sonucu kaydedildi.', panel || undefined);
@@ -1726,10 +1780,15 @@ function showVoipActive(doc, call) {
         if (notice) setTimeout(() => notice.remove(), 4000);
       }
     } catch (error) {
-      message(error.message);
+      // Nothing is lost: the same window returns with the chosen result and note.
+      voipPhoneDock().prepend(host);
+      host.hidden = false;
+      if (typeof host.showModal === 'function') host.showModal();
+      else host.show();
       form.querySelectorAll('input,textarea,button').forEach((input) => {
         input.disabled = false;
       });
+      message('Görüşme sonucu kaydedilemedi: ' + error.message + ' Tekrar Tamam’a basın.');
     }
   };
   if (!ended) voipUi.timer = setInterval(sync, 2500);

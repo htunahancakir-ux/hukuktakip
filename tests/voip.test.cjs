@@ -851,7 +851,11 @@ test('live call workspace preserves typed notes across polling, then saves the c
     await new Promise((r) => setImmediate(r));
     assert.equal(w.document.querySelector('[data-current-outcomes]').hidden, false);
     assert.equal(textarea.value, draft);
-    assert.equal(w.document.getElementById('voipWebphone'), null, 'ended call releases microphone iframe');
+    assert.equal(
+      w.document.getElementById('voipWebphone').style.visibility,
+      'hidden',
+      'ended call hides the web phone at once; its teardown waits so the result form stays fast',
+    );
     assert.equal(
       w.document.getElementById('voipActiveCall').dataset.modalPromoted,
       'true',
@@ -862,9 +866,12 @@ test('live call workspace preserves typed notes across polling, then saves the c
       .querySelector('form')
       .dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
     await new Promise((r) => setImmediate(r));
+    assert.equal(w.document.getElementById('voipActiveCall'), null, 'the result window closes at once');
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
     assert.equal(saved.result, 'Olumlu');
     assert.equal(saved.note, draft);
-    assert.equal(w.document.getElementById('voipActiveCall'), null);
+    await new Promise((r) => setTimeout(r, 1600));
+    assert.equal(w.document.getElementById('voipWebphone'), null, 'ended call releases microphone iframe');
     w.showVoipActive({ id: 'd' }, { ...call, id: 'busy', status: 'busy', statusLabel: 'Meşgul' });
     assert.equal(w.document.querySelector('[name="result"]:checked').value, 'Meşgul');
   } finally {
@@ -2470,5 +2477,66 @@ test('connection test lists microphone, firewall and Verimor extension status in
     assert.equal(w.document.getElementById('host').hidden, false);
   } finally {
     w.close();
+  }
+});
+
+test('the result window closes before the server answers and comes back unchanged if the save fails', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('<div class="header-actions"></div>', { url: 'https://example.test', runScripts: 'dangerously' });
+  const w = dom.window;
+  try {
+    w.HTMLDialogElement.prototype.show = function () {
+      this.open = true;
+    };
+    w.HTMLDialogElement.prototype.close = function () {
+      this.open = false;
+    };
+    w.HTMLDialogElement.prototype.showModal = function () {
+      this.open = true;
+    };
+    let answer;
+    const saves = [];
+    Object.assign(w, {
+      hanAuth: { id: 'u', role: 'staff' },
+      esc: (v) => String(v).replaceAll('<', '&lt;'),
+      fetch: async (url, options) => {
+        if (url.endsWith('/result')) {
+          saves.push(JSON.parse(options.body));
+          return await new Promise((resolve) => (answer = resolve));
+        }
+        return { ok: true, json: async () => ({ ok: true }) };
+      },
+    });
+    w.eval(
+      (await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8')) + '\nvoipUi.results=["Olumlu","Olumsuz"]',
+    );
+    const call = { id: 'c1', userId: 'u', phone: '905320000000', status: 'completed', statusLabel: 'Görüşüldü', duration: 20 };
+    w.showVoipActive({ id: '' }, call);
+    const host = w.document.getElementById('voipActiveCall');
+    host.querySelector('[name="note"]').value = 'Önemli not';
+    host.querySelector('[name="result"][value="Olumsuz"]').checked = true;
+    host.querySelector('form').dispatchEvent(new w.Event('submit', { cancelable: true }));
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    assert.equal(saves.length, 1, 'the save is on its way');
+    assert.equal(host.open, false, 'the window is already closed while the server works');
+    assert.equal(w.document.getElementById('voipActiveCall'), null, 'a new call can start meanwhile');
+
+    answer({ ok: false, status: 503, json: async () => ({ error: 'Sunucu hazır değil.' }) });
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    assert.equal(host.open, true, 'a failed save brings the window back');
+    assert.equal(host.querySelector('[name="note"]').value, 'Önemli not');
+    assert.equal(host.querySelector('[name="result"]:checked').value, 'Olumsuz');
+    assert.match(host.querySelector('[data-current-feedback]').textContent, /kaydedilemedi: Sunucu hazır değil/);
+    assert.equal(host.querySelector('[data-current-save]').disabled, false);
+
+    host.querySelector('form').dispatchEvent(new w.Event('submit', { cancelable: true }));
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    answer({ ok: true, status: 200, json: async () => ({ ok: true }) });
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    assert.equal(saves.length, 2);
+    assert.deepEqual(saves[1], { id: 'c1', result: 'Olumsuz', note: 'Önemli not' });
+    assert.equal(host.isConnected, false, 'a successful retry removes the window');
+  } finally {
+    dom.window.close();
   }
 });
