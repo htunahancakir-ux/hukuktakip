@@ -440,7 +440,10 @@ function setupIntakeBorrowerSheet(form, original) {
     meta.append(cell);
     return cell;
   }
-  move('intakeFolioNumber', 'Föy No', 'sheet-folio-number');
+  const folioCell = move('intakeFolioNumber', 'Föy No', 'sheet-folio-number');
+  const imatikCell = move('imatikFolioNumber', 'İ.Matik Föy No (isteğe bağlı)');
+  folioCell.append(...imatikCell.childNodes);
+  imatikCell.remove();
   value('Borçlu', 'debtor', 'sheet-debtor-name');
   move('intakeTrackingDate', 'Takip Tarihi');
   move('recordedBy', 'Evrakı Kaydeden');
