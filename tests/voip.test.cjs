@@ -3293,3 +3293,39 @@ test('the background job closes inbound calls stuck as answered and ringing call
   assert.deepEqual([a.status, a.endSource], ['completed', 'extension-idle']);
   assert.deepEqual([r.status, r.endSource], ['unanswered', 'ring-timeout']);
 });
+
+test('a call the exchange cannot confirm (no call id) can be closed by its person; nothing is sent to the exchange', async () => {
+  const asked = [];
+  const h = harness(async (url) => {
+    asked.push(new URL(url).pathname);
+    return new Response('[]');
+  });
+  h.user = { id: 's', name: 'Personel', role: 'staff', staffId: 'p' };
+  const base = {
+    provider: 'verimor',
+    documentId: 'd',
+    phone: '905320000000',
+    staffName: 'Personel',
+    extension: '1002',
+    createdAt: new Date(Date.now() - 600000).toISOString(),
+    status: 'unknown',
+    duration: 0,
+    result: '',
+    note: '',
+    recordingPresent: false,
+  };
+  const id = crypto.randomUUID();
+  h.state.voipCalls.push({ ...base, id, requestId: 'stuck-request-0001', userId: 's' });
+  await assert.rejects(h.call('hangup', 'POST', { id }), /Çağrı kimliği henüz alınamadı/);
+  const closed = await h.call('close', 'POST', { id });
+  assert.equal(closed.ok, true);
+  assert.equal(closed.call.status, 'failed', 'never answered');
+  const call = h.state.voipCalls.find((c) => c.id === id);
+  assert.equal(call.endSource, 'manual-close');
+  assert.equal(call.closedBy, 'Personel');
+  assert.deepEqual(asked, [], 'the exchange is not contacted');
+  assert.deepEqual((await h.call('calls?documentId=d')).active, [], 'no longer in progress');
+  const other = crypto.randomUUID();
+  h.state.voipCalls.push({ ...base, id: other, requestId: 'stuck-request-0002', userId: 'u' });
+  await assert.rejects(h.call('close', 'POST', { id: other }), /yetkiniz yok/, "staff cannot close someone else's call");
+});

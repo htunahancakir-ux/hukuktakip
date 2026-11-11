@@ -1784,10 +1784,32 @@ function showVoipActive(doc, call) {
       voipCancelWait(host, false);
       voipCallBarUpdate({ ending: false });
       message(error.message);
+      // The exchange cannot confirm the end (409): let the person close the record themselves.
+      if (error.status === 409) offerManualClose();
     } finally {
       event.target.disabled = false;
     }
   };
+  function offerManualClose() {
+    if (host.querySelector('[data-manual-close]')) return;
+    const box = document.createElement('div');
+    box.className = 'voip-manual-close';
+    box.innerHTML =
+      '<span>Santral bu görüşmenin bittiğini doğrulayamıyor. Görüşme gerçekten bittiyse kaydı kapatabilirsiniz; santrale bir şey gönderilmez.</span><button type="button" class="secondary" data-manual-close>Görüşmeyi kapalı olarak işaretle</button>';
+    host.querySelector('.voip-workspace-actions').after(box);
+    box.querySelector('[data-manual-close]').onclick = async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      try {
+        const result = await voipApi('close', 'POST', { id: call.id });
+        box.remove();
+        if (result.call) update(result.call);
+      } catch (closeError) {
+        message(closeError.message);
+        button.disabled = false;
+      }
+    };
+  }
   const sync = async () => {
     if (syncing || disposed || ended) return;
     syncing = true;
@@ -1822,6 +1844,7 @@ function showVoipActive(doc, call) {
       await sync();
     } catch (error) {
       message(error.message);
+      if (error.status === 409) offerManualClose();
     }
   };
   let prepared = null;
