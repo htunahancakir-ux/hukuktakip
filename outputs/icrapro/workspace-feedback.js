@@ -43,7 +43,10 @@ async function captureFeedbackScreen() {
       height: window.innerHeight,
       scale: Math.min(window.devicePixelRatio || 1, 1.5),
       ignoreElements: (el) =>
-        el.id === 'feedbackDialog' || el.id === 'voipWebphone' || el.tagName === 'IFRAME',
+        el.id === 'feedbackDialog' ||
+        el.id === 'voipWebphone' ||
+        el.tagName === 'IFRAME' ||
+        el.hasAttribute?.('data-feedback-open'),
     });
     // Large screens are scaled down so the image stays well under the upload limit.
     const width = Math.min(canvas.width, 1600);
@@ -241,10 +244,11 @@ function setupFeedbackButton() {
   if (document.querySelector('[data-feedback-open]')) return;
   const button = document.createElement('button');
   button.type = 'button';
-  button.className = 'secondary';
+  // A tab fixed to the right edge of the screen, beside the scrollbar, on every page.
+  button.className = 'feedback-edge';
   button.dataset.feedbackOpen = '';
   button.textContent = 'Geri bildirim';
   button.title = 'Hata, öneri veya soru gönderin';
   button.onclick = () => openFeedback();
-  document.querySelector('.header-actions')?.prepend(button);
+  document.body.append(button);
 }
