@@ -248,10 +248,12 @@ test('Intake allocates server numbers, isolates edits, searches all clients and 
       ...overrides,
     });
     const attempts = await Promise.all([
-      patch(null, create('new1', { identity: '' })),
+      patch(null, create('new1', { identity: '', imatikFolioNumber: 'IM-00123' })),
       patch(null, create('new2')),
     ]);
     for (const result of attempts) assert.equal(result.status, 200, JSON.stringify(result.body));
+    assert.equal(attempts[0].body.records[0].value.imatikFolioNumber, 'IM-00123');
+    assert.equal(attempts[1].body.records[0].value.imatikFolioNumber, undefined);
     assert.deepEqual(attempts.map((r) => r.body.records[0].value.number).sort(), ['S-0201', 'S-0202']);
     for (const r of attempts) assert.notEqual(r.body.records[0].value.trackingDate, '1990-01-01');
     assert.equal((await patch(null, create('new1'))).status, 409);

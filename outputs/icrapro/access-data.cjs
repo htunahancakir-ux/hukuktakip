@@ -365,6 +365,7 @@ async function handleDataRoutes(ctx) {
         'debtor',
         'identity',
         'officeIdentity',
+        'imatikFolioNumber',
         'attachments',
         'additionalPhones',
         'additionalAddresses',
