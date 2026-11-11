@@ -1635,3 +1635,8 @@ dialog.voip-webphone.voip-answering {
 #voipIncoming[popover] { position: fixed; inset: 0 0 auto 0; margin: 0; width: 100%; max-width: none; border: 0; z-index: 2147483647; }
 
 .voip-manual-close { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; padding: 8px 10px; border-radius: 8px; background: #fff7e6; border: 1px solid #f0c36d; font-size: 13px; }
+
+.voip-fallback { display: grid; gap: 6px; }
+.voip-fallback-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.voip-fallback-row select, .voip-fallback-row input { min-width: 180px; flex: 1 1 180px; }
+.voip-fallback-row [hidden] { display: none; }

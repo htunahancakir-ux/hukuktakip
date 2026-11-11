@@ -369,6 +369,66 @@ function voipDuration(value) {
     (seconds % 60).toString().padStart(2, '0')
   );
 }
+// Where an inbound call goes when nobody who takes inbound calls can answer: a Verimor target
+// written as type/number. The settings page offers the types with what each one does.
+const VOIP_FALLBACK_TYPES = [
+  ['', 'Yok'],
+  ['group', 'Çağrı grubu'],
+  ['queue', 'Kuyruk'],
+  ['user', 'Dahili'],
+  ['voicemail', 'Sesli mesaj'],
+  ['external', 'Cep telefonu'],
+];
+const VOIP_FALLBACK_HELP = {
+  '': 'Yedek hedef yok: kimse ulaşılamazsa arama borçluyu son arayan personelin dahilisine gider; o da bağlı değilse hiçbir yer çalmaz ve arama cevapsız kalır. Bir yedek hedef seçmeniz önerilir.',
+  group:
+    "Verimor'daki çağrı grubunun numarası (ör. 700). Gruptaki bütün dahililer aynı anda çalar; ilk açan konuşur. Gelen aramaları karşılayabilecek herkesi (sekreter, masa telefonu, softphone) bir gruba koymanız önerilir.",
+  queue:
+    "Verimor'daki kuyruğun numarası (ör. 201). Arayan sırada bekler, bekleme anonsunu veya müziğini duyar ve boşalan ilk personele bağlanır.",
+  user: 'Tek bir dahili çalar (ör. sekreter ya da masa telefonu). O dahili meşgulse veya bağlı değilse arama cevapsız kalabilir.',
+  voicemail: 'Seçilen dahilinin sesli mesaj kutusu: arayan mesaj bırakır.',
+  external:
+    'Bir cep telefonu (ör. büronun nöbetçi hattı). Arama bu numaraya yönlendirilir; dış arama ücreti oluşabilir.',
+};
+function voipBindFallback(form, saved) {
+  const [savedType, savedNumber = ''] = String(saved || '').split('/');
+  const type = form.elements.fallbackType,
+    number = form.elements.fallbackNumber,
+    person = form.elements.fallbackUser,
+    help = form.querySelector('[data-fallback-help]');
+  type.value = VOIP_FALLBACK_TYPES.some(([id]) => id === savedType) ? savedType : '';
+  if (['user', 'voicemail'].includes(type.value)) person.value = savedNumber;
+  else number.value = savedNumber;
+  const show = () => {
+    const kind = type.value;
+    number.hidden = !['group', 'queue', 'external'].includes(kind);
+    person.hidden = !['user', 'voicemail'].includes(kind);
+    number.placeholder = kind === 'external' ? '05XX XXX XX XX' : kind === 'queue' ? 'ör. 201' : 'ör. 700';
+    help.textContent = VOIP_FALLBACK_HELP[kind] || '';
+  };
+  type.onchange = show;
+  show();
+}
+// Builds the type/number value the server expects, or throws a readable error.
+function voipFallbackValue(form) {
+  const kind = form.elements.fallbackType.value;
+  if (!kind) return '';
+  if (['user', 'voicemail'].includes(kind)) {
+    const extension = form.elements.fallbackUser.value;
+    if (!/^\d{2,8}$/.test(extension)) throw Error('Yedek hedef için bir dahili seçin.');
+    return kind + '/' + extension;
+  }
+  const raw = form.elements.fallbackNumber.value.replace(/[\s()+.-]/g, '');
+  if (kind === 'external') {
+    const digits = /^90\d{10}$/.test(raw) ? '0' + raw.slice(2) : /^\d{10}$/.test(raw) ? '0' + raw : raw;
+    if (!/^0\d{10}$/.test(digits))
+      throw Error('Yedek hedef için geçerli bir telefon numarası girin (05XX XXX XX XX).');
+    return 'external/' + digits;
+  }
+  if (!/^\d{1,10}$/.test(raw))
+    throw Error('Yedek hedef için ' + (kind === 'queue' ? 'kuyruk' : 'çağrı grubu') + ' numarasını girin.');
+  return kind + '/' + raw;
+}
 function voipSettingsPage() {
   if (hanAuth.role !== 'ceo') return;
   $('#content').innerHTML =
@@ -402,22 +462,45 @@ function voipSettingsPage() {
             )
             .join('') || '<small>Önce personele dahili atayın.</small>'
         }</div>
-        <label class="field">Yedek hedef<input data-optional="true" name="inboundFallback" maxlength="40" value="${esc(config.inboundFallback || '')}" placeholder="queue/201, group/700 veya user/1001"><small>Borçluyu son arayan ve diğer işaretli personel ulaşılamazsa arama buraya gider.</small></label>
+        <div class="field full voip-fallback"><span>Yedek hedef</span>
+          <div class="voip-fallback-row">
+            <select name="fallbackType" aria-label="Yedek hedef türü">${VOIP_FALLBACK_TYPES.map(([id, label]) => `<option value="${id}">${esc(label)}</option>`).join('')}</select>
+            <input data-optional="true" name="fallbackNumber" maxlength="15" inputmode="numeric" aria-label="Yedek hedef numarası">
+            <select name="fallbackUser" aria-label="Yedek hedef dahilisi">${
+              (config.users || [])
+                .filter((u) => config.extensions?.[u.id])
+                .map(
+                  (u) =>
+                    `<option value="${esc(config.extensions[u.id])}">${esc(u.name)} · dahili ${esc(config.extensions[u.id])}</option>`,
+                )
+                .join('') || '<option value="">Dahilisi olan personel yok</option>'
+            }</select>
+          </div>
+          <small data-fallback-help></small>
+        </div>
         <label class="field full">Gelen arama yönlendirme adresi<input readonly value="${esc(config.routePath ? location.origin + config.routePath : 'İlk kayıttan sonra oluşur.')}"><small>Verimor → Gelen Arama Yönetimi'nde dış hattın hedefini "Santral Programlama API" yapın ve bu adresi girin. Arama, borçluyu en son arayan personele; o bağlı veya boş değilse işaretli başka bir personele, o da yoksa yedek hedefe gider.</small></label>
       </fieldset>
       <label class="field full">Çağrı bildirim adresi<input readonly value="${esc(config.webhookPath ? location.origin + config.webhookPath : 'İlk kayıttan sonra oluşur.')}"><small>Verimor CRM entegrasyonunda çalma, cevaplanma ve kapanma bildirimleri için bu adresi kullanın. Adres gizli bildirim anahtarı içerir.</small></label>
     </div><p id="voipConfigStatus" role="status"></p><div class="actions"><button class="primary" type="submit">VoIP Ayarlarını Kaydet</button></div></form>`;
       const form = host.querySelector('form');
+      voipBindFallback(form, config.inboundFallback || '');
       form.onsubmit = async (event) => {
         event.preventDefault();
         const button = form.querySelector('[type="submit"]');
-        button.disabled = true;
         const value = Object.fromEntries(new FormData(form));
         value.enabled = form.elements.enabled.checked;
         value.clearKey = form.elements.clearKey.checked;
         value.inboundUsers = [...form.querySelectorAll('[name="inboundUsers"]:checked')].map(
           (box) => box.value,
         );
+        for (const key of ['fallbackType', 'fallbackNumber', 'fallbackUser']) delete value[key];
+        try {
+          value.inboundFallback = voipFallbackValue(form);
+        } catch (error) {
+          host.querySelector('#voipConfigStatus').textContent = error.message;
+          return;
+        }
+        button.disabled = true;
         try {
           await voipApi('config', 'PUT', value);
           voipSettingsPage();

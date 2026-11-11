@@ -3345,3 +3345,46 @@ test('a recent outbound conversation is reported as recent_call even when an inb
   const ok = await h.call('start', 'POST', { documentId: 'd', phone: '05320000000', requestId: 'recent-check-0002', confirmRecent: true });
   assert.equal(ok.call.status, 'ringing', 'confirming lets the call go out');
 });
+
+test('the fallback target is chosen from a list with an explanation and saved as a Verimor target', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('<form><select name="fallbackType"></select><input name="fallbackNumber"><select name="fallbackUser"><option value="1001">CEO · dahili 1001</option><option value="1002">Personel · dahili 1002</option></select><small data-fallback-help></small></form>', { url: 'https://example.test', runScripts: 'dangerously' });
+  const w = dom.window;
+  try {
+    w.esc = (v) => String(v);
+    w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    const form = w.document.querySelector('form');
+    form.elements.fallbackType.innerHTML = ['', 'group', 'queue', 'user', 'voicemail', 'external'].map((id) => `<option value="${id}">${id}</option>`).join('');
+    w.voipBindFallback(form, 'group/700');
+    assert.equal(form.elements.fallbackType.value, 'group');
+    assert.equal(form.elements.fallbackNumber.value, '700');
+    assert.equal(form.elements.fallbackUser.hidden, true);
+    assert.match(form.querySelector('[data-fallback-help]').textContent, /bütün dahililer aynı anda çalar/);
+    assert.equal(w.voipFallbackValue(form), 'group/700');
+
+    form.elements.fallbackType.value = 'voicemail';
+    form.elements.fallbackType.onchange();
+    assert.equal(form.elements.fallbackNumber.hidden, true);
+    assert.equal(form.elements.fallbackUser.hidden, false);
+    form.elements.fallbackUser.value = '1002';
+    assert.equal(w.voipFallbackValue(form), 'voicemail/1002');
+
+    form.elements.fallbackType.value = 'external';
+    form.elements.fallbackNumber.value = '+90 532 123 45 67';
+    assert.equal(w.voipFallbackValue(form), 'external/05321234567');
+    form.elements.fallbackNumber.value = '123';
+    assert.throws(() => w.voipFallbackValue(form), /geçerli bir telefon/);
+
+    form.elements.fallbackType.value = 'queue';
+    form.elements.fallbackNumber.value = '';
+    assert.throws(() => w.voipFallbackValue(form), /kuyruk numarasını/);
+
+    form.elements.fallbackType.value = '';
+    assert.equal(w.voipFallbackValue(form), '');
+    w.voipBindFallback(form, 'user/1001');
+    assert.equal(form.elements.fallbackUser.value, '1001');
+    assert.equal(w.voipFallbackValue(form), 'user/1001');
+  } finally {
+    w.close();
+  }
+});
