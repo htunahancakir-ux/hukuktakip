@@ -3329,3 +3329,19 @@ test('a call the exchange cannot confirm (no call id) can be closed by its perso
   h.state.voipCalls.push({ ...base, id: other, requestId: 'stuck-request-0002', userId: 'u' });
   await assert.rejects(h.call('close', 'POST', { id: other }), /yetkiniz yok/, "staff cannot close someone else's call");
 });
+
+test('a recent outbound conversation is reported as recent_call even when an inbound call came after it', async () => {
+  const h = harness(async () => new Response('call-0000000099'));
+  h.user = { id: 's', name: 'Personel', role: 'staff', staffId: 'p' };
+  const base = { provider: 'verimor', documentId: 'd', phone: '905320000000', staffName: 'Personel', extension: '1002', duration: 30, result: '', note: '', recordingPresent: false };
+  h.state.voipCalls.push(
+    { ...base, id: crypto.randomUUID(), requestId: 'recent-out-0001', userId: 's', status: 'completed', createdAt: new Date(Date.now() - 600000).toISOString() },
+    { ...base, id: crypto.randomUUID(), requestId: 'in:recent-in-0001', userId: '', direction: 'inbound', status: 'unanswered', createdAt: new Date(Date.now() - 60000).toISOString() },
+  );
+  await assert.rejects(
+    h.call('start', 'POST', { documentId: 'd', phone: '05320000000', requestId: 'recent-check-0001' }),
+    (e) => e.reason === 'recent_call' && /yakın zamanda arandı/.test(e.message),
+  );
+  const ok = await h.call('start', 'POST', { documentId: 'd', phone: '05320000000', requestId: 'recent-check-0002', confirmRecent: true });
+  assert.equal(ok.call.status, 'ringing', 'confirming lets the call go out');
+});

@@ -155,6 +155,9 @@ async function voipShowDiagnosis(host, { ask = false } = {}) {
   if (host.isConnected) host.innerHTML = markup;
   return markup;
 }
+const voipRecentCall = (error) =>
+  error?.reason === 'recent_call' ||
+  (error?.status === 409 && /yakın zamanda arandı/.test(error?.message || ''));
 const voipNeedsDiagnosis = (error) =>
   error?.reason === 'extension_unregistered' || String(error?.reason || '').startsWith('microphone_');
 // Call bar: one always-visible strip at the top of the page shell, from the moment dialing
@@ -961,12 +964,13 @@ function setupBorrowerVoip(dialog, doc) {
           .map((p) => {
             const calls = data.calls.filter((c) => c.phone === p.phone),
               last = calls[0],
+              lastOutbound = calls.find((c) => c.direction !== 'inbound'),
               active = calls.find((c) => voipActiveStatuses.has(c.status) && c.direction !== 'inbound');
+            // Same rule as the server: the last call the office made to this number.
             const recent =
-              last &&
-              last.direction !== 'inbound' &&
-              Date.now() - Date.parse(last.createdAt) < data.recentMinutes * 60000 &&
-              !['unanswered', 'busy', 'failed'].includes(last.status);
+              lastOutbound &&
+              Date.now() - Date.parse(lastOutbound.createdAt) < data.recentMinutes * 60000 &&
+              !['unanswered', 'busy', 'failed'].includes(lastOutbound.status);
             const state = active ? 'active' : last?.status || 'empty';
             const action =
               active && (active.userId === hanAuth.id || ['ceo', 'admin'].includes(hanAuth.role))
@@ -1160,6 +1164,8 @@ function setupBorrowerVoip(dialog, doc) {
           showVoipActive(doc, result.call);
         } catch (error) {
           message(error.message);
+          // The server knows of a recent conversation the list did not show: ask, don't block.
+          if (voipRecentCall(error) && !confirmed) repeatPrompt(phone);
           if (voipNeedsDiagnosis(error)) {
             trouble = '<p class="voip-diagnosis-wait" role="status">Bağlantı kontrol ediliyor…</p>';
             voipDiagnose().then((rows) => {
@@ -2195,12 +2201,11 @@ function openStandaloneVoip(anchor = document.querySelector('[data-standalone-vo
         );
       const normalized = phone.length === 10 ? '90' + phone : phone.length === 11 ? '9' + phone : phone;
       const calls = data.calls.filter((c) => c.phone === normalized);
-      const last = calls[0];
-      const recent =
-        last &&
-        last.direction !== 'inbound' &&
-        Date.now() - Date.parse(last.createdAt) < data.recentMinutes * 60000 &&
-        !['unanswered', 'busy', 'failed'].includes(last.status);
+      const lastOutbound = calls.find((c) => c.direction !== 'inbound');
+      let recent =
+        lastOutbound &&
+        Date.now() - Date.parse(lastOutbound.createdAt) < data.recentMinutes * 60000 &&
+        !['unanswered', 'busy', 'failed'].includes(lastOutbound.status);
       preview.innerHTML =
         '<div class="voip-standalone-history"><strong>Son 5 arama</strong>' +
         (calls.length
@@ -2263,6 +2268,11 @@ function openStandaloneVoip(anchor = document.querySelector('[data-standalone-vo
         } catch (error) {
           feedback.textContent = error.message;
           e.target.disabled = false;
+          // The next press confirms the repeat call.
+          if (voipRecentCall(error) && !recent) {
+            recent = true;
+            e.target.textContent = 'Kontrol ettim, tekrar ara';
+          }
           if (voipNeedsDiagnosis(error)) voipShowDiagnosis(dialog.querySelector('[data-voip-trouble]'));
         }
       };
