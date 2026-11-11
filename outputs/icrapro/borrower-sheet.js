@@ -523,7 +523,7 @@ function validatePropertyFields(value) {
 }
 
 function propertySummary(record) {
-  return `<section style="margin-top:24px"><h3 class="sectiontitle">Tapu, Araç ve SGK Bilgileri</h3><div class="grid">${propertySections.map(([key, title]) => `<div class="detail-field"><small>${esc(title)}</small><b>${esc(record[key + 'Status'] || 'Belirtilmedi')}</b>${record[key + 'Status'] === 'Var' ? `<p class="conversation-note">${esc(record[key + 'Details'] || '—')}</p>` : ''}</div>`).join('')}${record.docType === 'Yediemin Park Ücreti' ? '<div class="detail-field"><small>Yakalama</small><b>' + esc(record.captureStatus || 'Belirtilmedi') + '</b>' + (record.captureStatus === 'Var' ? '<p class="conversation-note">' + esc(record.captureDetails || '—') + '</p>' : '') + '</div>' : ''}</div></section>`;
+  return `<section style="margin-top:24px"><h3 class="sectiontitle">Tapu, Araç ve SGK Bilgileri</h3><div class="grid">${propertySections.map(([key, title]) => `<div class="detail-field"><small>${esc(title)}</small><b>${esc(record[key + 'Status'] || 'Belirtilmedi')}</b>${record[key + 'Status'] === 'Var' ? `<p class="conversation-note">${esc(record[key + 'Details'] || '—')}</p>` : ''}</div>`).join('')}${record.docType === 'Yediemin Park Ücreti' ? '<div class="detail-field"><small>Yakalama</small><b>' + esc(record.captureStatus || 'Belirtilmedi') + '</b>' + (['Var', 'Yok'].includes(record.captureStatus) ? '<p class="conversation-note">' + esc(record.captureDetails || '—') + '</p>' : '') + '</div>' : ''}</div></section>`;
 }
 
 function conversationNow() {

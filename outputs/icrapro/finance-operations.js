@@ -1322,7 +1322,8 @@ function setupParkingCapture(form) {
   const parking = form.elements.docType?.value === 'Yediemin Park Ücreti';
   box.hidden = !parking;
   const update = () => {
-    const show = parking && form.querySelector('[name="captureStatus"]:checked')?.value === 'Var';
+    const show =
+      parking && ['Var', 'Yok'].includes(form.querySelector('[name="captureStatus"]:checked')?.value);
     box.querySelector('[data-capture-details]').hidden = !show;
     const input = form.elements.captureDetails;
     input.disabled = !show;

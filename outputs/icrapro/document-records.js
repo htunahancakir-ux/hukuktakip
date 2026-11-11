@@ -275,7 +275,9 @@ function intake(editId, showNew = false, recordReady = false) {
     if (!validatePropertyFields(d)) return;
     if (d.docType === 'Yediemin Park Ücreti') {
       d.captureStatus = d.captureStatus || '';
-      d.captureDetails = d.captureStatus === 'Var' ? String(d.captureDetails || '').trim() : '';
+      d.captureDetails = ['Var', 'Yok'].includes(d.captureStatus)
+        ? String(d.captureDetails || '').trim()
+        : '';
     }
     if (!['Alındı', 'Firmada'].includes(d.originalDocument))
       return toast('Evrak aslı için Alındı veya Firmada seçeneğini işaretleyin.');
