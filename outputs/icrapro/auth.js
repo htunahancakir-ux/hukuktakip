@@ -590,7 +590,7 @@ function installPasswordVisibility(form) {
   });
 }
 function authGate(setup) {
-  loginFrame(`<form id="loginForm" class="panel" aria-labelledby="loginTitle">
+  loginFrame(`<form id="loginForm" autocomplete="off" class="panel" aria-labelledby="loginTitle">
     <div class="login-heading"><h1 id="loginTitle">${setup ? 'İlk adımı atın.' : '<a class="brand-home" href="/">HAN (PATAN) HUKUK</a>'}</h1>
       <p>${setup ? 'Han Hukuk çalışma alanınız için ilk yönetici hesabını oluşturun.' : 'Çalışma alanınıza erişmek için<br>hesap bilgilerinizle giriş yapın.'}</p></div>
     <div class="login-fields">
@@ -600,9 +600,9 @@ function authGate(setup) {
       </label>
       <div class="field"><div class="login-field-label"><label for="login-password">Şifre</label>
         ${setup ? '' : '<button type="button" class="login-link" id="forgotPassword">Şifremi unuttum</button>'}</div>
-        <div class="login-control">${loginIcon('lock')}<input id="login-password" name="password" type="password" required ${setup ? 'minlength="10"' : ''} autocomplete="${setup ? 'new-password' : 'off'}" placeholder="Şifrenizi girin" aria-describedby="authError"></div>
+        <div class="login-control">${loginIcon('lock')}<input id="login-password" name="password" type="password" required ${setup ? 'minlength="10"' : ''} autocomplete="new-password" placeholder="Şifrenizi girin" aria-describedby="authError"></div>
       </div>
-      ${setup ? '' : '<label class="login-remember"><input id="rememberLogin" name="remember" type="checkbox" autocomplete="off"><span><strong>Beni hatırla</strong><small>Bu seçeneği yalnızca kişisel ve güvenilir cihazlarda kullanın.</small></span></label>'}
+      ${setup ? '' : '<label class="login-remember"><input id="rememberLogin" name="remember" type="checkbox" autocomplete="off"><span><strong>Bu bilgisayarda beni hatırla</strong><small>Yalnızca bu tarayıcıdaki oturum açık tutulur. Şifreniz saklanmaz.</small></span></label>'}
       ${setup ? '<label class="field" for="login-confirm">Şifre tekrar<input id="login-confirm" name="confirm" type="password" required minlength="10" autocomplete="new-password" placeholder="Şifrenizi tekrar girin"></label><p class="login-note">Şifreniz en az 10 karakter olmalı. Bu tarayıcıdaki mevcut kayıtlar yönetici kurulumunda sunucuya taşınır.</p>' : ''}
     </div>
     <p id="authError" class="login-status" role="alert"></p>
@@ -618,19 +618,18 @@ function authGate(setup) {
     };
     const remember = document.getElementById('rememberLogin');
     const password = document.getElementById('login-password');
-    const syncPasswordAutocomplete = () => {
-      password.autocomplete = remember.checked ? 'current-password' : 'off';
+    // Persist only this browser's preference, never a password or an account-wide setting.
+    try {
+      remember.checked = localStorage.getItem('han-remember-this-browser-v1') === 'true';
+    } catch {}
+    password.value = '';
+    remember.onchange = () => {
+      if (!remember.checked) {
+        try {
+          localStorage.removeItem('han-remember-this-browser-v1');
+        } catch {}
+      }
     };
-    remember.onchange = syncPasswordAutocomplete;
-    syncPasswordAutocomplete();
-    // Browsers may ignore autocomplete="off" on sign-in forms. Until the user
-    // explicitly opts in, clear any password manager fill that occurs on render.
-    const clearUnselectedAutofill = () => {
-      if (!remember.checked) password.value = '';
-    };
-    clearUnselectedAutofill();
-    requestAnimationFrame(() => requestAnimationFrame(clearUnselectedAutofill));
-    setTimeout(clearUnselectedAutofill, 150);
   }
   installPasswordVisibility(loginForm);
   loginForm.onsubmit = async (event) => {
@@ -659,6 +658,12 @@ function authGate(setup) {
         hanAuth = authApi(url, 'POST', { ...data, replaceSessions: true });
       }
       hanAuth = authApi('/api/session').user;
+      if (!setup) {
+        try {
+          if (data.remember === 'on') localStorage.setItem('han-remember-this-browser-v1', 'true');
+          else localStorage.removeItem('han-remember-this-browser-v1');
+        } catch {}
+      }
       await enterWorkspace();
     } catch (error) {
       const output = document.getElementById('authError');
