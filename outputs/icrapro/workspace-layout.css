@@ -1766,6 +1766,49 @@ dialog.modal-dragging .modal-drag-handle {
   background: #e4eff9;
   color: #145d98;
 }
+.personnel-ledger-summary {
+  margin: 18px 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.personnel-ledger-summary .stat {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.personnel-ledger-summary strong {
+  font-size: 19px;
+  overflow-wrap: anywhere;
+}
+.personnel-payment-form {
+  padding: 16px;
+  margin: 12px 0 24px;
+  border: 1px solid #dce5ef;
+  border-radius: 6px;
+  background: #f7f9fc;
+}
+.personnel-ledger-history-head,
+.personnel-ledger-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 14px 0;
+}
+.personnel-credit {
+  color: #167442;
+  font-weight: 650;
+}
+.personnel-debit {
+  color: #bc3030;
+  font-weight: 650;
+}
+@media (max-width: 850px) {
+  .personnel-ledger-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 @media (max-width: 1000px) {
   .intake-borrower-sheet > .sheet-workspace {
     grid-template-columns: minmax(0, 1fr);

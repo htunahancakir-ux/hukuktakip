@@ -181,6 +181,12 @@ async function personnelSettings(editId) {
   $('#content').innerHTML =
     `${isSettings ? settingsSectionTabs('staff') : ''}<div class="settings-tabs" role="tablist" aria-label="Personel sekmeleri"><button role="tab" aria-selected="${personnelTab === 'records'}" data-staff-view="records" class="${personnelTab === 'records' ? 'selected' : ''}">Personel Kayıtları</button><button role="tab" aria-selected="${personnelTab === 'payroll'}" data-staff-view="payroll" class="${personnelTab === 'payroll' ? 'selected' : ''}">Maaş ve Prim</button></div><div id="personnelView"></div>`;
   if (isSettings) bindSettingsSectionTabs();
+  document
+    .querySelector('[data-staff-view="payroll"]')
+    .parentElement.insertAdjacentHTML(
+      'beforeend',
+      `<button type="button" role="tab" aria-selected="${personnelTab === 'ledger'}" data-staff-view="ledger" class="${personnelTab === 'ledger' ? 'selected' : ''}">Cari Hesap</button>`,
+    );
   document.querySelectorAll('[data-staff-view]').forEach(
     (b) =>
       (b.onclick = () => {
@@ -189,6 +195,7 @@ async function personnelSettings(editId) {
       }),
   );
   if (personnelTab === 'payroll') return personnelCompensationPage();
+  if (personnelTab === 'ledger') return personnelLedgerPage($('#personnelView'));
   $('#personnelView').innerHTML =
     `<div class="panel"><div class="panelhead"><div><h2>Personel Kayıtları</h2><p>Bilgileri görmek ve düzenlemek için personel adına tıklayın.</p></div><div class="toolbar"><span class="badge">${personnel.filter((p) => p.active).length} aktif / ${personnel.length} kayıt</span><button type="button" class="primary" id="newPersonnel">Yeni Personel</button></div></div><div class="overflow"><table><thead><tr><th>AD SOYAD</th><th>BİRİM / GÖREV</th><th>TELEFON</th><th>MAAŞ + PRİM 1</th><th>PRİM 2</th><th>G. PRİM</th><th>GENEL TOPLAM</th><th>DURUM</th><th>İŞLEM</th></tr></thead><tbody>${personnel.map((p) => `<tr><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">${esc(p.name)}</button></td><td>${esc(p.department || '—')}<small>${esc(p.title || '—')}</small></td><td>${esc(p.phone || '—')}</td><td>${money(staffMoney(p).salary / 100)}</td><td>${money(staffMoney(p).bonus / 100)}</td><td>${money(dailyPrimTotal(p.id) / 100)}</td><td>${money((staffMoney(p).total + dailyPrimTotal(p.id)) / 100)}</td><td>${p.active ? 'Aktif' : 'Pasif'}</td><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">Düzenle</button></td></tr>`).join('') || '<tr><td colspan="9" class="empty">Henüz personel yok. Yeni Personel butonuyla ekleyin.</td></tr>'}</tbody><tfoot><tr><td colspan="3"><strong>ALT TOPLAM</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + staffMoney(p).salary, 0) / 100)}</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + staffMoney(p).bonus, 0) / 100)}</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + dailyPrimTotal(p.id), 0) / 100)}</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + staffMoney(p).total + dailyPrimTotal(p.id), 0) / 100)}</strong></td><td colspan="2"></td></tr></tfoot></table></div></div>`;
   $('#newPersonnel').onclick = () => openPersonnelRecord();
@@ -697,6 +704,10 @@ function setupPersonnelCompensationTabs(form, current, editId) {
   nav.className = 'settings-tabs';
   nav.innerHTML =
     '<button type="button" data-personnel-section="general" class="selected">Personel Bilgileri</button><button type="button" data-personnel-section="payroll">Maaş ve Prim</button><button type="button" data-personnel-section="files">Fotoğraf / PDF Ekle ve Gör</button>';
+  nav.insertAdjacentHTML(
+    'beforeend',
+    '<button type="button" data-personnel-section="ledger">Cari Hesap</button>',
+  );
   const sub = document.createElement('div');
   sub.className = 'settings-tabs';
   payroll.append(sub);
@@ -742,10 +753,18 @@ function setupPersonnelCompensationTabs(form, current, editId) {
   const files = document.createElement('section');
   files.hidden = true;
   form.after(files);
+  const ledgerPanel = document.createElement('section');
+  ledgerPanel.hidden = true;
+  form.after(ledgerPanel);
   let filesLoaded = false;
   function select(section) {
     files.hidden = section !== 'files';
-    form.querySelector('.actions').hidden = section === 'files';
+    ledgerPanel.hidden = section !== 'ledger';
+    form.querySelector('.actions').hidden = ['files', 'ledger'].includes(section);
+    if (section === 'ledger') {
+      if (editId) personnelLedgerPage(ledgerPanel, editId);
+      else ledgerPanel.innerHTML = '<p class="notice">Cari hesap için önce personeli kaydedin.</p>';
+    }
     if (section === 'files' && !filesLoaded) {
       filesLoaded = true;
       if (editId) personnelAttachmentsPage(files, editId);

@@ -6,6 +6,7 @@
       'Yakıt',
       'SGK',
       'Maaş',
+      'Maaş Avansı',
       'Prim',
       'Kira',
       'Vergi',

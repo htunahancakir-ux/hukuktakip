@@ -19,6 +19,27 @@ async function handlePersonnelRoutes(ctx) {
     applyParkingFee,
     recognizedCollectionRevenue,
   } = ctx;
+  if (url.pathname === '/api/personnel-ledger' && req.method === 'GET') {
+    if (!['ceo', 'admin'].includes(u.role))
+      throw fail(403, 'Personel carilerini yalnızca yönetici görebilir.');
+    const staffId = url.searchParams.get('staffId') || '';
+    const accounts = ctx.state.data['hanhukuk-accounting-v1'].accounts;
+    const people = ctx.state.data['icrapro-personnel-v1'].map((person) => ({
+      id: person.id,
+      name: person.name,
+      active: person.active !== false,
+    }));
+    const summary = staffId
+      ? require('../../lib/personnel-ledger.cjs').details(ctx.state, staffId, parkingToday())
+      : {};
+    send(res, 200, {
+      people,
+      accounts,
+      startMonth: require('../../lib/personnel-ledger.cjs').START_MONTH,
+      ...summary,
+    });
+    return true;
+  }
   if (url.pathname === '/api/payroll-report' && req.method === 'GET') {
     const month = url.searchParams.get('month') || parkingToday().slice(0, 7);
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw fail(400, 'Geçerli ay seçin.');
