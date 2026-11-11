@@ -100,7 +100,7 @@ for (const role of ['admin', 'ceo'])
           '\n' +
           extract('outputs/icrapro/app.js', ['save']) +
           '\n' +
-          extract('outputs/icrapro/finance-operations.js', ['persistRepaymentPlan']),
+          extract('outputs/icrapro/finance-operations.js', ['persistRepaymentPlan', 'saveDocumentFinance']),
       );
       w.XMLHttpRequest = class {
         open(method, url) {
@@ -133,7 +133,7 @@ for (const role of ['admin', 'ceo'])
         }
       };
       w.db = { clients: structuredClone(server.clients), docs: [] };
-      w.hanDataBaselines.set(key, structuredClone(w.db));
+      w.hanDataBaselines.set(key, structuredClone(server));
       const hydrate = (id) => {
         for (const collection of [w.db, w.hanDataBaselines.get(key)]) {
           const doc = structuredClone(server.docs.find((d) => d.id === id));
@@ -164,6 +164,31 @@ for (const role of ['admin', 'ceo'])
         'A scoped save must not replace its baseline with a full workspace read',
       );
       assert.equal(calls.filter((c) => c.method === 'PUT').length, 3);
+      for (let i = 0; i < 6; i++) {
+        const doc = hydrate(i % 2 ? 'b' : 'a');
+        doc.financeInterest = 20 + i;
+        doc.financeFee = 10 + i;
+        w.saveDocumentFinance(doc);
+        assert.equal(server.docs.find((row) => row.id === doc.id).financeInterest, 20 + i);
+      }
+      const a = hydrate('a');
+      a.notes = 'Unsaved draft in another document';
+      server.docs.find((row) => row.id === 'a').notes = 'Concurrent note';
+      const b = hydrate('b');
+      w.persistRepaymentPlan(b, {
+        ...plan,
+        discount: 100,
+        originalBalance: 10000,
+        balance: 9900,
+        discountReason: 'Test',
+      });
+      assert.equal(server.docs.find((row) => row.id === 'a').notes, 'Concurrent note');
+      assert.equal(a.notes, 'Unsaved draft in another document');
+      assert.equal(server.docs.find((row) => row.id === 'b').debtDiscountCents, 100);
+      assert.equal(
+        w.db.docs.find((row) => row.id === 'untouched'),
+        undefined,
+      );
     } finally {
       dom.window.close();
     }

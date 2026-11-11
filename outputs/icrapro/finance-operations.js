@@ -1,3 +1,19 @@
+function saveDocumentFinance(record) {
+  if (!window.hanRecordsEnabled) return save();
+  const key = 'icrapro-v1';
+  const baseline = hanDataBaselines.get(key);
+  if (!baseline?.docs?.some((doc) => doc.id === record.id))
+    throw Error('Dosyanın güncel bilgilerini yeniden açın.');
+  // A different dialog may have loaded a broader baseline. Save only this
+  // document, preserving unloaded records and drafts in other open documents.
+  const next = structuredClone(baseline);
+  const index = next.docs.findIndex((doc) => doc.id === record.id);
+  next.docs[index] = structuredClone(record);
+  delete next.docs[index]._listFinance;
+  authApi('/api/data?key=' + key, 'PUT', { value: next });
+  delete record._listFinance;
+}
+
 function isParkingDocument(d) {
   return d.docType === 'Yediemin Park Ücreti';
 }
@@ -307,7 +323,7 @@ function financialOperations(id, mode) {
       const previous = d.parkingCommissionRate;
       d.parkingCommissionRate = rate;
       try {
-        save();
+        saveDocumentFinance(d);
       } catch {
         d.parkingCommissionRate = previous;
         return toast('Oran kaydedilemedi.');
@@ -325,7 +341,7 @@ function financialOperations(id, mode) {
     d.financeTermsManual = true;
     delete d._listFinance;
     try {
-      save();
+      saveDocumentFinance(d);
     } catch (error) {
       Object.keys(d).forEach((key) => delete d[key]);
       Object.assign(d, previous);
@@ -436,7 +452,7 @@ function financialOperations(id, mode) {
       d.status = 'İnfaz';
       d.closedDate = v.date;
       try {
-        save();
+        saveDocumentFinance(d);
       } catch {
         toast('Tahsilat kaydedildi; evrak durumunun saklanması başarısız.');
       }
@@ -579,7 +595,7 @@ function automaticLegalCharges(d) {
     d.automaticLegalKey = key;
     delete d.legalCalculationError;
     try {
-      save();
+      saveDocumentFinance(d);
     } catch {
       d.financeInterest = previous.interest;
       d.financeFee = previous.fee;
@@ -704,7 +720,7 @@ function openLegalCalculator(id) {
         d.legalCalculation = result;
         delete d._listFinance;
         try {
-          save();
+          saveDocumentFinance(d);
         } catch {
           Object.keys(d).forEach((k) => delete d[k]);
           Object.assign(d, previous);
@@ -1266,12 +1282,13 @@ function persistRepaymentPlan(d, plan) {
   if (d.repaymentPlan)
     d.repaymentPlanHistory = [...(d.repaymentPlanHistory || []), structuredClone(d.repaymentPlan)];
   d.repaymentPlan = { ...plan, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
+  delete d._listFinance;
   try {
-    save();
-  } catch {
+    saveDocumentFinance(d);
+  } catch (error) {
     Object.keys(d).forEach((k) => delete d[k]);
     Object.assign(d, before);
-    throw Error('Yapılandırma kaydedilemedi.');
+    throw Error(error.message || 'Yapılandırma kaydedilemedi.');
   }
 }
 
