@@ -1,4 +1,11 @@
 const documentTypes = {
+  'Alacak Föyü': {
+    amount: 'Toplam Alacak (₺)',
+    serial: 'Föy Açıklaması',
+    due: 'İlk Vade',
+    requiredDue: false,
+    extras: [],
+  },
   Senet: {
     amount: 'Senet Tutarı (₺)',
     serial: 'Senet Numarası',
@@ -72,6 +79,7 @@ const documentTypes = {
   },
 };
 function docType(d) {
+  if (Array.isArray(d.receivables)) return 'Alacak Föyü';
   return documentTypes[d.docType] ? d.docType : 'Senet';
 }
 function nextDocumentNumber(type, documents, archivedNumbers = []) {
@@ -102,6 +110,7 @@ function documentTypePicker() {
   return `<div class="segments document-types" role="group" aria-label="Evrak türü">${Object.keys(
     documentTypes,
   )
+    .filter((type) => type !== 'Alacak Föyü')
     .map(
       (type, i) =>
         `<button type="button" data-doc-type="${type}" aria-pressed="${i === 0}" class="${i === 0 ? 'selected' : ''}">${type} Ekle</button>`,
@@ -267,9 +276,10 @@ function setupParkingIdentityFields(form) {
   for (const key of ['identity', 'vehiclePlate', 'chassisNumber']) {
     const input = form.elements[key];
     if (!input) continue;
-    input.dataset.optional = String(parking);
-    input.required = !parking;
-    input.setAttribute('aria-required', String(!parking));
+    const optional = parking || key === 'identity';
+    input.dataset.optional = String(optional);
+    input.required = !optional;
+    input.setAttribute('aria-required', String(!optional));
     input.setCustomValidity('');
     if (parking && input.closest('label')?.firstChild?.nodeType === 3)
       input.closest('label').firstChild.textContent = input

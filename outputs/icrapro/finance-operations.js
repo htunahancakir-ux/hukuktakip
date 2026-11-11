@@ -309,7 +309,10 @@ function financialOperations(id, mode) {
     if (event) openCollectionReceipt(event.id);
   };
   $('#openLegalCalculator').disabled =
-    !['ceo', 'admin'].includes(hanAuth.role) || locked || isParkingDocument(d);
+    !['ceo', 'admin'].includes(hanAuth.role) ||
+    locked ||
+    isParkingDocument(d) ||
+    Array.isArray(d.receivables);
   $('#openLegalCalculator').onclick = () => openLegalCalculator(id);
   if (isParkingDocument(d)) $('#expenseEntry').querySelector('[value="addToDebt"]').disabled = true;
   $('#closeFinance').onclick = () => $('#modal').close();
@@ -581,6 +584,9 @@ function bindFinanceHistory() {
 }
 
 function automaticLegalCharges(d) {
+  const receivables = Array.isArray(d.receivables)
+    ? HanReceivables.sync(d, businessDate(), parkingFeeInfo)
+    : null;
   if (typeof applyParkingFee === 'function') applyParkingFee(d, businessDate());
   if (window.hanAuth && !['ceo', 'admin'].includes(hanAuth.role)) return;
   if (d.financeTermsManual === true || d.repaymentPlan || isParkingDocument(d)) return;
@@ -593,14 +599,17 @@ function automaticLegalCharges(d) {
     return;
   const end = businessDate();
   const principal = financeCents(d.amount);
-  const key = [end, d.due, principal].join('|');
+  const key = JSON.stringify([end, d.due, principal, receivables?.items || null]);
   if (d.automaticLegalKey === key) return;
   try {
     if (end < '2026-11-03' || end > legalCalculationSupportedThrough)
       throw Error('Otomatik hesap için güncel tarife ve faiz oranlarının doğrulanması gerekiyor.');
-    const interest = calculateLegalInterest(principal, d.due, end);
-    const base = principal + interest.amount;
-    const fee = calculateEnforcementFee(base, principal, false);
+    const calculated = receivables
+      ? HanReceivables.charges(receivables, end, calculateLegalInterest, calculateEnforcementFee)
+      : null;
+    const interest = calculated?.interest || calculateLegalInterest(principal, d.due, end);
+    const base = calculated?.base ?? principal + interest.amount;
+    const fee = calculated?.fee || calculateEnforcementFee(base, principal, false);
     const previous = {
       interest: d.financeInterest,
       fee: d.financeFee,
@@ -980,7 +989,7 @@ function clientPayoutTotals(d) {
     paid = financeCents(d.clientPaidAmount) + rows.reduce((s, e) => s + e.amount, 0),
     f = docFinance(d),
     eligible = d.status === 'İnfaz' && f.remaining === 0;
-  let entitlement = f.principal;
+  let entitlement = f.principal - Number(d.mixedParkingCommissionCents || 0);
   if (isParkingDocument(d))
     entitlement = validParkingRate(d)
       ? Math.max(0, f.received - parkingCommission(f.received, d.parkingCommissionRate))

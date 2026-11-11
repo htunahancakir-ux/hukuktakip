@@ -296,7 +296,7 @@ const tick = async () => {
 
 test('Additional intake copies parent fields before required validation, including dependent districts', (t) => {
   const dom = new JSDOM(
-    '<form id="intakeForm"><input name="client" value="c80" disabled><input name="clientParty" value=""><input name="debtor" value="Parent borrower" disabled><input name="city" value="İstanbul" disabled><input name="district" value="Kadıköy" disabled></form><iframe></iframe>',
+    '<form id="intakeForm"><select name="client" disabled><option value="c80" selected>Selected client</option></select><input name="clientParty" value=""><input name="debtor" value="Parent borrower" disabled><input name="city" value="İstanbul" disabled><input name="district" value="Kadıköy" disabled></form><iframe></iframe>',
     { url: 'https://local-test.invalid', runScripts: 'dangerously' },
   );
   const w = dom.window.document.querySelector('iframe').contentWindow;
@@ -322,6 +322,11 @@ test('Additional intake copies parent fields before required validation, includi
     form.elements.district.disabled = !form.elements.city.value;
     form.elements.district.value = '';
   });
+  // The child lookup may still be loading or not contain a client outside its first page.
+  form.elements.client.replaceChildren(new w.Option('Müvekkil seçin', ''));
+  assert.equal(w.copySharedIntakeFields(form), true);
+  assert.equal(form.elements.client.value, 'c80');
+  assert.equal(form.elements.client.selectedOptions[0].textContent, 'Selected client');
   w.prepareEmbeddedIntake(form);
   assert.equal(w.validateRequiredForm(form), true);
   assert.equal(form.elements.debtor.value, 'Parent borrower');
@@ -411,7 +416,10 @@ test('Intake UI pages records, keeps totals complete and never saves search/rece
           next: !id && end < 123 ? String(end) : null,
           items: id
             ? [{ id, name: 'Selected client', identity: '10000000080' }]
-            : Array.from({ length: end - start }, (_, i) => ({ id: 'c' + (start + i), name: start + i === 80 ? 'Selected client' : 'Client ' + (start + i) })),
+            : Array.from({ length: end - start }, (_, i) => ({
+                id: 'c' + (start + i),
+                name: start + i === 80 ? 'Selected client' : 'Client ' + (start + i),
+              })),
         }),
       };
     }
