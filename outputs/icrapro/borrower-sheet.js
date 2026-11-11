@@ -647,7 +647,11 @@ function layoutBorrowerSheet(dialog, d, f, client) {
     ) +
     field('Evrak Türü', docType(d)) +
     field('Durum', debtorStatus(d)) +
-    field('Dosya Sorumlusu', personnel.find((p) => p.id === d.relatedStaff)?.name || d.relatedStaffName) +
+    field(
+      'Dosya Sorumlusu',
+      personnel.find((p) => p.id === d.relatedStaff)?.name || d.relatedStaffName,
+      'sheet-staff-name',
+    ) +
     '<div class="sheet-meta-field"><small>Müvekkil</small>' +
     (client
       ? '<button type="button" class="sheet-client-link" id="sheetOpenClient">' +

@@ -81,6 +81,16 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
   let form = w.$('#intakeForm');
   assert.equal(form.hidden, false, 'intake opens a blank folio directly');
   assert.equal(form.classList.contains('intake-borrower-sheet'), true);
+  assert(
+    form.elements.receivedBy.closest('.sheet-metadata'),
+    'receiving personnel remains visible in the sheet header',
+  );
+  assert.equal(form.elements.receivedBy.disabled, false);
+  assert(
+    form.elements.receivedBy.compareDocumentPosition(form.elements.recordedBy) &
+      w.Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+  assert([...form.elements.receivedBy.options].some((option) => option.value === 'p'));
   const tabs = form.querySelectorAll('.intake-sheet-tabs button');
   assert.equal(tabs[0].textContent, 'Kimlik ve İletişim');
   assert.equal(tabs[1].textContent, 'Alacak');

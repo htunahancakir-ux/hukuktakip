@@ -1653,6 +1653,11 @@ dialog.modal-dragging .modal-drag-handle {
   font-size: 20px;
   font-weight: 800;
 }
+.intake-borrower-sheet .sheet-metadata [name='relatedStaff'],
+.compact-borrower-sheet .sheet-staff-name strong {
+  color: #1267aa;
+  font-weight: 700;
+}
 .intake-borrower-sheet .intake-sheet-address > input {
   flex: 1;
   min-width: 0;

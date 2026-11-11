@@ -1050,7 +1050,6 @@ function addToIntakeBatch(id) {
 
 function intakeBatchToolbar() {
   const ids = intakeBatchIds();
-  const count = ids.length;
   const batch = ids
     .map((id) => (window.hanRecordsEnabled ? intakeBatchDocument(id) : db.docs.find((doc) => doc.id === id)))
     .filter(Boolean);
@@ -1064,16 +1063,14 @@ function intakeBatchToolbar() {
       '</ul>'
     : '';
   return (
-    '<div id="intakeBatchGroup" class="panel formbody" style="margin-bottom:20px"><div class="toolbar"><button type="button" class="primary" id="intakeBatchReceipt">Teslim Tesellüm (' +
-    count +
-    ')</button><button type="button" class="secondary" id="newIntakeBatch">Yeni Teslim Grubu</button></div><p>Bu kabul grubunda kaydedilen evraklar toplu listelenir. Yeni teslim grubu açmak kayıtlı evrakları silmez.</p>' +
+    '<div id="intakeBatchGroup" class="panel formbody" style="margin-bottom:20px"><div class="toolbar"><button type="button" class="primary" id="intakeBatchReceipt">Teslim Tesellüm Al</button><button type="button" class="secondary" id="newIntakeBatch">Yeni Teslim Grubu</button></div><p>Teslim tesellüm için müvekkil ve kayıt tarihi aralığı seçin. Bu oturumda kaydedilen evraklar aşağıda listelenir.</p>' +
     summary +
     '</div>'
   );
 }
 
 function bindIntakeBatchToolbar() {
-  $('#intakeBatchReceipt').onclick = () => intakeBatchReceipt();
+  $('#intakeBatchReceipt').onclick = () => intakeBatchReceiptFilter();
   $('#newIntakeBatch').onclick = () => {
     sessionStorage.setItem(intakeBatchKey(), '[]');
     intake();
@@ -1081,24 +1078,39 @@ function bindIntakeBatchToolbar() {
   };
 }
 
-function intakeBatchReceipt(recordReady = false) {
+function intakeBatchReceipt(recordReady = false, selection = null) {
   if (window.hanRecordsEnabled && !recordReady)
     return hydrateIntakeBatch()
       .then(() => intakeBatchReceipt(true))
       .catch((error) => toast(error.message));
-  const ids = intakeBatchIds(),
-    docs = ids
-      .map((id) => (window.hanRecordsEnabled ? intakeBatchDocument(id) : db.docs.find((d) => d.id === id)))
-      .filter(Boolean);
+  const batchIds = intakeBatchIds(),
+    docs =
+      selection?.docs ||
+      batchIds
+        .map((id) => (window.hanRecordsEnabled ? intakeBatchDocument(id) : db.docs.find((d) => d.id === id)))
+        .filter(Boolean);
+  const ids = docs.map((doc) => doc.id);
   if (!docs.length) return toast('Bu teslim grubunda henüz kaydedilmiş evrak yok.');
   const total = docs.reduce((sum, d) => sum + financeCents(d.amount), 0);
   $('#modal').innerHTML =
     `<div class="receipt">${firmReceipt()}<h2>Teslim Tesellüm Tutanağı</h2><p>Tarih: ${esc(displayDate(businessDate()))} · Evrak adedi: ${docs.length}</p><div class="overflow"><table><thead><tr><th>SIRA</th><th>EVRAK NO / TÜR</th><th>MÜVEKKİL</th><th>BORÇLU</th><th>VADE</th><th>EVRAK ASLI</th><th>TUTAR</th></tr></thead><tbody>${docs.map((d, i) => `<tr><td>${i + 1}</td><td>${esc(d.number)}<small>${esc(docType(d))}</small></td><td>${esc((window.hanRecordsEnabled ? intakeClient(d.client) : db.clients.find((c) => c.id === d.client))?.name || '—')}</td><td>${esc(d.debtor)}</td><td>${esc(displayDate(d.due) || '—')}</td><td>${esc(d.originalDocument || '—')}</td><td>${money(d.amount)}</td></tr>`).join('')}</tbody><tfoot><tr><td colspan="6"><b>TOPLAM</b></td><td><b>${money(total / 100)}</b></td></tr></tfoot></table></div><div class="grid" style="margin-top:35px"><div>Teslim Eden: ${esc([...new Set(docs.map((d) => d.deliveredBy).filter(Boolean))].join(', '))}<br>İmza: __________________</div><div>Teslim Alan: ${esc([...new Set(docs.map((d) => d.receivedBy).filter(Boolean))].join(', '))}<br>İmza: __________________</div></div><p>Yukarıda listelenen evraklar belirtilen asıl durumlarıyla teslim edilmiştir.</p></div><div class="actions"><button type="button" class="secondary" id="closeBatchReceipt">Kapat</button><button type="button" class="primary" id="printBatchReceipt">Yazdır / PDF</button></div>`;
+  if (selection) {
+    const line = document.createElement('p');
+    line.textContent =
+      'Müvekkil: ' +
+      selection.clientName +
+      ' · Kayıt / Takip Tarihi Aralığı: ' +
+      displayDate(selection.from) +
+      ' – ' +
+      displayDate(selection.to);
+    $('#modal .receipt h2').after(line);
+  }
   $('#closeBatchReceipt').onclick = () => $('#modal').close();
   $('#printBatchReceipt').onclick = () => window.print();
-  addWhatsAppFileButton($('#modal').querySelector('.actions'), docs[0], 'batchReceipt', null, {
-    documentIds: ids,
-  });
+  if (ids.length <= 50)
+    addWhatsAppFileButton($('#modal').querySelector('.actions'), docs[0], 'batchReceipt', null, {
+      documentIds: ids,
+    });
   $('#modal').showModal();
 }
 

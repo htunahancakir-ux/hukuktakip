@@ -446,7 +446,10 @@ function setupIntakeBorrowerSheet(form, original) {
   imatikCell.remove();
   value('Borçlu', 'debtor', 'sheet-debtor-name');
   move('intakeTrackingDate', 'Takip Tarihi');
-  move('recordedBy', 'Evrakı Kaydeden');
+  const receiverCell = move('receivedBy', 'Evrakı Alan Personel');
+  const recorderCell = move('recordedBy', 'Evrakı Kaydeden');
+  receiverCell.append(...recorderCell.childNodes);
+  recorderCell.remove();
   value('Evrak Türü', 'types');
   value('Durum', 'status');
   move('relatedStaff', 'Dosya Sorumlusu');
