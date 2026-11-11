@@ -514,49 +514,122 @@ function voipSettingsPage() {
       if (host.isConnected) host.textContent = error.message;
     });
 }
+// Telefon Dahilileri: one row per extension (read from the switchboard, plus any added here);
+// the person is picked by typing a name, with matching active users suggested.
 async function voipExtensionsPanel(before) {
   const panel = document.createElement('section');
-  panel.className = 'panel formbody';
+  panel.className = 'panel formbody voip-extensions';
   panel.style.marginBottom = '16px';
   before.before(panel);
   panel.textContent = 'Telefon dahilileri yükleniyor…';
+  const render = (data) => {
+    const users = data.users;
+    const label = (u) => u.name + ' (' + (u.username || '') + ')';
+    const byLabel = new Map(users.map((u) => [label(u), u]));
+    panel.innerHTML =
+      '<h2>Telefon Dahilileri</h2><p>Her dahilinin yanına personelin adını yazmaya başlayın ve önerilenlerden seçin. Bir personelin tek dahilisi olur; başka birine ait dahiliyi seçerseniz eski kişiden alınır. Yalnızca CEO ve yöneticiler değiştirebilir. Buradaki numaralar Verimor’daki dahililerle aynı olmalıdır; bu ekran Verimor’da yeni dahili oluşturmaz.</p>' +
+      (data.switchboardListed
+        ? ''
+        : '<p class="voip-notice">Dahili listesi Verimor’dan alınamadı; atanmış ve burada eklenmiş dahililer gösteriliyor.</p>') +
+      '<datalist id="voipExtensionPeople">' +
+      users.map((u) => '<option value="' + esc(label(u)) + '"></option>').join('') +
+      '</datalist><div class="overflow"><table><thead><tr><th>Dahili</th><th>Personel</th><th></th></tr></thead><tbody>' +
+      (data.extensions
+        .map((row) => {
+          const owner = users.find((u) => u.id === row.userId);
+          return (
+            '<tr><td><strong>' +
+            esc(row.extension) +
+            '</strong>' +
+            (row.fromSwitchboard ? '' : '<small>Verimor listesinde görünmüyor</small>') +
+            '</td><td><form class="toolbar" data-extension-row="' +
+            esc(row.extension) +
+            '"><input name="person" list="voipExtensionPeople" autocomplete="off" data-optional="true" placeholder="Personel adı yazın…" aria-label="' +
+            esc(row.extension) +
+            ' dahilisinin personeli" value="' +
+            esc(owner ? label(owner) : '') +
+            '"><button class="secondary" type="submit">Kaydet</button>' +
+            (owner ? '<button class="link" type="button" data-unassign>Atamayı kaldır</button>' : '') +
+            (!owner && !row.fromSwitchboard
+              ? '<button class="link" type="button" data-remove-extension>Listeden çıkar</button>'
+              : '') +
+            '<span role="status"></span></form></td><td></td></tr>'
+          );
+        })
+        .join('') || '<tr><td colspan="3" class="empty">Henüz dahili yok.</td></tr>') +
+      '</tbody></table></div><form class="toolbar voip-extension-add" data-extension-add><label class="field">Dahili ekle<input name="extension" inputmode="numeric" pattern="[0-9]{2,8}" maxlength="8" placeholder="ör. 1002" data-optional="true"></label><button class="secondary" type="submit">Ekle</button><span role="status"></span></form>';
+    const save = async (form, body, okText) => {
+      const status = form.querySelector('[role="status"]');
+      form.querySelectorAll('button').forEach((b) => (b.disabled = true));
+      status.textContent = 'Kaydediliyor…';
+      try {
+        render(await voipApi('extensions', 'PUT', body));
+        const again = panel.querySelector(
+          body.addExtension || body.removeExtension
+            ? '[data-extension-add] [role="status"]'
+            : '[data-extension-row="' + (body.extension || form.dataset.extensionRow) + '"] [role="status"]',
+        );
+        if (again) again.textContent = okText;
+      } catch (error) {
+        status.textContent = error.message;
+        form.querySelectorAll('button').forEach((b) => (b.disabled = false));
+      }
+    };
+    panel.querySelectorAll('[data-extension-row]').forEach((form) => {
+      const extension = form.dataset.extensionRow;
+      const current = data.extensions.find((r) => r.extension === extension)?.userId || '';
+      form.onsubmit = (event) => {
+        event.preventDefault();
+        const typed = form.elements.person.value.trim();
+        const person =
+          byLabel.get(typed) ||
+          users.find((u) => u.name.toLocaleLowerCase('tr') === typed.toLocaleLowerCase('tr'));
+        const status = form.querySelector('[role="status"]');
+        if (!typed) {
+          if (current) return save(form, { userId: current, extension: '' }, 'Atama kaldırıldı.');
+          status.textContent = 'Personel adı yazın ve önerilenlerden seçin.';
+          return;
+        }
+        if (!person) {
+          status.textContent = 'Bu adla aktif personel bulunamadı. Önerilenlerden seçin.';
+          return;
+        }
+        if (person.id === current) {
+          status.textContent = 'Zaten bu personele atanmış.';
+          return;
+        }
+        if (
+          person.extension &&
+          person.extension !== extension &&
+          !window.confirm(
+            person.name + ' şu an ' + person.extension + ' dahilisinde. Bu dahiliye geçirilsin mi?',
+          )
+        )
+          return;
+        save(form, { userId: person.id, extension, replace: true }, 'Kaydedildi.');
+      };
+      form.querySelector('[data-unassign]')?.addEventListener('click', () => {
+        if (!window.confirm(extension + ' dahilisinin personel ataması kaldırılsın mı?')) return;
+        save(form, { userId: current, extension: '' }, 'Atama kaldırıldı.');
+      });
+      form
+        .querySelector('[data-remove-extension]')
+        ?.addEventListener('click', () => save(form, { removeExtension: extension }, 'Listeden çıkarıldı.'));
+    });
+    const add = panel.querySelector('[data-extension-add]');
+    add.onsubmit = (event) => {
+      event.preventDefault();
+      const value = add.elements.extension.value.trim();
+      if (!/^\d{2,8}$/.test(value)) {
+        add.querySelector('[role="status"]').textContent = 'Dahili numarası 2–8 rakam olmalı.';
+        return;
+      }
+      save(add, { addExtension: value }, 'Eklendi.');
+    };
+  };
   try {
     const data = await voipApi('extensions');
-    if (!panel.isConnected) return;
-    panel.innerHTML =
-      '<h2>Telefon Dahilileri</h2><p>Yalnızca CEO ve yöneticiler değiştirebilir. Personel kendi dahilisini değiştiremez. Buradaki numara Verimor’da tanımlı dahiliyle aynı olmalıdır; bu işlem Verimor’da yeni dahili oluşturmaz.</p><div class="overflow"><table><thead><tr><th>Kullanıcı</th><th>Dahili / İşlem</th></tr></thead><tbody>' +
-      data.users
-        .map(
-          (u) =>
-            `<tr><td><strong>${esc(u.name)}</strong><small>Kullanıcı: ${esc(u.username || '')} · ${u.role === 'ceo' ? 'CEO' : u.role === 'admin' ? 'Yönetici' : 'Personel'}</small></td><td><form data-extension-user="${esc(u.id)}" class="toolbar"><input aria-label="${esc(u.name)} dahili numarası" name="extension" type="text" inputmode="numeric" pattern="[0-9]{2,8}" maxlength="8" value="${esc(u.extension)}" placeholder="Atanmadı" data-optional="true" style="width:120px"><button class="secondary" type="submit">Kaydet</button><span role="status"></span></form></td></tr>`,
-        )
-        .join('') +
-      '</tbody></table></div>';
-    panel.querySelectorAll('form').forEach(
-      (form) =>
-        (form.onsubmit = async (event) => {
-          event.preventDefault();
-          const button = form.querySelector('button'),
-            status = form.querySelector('[role="status"]');
-          button.disabled = true;
-          status.textContent = 'Kaydediliyor…';
-          try {
-            const saved = await voipApi('extensions', 'PUT', {
-              userId: form.dataset.extensionUser,
-              extension: form.elements.extension.value.trim(),
-            });
-            form.elements.extension.value = saved.users.find(
-              (u) => u.id === form.dataset.extensionUser,
-            ).extension;
-            form.elements.extension.defaultValue = form.elements.extension.value;
-            status.textContent = 'Kaydedildi.';
-          } catch (error) {
-            status.textContent = error.message;
-          } finally {
-            button.disabled = false;
-          }
-        }),
-    );
+    if (panel.isConnected) render(data);
   } catch (error) {
     if (panel.isConnected) panel.textContent = error.message;
   }

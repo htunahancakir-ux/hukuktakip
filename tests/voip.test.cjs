@@ -345,60 +345,112 @@ test('configuration keeps keys encrypted and validates provider, host and duplic
     /iki kullanıcı/,
   );
 });
-test('manager extension panel saves a single user and shows the saved value', async () => {
+test('extension panel lists extensions and assigns a person picked by name', async () => {
   const { JSDOM } = require('jsdom');
   const dom = new JSDOM('<main><section id="permissions"></section></main>', { runScripts: 'outside-only' }),
     w = dom.window;
-  w.esc = (value) => String(value || '');
+  w.esc = (value) => String(value ?? '');
+  w.confirm = () => true;
   w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
-  let input;
+  const users = [
+    { id: 'u', name: 'Cihan Erol', username: 'cihan', role: 'staff', extension: '1000' },
+    { id: 's', name: 'Ayşe Kaya', username: 'ayse', role: 'staff', extension: '' },
+  ];
+  const puts = [];
+  const view = () => ({
+    users,
+    extensions: ['1000', '1001'].map((extension) => ({
+      extension,
+      userId: users.find((u) => u.extension === extension)?.id || '',
+      fromSwitchboard: true,
+    })),
+    switchboardListed: true,
+  });
   w.voipApi = async (path, method, value) => {
     assert.equal(path, 'extensions');
-    if (method === 'PUT') input = value;
-    return {
-      users: [
-        {
-          id: 's',
-          name: 'Personel',
-          username: 'staff',
-          role: 'staff',
-          extension: input ? input.extension : '1002',
-        },
-      ],
-    };
+    if (method === 'PUT') {
+      puts.push(value);
+      if (value.replace) for (const u of users) if (u.extension === value.extension) u.extension = '';
+      const target = users.find((u) => u.id === value.userId);
+      if (target) target.extension = value.extension;
+    }
+    return view();
   };
   await w.voipExtensionsPanel(w.document.querySelector('#permissions'));
-  const form = w.document.querySelector('form');
-  const personnelSource = await fs.readFile('outputs/icrapro/personnel.js', 'utf8');
-  w.eval(
-    personnelSource.slice(
-      personnelSource.indexOf('function mandatoryControls('),
-      personnelSource.indexOf('function validateSettingsDraft('),
-    ),
+  const row = (ext) => w.document.querySelector('[data-extension-row="' + ext + '"]');
+  assert.deepEqual(
+    [...w.document.querySelectorAll('[data-extension-row]')].map((f) => f.dataset.extensionRow),
+    ['1000', '1001'],
+    'one row per extension',
   );
-  w.enforceRequired(form);
-  form.elements.extension.value = '1000';
-  form.requestSubmit();
+  assert.equal(row('1000').elements.person.value, 'Cihan Erol (cihan)');
+  assert.equal(row('1001').elements.person.value, '');
+  assert.equal(w.document.querySelectorAll('#voipExtensionPeople option').length, 2, 'name suggestions');
+
+  row('1001').elements.person.value = 'Ayşe Kaya (ayse)';
+  row('1001').requestSubmit();
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(input.userId, 's');
-  assert.equal(input.extension, '1000');
-  assert.equal(form.querySelector('[role="status"]').textContent, 'Kaydedildi.');
-  assert.equal(form.elements.extension.defaultValue, '1000');
-  form.elements.extension.value = '';
-  assert.equal(
-    form.checkValidity(),
-    true,
-    'Blank extensions remain optional after the application form upgrader',
-  );
-  form.requestSubmit();
+  assert.deepEqual({ ...puts.at(-1) }, { userId: 's', extension: '1001', replace: true });
+  assert.equal(row('1001').elements.person.value, 'Ayşe Kaya (ayse)');
+  assert.equal(row('1001').querySelector('[role="status"]').textContent, 'Kaydedildi.');
+
+  // Typing a plain name works too; taking 1000 moves it from Cihan to Ayşe.
+  row('1000').elements.person.value = 'ayşe kaya';
+  row('1000').requestSubmit();
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(input.extension, '');
-  assert.equal(form.elements.extension.defaultValue, '');
-  assert.equal(form.querySelector('[role="status"]').textContent, 'Kaydedildi.');
-  form.elements.extension.value = 'abc';
-  assert.equal(form.checkValidity(), false, 'Nonempty extensions still require digits');
-  dom.window.close();
+  assert.deepEqual({ ...puts.at(-1) }, { userId: 's', extension: '1000', replace: true });
+
+  row('1000').elements.person.value = 'Olmayan Kişi';
+  row('1000').requestSubmit();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.match(row('1000').querySelector('[role="status"]').textContent, /bulunamadı/);
+  assert.equal(puts.length, 2, 'unknown names are not sent');
+
+  row('1000').querySelector('[data-unassign]').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual({ ...puts.at(-1) }, { userId: 's', extension: '' });
+
+  const add = w.document.querySelector('[data-extension-add]');
+  add.elements.extension.value = '1002';
+  add.requestSubmit();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual({ ...puts.at(-1) }, { addExtension: '1002' });
+  w.close();
 });
+
+test('extensions API: switchboard list, take-over with replace, and a kept list of added extensions', async () => {
+  let statusCalls = 0;
+  const h = harness(async (url) => {
+    if (new URL(url).pathname === '/user_statuses') {
+      statusCalls++;
+      return new Response('[{"user":1000,"status":"AVAILABLE"},{"user":1001,"status":"UNREGISTERED"}]');
+    }
+    return new Response('[]');
+  });
+  h.state.voipConfig.extensions = { u: '1001' };
+  const first = await h.call('extensions');
+  assert.deepEqual(
+    first.extensions.map((e) => [e.extension, e.userId, e.fromSwitchboard]),
+    [
+      ['1000', '', true],
+      ['1001', 'u', true],
+    ],
+  );
+  await h.call('extensions');
+  assert.equal(statusCalls, 1, 'switchboard list cached');
+  await assert.rejects(h.call('extensions', 'PUT', { userId: 's', extension: '1001' }), /başka bir kullanıcıya atanmış/);
+  const moved = await h.call('extensions', 'PUT', { userId: 's', extension: '1001', replace: true });
+  assert.deepEqual(h.state.voipConfig.extensions, { s: '1001' }, 'taken from u');
+  assert.equal(moved.extensions.find((e) => e.extension === '1001').userId, 's');
+  await h.call('extensions', 'PUT', { addExtension: '1002' });
+  assert.ok((await h.call('extensions')).extensions.some((e) => e.extension === '1002' && !e.fromSwitchboard));
+  await assert.rejects(h.call('extensions', 'PUT', { removeExtension: '1001' }), /Önce bu dahilinin/);
+  await h.call('extensions', 'PUT', { removeExtension: '1002' });
+  assert.ok(!(await h.call('extensions')).extensions.some((e) => e.extension === '1002'));
+  h.user = { id: 's', name: 'Personel', role: 'staff', staffId: 'p' };
+  await assert.rejects(h.call('extensions'), /yalnızca CEO ve yöneticiler/);
+});
+
 test('reservation prevents concurrent dialing and replays request without another provider call', async () => {
   let release,
     started = 0;
