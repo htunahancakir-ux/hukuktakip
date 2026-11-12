@@ -373,7 +373,7 @@ function clientModal(id, loadedRecord) {
   let c = loadedRecord || db.clients.find((x) => x.id === id) || {};
   kind = c.type || 'Şahıs';
   $('#modal').innerHTML =
-    `<form id="clientForm"><div class="panelhead"><div><h2>${id ? 'Müvekkili Düzenle' : 'Yeni Müvekkil Kaydı'}</h2><p>Kimlik, iletişim ve adres bilgileri</p></div><button class="link" type="button" id="close">✕</button></div><div class="formbody"><div class="segments">${['Şahıs', 'Şirket', 'Şahıs Şirketi'].map((t) => `<button type="button" class="${kind === t ? 'selected' : ''}" data-kind="${t}">${t}</button>`).join('')}</div><label class="field" style="margin-bottom:23px">Müvekkil Türü<select name="clientCategory" required><option value="">Müvekkil türü seçin</option>${['Mağaza', 'Yediemin', 'Diğer'].map((category) => `<option value="${category}" ${c.clientCategory === category ? 'selected' : ''}>${category}</option>`).join('')}</select></label><h3 class="sectiontitle">01 &nbsp; Müvekkil bilgileri</h3><div class="grid">${field('Ticari Unvan', 'tradeName', 'text', c.tradeName ?? (c.type && c.type !== 'Şahıs' ? c.name : ''), false).replace('<input ', '<input data-optional="true" ')}${field('Ad Soyad', 'fullName', 'text', c.fullName ?? (!c.type || c.type === 'Şahıs' ? c.name : ''), false).replace('<input ', '<input data-optional="true" ')}${field('TC Kimlik / Vergi Numarası', 'identity', 'text', c.identity)}${field('Telefon', 'phone', 'tel', c.phone)}${field('E-posta', 'email', 'email', c.email, false, true)}${clientCityField(c)}<label class="field full">Açık Adres<textarea name="address" rows="2">${esc(c.address || '')}</textarea></label>${field('Referans', 'reference', 'text', c.reference, false, true)}${staffSelect('Evrak Alan Personel', 'documentStaff', c.documentStaff)}${staffSelect('Evrak Kaydeden *', 'recordedBy', c.recordedBy).replace('<select ', '<select required ')}${staffSelect('Tahsilat Uzmanı Personel', 'collectionStaff', c.collectionStaff).replace('<select name="collectionStaff"', '<select data-optional="true" name="collectionStaff"')}<h3 class="sectiontitle full">Banka Bilgileri</h3>${field('Banka Adı', 'bankName', 'text', c.bankName)}${field('Şube', 'bankBranch', 'text', c.bankBranch)}${field('Hesap Sahibi', 'accountHolder', 'text', c.accountHolder, false, true)}<label class="field full">IBAN (isteğe bağlı)<input name="iban" data-optional="true" type="text" value="${esc(c.iban || '')}" placeholder="TR00 0000 0000 0000 0000 0000 00" maxlength="32" autocomplete="off"></label>${clientAttachmentFields(c)}<label class="field full">Notlar<textarea name="notes" rows="2" data-optional="true">${esc(c.notes || '')}</textarea></label></div></div><div class="actions"><button type="button" class="secondary" id="cancel">Vazgeç</button><button class="primary">Müvekkili Kaydet</button></div></form>`;
+    `<form id="clientForm"><div class="panelhead"><div><h2>${id ? 'Müvekkili Düzenle' : 'Yeni Müvekkil Kaydı'}</h2><p>Kimlik, iletişim ve adres bilgileri</p></div><button class="link" type="button" id="close">✕</button></div><div class="formbody"><div class="segments">${['Şahıs', 'Şirket', 'Şahıs Şirketi'].map((t) => `<button type="button" class="${kind === t ? 'selected' : ''}" data-kind="${t}">${t}</button>`).join('')}</div><label class="field" style="margin-bottom:23px">Müvekkil Türü<select name="clientCategory" required><option value="">Müvekkil türü seçin</option>${['Mağaza', 'Yediemin', 'Diğer'].map((category) => `<option value="${category}" ${c.clientCategory === category ? 'selected' : ''}>${category}</option>`).join('')}</select></label><h3 class="sectiontitle">01 &nbsp; Müvekkil bilgileri</h3><div class="grid">${field('Ticari Unvan', 'tradeName', 'text', c.tradeName ?? (c.type && c.type !== 'Şahıs' ? c.name : ''), false).replace('<input ', '<input data-optional="true" ')}${field('Ad Soyad', 'fullName', 'text', c.fullName ?? (!c.type || c.type === 'Şahıs' ? c.name : ''), false).replace('<input ', '<input data-optional="true" ')}${field('TC Kimlik / Vergi Numarası', 'identity', 'text', c.identity)}${field('Vergi Dairesi (isteğe bağlı)', 'taxOffice', 'text', c.taxOffice).replace('<input ', '<input data-optional="true" ')}${field('MERSİS No (isteğe bağlı)', 'mersisNumber', 'text', c.mersisNumber).replace('<input ', '<input data-optional="true" ')}${field('Telefon', 'phone', 'tel', c.phone)}${field('E-posta', 'email', 'email', c.email, false, true)}${clientCityField(c)}<label class="field full">Açık Adres<textarea name="address" rows="2">${esc(c.address || '')}</textarea></label>${field('Referans', 'reference', 'text', c.reference, false, true)}${staffSelect('Evrak Alan Personel', 'documentStaff', c.documentStaff)}${staffSelect('Evrak Kaydeden *', 'recordedBy', c.recordedBy).replace('<select ', '<select required ')}${staffSelect('Tahsilat Uzmanı Personel', 'collectionStaff', c.collectionStaff).replace('<select name="collectionStaff"', '<select data-optional="true" name="collectionStaff"')}<h3 class="sectiontitle full">Banka Bilgileri</h3>${field('Banka Adı', 'bankName', 'text', c.bankName)}${field('Şube', 'bankBranch', 'text', c.bankBranch)}${field('Hesap Sahibi', 'accountHolder', 'text', c.accountHolder, false, true)}<label class="field full">IBAN (isteğe bağlı)<input name="iban" data-optional="true" type="text" value="${esc(c.iban || '')}" placeholder="TR00 0000 0000 0000 0000 0000 00" maxlength="32" autocomplete="off"></label>${clientAttachmentFields(c)}<label class="field full">Notlar<textarea name="notes" rows="2" data-optional="true">${esc(c.notes || '')}</textarea></label></div></div><div class="actions"><button type="button" class="secondary" id="cancel">Vazgeç</button><button class="primary">Müvekkili Kaydet</button></div></form>`;
   for (const name of ['email', 'iban']) {
     document.getElementById('clientForm').elements[name].dataset.optional = 'true';
   }
@@ -382,6 +382,7 @@ function clientModal(id, loadedRecord) {
   clientIbanInput.addEventListener('input', () => clientIbanInput.setCustomValidity(''));
   $('#clientForm').dataset.clientId = id || '';
   setupRecordFormTabs($('#clientForm'), 'client');
+  syncClientCompanyFields($('#clientForm'), kind);
   if (id && ['ceo', 'admin'].includes(window.hanAuth?.role))
     setupClientStatement($('#clientForm'), id, c.name || c.tradeName || c.fullName || '');
   setupExtraContacts($('#clientForm'), c);
@@ -394,6 +395,7 @@ function clientModal(id, loadedRecord) {
     (b) =>
       (b.onclick = () => {
         kind = b.dataset.kind;
+        syncClientCompanyFields($('#clientForm'), kind);
         document.querySelectorAll('[data-kind]').forEach((a) => a.classList.toggle('selected', a === b));
       }),
   );
@@ -430,6 +432,8 @@ function clientModal(id, loadedRecord) {
     if (!validStaffSelection(v, c)) return toast('Kayıtlı ve aktif bir personel seçin.');
     v.tradeName = String(v.tradeName || '').trim();
     v.fullName = String(v.fullName || '').trim();
+    v.taxOffice = String(v.taxOffice || '').trim();
+    v.mersisNumber = String(v.mersisNumber || '').trim();
     v.name = kind === 'Şahıs' ? v.fullName || v.tradeName : v.tradeName || v.fullName;
     if (!v.name) return toast('Ticari unvan veya ad soyad girin.');
     const duplicate =
@@ -479,6 +483,20 @@ function clientModal(id, loadedRecord) {
       button.disabled = false;
     }
   };
+}
+
+function syncClientCompanyFields(form, type) {
+  const company = ['Şirket', 'Şahıs Şirketi'].includes(type);
+  for (const name of ['taxOffice', 'mersisNumber']) {
+    const input = form.elements[name];
+    if (!input) continue;
+    input.closest('label').hidden = !company;
+    input.disabled = !company;
+    input.required = false;
+    input.dataset.optional = 'true';
+    input.removeAttribute('aria-required');
+    input.setCustomValidity('');
+  }
 }
 
 function validClientIban(value) {

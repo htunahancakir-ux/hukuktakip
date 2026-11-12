@@ -239,6 +239,8 @@ async function handleDataRoutes(ctx) {
           }
         }
         const priorIds = new Set(ctx.state.data[key].map((e) => e.id));
+        const parkingProcessed = [],
+          parkingClosed = new Map();
         for (const event of v.value) {
           if (priorIds.has(event.id)) continue;
           priorIds.add(event.id);
@@ -263,6 +265,17 @@ async function handleDataRoutes(ctx) {
           }
           if (event.type === 'payment') {
             const document = ctx.state.data['icrapro-v1'].docs.find((d) => d.id === event.documentId);
+            const closed = require('../../lib/parking-collection.cjs').normalizeParkingCollection(
+              document,
+              event,
+              [...ctx.state.data[key], ...parkingProcessed],
+              parkingToday(),
+              parkingClosed.get(event.documentId) ?? document?.status === 'İnfaz',
+            );
+            if (document?.docType === 'Yediemin Park Ücreti') {
+              parkingClosed.set(event.documentId, closed);
+              parkingProcessed.push(event);
+            } else delete event.parkingPostClosure;
             event.collectionStaffId = event.turnoverStaffId || document?.relatedStaff || '';
             event.collectionStaffName =
               (event.turnoverCategory ? event.turnoverStaffName : '') ||
@@ -378,6 +391,8 @@ async function handleDataRoutes(ctx) {
         'client',
         'clientParty',
         'debtor',
+        'debtorType',
+        'taxOffice',
         'identity',
         'officeIdentity',
         'imatikFolioNumber',

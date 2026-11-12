@@ -258,6 +258,8 @@ test('Borrower TC is optional: blank saves with warning and filled values keep f
   };
   for (const [file, name] of [
     ['form-inputs.js', 'field'],
+    ['document-records.js', 'borrowerPartyFields'],
+    ['document-records.js', 'setupBorrowerPartyFields'],
     ['borrower-sheet.js', 'editBorrower'],
   ]) {
     const source = fs.readFileSync('outputs/icrapro/' + file, 'utf8');
