@@ -16,6 +16,7 @@ const workspaceScripts = [
   'workspace-voip.js',
   'workspace-feedback.js',
   'parking-fees.js',
+  'parking-waiting.js',
   'receivable-rules.js',
   'workspace-receivables.js',
   'document-types.js',
