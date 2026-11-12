@@ -60,6 +60,7 @@
         amount: total / 100,
         preTrackingPayment: paid / 100,
       };
+      if (item.registeredOn && date(item.registeredOn)) clean.registeredOn = item.registeredOn;
       for (const key of [
         'due',
         'serial',

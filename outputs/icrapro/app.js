@@ -341,20 +341,49 @@ function render() {
         const to = document.getElementById('prospectTo').value;
         const staff = document.getElementById('prospectStaffFilter').value.trim().toLocaleLowerCase('tr');
         const query = document.getElementById('prospectQuery').value.trim().toLocaleLowerCase('tr');
-        result.items = result.items.filter((item) =>
-          (!from || item.date >= from) && (!to || item.date <= to) &&
-          (!staff || String(item.staffName || '').toLocaleLowerCase('tr').includes(staff)) &&
-          (!query || [item.company, item.city, item.district].some((v) => String(v || '').toLocaleLowerCase('tr').includes(query)))
+        result.items = result.items.filter(
+          (item) =>
+            (!from || item.date >= from) &&
+            (!to || item.date <= to) &&
+            (!staff ||
+              String(item.staffName || '')
+                .toLocaleLowerCase('tr')
+                .includes(staff)) &&
+            (!query ||
+              [item.company, item.city, item.district].some((v) =>
+                String(v || '')
+                  .toLocaleLowerCase('tr')
+                  .includes(query),
+              )),
         );
-        document.getElementById('prospectList').innerHTML = '<h3>Potansiyel Müvekkiller</h3><div class="overflow"><table><thead><tr><th>TARİH</th><th>FİRMA</th><th>İL / İLÇE</th><th>PERSONEL</th><th>DURUM</th><th>İŞLEM</th></tr></thead><tbody>' +
-          result.items.map((item) => `<tr><td>${esc(item.date)} ${esc(item.time)}</td><td>${esc(item.company)}</td><td>${esc(item.city)} / ${esc(item.district)}</td><td>${esc(item.staffName)}</td><td>${esc(item.status)}</td><td>${['ceo', 'admin'].includes(hanAuth.role) ? `<button type="button" class="link" data-edit-prospect="${esc(item.id)}">Düzenle</button>` : ''}</td></tr>`).join('') +
-          (result.items.length ? '' : '<tr><td colspan="6" class="empty">Henüz kayıt yok.</td></tr>') + '</tbody></table></div>';
+        document.getElementById('prospectList').innerHTML =
+          '<h3>Potansiyel Müvekkiller</h3><div class="overflow"><table><thead><tr><th>TARİH</th><th>FİRMA</th><th>İL / İLÇE</th><th>PERSONEL</th><th>DURUM</th><th>İŞLEM</th></tr></thead><tbody>' +
+          result.items
+            .map(
+              (item) =>
+                `<tr><td>${esc(item.date)} ${esc(item.time)}</td><td>${esc(item.company)}</td><td>${esc(item.city)} / ${esc(item.district)}</td><td>${esc(item.staffName)}</td><td>${esc(item.status)}</td><td>${['ceo', 'admin'].includes(hanAuth.role) ? `<button type="button" class="link" data-edit-prospect="${esc(item.id)}">Düzenle</button>` : ''}</td></tr>`,
+            )
+            .join('') +
+          (result.items.length ? '' : '<tr><td colspan="6" class="empty">Henüz kayıt yok.</td></tr>') +
+          '</tbody></table></div>';
         document.querySelectorAll('[data-edit-prospect]').forEach((editButton) => {
           editButton.onclick = () => {
-            const item = result.items.find (entry => entry.id === editButton.dataset.editProspect);
+            const item = result.items.find((entry) => entry.id === editButton.dataset.editProspect);
             if (!item) return;
             editingProspectId = item.id;
-            for (const key of ['date', 'time', 'staffId', 'status', 'company', 'contact', 'phone', 'city', 'district', 'address', 'notes'])
+            for (const key of [
+              'date',
+              'time',
+              'staffId',
+              'status',
+              'company',
+              'contact',
+              'phone',
+              'city',
+              'district',
+              'address',
+              'notes',
+            ])
               if (form.elements[key]) form.elements[key].value = item[key] || '';
             updateProspectFields();
             form.hidden = false;
@@ -362,7 +391,9 @@ function render() {
             form.elements.company.focus();
           };
         });
-      } catch (error) { document.getElementById('prospectList').textContent = error.message; }
+      } catch (error) {
+        document.getElementById('prospectList').textContent = error.message;
+      }
     };
     form.onsubmit = (event) => {
       event.preventDefault();
@@ -377,9 +408,12 @@ function render() {
         updateProspectFields();
         loadProspects();
         toast('Potansiyel müvekkil kaydedildi.');
-      } catch (error) { toast(error.message); }
+      } catch (error) {
+        toast(error.message);
+      }
     };
-    for (const id of ['prospectFrom', 'prospectTo', 'prospectStaffFilter', 'prospectQuery']) document.getElementById(id).addEventListener('input', loadProspects);
+    for (const id of ['prospectFrom', 'prospectTo', 'prospectStaffFilter', 'prospectQuery'])
+      document.getElementById(id).addEventListener('input', loadProspects);
     loadProspects();
     document.getElementById('convertProspect').onclick = () => {
       if (!hanCan('clients')) return toast('Müvekkil ekleme yetkiniz yok.');
@@ -393,6 +427,7 @@ function render() {
       clientModal(null, {
         type: 'Şirket',
         tradeName: prospect.company.trim(),
+        documentStaff: prospect.staffId || hanAuth.staffId || '',
         fullName: prospect.contact.trim(),
         phone: prospect.phone.trim(),
         city: prospect.city.trim(),
@@ -401,8 +436,7 @@ function render() {
         notes: prospect.notes.trim(),
       });
     };
-  }
-  else if (page === 'personnel') personnelSettings();
+  } else if (page === 'personnel') personnelSettings();
   else if (page === 'settings') settings();
   else documents();
 }

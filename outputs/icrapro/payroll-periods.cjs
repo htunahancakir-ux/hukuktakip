@@ -1,6 +1,10 @@
 const { calculateCallcenterBonus } = require('./personnel-bonus.cjs');
-function monthlyPayrollRows(state, month) {
-  const calculated = calculateCallcenterBonus(state, month);
+const { calculateMarketingBonus } = require('./marketing-bonus.cjs');
+function monthlyPayrollRows(state, month, today = month + '-31') {
+  const calculated = [
+    ...calculateCallcenterBonus(state, month),
+    ...calculateMarketingBonus(state, month, today),
+  ];
   return state.data['icrapro-personnel-v1'].map((p) => {
     const salary = Math.round(Number(p.officialSalary || 0) * 100),
       bonus1 = Math.round(Number(p.unofficialSalary || 0) * 100),
@@ -37,7 +41,7 @@ function syncPayrollPeriods(state, today) {
       if (!state.payrollPeriods[cursor]?.closed)
         state.payrollPeriods[cursor] = {
           month: cursor,
-          rows: monthlyPayrollRows(state, cursor),
+          rows: monthlyPayrollRows(state, cursor, today),
           closed: true,
           closedAt: today,
         };
@@ -47,7 +51,7 @@ function syncPayrollPeriods(state, today) {
     }
   }
   state.payrollPeriodMonth = month;
-  state.payrollPeriods[month] = { month, rows: monthlyPayrollRows(state, month), closed: false };
+  state.payrollPeriods[month] = { month, rows: monthlyPayrollRows(state, month, today), closed: false };
   const ledgerChanged = require('../../lib/personnel-ledger.cjs').syncPersonnelLedger(state, today);
   return (
     ledgerChanged ||

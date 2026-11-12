@@ -185,6 +185,7 @@ function setupReceivables(form, original) {
   }
   function readRow(row) {
     const result = { id: row.dataset.id, docType: row.querySelector('[data-claim-type]').value };
+    if (row.dataset.registeredOn) result.registeredOn = row.dataset.registeredOn;
     for (const control of row.querySelectorAll('[data-claim-field]'))
       result[control.dataset.claimField] = control.value;
     if (result.docType === 'Yediemin Park Ücreti' && !['İnfaz', 'İade'].includes(original?.status)) {
@@ -301,6 +302,7 @@ function setupReceivables(form, original) {
     const row = document.createElement('section');
     row.className = 'receivable-editor';
     row.dataset.id = item.id || crypto.randomUUID();
+    if (item.registeredOn) row.dataset.registeredOn = item.registeredOn;
     row.id = 'claim-editor-' + row.dataset.id;
     row.innerHTML =
       '<div class="receivable-editor-heading"><label class="field">Evrak Türü<select data-claim-type>' +

@@ -69,7 +69,10 @@ async function handlePersonnelRoutes(ctx) {
   if (url.pathname === '/api/bonus2' && req.method === 'GET') {
     const month = url.searchParams.get('month') || parkingToday().slice(0, 7);
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw fail(400, 'Geçerli ay seçin.');
-    const calculated = calculateCallcenterBonus(ctx.state, month, 'each'),
+    const calculated = [
+        ...calculateCallcenterBonus(ctx.state, month, 'each'),
+        ...require('./marketing-bonus.cjs').calculateMarketingBonus(ctx.state, month, parkingToday()),
+      ],
       rows = ctx.state.payrollPeriods?.[month]?.closed
         ? ctx.state.payrollPeriods[month].rows.map(
             (r) => r.bonus2Details || { staffId: r.staffId, name: r.name, total: r.bonus2, manual: true },
@@ -228,8 +231,14 @@ async function handlePersonnelRoutes(ctx) {
       collected,
       grossProfit,
       bonus:
-        calculateCallcenterBonus(ctx.state, date.slice(0, 7), 'each').find((r) => r.staffId === u.staffId)
-          ?.total ?? Math.round(Number(staff?.bonus || 0) * 100),
+        [
+          ...calculateCallcenterBonus(ctx.state, date.slice(0, 7), 'each'),
+          ...require('./marketing-bonus.cjs').calculateMarketingBonus(
+            ctx.state,
+            date.slice(0, 7),
+            parkingToday(),
+          ),
+        ].find((r) => r.staffId === u.staffId)?.total ?? Math.round(Number(staff?.bonus || 0) * 100),
       dailyBonusTotal: (ctx.state.dailyBonuses || [])
         .filter((e) => e.staffId === u.staffId && e.date.startsWith(date.slice(0, 7)))
         .reduce((sum, e) => sum + e.amount, 0),
