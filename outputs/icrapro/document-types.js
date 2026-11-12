@@ -60,7 +60,7 @@ const documentTypes = {
       ['Yediemin Otoparkı', 'parkingName'],
       ['Giriş / Men Tarihi', 'parkingEntry', 'date'],
       ['Araç Cinsi', 'vehicleKind', 'select', ['Motosiklet', 'Otomobil', 'Diğer']],
-      ['%', 'parkingCommissionRate', 'number'],
+      ['Anlaşılan %', 'parkingCommissionRate', 'number'],
     ],
   },
   Fatura: {

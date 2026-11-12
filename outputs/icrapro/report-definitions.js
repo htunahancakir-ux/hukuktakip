@@ -1,4 +1,28 @@
 const reportDefinitions = {
+  staffBreaks: {
+    label: 'Personel Mola ve Geç Dönüş Raporu',
+    columns: [
+      ['name', 'PERSONEL'],
+      ['period', 'MOLA DÖNEMİ'],
+      ['start', 'BAŞLANGIÇ'],
+      ['end', 'BİTİŞ / ŞU AN'],
+      ['duration', 'SÜRE (DK)'],
+      ['allowed', 'DÖNEM HAKKI (DK)'],
+      ['total', 'DÖNEM TOPLAMI (DK)'],
+      ['late', 'AŞIM (DK)'],
+      ['status', 'DURUM'],
+    ],
+  },
+  staffAttendance: {
+    label: 'İşe Geç Giriş Raporu',
+    columns: [
+      ['name', 'PERSONEL'],
+      ['expected', 'MESAİ BAŞLANGICI'],
+      ['arrival', 'İLK SİSTEM GİRİŞİ'],
+      ['late', 'GECİKME (DK)'],
+      ['status', 'DURUM'],
+    ],
+  },
   excel: {
     label: 'Excel Raporu',
     dateHeader: 'TARİH',

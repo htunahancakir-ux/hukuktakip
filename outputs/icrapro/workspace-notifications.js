@@ -37,6 +37,12 @@ function pollWorkspaceNotifications() {
       applyReminderSummary(result.reminders);
       collectionNoticeCursor = result.collections.cursor;
       collectionNoticeQueue.push(...result.collections.notices);
+      if (['ceo', 'admin'].includes(hanAuth.role)) {
+        const dayStart = Date.parse(businessDate() + 'T00:00:00+03:00');
+        collectionNoticeQueue = collectionNoticeQueue.filter(
+          (notice) => !notice.workflow || Date.parse(notice.createdAt || '') >= dayStart,
+        );
+      }
       for (const notice of result.workflow.notices) {
         if (queuedWorkflowNotices.has(notice.id)) continue;
         queuedWorkflowNotices.add(notice.id);

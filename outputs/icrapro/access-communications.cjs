@@ -7,7 +7,12 @@ async function handleCommunicationRoutes(ctx) {
   if (url.pathname === '/api/marketing-prospects') {
     const manager = ['ceo', 'admin'].includes(u.role);
     const marketingStaff = ctx.state.data['icrapro-personnel-v1'].some(
-      (p) => p.id === u.staffId && p.active !== false && String(p.department || '').trim().toLocaleLowerCase('tr-TR') === 'pazarlama',
+      (p) =>
+        p.id === u.staffId &&
+        p.active !== false &&
+        String(p.department || '')
+          .trim()
+          .toLocaleLowerCase('tr-TR') === 'pazarlama',
     );
     if (!manager && !marketingStaff) throw fail(403, 'Pazarlama bölümüne erişim yetkiniz yok.');
     if (req.method === 'GET') {
@@ -24,26 +29,46 @@ async function handleCommunicationRoutes(ctx) {
       if (value.length > max) throw fail(400, 'Alan çok uzun: ' + key);
       return value;
     };
-    const company = clean('company', 200), date = clean('date', 10), time = clean('time', 5),
-      contact = clean('contact', 200), phone = clean('phone', 30), city = clean('city', 100),
-      district = clean('district', 100), address = clean('address', 1000), notes = clean('notes', 3000),
-      requestedStaff = clean('staffId', 200), status = clean('status', 30);
+    const company = clean('company', 200),
+      date = clean('date', 10),
+      time = clean('time', 5),
+      contact = clean('contact', 200),
+      phone = clean('phone', 30),
+      city = clean('city', 100),
+      district = clean('district', 100),
+      address = clean('address', 1000),
+      notes = clean('notes', 3000),
+      requestedStaff = clean('staffId', 200),
+      status = clean('status', 30);
     if (!['Potansiyel Müvekkil', 'Mevcut Müvekkil'].includes(status)) throw fail(400, 'Durum seçin.');
     if (!company || !date || (status === 'Potansiyel Müvekkil' && (!city || !district)))
       throw fail(400, 'Firma adı ve tarih gereklidir; potansiyel müvekkil için il ve ilçe de girilmelidir.');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || (time && !/^\d{2}:\d{2}$/.test(time)))
       throw fail(400, 'Geçerli tarih ve saat girin.');
-    const staffId = manager ? requestedStaff : (u.staffId || '');
+    const staffId = manager ? requestedStaff : u.staffId || '';
     const staff = ctx.state.data['icrapro-personnel-v1'].find((p) => p.id === staffId && p.active !== false);
-    if (!staff && !(manager && status === 'Mevcut Müvekkil' && !staffId)) throw fail(400, 'Aktif bir personel seçin.');
+    if (!staff && !(manager && status === 'Mevcut Müvekkil' && !staffId))
+      throw fail(400, 'Aktif bir personel seçin.');
     const next = structuredClone(ctx.state);
     const records = next.marketingProspects || [];
     const index = editing ? records.findIndex((item) => item.id === input.id) : -1;
     if (editing && index < 0) throw fail(404, 'Kayıt bulunamadı.');
     const record = {
-      ...(editing ? records[index] : { id: crypto.randomUUID(), createdBy: u.id, createdAt: new Date().toISOString() }),
-      company, date, time, contact, phone, city, district, address, notes,
-      staffId, staffName: staff?.name || u.name, status,
+      ...(editing
+        ? records[index]
+        : { id: crypto.randomUUID(), createdBy: u.id, createdAt: new Date().toISOString() }),
+      company,
+      date,
+      time,
+      contact,
+      phone,
+      city,
+      district,
+      address,
+      notes,
+      staffId,
+      staffName: staff?.name || u.name,
+      status,
     };
     if (editing) records[index] = record;
     else records.push(record);
@@ -63,7 +88,9 @@ async function handleCommunicationRoutes(ctx) {
         .filter(
           (w) =>
             (scope === 'all' || (scope === 'mine' ? w.assigneeId === u.id : w.assignerId === u.id)) &&
-            (status === 'all' || w.status === status),
+            (status === 'all' || w.status === status) &&
+            (url.searchParams.get('notification') !== '1' ||
+              require('../../lib/daily-notifications.cjs').current(w, u)),
         )
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
     send(res, 200, { total: rows.length, offset, orders: rows.slice(offset, offset + 50) });
@@ -189,7 +216,10 @@ async function handleCommunicationRoutes(ctx) {
           workOrderId: m.workOrderId || '',
           systemType: m.systemType || '',
           createdAt: m.createdAt,
-          isUnread: m.recipientIds.includes(u.id) && !m.readBy?.[u.id],
+          isUnread:
+            m.recipientIds.includes(u.id) &&
+            !m.readBy?.[u.id] &&
+            require('../../lib/daily-notifications.cjs').current(m, u),
           readCount: Object.keys(m.readBy || {}).length,
         })),
       });

@@ -383,7 +383,7 @@ function openWorkOrder(order) {
 function showPendingWorkOrders() {
   let result;
   try {
-    result = authApi('/api/work-orders?scope=mine&status=pending');
+    result = authApi('/api/work-orders?scope=mine&status=pending&notification=1');
   } catch {
     return;
   }

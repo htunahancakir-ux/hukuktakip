@@ -49,6 +49,15 @@ test('Legacy paid amount and parking commission reduce entitlement', () => {
   assert.throws(()=>validateNewClientPayouts(parking,ledger(parking,payment(80001)),actor),{code:400});
   validateNewClientPayouts(parking,ledger(parking,payment(80000)),actor);
 });
+test('Parking payout is capped by principal less the agreed percentage even when collections exceed principal', () => {
+  const state=fixture();Object.assign(state.data['icrapro-v1'].docs[0],{docType:'Yediemin Park Ücreti',parkingCommissionRate:20});
+  state.data['hanhukuk-finance-v1'][0].amount=150000;
+  assert.throws(()=>validateNewClientPayouts(state,ledger(state,payment(80001)),actor),{code:400});
+  validateNewClientPayouts(state,ledger(state,payment(80000)),actor);
+  const partial=ledger(state,payment(50000));state.data['hanhukuk-accounting-v1']=partial;
+  assert.throws(()=>validateNewClientPayouts(state,ledger(state,payment(30001,'remaining')),actor),{code:400});
+  validateNewClientPayouts(state,ledger(state,payment(30000,'remaining')),actor);
+});
 test('Reject batch overpayment, duplicated IDs and changing old ledger entries', () => {
   const state=fixture();
   for(const entries of [[payment(60000,'a'),payment(60000,'b')],[payment(10000),payment(10000)]])
@@ -136,5 +145,5 @@ test('Client debtor report shows client entitlement, partial payouts and remaini
  ctx.accounting.entries.push({id:'p1',type:'clientPayout',documentId:'d',amount:25000});check([100000,25000,75000]);
  document.clientPaidAmount=100;check([100000,35000,65000]);
  ctx.accounting.entries.push({id:'p2',type:'clientPayout',documentId:'d',amount:65000});check([100000,100000,0]);
- Object.assign(document,{docType:'Yediemin Park Ücreti',parkingCommissionRate:20,clientPaidAmount:0});ctx.accounting.entries=[];check([120000,0,120000]);
+ Object.assign(document,{docType:'Yediemin Park Ücreti',parkingCommissionRate:20,clientPaidAmount:0});ctx.accounting.entries=[];check([80000,0,80000]);
 });

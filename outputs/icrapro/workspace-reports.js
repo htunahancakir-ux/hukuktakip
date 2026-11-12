@@ -357,6 +357,44 @@ function renderReportsPage() {
         '',
       )}</select></label>${field('Başlangıç Tarihi', 'reportFrom', 'date', reportFilters.from)}${field('Bitiş Tarihi', 'reportTo', 'date', reportFilters.to)}<label class="field">Müvekkil<select id="reportClient"><option value="">Tümü</option>${(window.hanRecordsEnabled ? recordReportClients() : db.clients).map((c) => `<option value="${esc(c.id)}" ${reportFilters.client === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label class="field">Personel<select id="reportStaff"><option value="">Tümü</option>${personnel.map((p) => `<option value="${esc(p.id)}" ${reportFilters.staff === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label><label class="field">Durum<select id="reportStatus"><option value="">Tümü</option>${(reportFilters.type === 'personnel' ? ['Aktif', 'Pasif'] : reportFilters.type === 'installments' ? ['Ödendi', 'Kısmi Ödendi', 'Bekliyor', 'Gecikmiş'] : ['Derdest', 'İnfaz', 'İade', 'İcra']).map((s) => `<option ${reportFilters.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label><label class="field">Kasa / Banka<select id="reportAccount"><option value="">Tümü</option>${accounting.accounts.map((a) => `<option value="${esc(a.id)}" ${reportFilters.account === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></label><label class="field full">Raporda Ara<input type="search" id="reportQuery" value="${esc(reportFilters.query)}" placeholder="İsim, evrak no, açıklama…"></label><label class="settings-check full"><input type="checkbox" id="reportUndated" ${reportFilters.undated ? 'checked' : ''}> Kayıt tarihi bulunmayan eski kayıtları da göster</label><button class="secondary" id="clearReportFilters">Süzgeçleri Temizle</button></div>${collapseFilters ? '</details>' : ''} </div><div id="reportResult" style="margin-top:22px"></div>`;
   $('#openMarketingReport').hidden = !hanPageAllowed('marketing');
+  const managerTimeReports = ['ceo', 'admin'].includes(hanAuth.role);
+  for (const [type, label] of [
+    ['staffBreaks', 'Personel Mola Raporu'],
+    ['staffAttendance', 'İşe Geç Giriş Raporu'],
+  ]) {
+    if (!managerTimeReports) {
+      $('#reportType')
+        .querySelector('option[value="' + type + '"]')
+        ?.remove();
+      continue;
+    }
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'primary';
+    button.textContent = label;
+    button.dataset.staffTimeReport = type;
+    button.onclick = () => {
+      reportFilters = { ...reportFilters, type, client: '', account: '', status: '', query: '' };
+      reportsPage();
+    };
+    $('#openMonthlyPayrollReport').after(button);
+  }
+  if (['staffBreaks', 'staffAttendance'].includes(reportFilters.type)) {
+    for (const id of ['reportClient', 'reportAccount', 'reportUndated'])
+      $('#' + id).closest('label').hidden = true;
+    const selectedStatus = reportFilters.status;
+    $('#reportStatus').innerHTML = ['', 'Gecikmiş', 'Zamanında', 'Molada', 'Mesai dışı']
+      .map((s) => '<option value="' + esc(s) + '">' + esc(s || 'Tümü') + '</option>')
+      .join('');
+    $('#reportStatus').value = selectedStatus;
+    const note = document.createElement('p');
+    note.className = 'notice';
+    note.textContent =
+      reportFilters.type === 'staffAttendance'
+        ? 'İşe giriş saati, günün ilk başarılı sistem girişidir; fiziksel işyeri girişini veya devamlı açık oturumdaki işe geliş saatini doğrulamaz.'
+        : '09.00–12.00: 15 dk; 12.00–14.00: 30 dk; 14.00–18.00: 15 dk. Süre molaya çıkıştan itibaren hesaplanır; mola başladığı döneme yazılır. Birden fazla mola dönem içinde birlikte hesaplanır. Mesai dışı molalar ayrıca gösterilir.';
+    $('#reportResult').before(note);
+  }
   if (reportFilters.type === 'expenses') {
     $('#reportClient').closest('label').hidden = true;
     $('#reportStatus').closest('label').hidden = true;

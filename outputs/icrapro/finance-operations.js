@@ -181,7 +181,7 @@ function borrowerProfit(d) {
 function parkingCommissionMarkup(d, f) {
   if (!isParkingDocument(d)) return '';
   const rate = validParkingRate(d) ? Number(d.parkingCommissionRate) : null;
-  return `<div class="notice">Yediemin dosyasında yalnızca anapara tahsil edilir. Faiz, vekâlet ücreti ve masraf borçluya eklenmez. Ofis payı anaparanın içinden ayrılır. Kısmi tahsilatta ofis payı kâra yazılmaz; yalnızca tam tahsilatla infaz olduğunda kaydedilir.</div><label class="field">% — Firma ile Anlaşılan Ofis Payı<input type="number" name="parkingCommissionRate" min="0" max="100" step="0.01" required value="${rate ?? ''}"></label>${rate !== null ? `<p>Anlaşma: %${new Intl.NumberFormat('tr-TR').format(rate)} · Anapara üzerinden toplam ofis payı: <b>${money(parkingCommission(f.principal, rate) / 100)}</b><br>İnfazda gelirleşen ofis payı: <b>${money((f.remaining === 0 ? parkingCommission(f.received, rate) : 0) / 100)}</b> · Firmaya ayrılan: <b>${money((f.received - parkingCommission(f.received, rate)) / 100)}</b></p>` : '<p>Tahsilattan önce anlaşma yüzdesini girin.</p>'}`;
+  return `<div class="notice">Yediemin dosyasında yalnızca anapara tahsil edilir. Faiz, vekâlet ücreti ve masraf borçluya eklenmez. Ofis payı anaparanın içinden ayrılır. Kısmi tahsilatta ofis payı kâra yazılmaz; yalnızca tam tahsilatla infaz olduğunda kaydedilir.</div><label class="field">Anlaşılan %<input type="number" name="parkingCommissionRate" min="0" max="100" step="0.01" required value="${rate ?? ''}"></label>${rate !== null ? `<p>Anlaşma: %${new Intl.NumberFormat('tr-TR').format(rate)} · Anapara üzerinden toplam ofis payı: <b>${money(parkingCommission(f.principal, rate) / 100)}</b><br>İnfazda gelirleşen ofis payı: <b>${money((f.remaining === 0 ? parkingCommission(f.received, rate) : 0) / 100)}</b> · Müvekkile ödenecek tutar: <b>${money((f.principal - parkingCommission(f.principal, rate)) / 100)}</b></p>` : '<p>Tahsilattan önce anlaşma yüzdesini girin.</p>'}`;
 }
 
 function businessDate() {
@@ -1126,7 +1126,7 @@ function clientPayoutTotals(d) {
   let entitlement = f.principal - Number(d.mixedParkingCommissionCents || 0);
   if (isParkingDocument(d))
     entitlement = validParkingRate(d)
-      ? Math.max(0, f.received - parkingCommission(f.received, d.parkingCommissionRate))
+      ? Math.max(0, f.principal - parkingCommission(f.principal, d.parkingCommissionRate))
       : 0;
   return { rows, paid, entitlement, remaining: Math.max(0, entitlement - paid), eligible };
 }
