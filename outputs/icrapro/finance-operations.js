@@ -181,7 +181,10 @@ function borrowerProfit(d) {
 function parkingCommissionMarkup(d, f) {
   if (!isParkingDocument(d)) return '';
   const rate = validParkingRate(d) ? Number(d.parkingCommissionRate) : null;
-  return `<div class="notice">Yediemin dosyasında yalnızca anapara tahsil edilir. Faiz, vekâlet ücreti ve masraf borçluya eklenmez. Ofis payı anaparanın içinden ayrılır. Kısmi tahsilatta ofis payı kâra yazılmaz; yalnızca tam tahsilatla infaz olduğunda kaydedilir.</div><label class="field">Anlaşılan %<input type="number" name="parkingCommissionRate" min="0" max="100" step="0.01" required value="${rate ?? ''}"></label>${rate !== null ? `<div class="detail-field"><small>Anlaşılan Tutar (Müvekkile Ödenecek)</small><b>${money(Math.max(0, f.principal - parkingCommission(f.principal, rate)) / 100)}</b></div><p>Anlaşma: %${new Intl.NumberFormat('tr-TR').format(rate)} · Anapara üzerinden toplam ofis payı: <b>${money(parkingCommission(f.principal, rate) / 100)}</b><br>İnfazda gelirleşen ofis payı: <b>${money((f.remaining === 0 ? parkingCommission(f.received, rate) : 0) / 100)}</b></p>` : '<p>Tahsilattan önce anlaşma yüzdesini girin.</p>'}`;
+  const closed = d.status === 'İnfaz';
+  const received = closed ? f.received : 0;
+  const commission = rate !== null ? parkingCommission(received, rate) : 0;
+  return `<div class="notice">Yediemin dosyasında kâr ve müvekkile ödenecek tutar, dosya infaz olduğunda alınan toplam tahsilat üzerinden hesaplanır. Önceki kısmi tahsilatlar da bu toplama dahildir.</div><label class="field">Anlaşılan %<input type="number" name="parkingCommissionRate" min="0" max="100" step="0.01" required value="${rate ?? ''}"></label>${rate !== null ? `<div class="detail-field"><small>Anlaşılan Tutar (Müvekkile Ödenecek)</small><b>${money(Math.max(0, received - commission) / 100)}</b></div><p>Anlaşma: %${new Intl.NumberFormat('tr-TR').format(rate)} · İnfazdaki toplam tahsilat: <b>${money(received / 100)}</b><br>Ofis payı (kâr): <b>${money(commission / 100)}</b>${closed ? '' : '<br>Dosya infaz olduğunda hesaplanır.'}</p>` : '<p>Tahsilattan önce anlaşma yüzdesini girin.</p>'}`;
 }
 
 function businessDate() {
@@ -1125,9 +1128,10 @@ function clientPayoutTotals(d) {
     eligible = d.status === 'İnfaz' && f.remaining === 0;
   let entitlement = f.principal - Number(d.mixedParkingCommissionCents || 0);
   if (isParkingDocument(d))
-    entitlement = validParkingRate(d)
-      ? Math.max(0, f.principal - parkingCommission(f.principal, d.parkingCommissionRate))
-      : 0;
+    entitlement =
+      d.status === 'İnfaz' && validParkingRate(d)
+        ? Math.max(0, f.received - parkingCommission(f.received, d.parkingCommissionRate))
+        : 0;
   return { rows, paid, entitlement, remaining: Math.max(0, entitlement - paid), eligible };
 }
 

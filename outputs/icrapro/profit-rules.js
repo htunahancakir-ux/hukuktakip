@@ -1,6 +1,7 @@
 (function (root) {
   function recognizedCollectionRevenue(event, events, doc) {
     if (event.type !== 'payment') return 0;
+    if (doc?.docType === 'Yediemin Park Ücreti' && doc.status !== 'İnfaz') return 0;
     if (doc?.status === 'İade') return Number(event.amount || 0);
     if (doc?.principalAdjustment && doc.status !== 'İnfaz') return 0;
     const payments = events.filter((e) => e.documentId === event.documentId && e.type === 'payment');

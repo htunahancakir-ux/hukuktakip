@@ -21,8 +21,8 @@ function borrowerDetail(id, savedForm) {
       ? [
           [
             'Anlaşılan Tutar (Müvekkile Ödenecek)',
-            validParkingRate(d)
-              ? Math.max(0, f.principal - parkingCommission(f.principal, d.parkingCommissionRate))
+            d.status === 'İnfaz' && validParkingRate(d)
+              ? Math.max(0, f.received - parkingCommission(f.received, d.parkingCommissionRate))
               : 0,
           ],
         ]
@@ -141,8 +141,8 @@ function borrowerFinanceOverview(d, f) {
       ? [
           [
             'Anlaşılan Tutar (Müvekkile Ödenecek)',
-            validParkingRate(d)
-              ? Math.max(0, f.principal - parkingCommission(f.principal, d.parkingCommissionRate))
+            d.status === 'İnfaz' && validParkingRate(d)
+              ? Math.max(0, f.received - parkingCommission(f.received, d.parkingCommissionRate))
               : 0,
           ],
         ]
@@ -725,8 +725,8 @@ function layoutBorrowerSheet(dialog, d, f, client) {
         ? [
             [
               'Anlaşılan Tutar (Müvekkile Ödenecek)',
-              validParkingRate(d)
-                ? Math.max(0, f.principal - parkingCommission(f.principal, d.parkingCommissionRate))
+              d.status === 'İnfaz' && validParkingRate(d)
+                ? Math.max(0, f.received - parkingCommission(f.received, d.parkingCommissionRate))
                 : 0,
             ],
           ]
