@@ -916,10 +916,14 @@ function setupPersonnelCompensationTabs(form, current, editId) {
 
 function setupPersonnelPhoneRelationships(form, record) {
   function addRelationship(phoneLabel, value, primary) {
-    const pair = document.createElement('div');
-    pair.className = 'full personnel-phone-pair';
-    phoneLabel.before(pair);
-    pair.append(phoneLabel);
+    let pair = phoneLabel.closest('.phone-source-pair');
+    if (!pair) {
+      pair = document.createElement('div');
+      pair.className = 'full';
+      phoneLabel.before(pair);
+      pair.append(phoneLabel);
+    }
+    pair.classList.add('personnel-phone-pair');
     const label = document.createElement('label');
     label.className = 'field';
     label.textContent = 'Yakınlık Derecesi';

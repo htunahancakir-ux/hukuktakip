@@ -456,6 +456,18 @@ function setupIntakeBorrowerSheet(form, original) {
   value('Vade Tarihi', 'due');
   value('TC / Vergi No', 'identity');
   value('Telefon', 'phone1');
+  const sourceCell = value('Kaynak / Kime Ait (isteğe bağlı)', 'phoneSource');
+  const sourceInput = document.createElement('input');
+  sourceInput.type = 'text';
+  sourceInput.maxLength = 200;
+  sourceInput.dataset.optional = 'true';
+  sourceInput.dataset.draftMeta = 'phoneSource';
+  sourceInput.setAttribute('aria-label', 'Telefon kaynağı / Kime ait');
+  sourceCell.querySelector('strong').replaceWith(sourceInput);
+  sourceInput.addEventListener('input', () => {
+    form.elements.phone1._phoneSourceInput.value = sourceInput.value;
+    form.elements.phone1._phoneSourceInput.dispatchEvent(new Event('input', { bubbles: true }));
+  });
   value('İl / İlçe', 'location');
   const enforcement = document.createElement('div');
   enforcement.className = 'sheet-enforcement-form';
@@ -617,6 +629,7 @@ function setupIntakeBorrowerSheet(form, original) {
       due: displayDate(dates[0] || ''),
       identity: inputs.identity.value,
       phone1: inputs.phone1.value,
+      phoneSource: inputs.phone1._phoneSourceInput?.value || '',
       location: [inputs.city.value, inputs.district.value].filter(Boolean).join(' / '),
       address: inputs.address.value,
     };

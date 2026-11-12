@@ -17,7 +17,7 @@ function borrowerDetail(id, savedForm) {
   const value = (label, v) =>
     `<div class="detail-field"><small>${esc(label)}</small><div>${esc(displayDate(v) || '—')}</div></div>`;
   const address = (label, a, district, city) => value(label, [a, district, city].filter(Boolean).join(' / '));
-  dialog.innerHTML = `<div class="panelhead"><div><h2>Borçlu Detayı · <span class="debtor-name-emphasis">${esc(d.debtor)}</span></h2><p>${esc(d.number)} · ${esc(type)} · ${esc(client?.name || '')}</p><p><b>Dosya Sorumlusu:</b> ${esc(personnel.find((p) => p.id === d.relatedStaff)?.name || d.relatedStaffName || 'Atanmad?')}</p></div><div class="toolbar">${(Array.isArray(d.guarantors) ? d.guarantors : []).map((g, index) => `<button type="button" class="primary guarantor-top-button" data-top-guarantor="${esc(g.id)}" title="${esc(g.name)}" aria-label="Kefil ${index + 1}: ${esc(g.name)}">♙ Kefil ${index + 1}</button>`).join('')}<button class="secondary" id="closeBorrower">Kapat</button></div></div><div class="formbody"><div class="settings-tabs borrower-tabs" role="tablist" aria-label="Borçlu föyü bölümleri">${borrowerSheetTabs.map(([key, label]) => `<button type="button" role="tab" id="borrower-tab-${key}" aria-controls="borrower-panel-${key}" data-borrower-tab="${key}">${esc(label)}</button>`).join('')}</div><section role="tabpanel" id="borrower-panel-personal" aria-labelledby="borrower-tab-personal" data-borrower-panel="personal"><h3 class="sectiontitle">Borçlu Bilgileri</h3><div class="grid"><div class="detail-field"><small>Ad Soyad / Unvan</small><div class="borrower-sheet-name">${esc(d.debtor || '—')}</div></div>${value('Takip Tarihi', borrowerTrackingDate(d))}${Array.isArray(d.previousFolioNumbers) && d.previousFolioNumbers.length ? value('Önceki Föy Numaraları', d.previousFolioNumbers.join(', ')) : ''}${value('Borçlu Türü', d.debtorType || 'Şahıs')}${['Şirket', 'Şahıs Şirketi'].includes(d.debtorType) ? value('Vergi Dairesi', d.taxOffice) : ''}${value(['Şirket', 'Şahıs Şirketi'].includes(d.debtorType) ? 'Vergi No' : 'TC Kimlik / Vergi No', d.identity)}${value('Ofis TC', d.officeIdentity)}${value('Tel-1', own.phone1)}${value('Tel-2', own.phone2)}${own.additionalPhones.map((phone, i) => value('Tel-' + (i + 3), phone)).join('')}${value('Ref. Tel-1', d.referencePhone1)}${value('Ref. Tel-2', d.referencePhone2)}${value('Ofis Tel-1', d.officePhone1)}${value('Ofis Tel-2', d.officePhone2)}${address('Borçlu Adres-1', d.address, d.district, d.city)}${address('Borçlu Adres-2', d.address2, d.address2District, d.address2City)}${address('Borçlu Adres (Ofis)-3', d.officeAddress3, d.officeAddress3District, d.officeAddress3City)}${(d.additionalAddresses || []).map((a, i) => address('Ek Adres ' + (i + 1), a.address, a.district, a.city)).join('')}${value('Dosya Sorumlusu', personnel.find((p) => p.id === d.relatedStaff)?.name || d.relatedStaffName)}</div></section><section role="tabpanel" id="borrower-panel-assets" aria-labelledby="borrower-tab-assets" data-borrower-panel="assets" hidden>${propertySummary(d)}</section><section role="tabpanel" id="borrower-panel-guarantors" aria-labelledby="borrower-tab-guarantors" data-borrower-panel="guarantors" hidden>${guarantorSection(d)}</section><section role="tabpanel" id="borrower-panel-conversations" aria-labelledby="borrower-tab-conversations" data-borrower-panel="conversations" hidden>${borrowerConversationsMarkup(d)}</section><section role="tabpanel" id="borrower-panel-financial" aria-labelledby="borrower-tab-financial" data-borrower-panel="financial" hidden>${receivableSummary(d)}${borrowerFinanceOverview(d, f)}</section><section role="tabpanel" id="borrower-panel-payout" aria-labelledby="borrower-tab-payout" data-borrower-panel="payout" hidden>${clientPayoutSection(d)}</section><section role="tabpanel" id="borrower-panel-finance" aria-labelledby="borrower-tab-finance" data-borrower-panel="finance" hidden><h3 class="sectiontitle" style="margin-top:30px">Finansal Bilgiler</h3><form id="borrowerStatusForm"><div class="grid"><label class="field">Durum<select name="status">${['Derdest', 'İade', 'İnfaz', 'Bekleme', 'İcra'].map((s) => `<option ${s === (d.status || 'Derdest') ? 'selected' : ''}>${s}</option>`).join('')}</select></label>${debtorStatus(d) === 'İnfaz' ? value('İnfaz Tarihi', clientPayoutClosureDate(d)) : ''}<div class="detail-status-action"><button class="primary">Durumu Kaydet</button></div></div></form><div class="stats" style="margin-top:20px">${[
+  dialog.innerHTML = `<div class="panelhead"><div><h2>Borçlu Detayı · <span class="debtor-name-emphasis">${esc(d.debtor)}</span></h2><p>${esc(d.number)} · ${esc(type)} · ${esc(client?.name || '')}</p><p><b>Dosya Sorumlusu:</b> ${esc(personnel.find((p) => p.id === d.relatedStaff)?.name || d.relatedStaffName || 'Atanmad?')}</p></div><div class="toolbar">${(Array.isArray(d.guarantors) ? d.guarantors : []).map((g, index) => `<button type="button" class="primary guarantor-top-button" data-top-guarantor="${esc(g.id)}" title="${esc(g.name)}" aria-label="Kefil ${index + 1}: ${esc(g.name)}">♙ Kefil ${index + 1}</button>`).join('')}<button class="secondary" id="closeBorrower">Kapat</button></div></div><div class="formbody"><div class="settings-tabs borrower-tabs" role="tablist" aria-label="Borçlu föyü bölümleri">${borrowerSheetTabs.map(([key, label]) => `<button type="button" role="tab" id="borrower-tab-${key}" aria-controls="borrower-panel-${key}" data-borrower-tab="${key}">${esc(label)}</button>`).join('')}</div><section role="tabpanel" id="borrower-panel-personal" aria-labelledby="borrower-tab-personal" data-borrower-panel="personal"><h3 class="sectiontitle">Borçlu Bilgileri</h3><div class="grid"><div class="detail-field"><small>Ad Soyad / Unvan</small><div class="borrower-sheet-name">${esc(d.debtor || '—')}</div></div>${value('Takip Tarihi', borrowerTrackingDate(d))}${Array.isArray(d.previousFolioNumbers) && d.previousFolioNumbers.length ? value('Önceki Föy Numaraları', d.previousFolioNumbers.join(', ')) : ''}${value('Borçlu Türü', d.debtorType || 'Şahıs')}${['Şirket', 'Şahıs Şirketi'].includes(d.debtorType) ? value('Vergi Dairesi', d.taxOffice) : ''}${value(['Şirket', 'Şahıs Şirketi'].includes(d.debtorType) ? 'Vergi No' : 'TC Kimlik / Vergi No', d.identity)}${value('Ofis TC', d.officeIdentity)}${value('Tel-1', own.phone1) + value('Kaynak / Kime Ait', phoneSource(d, own.phone1))}${value('Tel-2', own.phone2) + value('Kaynak / Kime Ait', phoneSource(d, own.phone2))}${own.additionalPhones.map((phone, i) => value('Tel-' + (i + 3), phone) + value('Kaynak / Kime Ait', phoneSource(d, phone))).join('')}${value('Ref. Tel-1', d.referencePhone1) + value('Kaynak / Kime Ait', phoneSource(d, d.referencePhone1))}${value('Ref. Tel-2', d.referencePhone2) + value('Kaynak / Kime Ait', phoneSource(d, d.referencePhone2))}${value('Ofis Tel-1', d.officePhone1) + value('Kaynak / Kime Ait', phoneSource(d, d.officePhone1))}${value('Ofis Tel-2', d.officePhone2) + value('Kaynak / Kime Ait', phoneSource(d, d.officePhone2))}${address('Borçlu Adres-1', d.address, d.district, d.city)}${address('Borçlu Adres-2', d.address2, d.address2District, d.address2City)}${address('Borçlu Adres (Ofis)-3', d.officeAddress3, d.officeAddress3District, d.officeAddress3City)}${(d.additionalAddresses || []).map((a, i) => address('Ek Adres ' + (i + 1), a.address, a.district, a.city)).join('')}${value('Dosya Sorumlusu', personnel.find((p) => p.id === d.relatedStaff)?.name || d.relatedStaffName)}</div></section><section role="tabpanel" id="borrower-panel-assets" aria-labelledby="borrower-tab-assets" data-borrower-panel="assets" hidden>${propertySummary(d)}</section><section role="tabpanel" id="borrower-panel-guarantors" aria-labelledby="borrower-tab-guarantors" data-borrower-panel="guarantors" hidden>${guarantorSection(d)}</section><section role="tabpanel" id="borrower-panel-conversations" aria-labelledby="borrower-tab-conversations" data-borrower-panel="conversations" hidden>${borrowerConversationsMarkup(d)}</section><section role="tabpanel" id="borrower-panel-financial" aria-labelledby="borrower-tab-financial" data-borrower-panel="financial" hidden>${receivableSummary(d)}${borrowerFinanceOverview(d, f)}</section><section role="tabpanel" id="borrower-panel-payout" aria-labelledby="borrower-tab-payout" data-borrower-panel="payout" hidden>${clientPayoutSection(d)}</section><section role="tabpanel" id="borrower-panel-finance" aria-labelledby="borrower-tab-finance" data-borrower-panel="finance" hidden><h3 class="sectiontitle" style="margin-top:30px">Finansal Bilgiler</h3><form id="borrowerStatusForm"><div class="grid"><label class="field">Durum<select name="status">${['Derdest', 'İade', 'İnfaz', 'Bekleme', 'İcra'].map((s) => `<option ${s === (d.status || 'Derdest') ? 'selected' : ''}>${s}</option>`).join('')}</select></label>${debtorStatus(d) === 'İnfaz' ? value('İnfaz Tarihi', clientPayoutClosureDate(d)) : ''}<div class="detail-status-action"><button class="primary">Durumu Kaydet</button></div></div></form><div class="stats" style="margin-top:20px">${[
     ...(isParkingDocument(d)
       ? [
           [
@@ -303,6 +303,7 @@ function guarantorForm(d, id) {
   setupClientDistrict('guarantor3');
   configureGuarantorOptionalFields();
   const form = $('#guarantorForm');
+  setupPhoneSources(form, g);
   bindPropertyFields(form);
   form.elements.identity.pattern = '[0-9]{11}';
   form.elements.identity.maxLength = 11;
@@ -315,6 +316,7 @@ function guarantorForm(d, id) {
     v.identity = v.identity.trim();
     v.phone1 = v.phone1.trim();
     v.phone = v.phone1;
+    v.phoneSources = readPhoneSources(form);
     v.address = v.address.trim();
     if (!v.name || !v.phone || !v.address || !/^\d{11}$/.test(v.identity))
       return toast('Kefilin zorunlu bilgilerini tamamlayın.');
@@ -370,14 +372,14 @@ function guarantorDetail(d, id) {
   const dialog = guarantorDialog();
   const item = (label, value) =>
     `<div class="detail-field"><small>${esc(label)}</small><div>${esc(value || '—')}</div></div>`;
-  dialog.innerHTML = `<div class="panelhead"><div><h2>Kefil Bilgileri</h2><p>Borçlu: ${esc(d.debtor)} · ${esc(d.number)}</p></div><button type="button" class="secondary" id="closeGuarantorDetail">Kapat</button></div><div class="formbody grid">${item('Ad Soyad', g.name)}${item('TC Kimlik Numarası', g.identity)}${item('Tel-1', g.phone1 || g.phone)}${item('Tel-2', g.phone2)}${item('Ref. Tel-1', g.referencePhone1)}${item('Ref. Tel-2', g.referencePhone2)}${item('Ofis Tel-1', g.officePhone1)}${item('Ofis Tel-2', g.officePhone2)}${item('İl', g.city)}${item('İlçe', g.district)}${item('Açık Adres', g.address)}${item('Kefil Adres-2', [g.address2, g.address2District, g.address2City].filter(Boolean).join(' / '))}${item('Kefil Adres (Ofis)-3', [g.officeAddress3, g.officeAddress3District, g.officeAddress3City].filter(Boolean).join(' / '))}${item('Açıklama / Not', g.notes)}<div class="full">${propertySummary(g)}</div></div><div class="actions"><button type="button" class="primary" id="editGuarantorDetail">Kefili Düzenle</button></div>`;
+  dialog.innerHTML = `<div class="panelhead"><div><h2>Kefil Bilgileri</h2><p>Borçlu: ${esc(d.debtor)} · ${esc(d.number)}</p></div><button type="button" class="secondary" id="closeGuarantorDetail">Kapat</button></div><div class="formbody grid">${item('Ad Soyad', g.name)}${item('TC Kimlik Numarası', g.identity)}${item('Tel-1', g.phone1 || g.phone) + item('Kaynak / Kime Ait', phoneSource(g, g.phone1 || g.phone))}${item('Tel-2', g.phone2) + item('Kaynak / Kime Ait', phoneSource(g, g.phone2))}${item('Ref. Tel-1', g.referencePhone1) + item('Kaynak / Kime Ait', phoneSource(g, g.referencePhone1))}${item('Ref. Tel-2', g.referencePhone2) + item('Kaynak / Kime Ait', phoneSource(g, g.referencePhone2))}${item('Ofis Tel-1', g.officePhone1) + item('Kaynak / Kime Ait', phoneSource(g, g.officePhone1))}${item('Ofis Tel-2', g.officePhone2) + item('Kaynak / Kime Ait', phoneSource(g, g.officePhone2))}${item('İl', g.city)}${item('İlçe', g.district)}${item('Açık Adres', g.address)}${item('Kefil Adres-2', [g.address2, g.address2District, g.address2City].filter(Boolean).join(' / '))}${item('Kefil Adres (Ofis)-3', [g.officeAddress3, g.officeAddress3District, g.officeAddress3City].filter(Boolean).join(' / '))}${item('Açıklama / Not', g.notes)}<div class="full">${propertySummary(g)}</div></div><div class="actions"><button type="button" class="primary" id="editGuarantorDetail">Kefili Düzenle</button></div>`;
   $('#closeGuarantorDetail').onclick = () => dialog.close();
   $('#editGuarantorDetail').onclick = () => guarantorForm(d, g.id);
   if (!dialog.open) dialog.showModal();
 }
 
 // Tel-3, Tel-4…: the debtor's further numbers, kept in additionalPhones.
-function bindBorrowerExtraPhones(form, phones) {
+function bindBorrowerExtraPhones(form, phones, record = {}) {
   const list = form.querySelector('[data-extra-phone-list]');
   const renumber = () =>
     list.querySelectorAll('.extra-contact-row').forEach((row, i) => {
@@ -385,7 +387,7 @@ function bindBorrowerExtraPhones(form, phones) {
     });
   const add = (phone = '') => {
     const row = document.createElement('div');
-    row.className = 'field extra-contact-row';
+    row.className = 'full extra-contact-row';
     row.innerHTML =
       '<label class="field"><span data-extra-phone-label></span><input type="tel" data-extra-phone data-optional="true" value="' +
       esc(phone) +
@@ -395,6 +397,7 @@ function bindBorrowerExtraPhones(form, phones) {
       renumber();
     };
     list.append(row);
+    bindPhoneSource(form, row.querySelector('input[type=tel]'), record);
     renumber();
     return row;
   };
@@ -422,7 +425,8 @@ function editBorrower(id) {
   const form = $('#editBorrowerForm');
   setupBorrowerPartyFields(form);
   bindPropertyFields(form);
-  bindBorrowerExtraPhones(form, own.additionalPhones);
+  setupPhoneSources(form, d);
+  bindBorrowerExtraPhones(form, own.additionalPhones, d);
   for (const name of [
     'phone2',
     'referencePhone1',
@@ -447,6 +451,7 @@ function editBorrower(id) {
     const value = Object.fromEntries(new FormData(form));
     if (!validatePropertyFields(value)) return;
     for (const key of Object.keys(value)) value[key] = value[key].trim();
+    value.phoneSources = readPhoneSources(form);
     Object.assign(
       value,
       borrowerPhoneSlots({
@@ -824,10 +829,15 @@ function borrowerClientInfo(id) {
       : '') +
     item('TC / Vergi Numarası', c.identity) +
     item('Telefon', c.phone) +
+    item('Kaynak / Kime Ait', phoneSource(c, c.phone)) +
     item('E-posta', c.email) +
     item('İl / İlçe', [c.city, c.district].filter(Boolean).join(' / ')) +
     item('Açık Adres', c.address) +
-    (c.additionalPhones || []).map((phone, i) => item('Ek Telefon ' + (i + 1), phone)).join('') +
+    (c.additionalPhones || [])
+      .map(
+        (phone, i) => item('Ek Telefon ' + (i + 1), phone) + item('Kaynak / Kime Ait', phoneSource(c, phone)),
+      )
+      .join('') +
     (c.additionalAddresses || [])
       .map((a, i) => item('Ek Adres ' + (i + 1), [a.address, a.district, a.city].filter(Boolean).join(' / ')))
       .join('') +

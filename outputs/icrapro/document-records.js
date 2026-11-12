@@ -174,9 +174,9 @@ function intake(editId, showNew = true, recordReady = false) {
         additionalPhones: [ownPhones.phone2, ...ownPhones.additionalPhones].filter(Boolean),
       }
     : {};
-  setupExtraContacts($('#intakeForm'), contactRecord);
   if (original && !$('#intakeForm').elements.phone1.value)
     $('#intakeForm').elements.phone1.value = ownPhones.phone1;
+  setupExtraContacts($('#intakeForm'), contactRecord);
   if (embeddedIntake) prepareEmbeddedIntake($('#intakeForm'));
   else {
     const clientSelect = $('#intakeForm').elements.client;

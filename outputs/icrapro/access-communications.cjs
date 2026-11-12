@@ -62,6 +62,12 @@ async function handleCommunicationRoutes(ctx) {
       time,
       contact,
       phone,
+      phoneSources: require('./phone-format.js').cleanPhoneSources({
+        [phone]:
+          input.phoneSource === undefined && editing
+            ? require('./phone-format.js').phoneSource(records[index], phone)
+            : clean('phoneSource', 200),
+      }),
       city,
       district,
       address,

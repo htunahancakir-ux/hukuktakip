@@ -124,6 +124,12 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
   }
   form.elements.district.value = 'Kadıköy';
   form.elements.originalDocument.value = 'Alındı';
+  const sourceHeader = form.querySelector('[data-draft-meta="phoneSource"]');
+  assert.equal(sourceHeader.value, '');
+  assert.equal(sourceHeader.required, false);
+  sourceHeader.value = 'İş yeri / Ayşe';
+  sourceHeader.dispatchEvent(new w.Event('input', { bubbles: true }));
+  assert.equal(form.elements.phone1._phoneSourceInput.value, 'İş yeri / Ayşe');
   const add = (type, amount, due) => {
     form.querySelector('[data-doc-type="' + type + '"]').click();
     const row = form.querySelector('[data-receivable-rows]>section:last-child');
@@ -145,10 +151,13 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
   await form.onsubmit({ preventDefault() {}, target: form });
   assert.equal(w.db.docs.length, 1, notices.join('; '));
   assert.equal(w.db.docs[0].amount, 3000);
+  assert.equal(w.db.docs[0].phoneSources['5551234567'], 'İş yeri / Ayşe');
   const id = w.db.docs[0].id,
     number = w.db.docs[0].number;
   form = w.$('#intakeForm');
   assert.equal(form.dataset.existingFolio, number);
+  assert.equal(form.elements.phone1._phoneSourceInput.value, 'İş yeri / Ayşe');
+  assert.equal(form.querySelector('[data-draft-meta="phoneSource"]').value, 'İş yeri / Ayşe');
   add('Fatura', '500', '2026-11-07');
   assert.equal(w.validateRequiredForm(form), true);
   await form.onsubmit({ preventDefault() {}, target: form });

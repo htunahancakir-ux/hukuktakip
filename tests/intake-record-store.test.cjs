@@ -227,7 +227,13 @@ test('Intake allocates server numbers, isolates edits, searches all clients and 
       };
     };
     const old = pristine.data['icrapro-v1'].docs[0];
-    const saved = await patch(old, { ...old, notes: 'only selected changed', officeIdentity: '00123456789' });
+    const saved = await patch(old, {
+      ...old,
+      notes: 'only selected changed',
+      officeIdentity: '00123456789',
+      phone1: '05321234567',
+      phoneSources: { 5321234567: 'Eşi Ayşe' },
+    });
     pool.connect = connect;
     assert.equal(saved.status, 200, JSON.stringify(saved.body));
     assert(
@@ -244,6 +250,7 @@ test('Intake allocates server numbers, isolates edits, searches all clients and 
     const edited = editedState.data['icrapro-v1'].docs.find((d) => d.id === 'd0');
     assert.equal(edited.futureField.retained, true);
     assert.equal(edited.officeIdentity, '00123456789');
+    assert.deepEqual(edited.phoneSources, { 5321234567: 'Eşi Ayşe' });
     assert.equal(edited.fileData, old.fileData);
     assert.deepEqual(edited.conversations, old.conversations);
     assert.deepEqual(editedState.deletedDocuments, pristine.deletedDocuments);

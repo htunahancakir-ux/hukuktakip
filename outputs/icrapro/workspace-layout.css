@@ -1835,3 +1835,35 @@ dialog.modal-dragging .modal-drag-handle {
     grid-column: 1 / -1;
   }
 }
+
+.phone-source-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+  align-items: start;
+}
+.phone-source-pair > .field {
+  min-width: 0;
+}
+#personnelForm .personnel-phone-pair.phone-source-pair {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.phone-source-pair input {
+  min-width: 0;
+  width: 100%;
+}
+@media (max-width: 600px) {
+  .phone-source-pair {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  #personnelForm .personnel-phone-pair.phone-source-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.voip-phone-source {
+  font-size: 12px;
+  color: var(--muted, #617586);
+  overflow-wrap: anywhere;
+}

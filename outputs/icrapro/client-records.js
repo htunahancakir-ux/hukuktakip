@@ -637,6 +637,7 @@ function clientDebtorIdentityConflict(kind, id, value, borrowerName) {
 }
 
 function setupExtraContacts(form, record) {
+  setupPhoneSources(form, record);
   for (const type of ['phone', 'address']) {
     const anchor =
       form.elements[type === 'phone' ? (form.elements.phone ? 'phone' : 'phone1') : 'address']?.closest(
@@ -646,7 +647,7 @@ function setupExtraContacts(form, record) {
     const section = document.createElement('section');
     section.className = 'full extra-contacts';
     section.dataset.extraContact = type;
-    anchor.after(section);
+    (anchor.closest('.phone-source-pair') || anchor).after(section);
     const list = document.createElement('div');
     list.className = 'grid';
     const add = document.createElement('button');
@@ -691,6 +692,7 @@ function setupExtraContacts(form, record) {
       remove.onclick = () => box.remove();
       box.append(remove);
       list.append(box);
+      if (type === 'phone') bindPhoneSource(form, box.querySelector('input[type=tel]'), record);
     }
     add.onclick = () => row();
     for (const value of record[type === 'phone' ? 'additionalPhones' : 'additionalAddresses'] || [])
@@ -707,6 +709,7 @@ function readExtraContacts(form) {
       ),
     );
   return {
+    phoneSources: readPhoneSources(form),
     additionalPhones: values('phone')
       .map((r) => r.phone)
       .filter(Boolean),

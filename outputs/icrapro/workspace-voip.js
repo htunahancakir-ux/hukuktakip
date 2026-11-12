@@ -1151,7 +1151,9 @@ function setupBorrowerVoip(dialog, doc) {
               esc(p.label) +
               '</small><strong>' +
               esc(voipPhone(p.phone)) +
-              '</strong>' +
+              '</strong><span class="voip-phone-source">Kaynak / Kime Ait: ' +
+              esc(p.source || '—') +
+              '</span>' +
               (recent && !active ? '<span class="voip-recent-mark">Yakın zamanda görüşüldü</span>' : '') +
               '</div><div class="voip-phone-history">' +
               (last
@@ -1236,6 +1238,7 @@ function setupBorrowerVoip(dialog, doc) {
           '<label>Yeni telefon numarası<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="05XX XXX XX XX" required></label><div><button class="primary" type="submit">Kaydet</button><button class="link" type="button" data-cancel-phone>Vazgeç</button></div><small>Numara borçlunun boş Tel-1 / Tel-2 alanına, bunlar doluysa Tel-3, Tel-4… olarak eklenir.</small><span role="alert"></span>';
         panel.querySelector('.voip-panel-heading').after(form);
         panel.querySelector('[data-add-phone]').disabled = true;
+        setupPhoneSources(form, {});
         form.elements.phone.focus();
         form.querySelector('[data-cancel-phone]').onclick = () => {
           addingPhone = false;
@@ -1262,7 +1265,11 @@ function setupBorrowerVoip(dialog, doc) {
             // The debtor's own Tel-1 / Tel-2 fill first; the rest follow as Tel-3, Tel-4…
             const stored =
               typeof formatPhoneNumber === 'function' ? formatPhoneNumber(normalized) : normalized;
-            const next = { ...doc, additionalPhones: [...(doc.additionalPhones || []), stored] };
+            const next = {
+              ...doc,
+              additionalPhones: [...(doc.additionalPhones || []), stored],
+              phoneSources: { ...cleanPhoneSources(doc.phoneSources), ...readPhoneSources(form) },
+            };
             if (typeof borrowerPhoneSlots === 'function') Object.assign(next, borrowerPhoneSlots(next));
             const saved = await saveRecordIntakeMetadata(doc, next);
             Object.assign(doc, saved);

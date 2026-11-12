@@ -290,7 +290,7 @@ function render() {
             <label class="field">Durum<select name="status" required><option value="">Durum seçin</option><option value="Potansiyel Müvekkil">Potansiyel Müvekkil</option><option value="Mevcut Müvekkil">Mevcut Müvekkil</option></select></label>
             <label class="field">Firma Adı<input name="company" type="text" maxlength="200" required></label>
             <label class="field">Görüşülen Kişi<input name="contact" type="text" maxlength="200"></label>
-            <label class="field">Telefon Numarası<input name="phone" type="tel" maxlength="30"></label>
+            <label class="field">Telefon Numarası<input name="phone" type="tel" maxlength="30"></label><label class="field">Kaynak / Kime Ait (isteğe bağlı)<input name="phoneSource" type="text" maxlength="200" data-optional="true"></label>
             ${clientCityField({}, 'prospect')}
             <label class="field full">Adres<textarea name="address" rows="2" maxlength="1000"></textarea></label>
             <label class="field full">Açıklama<textarea name="notes" rows="3" maxlength="3000"></textarea></label>
@@ -317,7 +317,7 @@ function render() {
     };
     const updateProspectFields = () => {
       const existing = form.elements.status.value === 'Mevcut Müvekkil';
-      for (const name of ['staffId', 'contact', 'phone', 'city', 'district', 'address']) {
+      for (const name of ['staffId', 'contact', 'phone', 'phoneSource', 'city', 'district', 'address']) {
         const input = form.elements[name];
         const container = input?.closest('.field');
         if (container) container.style.display = existing ? 'none' : '';
@@ -385,6 +385,7 @@ function render() {
               'notes',
             ])
               if (form.elements[key]) form.elements[key].value = item[key] || '';
+            form.elements.phoneSource.value = phoneSource(item, item.phone);
             updateProspectFields();
             form.hidden = false;
             button.setAttribute('aria-expanded', 'true');
@@ -430,6 +431,7 @@ function render() {
         documentStaff: prospect.staffId || hanAuth.staffId || '',
         fullName: prospect.contact.trim(),
         phone: prospect.phone.trim(),
+        phoneSources: cleanPhoneSources({ [phoneSourceKey(prospect.phone)]: prospect.phoneSource }),
         city: prospect.city.trim(),
         district: prospect.district.trim(),
         address: prospect.address.trim(),
