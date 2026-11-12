@@ -119,12 +119,13 @@ function scheduledReminderDialog(whatsappAvailable) {
     </div>
     <label class="field">Gün <input name="date" type="date" min="${esc(businessDate())}" required></label>
     <label class="field">Saat (Türkiye) <input name="time" type="time" required></label>
-    <label class="field">Tekrarla<select name="repeat" data-optional="true">${Object.entries(
+    <label class="field full">Not <textarea name="note" rows="4" required maxlength="1000"></textarea></label>
+    <label class="field full">Tekrarla<select name="repeat" data-optional="true">${Object.entries(
       reminderRepeatLabels,
     )
       .map(([value, label]) => `<option value="${value}">${label}</option>`)
       .join('')}</select></label>
-    <label class="field full">Not <textarea name="note" rows="4" required maxlength="1000"></textarea></label>
+    <small class="full">Seçtiğiniz aralıkta, belirlediğiniz saatte hatırlatılır. Tekrarı durdurana kadar devam eder.</small>
     <label class="settings-check full"><input name="whatsapp" type="checkbox" ${whatsappAvailable ? '' : 'disabled'}> Zamanı gelince kendi WhatsApp numarama bildir</label>
     <small class="full">${
       whatsappAvailable
