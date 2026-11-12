@@ -5,7 +5,7 @@ const path = require('node:path');
 const { JSDOM } = require('jsdom');
 const { parsers } = require('prettier/plugins/babel');
 
-test('Personnel attachment tab sits beside payroll and uploads multiple files to the selected person', async (t) => {
+test('Personnel window uploads multiple files to its selected person and disables uploads without an owner', async (t) => {
   const dom = new JSDOM('<div id="content"></div>', {
     url: 'https://test.invalid',
     runScripts: 'dangerously',
@@ -75,15 +75,10 @@ test('Personnel attachment tab sits beside payroll and uploads multiple files to
             },
     };
   };
-  await w.personnelSettings();
-  const tab = w.document.querySelector('[data-staff-view=files]');
-  assert.equal(tab.textContent, 'Foto ve PDF Ekle');
-  assert.equal(tab.previousElementSibling.dataset.staffView, 'payroll');
+  const host = w.document.querySelector('#content');
+  await w.personnelAttachmentsPage(host, '');
   assert.equal(w.document.querySelector('#personnelFilePicker').disabled, true);
-  const select = w.document.querySelector('#personnelFileOwner');
-  select.value = 'person-two';
-  select.dispatchEvent(new w.Event('change'));
-  await tick();
+  await w.personnelAttachmentsPage(host, 'person-two');
   const input = w.document.querySelector('#personnelFilePicker');
   for (const file of [
     new w.File(['%PDF-1.4'], '<first>.pdf', { type: 'application/pdf' }),
@@ -94,7 +89,7 @@ test('Personnel attachment tab sits beside payroll and uploads multiple files to
   }
   await w.document.querySelector('#personnelFilesForm').onsubmit(new w.Event('submit', { cancelable: true }));
   assert.equal(stored.length, 2);
-  assert.equal(w.document.querySelector('#personnelFileOwner').value, 'person-two');
+  assert(stored.every((file) => file.ownerId === 'person-two'));
   assert.equal(w.document.querySelectorAll('[data-personnel-file-list] section').length, 2);
   assert.equal(w.document.querySelector('first'), null);
   await w.document.querySelector('[data-personnel-file-list] button').onclick();

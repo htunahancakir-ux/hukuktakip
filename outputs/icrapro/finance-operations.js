@@ -1,7 +1,7 @@
 function turnoverStaffField() {
-  const field = staffSelect('Ciro Personeli (isteğe bağlı)', 'turnoverStaffId')
-    .replace('<select ', '<select data-optional="true" ')
-    .replace('Personel seçin', 'Dosya sorumlusu')
+  const field = staffSelect('Ciroyu Yapan Personel *', 'turnoverStaffId')
+    .replace('<select ', '<select required ')
+    .replace('Personel seçin', 'Ciro personeli seçin')
     .replace('</select>', '<option value="__other__">Diğer</option></select>');
   return (
     field +
@@ -23,6 +23,118 @@ function saveDocumentFinance(record) {
   delete next.docs[index]._listFinance;
   authApi('/api/data?key=' + key, 'PUT', { value: next });
   delete record._listFinance;
+}
+
+function editDocumentPrincipal(id) {
+  if (!['ceo', 'admin'].includes(hanAuth.role))
+    return toast('Asıl alacağı yalnızca CEO ve yönetici değiştirebilir.');
+  const d = db.docs.find((item) => item.id === id);
+  if (!d || isParkingDocument(d)) return;
+  const expectedPrincipal = financeCents(d.amount);
+  const items = Array.isArray(d.receivables) ? structuredClone(d.receivables) : null;
+  let dialog = document.getElementById('principalDialog');
+  if (!dialog) {
+    dialog = document.createElement('dialog');
+    dialog.id = 'principalDialog';
+    document.body.append(dialog);
+  }
+  dialog.setAttribute('aria-labelledby', 'principalDialogTitle');
+  dialog.innerHTML = `<form><div class="panelhead"><div><h2 id="principalDialogTitle">Asıl Alacağı Düzenle</h2><p>${esc(d.number)} · ${esc(d.debtor)}</p></div><button type="button" class="secondary" data-close-principal>Kapat</button></div><div class="formbody"><p>Mevcut asıl alacak: <strong>${money(d.amount)}</strong></p><div class="grid">${items ? items.map((item, index) => `<label class="field">${esc(item.docType)} · ${esc(item.serial || item.due || index + 1)} · Asıl Alacak (₺)<input type="number" name="principal${index}" min="0" step="0.01" required value="${(financeCents(item.amount) - financeCents(item.preTrackingPayment)) / 100}" ${item.docType === 'Yediemin Park Ücreti' ? 'disabled' : ''}>${item.docType === 'Yediemin Park Ücreti' ? '<small>Günlük tarifeden hesaplanır.</small>' : ''}</label>`).join('') : field('Yeni Asıl Alacak (₺)', 'principal', 'number', d.amount, true)}</div><p>Takip öncesi ödemeler ve kayıtlı tahsilat tutarları korunur. Müvekkile ödenmiş tutarın altına inilemez. İnfaz dosyasında yeni toplam tahsilatı aşarsa dosya yeniden açılır.</p>${d.repaymentPlan ? '<p>Bu düzeltme mevcut taksit planını değiştirmez. Gerekirse Borcu Yapılandır bölümünden planı yeniden düzenleyin.</p>' : ''}<p role="status" data-principal-status></p></div><div class="actions"><button class="primary" type="submit">Asıl Alacağı Kaydet</button></div></form>`;
+  dialog.querySelector('[data-close-principal]').onclick = () => dialog.close();
+  const form = dialog.querySelector('form');
+  form.onsubmit = (event) => {
+    event.preventDefault();
+    const button = form.querySelector('button[type="submit"]');
+    if (button.disabled || !form.reportValidity()) return;
+    button.disabled = true;
+    try {
+      const payload = { documentId: id, expectedPrincipal };
+      if (items)
+        payload.items = items.map((item, index) => ({
+          id: item.id,
+          amount: financeCents(form.elements['principal' + index].value),
+          expectedAmount: financeCents(item.amount) - financeCents(item.preTrackingPayment),
+        }));
+      else payload.amount = financeCents(form.elements.principal.value);
+      const result = authApi('/api/documents/principal', 'POST', payload);
+      const merge = (record) => {
+        for (const key of result.removedFields || []) delete record[key];
+        Object.assign(record, result.record);
+        delete record._listFinance;
+      };
+      merge(d);
+      if (typeof hanDataBaselines !== 'undefined') {
+        const baseline = hanDataBaselines.get('icrapro-v1')?.docs?.find((item) => item.id === id);
+        if (baseline) merge(baseline);
+      }
+      window.modalFormSaved?.(form);
+      dialog.close();
+      financialOperations(id);
+      toast('Asıl alacak güncellendi.');
+    } catch (error) {
+      form.querySelector('[data-principal-status]').textContent = error.message;
+    } finally {
+      button.disabled = false;
+    }
+  };
+  dialog.showModal();
+}
+
+function manuallyCloseDocument(id) {
+  if (!['ceo', 'admin'].includes(hanAuth.role)) return;
+  const d = db.docs.find((item) => item.id === id);
+  if (!d || d.status === 'İnfaz') return;
+  const f = docFinance(d);
+  if (f.received < f.principal)
+    return toast('Manuel infaz için tahsilat asıl alacağa eşit veya üzerinde olmalıdır.');
+  let dialog = document.getElementById('manualClosureDialog');
+  if (!dialog) {
+    dialog = document.createElement('dialog');
+    dialog.id = 'manualClosureDialog';
+    document.body.append(dialog);
+  }
+  dialog.setAttribute('aria-labelledby', 'manualClosureTitle');
+  dialog.innerHTML = `<form><div class="panelhead"><h2 id="manualClosureTitle">Manuel İnfaz</h2><button type="button" class="secondary" data-close-manual>Kapat</button></div><div class="formbody"><p>${esc(d.number)} · ${esc(d.debtor)}</p><p>Asıl alacak: <b>${money(f.principal / 100)}</b><br>Tahsil edilen: <b>${money(f.received / 100)}</b><br>Manuel infazla kapatılacak kalan bakiye: <b>${money(f.remaining / 100)}</b></p><p>Bu işlem dosyayı infaza alır; kalan faiz, ücret ve masraf bakiyesi indirim olarak kapatılır. Yeni tahsilat veya kasa hareketi oluşturmaz.</p><p role="status" data-manual-status></p></div><div class="actions"><button type="submit" class="primary">Dosyayı Manuel İnfaza Al</button></div></form>`;
+  dialog.querySelector('[data-close-manual]').onclick = () => dialog.close();
+  const form = dialog.querySelector('form');
+  form.onsubmit = (event) => {
+    event.preventDefault();
+    const button = form.querySelector('button[type="submit"]');
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      const result = authApi('/api/documents/manual-close', 'POST', {
+        documentId: id,
+        expectedPrincipal: f.principal,
+        expectedReceived: f.received,
+      });
+      Object.assign(d, result.record);
+      delete d._listFinance;
+      if (result.payment) {
+        const existing = financeEvents.find((e) => e.id === result.payment.id);
+        if (existing) Object.assign(existing, result.payment);
+        else financeEvents.push(result.payment);
+      }
+      if (typeof hanDataBaselines !== 'undefined') {
+        const doc = hanDataBaselines.get('icrapro-v1')?.docs?.find((item) => item.id === id);
+        if (doc) Object.assign(doc, result.record);
+        const payment = hanDataBaselines
+          .get('hanhukuk-finance-v1')
+          ?.find((item) => item.id === result.payment?.id);
+        if (payment) Object.assign(payment, result.payment);
+      }
+      window.modalFormSaved?.(form);
+      dialog.close();
+      financialOperations(id);
+      stats();
+      toast('Dosya manuel infaza alındı.');
+    } catch (error) {
+      form.querySelector('[data-manual-status]').textContent = error.message;
+    } finally {
+      button.disabled = false;
+    }
+  };
+  dialog.showModal();
 }
 
 function isParkingDocument(d) {
@@ -319,6 +431,26 @@ function financialOperations(id, mode) {
   if (!$('#modal').open) $('#modal').showModal();
   const terms = $('#financeTerms');
   const canEditTerms = ['ceo', 'admin'].includes(hanAuth.role) && !termsLocked;
+  if (['ceo', 'admin'].includes(hanAuth.role) && d.status !== 'İnfaz') {
+    const manualClose = document.createElement('button');
+    manualClose.type = 'button';
+    manualClose.className = 'secondary';
+    manualClose.dataset.manualClosure = 'true';
+    manualClose.textContent = 'Manuel İnfaz';
+    manualClose.disabled = f.received < f.principal;
+    manualClose.title = 'Tahsilat asıl alacağa eşit veya üzerinde olmalıdır.';
+    manualClose.onclick = () => manuallyCloseDocument(id);
+    terms.querySelector('.sectiontitle').after(manualClose);
+  }
+  if (['ceo', 'admin'].includes(hanAuth.role) && !isParkingDocument(d)) {
+    const editPrincipal = document.createElement('button');
+    editPrincipal.type = 'button';
+    editPrincipal.className = 'secondary';
+    editPrincipal.dataset.editPrincipal = 'true';
+    editPrincipal.textContent = 'Asıl Alacağı Düzenle';
+    editPrincipal.onclick = () => editDocumentPrincipal(id);
+    terms.querySelector('.sectiontitle').after(editPrincipal);
+  }
   terms.querySelector('button[type="submit"], button:not([type])').disabled = !canEditTerms;
   for (const el of terms.querySelectorAll('input')) {
     el.min = '0';
@@ -383,6 +515,8 @@ function financialOperations(id, mode) {
     e.preventDefault();
     const v = Object.fromEntries(new FormData(e.target));
     if (e.target.id === 'expenseEntry' && e.submitter?.value !== 'addToDebt') v.type = 'costOnly';
+    if (v.type === 'payment' && ['ceo', 'admin'].includes(hanAuth.role) && !v.turnoverStaffId)
+      return toast('Ciroyu yapan personeli seçin.');
     const fromExpensePool = e.target.id === 'expenseEntry' && v.accountId === '__expense_pool__';
     if (!fromExpensePool && !accounting.accounts.some((a) => a.id === v.accountId))
       return toast(
@@ -479,9 +613,9 @@ function financialOperations(id, mode) {
     financeEvents.push(event);
     try {
       localStorage.setItem('hanhukuk-finance-v1', JSON.stringify(financeEvents));
-    } catch {
+    } catch (error) {
       financeEvents.pop();
-      return toast('İşlem saklanamadı.');
+      return toast(error.message || 'İşlem saklanamadı.');
     }
     if (closes) {
       d.status = 'İnfaz';

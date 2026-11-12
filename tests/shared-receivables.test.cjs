@@ -25,7 +25,7 @@ test('Claim edits cannot bypass closed-file and paid-file protections through ge
   state.data['hanhukuk-finance-v1'] = [{ id: 'payment', documentId: 'case', type: 'payment', amount: 100 }];
   let next = structuredClone(state);
   next.data['icrapro-v1'].docs[0].receivables[0].amount += 10;
-  assert.throws(() => prepareState(state, next, { role: 'admin' }, { skipPayroll: true }), /yalnızca CEO/);
+  assert.throws(() => prepareState(state, next, { role: 'staff' }, { skipPayroll: true }), /yalnızca CEO/);
   state.data['icrapro-v1'].docs[0].status = 'İnfaz';
   next = structuredClone(state);
   next.data['icrapro-v1'].docs[0].receivables.push({
@@ -285,6 +285,7 @@ test('Intake persists mixed documents as one file with optional enforcement fiel
       id: 'pay',
       documentId: 'case',
       type: 'payment',
+      turnoverStaffId: 'turnover:bonus',
       amount: 10000,
       date: require('../lib/business-time.cjs').businessDate(),
       accountId: 'cash',

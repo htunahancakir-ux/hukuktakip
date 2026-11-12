@@ -19,7 +19,7 @@ function showNextCollectionNotice() {
     'collection-receipt ' + (notice.closes ? 'collection-receipt-closed' : 'collection-receipt-partial');
   host.setAttribute('role', 'status');
   host.setAttribute('aria-live', 'polite');
-  host.innerHTML = `<div class="receipt-brand">HANHUKUK · TAHSİLAT</div><div class="receipt-rule"></div><strong>${notice.closes ? 'DOSYA İNFAZ EDİLDİ' : 'KISMİ ÖDEME'}</strong><div class="receipt-amount">${money(notice.amount / 100)}</div><p>${esc(notice.operatorName)} personeli ${money(notice.amount / 100)} tahsilat yapmıştır.</p><b>${notice.closes ? 'Tebrikler, teşekkürler!' : 'Tebrikler!'}</b><small>${messageTimestamp(notice.createdAt)}</small><div class="receipt-rule"></div><div class="receipt-barcode">▌▏▎▍▌▎▏▌▍▎▌▏▎▍▌</div>`;
+  host.innerHTML = `<div class="receipt-brand">HANHUKUK · TAHSİLAT</div><div class="receipt-rule"></div><strong>${notice.closes ? 'DOSYA İNFAZ EDİLDİ' : 'KISMİ ÖDEME'}</strong><div class="receipt-amount">${money(notice.amount / 100)}</div><p>${esc(notice.collectionStaffName || notice.operatorName)} personeli ${money(notice.amount / 100)} tahsilat yapmıştır.</p><b>${notice.closes ? 'Tebrikler, teşekkürler!' : 'Tebrikler!'}</b><small>${messageTimestamp(notice.createdAt)}</small><div class="receipt-rule"></div><div class="receipt-barcode">▌▏▎▍▌▎▏▌▍▎▌▏▎▍▌</div>`;
   document.body.append(host);
   if (host.showPopover)
     try {

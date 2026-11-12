@@ -4,6 +4,83 @@ const { canDelete, denied } = require('../../lib/deletion-policy.cjs');
 async function handleDocumentRoutes(ctx) {
   const { req, res, url, u, persist, current, allowed, fail, body, send, parkingToday, applyParkingFee } =
     ctx;
+  if (url.pathname === '/api/documents/manual-close' && req.method === 'POST') {
+    if (!['ceo', 'admin'].includes(u.role))
+      throw fail(403, 'Manuel infazı yalnızca CEO ve yönetici yapabilir.');
+    const input = await body(req),
+      next = structuredClone(ctx.state);
+    const doc = next.data['icrapro-v1'].docs.find((d) => d.id === input.documentId);
+    if (!doc) throw fail(404, 'Dosya bulunamadı.');
+    const received = next.data['hanhukuk-finance-v1']
+      .filter((e) => e.documentId === doc.id && e.type === 'payment')
+      .reduce((sum, e) => sum + e.amount, 0);
+    if (
+      input.expectedPrincipal !== Math.round(Number(doc.amount || 0) * 100) ||
+      input.expectedReceived !== received
+    )
+      throw fail(409, 'Dosya hesabı değişti. Güncel dosyayı yeniden açın.');
+    if (doc.status !== 'İnfaz') {
+      require('../../lib/manual-closure.cjs').closeManually(
+        doc,
+        next.data['hanhukuk-finance-v1'],
+        u,
+        parkingToday(),
+      );
+      persist(next);
+    }
+    const saved = ctx.state.data['icrapro-v1'].docs.find((d) => d.id === doc.id);
+    const fields = ['status', 'closedDate', 'debtDiscountCents', 'discountHistory', 'manualClosure'];
+    send(res, 200, {
+      ok: true,
+      record: {
+        id: saved.id,
+        ...Object.fromEntries(
+          fields.filter((key) => Object.hasOwn(saved, key)).map((key) => [key, saved[key]]),
+        ),
+      },
+      payment: ctx.state.data['hanhukuk-finance-v1']
+        .filter((e) => e.documentId === doc.id && e.type === 'payment')
+        .at(-1),
+    });
+    return true;
+  }
+  if (url.pathname === '/api/documents/principal' && req.method === 'POST') {
+    const result = require('../../lib/document-principal.cjs').adjustDocumentPrincipal(
+      ctx.state,
+      await body(req),
+      u,
+      parkingToday(),
+    );
+    if (result.next) persist(result.next);
+    const saved = ctx.state.data['icrapro-v1'].docs.find((d) => d.id === result.record.id);
+    const fields = [
+      'amount',
+      'originalAmount',
+      'receivables',
+      'financeInterest',
+      'financeFee',
+      'financeTermsManual',
+      'legalCalculation',
+      'automaticLegalKey',
+      'legalCalculationError',
+      'status',
+      'closedDate',
+      'mixedParkingCommissionCents',
+      'principalAdjustment',
+      'principalAdjustmentHistory',
+    ];
+    send(res, 200, {
+      ok: true,
+      record: {
+        id: saved.id,
+        ...Object.fromEntries(
+          fields.filter((key) => Object.hasOwn(saved, key)).map((key) => [key, saved[key]]),
+        ),
+      },
+      removedFields: fields.filter((key) => !Object.hasOwn(saved, key)),
+    });
+    return true;
+  }
   if (url.pathname === '/api/documents/delete' && req.method === 'POST') {
     if (!canDelete(u)) throw denied();
     const v = await body(req),

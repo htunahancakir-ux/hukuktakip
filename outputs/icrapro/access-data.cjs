@@ -245,6 +245,8 @@ async function handleDataRoutes(ctx) {
           event.operatorId = u.id;
           event.operatorName = u.name;
           delete event.turnoverCategory;
+          if (event.type === 'payment' && ['ceo', 'admin'].includes(u.role) && !event.turnoverStaffId)
+            throw fail(400, 'Ciroyu yapan personeli seçin.');
           if (event.turnoverStaffId) {
             if (event.type !== 'payment' || !['ceo', 'admin'].includes(u.role))
               throw fail(403, 'Ciro personelini yalnızca yönetici seçebilir.');
@@ -266,6 +268,13 @@ async function handleDataRoutes(ctx) {
               (event.turnoverCategory ? event.turnoverStaffName : '') ||
               ctx.state.data['icrapro-personnel-v1'].find((p) => p.id === event.collectionStaffId)?.name ||
               '';
+            if (
+              !event.turnoverCategory &&
+              !ctx.state.data['icrapro-personnel-v1'].some(
+                (p) => p.id === event.collectionStaffId && p.active,
+              )
+            )
+              throw fail(400, 'Tahsilat için aktif bir ciro personeli seçilmeli veya dosyaya atanmalıdır.');
           }
           if (event.type === 'payment' && Number.isSafeInteger(event.amount) && event.amount > 0) {
             next.collectionNoticeSequence = Number(next.collectionNoticeSequence || 0) + 1;
@@ -275,6 +284,8 @@ async function handleDataRoutes(ctx) {
                 sequence: next.collectionNoticeSequence,
                 eventId: event.id,
                 operatorName: u.name,
+                collectionStaffId: event.turnoverCategory ? u.staffId || '' : event.collectionStaffId,
+                collectionStaffName: event.turnoverCategory ? u.name : event.collectionStaffName,
                 amount: event.amount,
                 closes: event.closes === true,
                 createdAt: new Date().toISOString(),

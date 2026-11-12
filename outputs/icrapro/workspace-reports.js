@@ -49,7 +49,9 @@ function reportRows(type) {
           account: payment.accountName || accountName(payment.accountId),
           number: doc?.number,
           trackingDate: trackingDate ? displayDate(trackingDate) : '',
-          principal: payment.principalAtCollection ?? (doc ? financeCents(doc.amount) : 0),
+          principal: doc?.principalAdjustment
+            ? financeCents(doc.amount)
+            : (payment.principalAtCollection ?? (doc ? financeCents(doc.amount) : 0)),
           collection: payment.amount,
           gross: recognizedCollectionRevenue(payment, financeEvents, doc),
           debtor: doc?.debtor,
