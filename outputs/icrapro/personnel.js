@@ -242,7 +242,6 @@ async function openPersonnelRecord(editId) {
   if (!dialog) {
     dialog = document.createElement('dialog');
     dialog.id = 'personnelRecordDialog';
-    dialog.style.width = '900px';
     dialog.setAttribute('aria-labelledby', 'personnelRecordTitle');
     document.body.append(dialog);
   }

@@ -1887,3 +1887,461 @@ dialog.modal-dragging .modal-drag-handle {
 .client-bank-accounts > button {
   justify-self: start;
 }
+
+/* Client record: one fixed-size window, every tab on one row, no jumping between tabs. */
+#modal:has(> #clientForm) {
+  width: min(1060px, calc(100vw - 32px));
+  max-width: none;
+  height: min(600px, calc(100vh - 32px));
+  max-height: none;
+  overflow: hidden;
+}
+#modal > #clientForm {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+#clientForm > .panelhead {
+  padding: 14px 22px;
+}
+#clientForm > .panelhead p {
+  margin-top: 2px;
+}
+#clientForm > .formbody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 22px 16px;
+}
+#clientForm .record-form-tabs {
+  flex-wrap: nowrap;
+  gap: 2px;
+  margin-bottom: 14px;
+}
+#clientForm .record-form-tabs button {
+  padding: 9px 12px;
+  font-size: 13px;
+}
+#clientForm [data-form-panel] > .grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 14px;
+}
+#clientForm .field {
+  gap: 5px;
+  font-size: 12px;
+}
+#clientForm .field input,
+#clientForm .field select {
+  min-height: 38px;
+  padding: 8px 10px;
+}
+#clientForm .field textarea {
+  padding: 8px 10px;
+}
+#clientForm .segments {
+  margin-bottom: 12px;
+}
+#clientForm > .actions {
+  padding: 12px 22px;
+}
+#clientForm .client-bank-accounts {
+  gap: 10px;
+}
+#clientForm .client-bank-account {
+  padding: 10px 14px 12px;
+}
+#clientForm .client-bank-account h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+#clientForm .client-bank-account .toolbar h4 {
+  margin: 0;
+}
+#clientForm .client-bank-account .toolbar {
+  margin-bottom: 8px;
+}
+#clientForm .client-bank-account .grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.4fr);
+  gap: 10px;
+}
+#clientForm .client-bank-account .grid > * {
+  grid-column: auto;
+}
+#clientForm .record-form-tabs {
+  position: sticky;
+  top: -12px;
+  z-index: 2;
+  margin-top: -12px;
+  padding-top: 12px;
+  background: #fff;
+}
+#clientForm .full:has(> [data-statement-total]) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px 12px;
+}
+#clientForm .full:has(> [data-statement-total]) > :not(.grid, .toolbar) {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+#clientForm .full:has(> [data-statement-total]) > .grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+#clientForm .full:has(> [data-statement-total]) > .overflow {
+  max-height: none !important;
+}
+#clientForm .record-form-tabs {
+  overflow-x: auto;
+}
+@media (max-width: 760px) {
+  #clientForm [data-form-panel] > .grid,
+  #clientForm .client-bank-account .grid,
+  #clientForm .full:has(> [data-statement-total]) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Finance operations (Tahsilat / Masraf): wider, two columns, no empty bands — fits without scrolling. */
+#modal[open]:has(> #financeEntry) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  align-items: start;
+  width: min(1180px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100vh - 32px);
+}
+#modal:has(> #financeEntry) > * {
+  grid-column: 1 / -1;
+}
+#modal:has(> #financeEntry) > #financeTerms {
+  grid-column: 1;
+  align-self: stretch;
+  border-right: 1px solid #e4e9ee;
+}
+#modal:has(> #financeEntry) > #financeEntry {
+  grid-column: 2;
+}
+#modal:has(> #financeEntry) > .panelhead {
+  padding: 14px 22px;
+}
+#modal:has(> #financeEntry) > .panelhead p {
+  margin-top: 2px;
+}
+#modal:has(> #financeEntry) > .finance-operation-tabs {
+  margin: 0;
+  padding: 4px 22px 0;
+}
+#modal:has(> #financeEntry) > .finance-operation-tabs button,
+#modal:has(> #financeEntry) .formbody > .settings-tabs button {
+  padding: 10px 14px;
+}
+#modal:has(> #financeEntry) .formbody {
+  padding: 14px 22px;
+}
+#modal:has(> #financeEntry) .sectiontitle {
+  margin: 0 0 10px;
+  padding-bottom: 8px;
+}
+#modal:has(> #financeEntry) form > .formbody:has(> .sectiontitle:only-child) {
+  padding-bottom: 0;
+}
+#modal:has(> #financeEntry) form > .formbody.grid,
+#modal:has(> #financeEntry) form > .formbody > .grid {
+  gap: 10px 14px;
+}
+#modal:has(> #financeEntry) form > .formbody.grid {
+  padding-top: 4px;
+}
+#financeEntry > .formbody.grid > .full {
+  grid-column: auto;
+}
+#modal:has(> #financeEntry) .field {
+  gap: 5px;
+  font-size: 12px;
+}
+#modal:has(> #financeEntry) .field input,
+#modal:has(> #financeEntry) .field select {
+  min-height: 38px;
+  padding: 8px 10px;
+}
+#modal:has(> #financeEntry) .formbody > p {
+  margin: 8px 0;
+}
+#financeTerms > .formbody > button {
+  margin: 0 6px 6px 0;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+#modal:has(> #financeEntry) form > .actions {
+  padding: 10px 22px;
+}
+@media (max-width: 860px) {
+  #modal[open]:has(> #financeEntry) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  #modal:has(> #financeEntry) > #financeTerms,
+  #modal:has(> #financeEntry) > #financeEntry {
+    grid-column: 1;
+    border-right: 0;
+  }
+}
+#expenseEntry .formbody > .grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+#expenseEntry .formbody > .grid > .full:first-child {
+  grid-column: auto;
+}
+#expenseEntry .formbody > .notice {
+  margin: 8px 0;
+  padding: 10px 14px;
+}
+@media (max-width: 860px) {
+  #expenseEntry .formbody > .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+#modal:has(> #financeEntry) #financeHistoryAll,
+#modal:has(> #financeEntry) #financeHistoryCosts {
+  max-height: 190px;
+  overflow-y: auto;
+}
+
+/* Personnel record: same fixed window for every tab, three-column fields, tabs stay visible. */
+#personnelRecordDialog[open] {
+  display: flex;
+  flex-direction: column;
+  width: min(1180px, calc(100vw - 32px));
+  max-width: none;
+  height: min(720px, calc(100vh - 32px));
+  max-height: none;
+  overflow: hidden;
+}
+#personnelRecordDialog > .panelhead {
+  flex: none;
+  padding: 12px 22px;
+}
+#personnelRecordDialog > .panelhead p {
+  margin-top: 2px;
+}
+#personnelRecordDialog > #personnelForm {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+#personnelForm > .formbody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 22px 16px;
+}
+#personnelForm > .formbody > .settings-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 0 0 12px;
+  padding-top: 8px;
+  background: #fff;
+}
+#personnelForm > .formbody > .settings-tabs button {
+  padding: 10px 14px;
+}
+#personnelForm > .actions {
+  flex: none;
+  padding: 10px 22px;
+}
+#personnelForm .sectiontitle {
+  margin: 14px 0 10px;
+  padding-bottom: 8px;
+}
+#personnelForm .sectiontitle:first-child {
+  margin-top: 0;
+}
+#personnelForm .formbody .grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 14px;
+}
+#personnelForm .phone-source-pair {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+}
+#personnelForm .personnel-phone-pair {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+#personnelForm .field {
+  gap: 5px;
+  font-size: 12px;
+}
+#personnelForm .field input,
+#personnelForm .field select {
+  min-height: 38px;
+  padding: 8px 10px;
+}
+#personnelForm .field textarea {
+  padding: 8px 10px;
+}
+#personnelForm .extra-contacts {
+  margin: 0;
+}
+#personnelForm .full:has(> .settings-check) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 18px;
+}
+#personnelForm .full:has(> .settings-check) > :not(.settings-check) {
+  grid-column: 1 / -1;
+}
+#personnelForm .settings-check {
+  padding: 8px 0;
+}
+#personnelForm .formbody > div > p {
+  margin: 6px 0;
+}
+#personnelForm .panel {
+  margin: 0;
+  border: 0;
+  box-shadow: none;
+}
+#personnelForm .panel > .panelhead {
+  padding: 0 0 10px;
+}
+#personnelForm .panel > .formbody,
+#personnelForm .panel > div:not(.panelhead) {
+  padding-inline: 0;
+}
+@media (max-width: 860px) {
+  #personnelForm .formbody .grid,
+  #personnelForm .phone-source-pair,
+  #personnelForm .personnel-phone-pair,
+  #personnelForm .full:has(> .settings-check) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+#personnelRecordDialog:has(> section:not([hidden])) > #personnelForm {
+  flex: none;
+}
+#personnelRecordDialog:has(> section:not([hidden])) #personnelForm > .formbody {
+  padding-bottom: 0;
+}
+#personnelRecordDialog > section:not([hidden]) {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 22px 16px;
+}
+#personnelRecordDialog > section > .panel {
+  margin: 0;
+  border: 0;
+  box-shadow: none;
+}
+#personnelRecordDialog > section > .panel > .panelhead {
+  padding: 0 0 10px;
+}
+#personnelRecordDialog > section > .panel > .formbody {
+  padding: 0;
+}
+#personnelRecordDialog .personnel-ledger-summary .stat {
+  min-height: 0;
+  padding: 12px 14px;
+}
+#personnelRecordDialog [data-personnel-payment] .grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 14px;
+}
+#personnelRecordDialog [data-personnel-payment] .grid > .full {
+  grid-column: 1 / -1;
+}
+#personnelRecordDialog .personnel-ledger .notice {
+  margin: 8px 0;
+  padding: 10px 14px;
+}
+@media (max-width: 860px) {
+  #personnelRecordDialog [data-personnel-payment] .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Borrower edit: wide four-column form inside a fixed window; only the fields scroll. */
+#editBorrowerDialog[open] {
+  width: min(1180px, calc(100vw - 32px));
+  max-width: none;
+  height: min(720px, calc(100vh - 32px));
+  max-height: none;
+  overflow: hidden;
+}
+#editBorrowerForm {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+#editBorrowerForm > .panelhead {
+  flex: none;
+  padding: 12px 22px;
+}
+#editBorrowerForm > .panelhead p {
+  margin-top: 2px;
+}
+#editBorrowerForm > .formbody.grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  align-content: start;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 14px;
+  padding: 14px 22px;
+}
+#editBorrowerForm > .formbody > .full {
+  grid-column: span 2;
+}
+#editBorrowerForm > .formbody > label.full:first-child {
+  grid-column: span 1;
+}
+#editBorrowerForm > .formbody > .sectiontitle,
+#editBorrowerForm > .formbody > section.full,
+#editBorrowerForm > .formbody > .borrower-extra-phones {
+  grid-column: 1 / -1;
+}
+#editBorrowerForm .phone-source-pair {
+  gap: 10px 14px;
+}
+#editBorrowerForm .sectiontitle {
+  margin: 6px 0 0;
+  padding-bottom: 6px;
+}
+#editBorrowerForm section.full > .grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 14px;
+}
+#editBorrowerForm .property-field {
+  padding: 10px 12px;
+}
+#editBorrowerForm .field {
+  gap: 5px;
+  font-size: 12px;
+}
+#editBorrowerForm .field input,
+#editBorrowerForm .field select {
+  min-height: 38px;
+  padding: 8px 10px;
+}
+#editBorrowerForm .field textarea {
+  min-height: 0;
+  padding: 8px 10px;
+}
+#editBorrowerForm [data-extra-phone-list]:empty {
+  display: none;
+}
+#editBorrowerForm > .actions {
+  flex: none;
+  padding: 10px 22px;
+}
+@media (max-width: 860px) {
+  #editBorrowerForm > .formbody.grid,
+  #editBorrowerForm section.full > .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  #editBorrowerForm > .formbody > .full {
+    grid-column: 1 / -1;
+  }
+}
