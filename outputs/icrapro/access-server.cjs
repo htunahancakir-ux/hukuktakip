@@ -395,6 +395,11 @@ function createAccess(stateFile, options = {}) {
       if (await handleSmsRoutes(ctx)) return true;
       if (await handleFeedbackRoutes(ctx)) return true;
       if (url.pathname === '/api/notifications' && req.method === 'GET') {
+        if (!u.readOnly) {
+          const next = structuredClone(state);
+          if (require('../../lib/reminder-repeat.cjs').advanceRepeatingReminders(next, Date.now(), u.id))
+            saveState(next);
+        }
         send(res, 200, notificationSummary(state, u, url.searchParams.get('after')));
         return true;
       }

@@ -8,6 +8,13 @@ const reminderDeliveryLabels = {
   unknown: 'WhatsApp sonucu doğrulanamadı',
   cancelled: 'WhatsApp gönderimi iptal edildi',
 };
+const reminderRepeatLabels = {
+  none: 'Tekrarlama',
+  daily: 'Her Gün',
+  weekly: 'Her Hafta',
+  monthly: 'Her Ay',
+  yearly: 'Her Yıl',
+};
 let reminderListStatus = 'open';
 let reminderListOffset = 0;
 let previousDueCount = 0;
@@ -56,13 +63,13 @@ function scheduledRemindersPage(remote) {
                 return `<li><div><strong>${termsDate(row.dueAt)}</strong> ·
           ${row.closedAt ? (row.closeReason === 'complete' ? 'Tamamlandı' : 'İptal edildi') : due ? 'Zamanı geldi' : 'Planlandı'}
           ${row.target ? `<p><strong>${esc(row.target.label)}</strong> ${esc(row.target.detail || '')}</p>` : ''}
-          <p class="scheduled-note">${esc(row.note)}</p><small>${esc(reminderDeliveryLabels[row.deliveryStatus])}</small></div>
+          <p class="scheduled-note">${esc(row.note)}</p><small>${esc(reminderDeliveryLabels[row.deliveryStatus])}${row.repeat && row.repeat !== 'none' ? ' · ' + esc(reminderRepeatLabels[row.repeat] || '') : ''}</small></div>
           ${
             row.closedAt
               ? ''
               : `<div class="terms-buttons">
             ${due ? `<button type="button" class="secondary" data-reminder-action="complete" data-reminder-id="${esc(row.id)}">Tamamlandı</button>` : ''}
-            <button type="button" class="secondary" data-reminder-action="cancel" data-reminder-id="${esc(row.id)}">İptal et</button>
+            <button type="button" class="secondary" data-reminder-action="cancel" data-reminder-id="${esc(row.id)}">${row.repeat && row.repeat !== 'none' ? 'Tekrarı durdur' : 'İptal et'}</button>
           </div>`
           }</li>`;
               })
@@ -81,7 +88,11 @@ function scheduledRemindersPage(remote) {
     host.querySelectorAll('[data-reminder-action]').forEach((button) => {
       button.onclick = () => {
         const { reminderAction, reminderId } = button.dataset;
-        if (reminderAction === 'cancel' && !window.confirm('Bu hatırlatma iptal edilsin mi?')) return;
+        if (
+          reminderAction === 'cancel' &&
+          !window.confirm('Bu hatırlatma ve varsa bekleyen tekrarları durdurulsun mu?')
+        )
+          return;
         try {
           authApi('/api/scheduled-reminders', 'POST', { action: reminderAction, id: reminderId });
           scheduledRemindersPage();
@@ -108,6 +119,11 @@ function scheduledReminderDialog(whatsappAvailable) {
     </div>
     <label class="field">Gün <input name="date" type="date" min="${esc(businessDate())}" required></label>
     <label class="field">Saat (Türkiye) <input name="time" type="time" required></label>
+    <label class="field">Tekrarla<select name="repeat" data-optional="true">${Object.entries(
+      reminderRepeatLabels,
+    )
+      .map(([value, label]) => `<option value="${value}">${label}</option>`)
+      .join('')}</select></label>
     <label class="field full">Not <textarea name="note" rows="4" required maxlength="1000"></textarea></label>
     <label class="settings-check full"><input name="whatsapp" type="checkbox" ${whatsappAvailable ? '' : 'disabled'}> Zamanı gelince kendi WhatsApp numarama bildir</label>
     <small class="full">${
@@ -170,12 +186,13 @@ function scheduledReminderDialog(whatsappAvailable) {
   };
   form.onsubmit = (event) => {
     event.preventDefault();
-    const { date, time, note, whatsapp } = form.elements;
+    const { date, time, note, whatsapp, repeat } = form.elements;
     try {
       authApi('/api/scheduled-reminders', 'POST', {
         action: 'create',
         date: date.value,
         time: time.value,
+        repeat: repeat.value,
         note: note.value,
         whatsapp: whatsapp.checked,
         targetType: target?.type,

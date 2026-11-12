@@ -1,3 +1,16 @@
+function personnelPaymentPeriods(data, advance) {
+  if (data.paymentUnrestricted) {
+    const months = data.months.slice();
+    if (!months.some((row) => row.month === data.currentMonth))
+      months.unshift({ month: data.currentMonth, remaining: data.currentRemaining });
+    return advance ? [{ month: data.currentMonth, remaining: null }] : months;
+  }
+  return advance
+    ? data.advanceLimit > 0
+      ? [{ month: data.currentMonth, remaining: data.advanceLimit }]
+      : []
+    : data.months.filter((row) => row.payable && row.remaining > 0);
+}
 async function readPersonnelLedger(staffId = '', signal) {
   const path =
     (window.hanRecordsEnabled ? '/api/records/personnel-ledger' : '/api/personnel-ledger') +
@@ -17,7 +30,7 @@ async function personnelLedgerPage(host, staffId = '') {
     const data = await readPersonnelLedger(staffId, request.signal);
     if (!host.isConnected || request.signal.aborted) return;
     host.innerHTML =
-      '<div class="panel personnel-ledger"><div class="panelhead"><div><h2>Personel Cari Hesabı</h2><p>Başlangıç: 1 Kasım 2026 · Maaş avansı: ayda bir, maaş + Prim 1 toplamının en fazla %25’i.</p></div></div><div class="formbody"><label class="field">Personel<select data-ledger-person><option value="">Personel seçin</option>' +
+      '<div class="panel personnel-ledger"><div class="panelhead"><div><h2>Personel Cari Hesabı</h2><p>Başlangıç: 1 Kasım 2026 · Maaş ve avans ödeme koşulları seçilen personelin carisinde gösterilir.</p></div></div><div class="formbody"><label class="field">Personel<select data-ledger-person><option value="">Personel seçin</option>' +
       data.people
         .map(
           (person) =>
@@ -37,7 +50,7 @@ async function personnelLedgerPage(host, staffId = '') {
     const content = host.querySelector('[data-ledger-content]');
     const summaries = [
       ['Toplam Cari Alacağı', data.balance],
-      ['Önceki Aylar · Ödenebilir', data.payable],
+      [data.paymentUnrestricted ? 'Ödenmemiş Hakediş' : 'Önceki Aylar · Ödenebilir', data.payable],
       ['Bu Ay Hakedişi', data.currentEarned],
       ['Bu Ay Kullanılabilir Avans', data.advanceLimit],
     ];
@@ -49,7 +62,9 @@ async function personnelLedgerPage(host, staffId = '') {
             '<div class="stat"><small>' +
             label +
             '</small><strong>' +
-            money(amount / 100) +
+            (data.paymentUnrestricted && label === 'Bu Ay Kullanılabilir Avans'
+              ? 'Sınırsız'
+              : money(amount / 100)) +
             '</strong></div>',
         )
         .join('') +
@@ -131,8 +146,14 @@ async function personnelLedgerPage(host, staffId = '') {
     history();
     const paymentHost = content.querySelector('[data-personnel-payment]');
     paymentHost.innerHTML =
-      '<h3>Maaş / Avans Ödemesi</h3><p class="notice">Normal ödemelerde yalnızca kapanmış aylar seçilir. Avans ilgili ayın alacağından düşer; kalan tutar sonraki ay ödenebilir.</p><form class="personnel-payment-form"><div class="grid"><label class="field">Ödeme Türü<select name="mode"><option value="salaryPayment">Kapanmış Ay Maaş / Prim Ödemesi</option><option value="salaryAdvance" ' +
-      (data.advanceLimit > 0 ? '' : 'disabled') +
+      '<h3>Maaş / Avans Ödemesi</h3><p class="notice">' +
+      (data.paymentUnrestricted
+        ? 'Bu personelde maaş ve maaş avansı için tutar veya adet sınırı uygulanmaz. Tüm ödemeler cari hesaba işlenir.'
+        : 'Normal ödemelerde yalnızca kapanmış aylar seçilir. Avans ilgili ayın alacağından düşer; kalan tutar sonraki ay ödenebilir.') +
+      '</p><form class="personnel-payment-form"><div class="grid"><label class="field">Ödeme Türü<select name="mode"><option value="salaryPayment">' +
+      (data.paymentUnrestricted ? 'Maaş / Prim Ödemesi' : 'Kapanmış Ay Maaş / Prim Ödemesi') +
+      '</option><option value="salaryAdvance" ' +
+      (data.paymentUnrestricted || data.advanceLimit > 0 ? '' : 'disabled') +
       '>Bu Ay Maaş Avansı</option></select></label><label class="field">Hakediş Dönemi<select name="payrollMonth" required></select></label><label class="field">Ödemenin Çıkacağı Kasa / Banka<select name="accountId" required><option value="">Hesap seçin</option>' +
       data.accounts
         .map((account) => '<option value="' + esc(account.id) + '">' + esc(account.name) + '</option>')
@@ -142,11 +163,11 @@ async function personnelLedgerPage(host, staffId = '') {
       field('Ödenecek Tutar (₺)', 'amount', 'number', '', true) +
       '<label class="field">Açıklama<input name="note" maxlength="3000" required></label></div><p data-payment-limit role="status"></p><button type="submit" class="primary">Ödemeyi Kaydet</button></form>';
     const form = paymentHost.querySelector('form'),
-      payable = data.months.filter((row) => row.payable && row.remaining > 0);
+      payable = personnelPaymentPeriods(data, false);
     if (!payable.length && data.advanceLimit > 0) form.elements.mode.value = 'salaryAdvance';
     const limits = () => {
       const advance = form.elements.mode.value === 'salaryAdvance';
-      const months = advance ? [{ month: data.currentMonth, remaining: data.advanceLimit }] : payable;
+      const months = personnelPaymentPeriods(data, advance);
       const previous = form.elements.payrollMonth.value;
       form.elements.payrollMonth.innerHTML =
         months
@@ -160,10 +181,12 @@ async function personnelLedgerPage(host, staffId = '') {
       const max = advance
         ? data.advanceLimit
         : payable.find((row) => row.month === form.elements.payrollMonth.value)?.remaining || 0;
-      form.elements.amount.max = String(max / 100);
-      form.querySelector('button[type="submit"]').disabled = max <= 0;
-      form.querySelector('[data-payment-limit]').textContent =
-        max > 0
+      if (data.paymentUnrestricted) form.elements.amount.removeAttribute('max');
+      else form.elements.amount.max = String(max / 100);
+      form.querySelector('button[type="submit"]').disabled = !data.paymentUnrestricted && max <= 0;
+      form.querySelector('[data-payment-limit]').textContent = data.paymentUnrestricted
+        ? 'Maaş ve avans için tutar ve adet sınırı yok.'
+        : max > 0
           ? 'En fazla ' + money(max / 100)
           : data.advanceUsed
             ? 'Bu ay maaş avansı kullanıldı. Ödenebilir kapanmış ay bulunmuyor.'
@@ -247,20 +270,18 @@ function setupPayrollCashFields(form) {
       const data = await readPersonnelLedger(staffId, request.signal);
       if (request.signal.aborted || !section.isConnected) return;
       const advance = form.elements.expenseCategory.value === 'Maaş Avansı';
-      const months = advance
-        ? data.advanceLimit > 0
-          ? [{ month: data.currentMonth, remaining: data.advanceLimit }]
-          : []
-        : data.months.filter((row) => row.payable && row.remaining > 0);
+      const months = personnelPaymentPeriods(data, advance);
       form.elements.payrollMonth.innerHTML =
         months
           .map((row) => '<option value="' + esc(row.month) + '">' + esc(displayDate(row.month)) + '</option>')
           .join('') || '<option value="">Ödenebilir dönem yok</option>';
       const max = () => {
         const limit = months.find((row) => row.month === form.elements.payrollMonth.value)?.remaining || 0;
-        form.elements.amount.max = String(limit / 100);
-        section.querySelector('[data-payroll-cash-limit]').textContent =
-          limit > 0
+        if (data.paymentUnrestricted) form.elements.amount.removeAttribute('max');
+        else form.elements.amount.max = String(limit / 100);
+        section.querySelector('[data-payroll-cash-limit]').textContent = data.paymentUnrestricted
+          ? 'Maaş ve avans için tutar ve adet sınırı yok.'
+          : limit > 0
             ? 'En fazla ' +
               money(limit / 100) +
               (advance ? ' · Ayda bir, maaş + Prim 1 toplamının %25’i.' : '')
