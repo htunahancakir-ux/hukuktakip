@@ -2377,3 +2377,280 @@ dialog.modal-dragging .modal-drag-handle {
 .message-whatsapp li.is-muted {
   color: #475467;
 }
+
+/* Delete actions (CEO only) read as destructive. */
+button.danger {
+  color: #b42318;
+}
+button.secondary.danger {
+  border-color: #f1c2bd;
+}
+
+/* İşlem Silme: one-line filter and slim result rows. */
+#deleteOperationsDialog[open] {
+  display: flex;
+  flex-direction: column;
+  width: min(980px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100vh - 32px);
+  overflow: hidden;
+}
+#deleteOperationsDialog > .panelhead {
+  flex: none;
+  padding: 12px 22px;
+}
+#deleteOperationsDialog > .formbody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px 22px 14px;
+}
+#deleteOperationsDialog .formbody > p {
+  margin: 0 0 10px;
+}
+#deleteOperationsDialog .delete-ops-filter {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+#deleteOperationsDialog .delete-ops-filter .field {
+  gap: 5px;
+  font-size: 12px;
+}
+#deleteOperationsDialog .delete-ops-filter input,
+#deleteOperationsDialog .delete-ops-filter select {
+  min-height: 38px;
+  padding: 8px 10px;
+}
+#deleteOperationsDialog .delete-ops-filter > button {
+  min-height: 38px;
+  padding: 8px 22px;
+}
+#deleteOperationsDialog [data-status] {
+  margin: 10px 0 6px;
+  color: #475467;
+  font-size: 13px;
+}
+#deleteOperationsDialog .delete-ops-rows {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid #e4e9ee;
+  border-radius: 8px;
+}
+#deleteOperationsDialog .delete-ops-rows:empty {
+  display: none;
+}
+#deleteOperationsDialog .delete-op-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 14px;
+  border-bottom: 1px solid #eef1f4;
+}
+#deleteOperationsDialog .delete-op-row:last-child {
+  border-bottom: 0;
+}
+#deleteOperationsDialog .delete-op-row p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+#deleteOperationsDialog .delete-op-row small {
+  color: #667085;
+  white-space: nowrap;
+}
+#deleteOperationsDialog .delete-op-row button {
+  padding: 6px 14px;
+  color: #b42318;
+  border-color: #f1c2bd;
+}
+#deleteOperationsDialog .formbody > .actions {
+  margin: 10px 0 0;
+  padding: 0;
+  background: none;
+}
+@media (max-width: 760px) {
+  #deleteOperationsDialog .delete-ops-filter,
+  #deleteOperationsDialog .delete-op-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Potential client form: four columns, tighter fields, no empty bands. */
+#prospectForm {
+  padding: 14px 22px;
+}
+#prospectForm > h3 {
+  margin: 0 0 10px;
+}
+#prospectForm > .grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 14px;
+}
+#prospectForm > .grid > .full {
+  grid-column: span 2;
+}
+#prospectForm .field {
+  gap: 5px;
+  font-size: 12px;
+}
+#prospectForm .field input,
+#prospectForm .field select {
+  min-height: 38px;
+  padding: 8px 10px;
+}
+#prospectForm .field textarea {
+  min-height: 0;
+  padding: 8px 10px;
+}
+#prospectForm > .actions {
+  margin: 12px -22px -14px;
+  padding: 10px 22px;
+}
+@media (max-width: 860px) {
+  #prospectForm > .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  #prospectForm > .grid > .full {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Keep each page's main actions in view while scrolling: the page heading when it carries a
+   button, and a panel header that holds the panel's primary action. */
+main > .heading:has(> button:not([hidden])) {
+  position: sticky;
+  top: var(--han-header-h, 51px);
+  z-index: 4;
+  margin-top: -10px;
+  padding: 10px 0;
+  background: #f4f6f9;
+}
+#content .panel:has(> .panelhead .primary) {
+  overflow: clip;
+}
+#content .panel > .panelhead:has(.primary) {
+  position: sticky;
+  top: calc(var(--han-header-h, 51px) + var(--han-heading-h, 0px));
+  z-index: 3;
+  background: #fff;
+  box-shadow: 0 1px 0 #e5e9ed;
+}
+
+/* Operation results: cards in the top-right corner, above every window. */
+.han-toaster {
+  position: fixed;
+  inset: calc(var(--han-header-h, 51px) + 12px) 20px auto auto;
+  width: min(400px, calc(100vw - 32px));
+  max-height: calc(100vh - 100px);
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  height: auto;
+  pointer-events: none;
+}
+.han-toaster:not(:popover-open):empty {
+  display: none;
+}
+.han-toast {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  padding: 12px 12px 12px 14px;
+  border: 1px solid #e4e7ec;
+  border-left: 4px solid var(--toast-accent);
+  border-radius: 10px;
+  background: #fff;
+  color: #1d2939;
+  box-shadow:
+    0 12px 32px rgb(16 24 40 / 16%),
+    0 2px 6px rgb(16 24 40 / 8%);
+  pointer-events: auto;
+  animation: han-toast-in 0.22s ease-out;
+}
+.han-toast.is-leaving {
+  opacity: 0;
+  transform: translateX(16px);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+.han-toast-success {
+  --toast-accent: #12b76a;
+  --toast-soft: #ecfdf3;
+}
+.han-toast-error {
+  --toast-accent: #d92d20;
+  --toast-soft: #fef3f2;
+}
+.han-toast-warning {
+  --toast-accent: #f79009;
+  --toast-soft: #fffaeb;
+}
+.han-toast-info {
+  --toast-accent: #2e90fa;
+  --toast-soft: #eff8ff;
+}
+.han-toast-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--toast-soft);
+  color: var(--toast-accent);
+  font-weight: 800;
+  font-size: 15px;
+}
+.han-toast-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding-top: 1px;
+}
+.han-toast-body strong {
+  font-size: 13px;
+}
+.han-toast-body span {
+  color: #475467;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.han-toast-close {
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: #98a2b3;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.han-toast-close:hover {
+  color: #344054;
+}
+@keyframes han-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .han-toast {
+    animation: none;
+  }
+}
+.han-toaster > .han-toast.local-feedback {
+  position: relative;
+  top: auto;
+  margin: 0;
+  font-weight: 400;
+}

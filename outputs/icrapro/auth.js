@@ -311,13 +311,13 @@ async function openDeletionPanel() {
   }
   dialog.innerHTML = `<div class="panelhead"><h2>İşlem Silme</h2><button type="button" class="secondary" data-close>Kapat</button></div>
     <div class="formbody"><p>Silme yetkisi yalnızca hesabınıza aittir. Silinen kayıtların kopyası arşivde korunur.</p>
-    <form data-search class="grid"><label class="field">Kayıt Türü<select name="type">
+    <form data-search class="grid delete-ops-filter"><label class="field">Kayıt Türü<select name="type">
     <option value="accounting">Muhasebe / Müvekkil Ödemeleri</option><option value="finance">Tahsilat / Masraf</option>
-    <option value="conversations">Görüşmeler</option><option value="documents">Borçlu Dosyaları</option>
+    <option value="conversations">Görüşmeler</option><option value="messages">Personel Mesajları</option><option value="documents">Borçlu Dosyaları</option>
     <option value="clients">Müvekkiller</option><option value="accounts">Hesaplar</option>
     <option value="marketing">Pazarlama / Potansiyel Müvekkiller</option><option value="personnel">Personel</option><option value="cases">İcra İşlemleri</option></select></label>
-    <label class="field">Ara<input name="q" placeholder="Dosya numarası, ad veya açıklama"></label><button class="primary">Listele</button></form>
-    <p data-status role="status"></p><div data-rows></div><div class="actions"><button class="secondary" data-prev>Önceki</button><button class="secondary" data-next>Sonraki</button></div></div>`;
+    <label class="field">Ara<input name="q" data-optional="true" placeholder="Dosya numarası, ad veya açıklama"></label><button class="primary">Listele</button></form>
+    <p data-status role="status"></p><div data-rows class="delete-ops-rows"></div><div class="actions"><button class="secondary" data-prev>Önceki</button><button class="secondary" data-next>Sonraki</button></div></div>`;
   let offset = 0,
     dirty = false;
   const form = dialog.querySelector('[data-search]'),
@@ -339,7 +339,7 @@ async function openDeletionPanel() {
       host.replaceChildren();
       for (const row of result.items) {
         const box = document.createElement('div');
-        box.className = 'panel formbody';
+        box.className = 'delete-op-row';
         const label = document.createElement('p');
         label.textContent = row.label || row.id;
         const date = document.createElement('small');

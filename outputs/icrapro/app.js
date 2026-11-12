@@ -126,27 +126,79 @@ function save() {
     }
   } catch {}
 }
-let toastTimer;
-function toast(t, scope) {
-  const success = /kaydedildi|güncellendi|borca uygulandı/i.test(t);
-  clearTimeout(toastTimer);
-  const globalToast = document.getElementById('toast');
-  if (globalToast) globalToast.style.display = 'none';
-  document.querySelectorAll('.local-feedback').forEach((el) => el.remove());
-  const dialogs = [...document.querySelectorAll('dialog[open]')];
-  const focused = document.activeElement?.closest('dialog[open]');
-  const root = scope || focused || dialogs.at(-1) || document.getElementById('content');
-  if (!root) return;
-  const panel = [...root.querySelectorAll('[role="tabpanel"]')].find((el) => !el.hidden);
-  const target = panel || root;
+// Operation results ("kaydedildi", "iptal edildi", errors…) appear as cards in the top-right
+// corner, above any open window, whatever part of the page is scrolled into view.
+const toastProblem =
+  /hata|başarısız|edilemedi|alınamadı|yapılamadı|bulunamadı|geçersiz|yetkiniz|yetkisi gerekli|yetkisi yalnızca|yanlış|gerekli|girin\b|seçin\b|olmalı|en fazla|en az|zaten|önce\b|bekleyin/i;
+const toastDone =
+  /kaydedildi|güncellendi|eklendi|silindi|gönderildi|oluşturuldu|tamamlandı|kabul edildi|onaylandı|uygulandı|kaldırıldı|aktarıldı|atandı|yüklendi|kopyalandı|işlendi|çevrildi|başlatıldı|kapatıldı|indirildi|taşındı|hazırlandı/i;
+function toastTone(text) {
+  if (/iptal edildi|vazgeçildi|sonlandırıldı/i.test(text)) return 'info';
+  const problem = toastProblem.test(text),
+    done = toastDone.test(text);
+  if (problem && done) return 'warning';
+  if (problem) return 'error';
+  return done ? 'success' : 'info';
+}
+function toastHost() {
+  let host = document.getElementById('hanToaster');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'hanToaster';
+    host.className = 'han-toaster';
+    host.setAttribute('popover', 'manual');
+    document.body.append(host);
+  }
+  // Re-enter the top layer so the card sits above a window opened since the last notice.
+  try {
+    if (host.matches(':popover-open')) host.hidePopover();
+    host.showPopover();
+  } catch {}
+  return host;
+}
+function toast(t) {
+  const text = String(t ?? '').trim();
+  if (!text) return;
+  const legacy = document.getElementById('toast');
+  if (legacy) legacy.style.display = 'none';
+  const tone = toastTone(text),
+    host = toastHost();
+  host.querySelectorAll('.han-toast').forEach((el) => el.dataset.text === text && el.remove());
+  while (host.children.length >= 3) host.firstElementChild.remove();
   const el = document.createElement('div');
-  el.className = 'local-feedback ' + (success ? 'local-feedback-success' : 'local-feedback-notice');
-  el.setAttribute('role', success ? 'status' : 'alert');
-  el.setAttribute('aria-live', success ? 'polite' : 'assertive');
-  el.textContent = success ? '✓ ' + t : t;
-  target.prepend(el);
-  el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  if (!success) toastTimer = setTimeout(() => el.remove(), 7000);
+  el.className = 'han-toast local-feedback han-toast-' + tone;
+  el.dataset.text = text;
+  el.setAttribute('role', tone === 'error' || tone === 'warning' ? 'alert' : 'status');
+  el.innerHTML =
+    '<span class="han-toast-icon" aria-hidden="true"></span><div class="han-toast-body"><strong></strong><span></span></div><button type="button" class="han-toast-close" aria-label="Bildirimi kapat">×</button>';
+  el.querySelector('.han-toast-icon').textContent = { success: '✓', error: '!', warning: '!', info: 'i' }[
+    tone
+  ];
+  el.querySelector('strong').textContent = {
+    success: 'İşlem tamamlandı',
+    error: 'İşlem tamamlanamadı',
+    warning: 'Kısmen tamamlandı',
+    info: 'Bilgi',
+  }[tone];
+  el.querySelector('.han-toast-body span').textContent = text;
+  const dismiss = () => {
+    clearTimeout(el.timer);
+    el.classList.add('is-leaving');
+    setTimeout(() => {
+      el.remove();
+      if (!host.children.length)
+        try {
+          host.hidePopover();
+        } catch {}
+    }, 180);
+  };
+  const wait = { success: 4500, info: 5500, warning: 9000, error: 9000 }[tone];
+  const start = () => (el.timer = setTimeout(dismiss, wait));
+  el.querySelector('.han-toast-close').onclick = dismiss;
+  el.onmouseenter = () => clearTimeout(el.timer);
+  el.onmouseleave = start;
+  host.append(el);
+  start();
 }
 
 function stats() {
@@ -200,7 +252,24 @@ function stats() {
     .join('');
 }
 
+// Page actions stay pinned under the header while scrolling; keep their offsets in step with
+// the real header and heading heights.
+function syncStickyOffsets() {
+  const root = document.documentElement,
+    header = document.querySelector('.shell header'),
+    heading = document.querySelector('main > .heading');
+  root.style.setProperty('--han-header-h', (header?.offsetHeight || 0) + 'px');
+  const pinned = heading && getComputedStyle(heading).position === 'sticky';
+  root.style.setProperty('--han-heading-h', (pinned ? heading.offsetHeight : 0) + 'px');
+}
+if (typeof ResizeObserver === 'function')
+  queueMicrotask(() => {
+    const watch = new ResizeObserver(syncStickyOffsets);
+    for (const el of document.querySelectorAll('.shell header, main > .heading')) watch.observe(el);
+  });
+
 function render() {
+  queueMicrotask(syncStickyOffsets);
   window.refreshContactReminder?.();
   if (typeof recordPageNeedsCompatibility === 'function' && recordPageNeedsCompatibility()) {
     const requestedPage = page;

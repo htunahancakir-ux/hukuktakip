@@ -215,14 +215,34 @@ function openMessage(message) {
     dialog.id = 'messageDetailDialog';
     document.body.append(dialog);
   }
-  dialog.innerHTML = `<div class="panelhead"><h2>${esc(message.subject)}</h2><button class="secondary" id="closeMessageDetail">Kapat</button></div><div class="formbody"><p><b>Gönderen:</b> ${esc(message.senderName)}</p><p><b>Alıcılar:</b> ${esc(message.recipientNames.join(', '))}</p><p><b>Tarih:</b> ${messageTimestamp(message.createdAt)}</p><div class="message-text">${esc(message.text)}</div>${messageWhatsAppDetail(message)}</div><div class="actions">${message.senderId !== hanAuth.id ? '<button class="primary" id="replyMessage">Gönderene Yanıtla</button>' : ''}</div>`;
+  dialog.innerHTML = `<div class="panelhead"><h2>${esc(message.subject)}</h2><button class="secondary" id="closeMessageDetail">Kapat</button></div><div class="formbody"><p><b>Gönderen:</b> ${esc(message.senderName)}</p><p><b>Alıcılar:</b> ${esc(message.recipientNames.join(', '))}</p><p><b>Tarih:</b> ${messageTimestamp(message.createdAt)}</p><div class="message-text">${esc(message.text)}</div>${messageWhatsAppDetail(message)}</div><div class="actions">${hanAuth.canDelete ? '<button type="button" class="secondary danger" id="deleteMessage">Mesajı Sil</button>' : ''}${message.senderId !== hanAuth.id ? '<button class="primary" id="replyMessage">Gönderene Yanıtla</button>' : ''}</div>`;
   $('#closeMessageDetail').onclick = () => dialog.close();
   if ($('#replyMessage'))
     $('#replyMessage').onclick = () => {
       dialog.close();
       composeMessage(message);
     };
+  if ($('#deleteMessage')) $('#deleteMessage').onclick = () => deleteMessage(message, dialog);
   dialog.showModal();
+}
+
+// Only the CEO (and the technical support account, which is a CEO account) may delete; the
+// server keeps an archive copy like every other deleted record.
+async function deleteMessage(message, dialog) {
+  if (!hanAuth.canDelete) return;
+  if (!confirm('"' + message.subject + '" mesajı herkes için silinecek. Emin misiniz?')) return;
+  if (typeof requireCeoPin === 'function' && !(await requireCeoPin('delete'))) return;
+  try {
+    const row = authApi('/api/operations/delete?' + new URLSearchParams({ type: 'messages', id: message.id }))
+      .items[0];
+    if (!row) throw new Error('Mesaj bulunamadı; listeyi yenileyin.');
+    authApi('/api/operations/delete', 'POST', { type: 'messages', id: row.id, revision: row.revision });
+    dialog.close();
+    messagesPage();
+    toast('Mesaj silindi; arşiv kopyası korundu.');
+  } catch (error) {
+    toast(error.message, dialog);
+  }
 }
 
 function applyMessageSummary(result) {
