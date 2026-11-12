@@ -66,7 +66,13 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
   for (const node of parsers.babel.parse(personnelSource).program.body)
     if (
       node.type === 'FunctionDeclaration' &&
-      ['staffSelect', 'mandatoryControls', 'enforceRequired', 'validateRequiredForm'].includes(node.id.name)
+      [
+        'isRealPersonnelRecord',
+        'staffSelect',
+        'mandatoryControls',
+        'enforceRequired',
+        'validateRequiredForm',
+      ].includes(node.id.name)
     )
       w.eval(personnelSource.slice(node.start, node.end));
   w.bindIntakeSearch = () => {};

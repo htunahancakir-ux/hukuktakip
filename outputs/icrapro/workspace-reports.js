@@ -677,12 +677,39 @@ async function printReport() {
 }
 
 function insPersonnelRows(events, staff, docs, period, date, endDate) {
+  const categories = {
+    'turnover:temlik-reddiyat': 'Temlik Reddiyat',
+    'turnover:hukuk-reddiyat': 'Hukuk Reddiyat',
+    'turnover:bonus': 'Bonus',
+  };
+  const categoryId = (id, name) =>
+    Object.hasOwn(categories, id)
+      ? id
+      : Object.keys(categories).find(
+          (key) =>
+            categories[key]
+              .toLocaleLowerCase('tr-TR')
+              .replaceAll('ı', 'i')
+              .replace(/[\s_-]+/g, '') ===
+            String(name || '')
+              .toLocaleLowerCase('tr-TR')
+              .replaceAll('ı', 'i')
+              .replace(/[\s_-]+/g, ''),
+        );
   const matches = (value) =>
     endDate
       ? String(value || '').slice(0, 10) >= date && String(value || '').slice(0, 10) <= endDate
       : String(value || '').slice(0, period === 'year' ? 4 : period === 'month' ? 7 : 10) ===
         date.slice(0, period === 'year' ? 4 : period === 'month' ? 7 : 10);
-  const rows = staff.map((p) => ({
+  const eligible = staff.filter(
+    (p) =>
+      ['callcenter', 'callcentery', 'callcentere'].includes(
+        String(p.department || '')
+          .toLocaleLowerCase('tr-TR')
+          .replace(/[\s_-]/g, ''),
+      ) && !categoryId(p.id, p.name),
+  );
+  const rows = [...eligible, ...Object.entries(categories).map(([id, name]) => ({ id, name }))].map((p) => ({
     id: p.id,
     name: p.name,
     collected: 0,
@@ -694,20 +721,15 @@ function insPersonnelRows(events, staff, docs, period, date, endDate) {
   for (const e of events) {
     if (e.type !== 'payment' || !matches(e.date)) continue;
     const d = docs.find((d) => d.id === e.documentId);
-    const id = e.turnoverStaffId || e.collectionStaffId || d?.relatedStaff || 'unassigned';
-    let row = byId.get(id);
-    if (!row) {
-      row = {
-        id,
-        name: e.turnoverStaffName || e.collectionStaffName || d?.relatedStaffName || 'Personel atanmamış',
-        collected: 0,
-        closedCount: 0,
-        closedAmount: 0,
-        closedIds: new Set(),
-      };
-      byId.set(id, row);
-      rows.push(row);
-    }
+    const sourceId = e.turnoverStaffId || e.collectionStaffId || d?.relatedStaff || 'unassigned';
+    const sourceName =
+      staff.find((p) => p.id === sourceId)?.name ||
+      e.turnoverStaffName ||
+      e.collectionStaffName ||
+      d?.relatedStaffName;
+    const id = categoryId(sourceId, sourceName) || sourceId;
+    const row = byId.get(id);
+    if (!row) continue;
     row.collected += Number(e.amount || 0);
     if (e.closes && !row.closedIds.has(e.documentId || e.id)) {
       row.closedIds.add(e.documentId || e.id);
@@ -758,7 +780,7 @@ function renderInsReportPage(remoteRows) {
     );
   };
   $('#content').innerHTML =
-    '<div class="panel"><div class="panelhead"><div><h2>İNS Raporu</h2><p>Tüm personellerin tahsilat ve infaz performansı · Dosyanın tahsilat anındaki sorumlusuna göre</p></div><button class="secondary" id="backToReports">Raporlara Dön</button></div><div class="formbody"><div class="segments">' +
+    '<div class="panel"><div class="panelhead"><div><h2>İNS Raporu</h2><p>Call Center birimleri · Temlik Reddiyat, Hukuk Reddiyat ve Bonus</p></div><button class="secondary" id="backToReports">Raporlara Dön</button></div><div class="formbody"><div class="segments">' +
     [
       ['day', 'Günlük'],
       ['month', 'Aylık'],

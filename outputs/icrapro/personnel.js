@@ -262,6 +262,7 @@ async function openPersonnelRecord(editId) {
   setupPersonnelPhoneRelationships(form, current);
   setupPersonnelCompensationTabs(form, current, editId);
   setupPersonnelDepartmentRole(form, loginAccount, !!editId);
+  setupPersonnelSalaryRequirements(form);
   if (typeof installPasswordVisibility === 'function')
     installPasswordVisibility(dialog.querySelector('#personnelForm'));
   setupClientCity('staff');
@@ -287,6 +288,8 @@ async function openPersonnelRecord(editId) {
       );
     if (!city || !district) return toast('Geçerli bir il ve o ilin ilçesini seçin.');
     if (!String(data.unofficialSalary ?? '').trim()) data.unofficialSalary = '0';
+    const otherDepartment = data.department === 'Diğer';
+    if (otherDepartment && !String(data.officialSalary ?? '').trim()) data.officialSalary = '0';
     const amounts = { bonus: Number(data.bonus || 0) };
     for (const key of ['officialSalary', 'unofficialSalary']) {
       if (
@@ -298,7 +301,7 @@ async function openPersonnelRecord(editId) {
         return toast('Maaş ve Prim 1 alanlarını doldurun.');
       amounts[key] = Math.round(Number(data[key]) * 100) / 100;
     }
-    if (amounts.officialSalary <= 0) return toast('Maaş sıfırdan büyük olmalıdır.');
+    if (!otherDepartment && amounts.officialSalary <= 0) return toast('Maaş sıfırdan büyük olmalıdır.');
     const next = structuredClone(personnel);
     const record = {
       ...current,
@@ -349,6 +352,37 @@ async function openPersonnelRecord(editId) {
 }
 function salaryField(label, name, value) {
   return `<label class="field">${esc(label)}<input name="${name}" type="number" min="0" step="0.01" value="${esc(value ?? '')}" ${name === 'unofficialSalary' ? 'data-optional="true"' : 'required'}></label>`;
+}
+function setupPersonnelSalaryRequirements(form, department) {
+  const controls = ['officialSalary', 'unofficialSalary'].map((name) => {
+    const input = form.elements[name];
+    return {
+      input,
+      required: input.required,
+      optional: input.dataset.optional,
+      label: input.closest('label')?.firstChild?.textContent,
+    };
+  });
+  const update = () => {
+    const other = (form.elements.department?.value ?? department) === 'Diğer';
+    for (const { input, required, optional, label } of controls) {
+      input.required = other ? false : required;
+      if (other) input.dataset.optional = 'true';
+      else if (optional === undefined) delete input.dataset.optional;
+      else input.dataset.optional = optional;
+      if (other) {
+        input.removeAttribute('aria-required');
+        input.setCustomValidity('');
+      }
+      const text = input.closest('label')?.firstChild;
+      if (text?.nodeType === 3)
+        text.textContent = other
+          ? label.replace(/\s*\*/g, '').replace(/\s*\(isteğe bağlı\)/g, '') + ' (isteğe bağlı) '
+          : label;
+    }
+  };
+  form.elements.department?.addEventListener('change', update);
+  update();
 }
 function payrollView() {
   loadCalculatedBonus2();
@@ -596,6 +630,7 @@ function editPersonnelPayroll(id) {
     salaryField('Prim 2', 'bonus', p.bonus) +
     '</div><div class="actions"><button class="primary">Kaydet</button></div></form>';
   const autoBonus = calculatedBonus2.get(id);
+  setupPersonnelSalaryRequirements(dialog.querySelector('form'), p.department);
   if (autoBonus && !autoBonus.manual) {
     dialog.querySelector('[name="bonus"]').value = autoBonus.total / 100;
     dialog.querySelector('[name="bonus"]').readOnly = true;
@@ -624,7 +659,7 @@ function personnelBonus2View() {
     esc(data.month) +
     '"></label></div><div class="overflow"><table><thead><tr><th>PERSONEL</th><th>TAHSİLAT</th><th>ORAN</th><th>ORAN PRİMİ</th><th>EK HEDEF PRİMİ</th><th>EKİP</th><th>1–15</th><th>16–AY SONU</th><th>PRİM 2 TOPLAMI</th></tr></thead><tbody>' +
     data.rows
-      .filter((r) => r.kind !== 'marketing')
+      .filter((r) => r.kind !== 'marketing' && r.kind !== 'other')
       .map(
         (r) =>
           '<tr><td>' +
@@ -641,8 +676,13 @@ function personnelBonus2View() {
       )
       .join('') +
     '</tbody><tfoot><tr><td colspan="8">TOPLAM</td><td>' +
-    money(data.rows.filter((r) => r.kind !== 'marketing').reduce((sum, r) => sum + r.total, 0) / 100) +
+    money(
+      data.rows
+        .filter((r) => r.kind !== 'marketing' && r.kind !== 'other')
+        .reduce((sum, r) => sum + r.total, 0) / 100,
+    ) +
     '</td></tr></tfoot></table></div></div>' +
+    personnelOtherBonusMarkup(data) +
     personnelMarketingBonusMarkup(data);
   $('#personnelView').querySelector('[data-bonus2-month]').onchange = (e) => {
     if (e.target.value) {
@@ -652,6 +692,30 @@ function personnelBonus2View() {
   };
 }
 
+function personnelOtherBonusMarkup(data) {
+  const rows = data.rows.filter((r) => r.kind === 'other');
+  if (!rows.length) return '';
+  return (
+    '<section class="panel"><div class="panelhead"><div><h2>Diğer Birim · Prim 2</h2><p>Evrakı alan personelin infaza geçen dosyalarının toplam tahsilatının %12,5’i. Önceki kısmi tahsilatlar infaz ayına dahil edilir.</p></div></div><div class="overflow"><table><thead><tr><th>PERSONEL</th><th>İNFAZ ADEDİ</th><th>İNFAZ CİROSU</th><th>ORAN</th><th>PRİM 2</th></tr></thead><tbody>' +
+    rows
+      .map(
+        (r) =>
+          '<tr><td>' +
+          esc(r.name) +
+          '</td><td>' +
+          esc(r.closedCount) +
+          '</td><td>' +
+          money(r.collected / 100) +
+          '</td><td>%12,5</td><td><b>' +
+          money(r.total / 100) +
+          '</b></td></tr>',
+      )
+      .join('') +
+    '</tbody><tfoot><tr><td colspan="4">TOPLAM</td><td><b>' +
+    money(rows.reduce((sum, r) => sum + r.total, 0) / 100) +
+    '</b></td></tr></tfoot></table></div></section>'
+  );
+}
 function personnelMarketingBonusMarkup(data) {
   const rows = data.rows.filter((r) => r.kind === 'marketing');
   const sum = (key) => money(rows.reduce((total, r) => total + (r[key] || 0), 0) / 100);
