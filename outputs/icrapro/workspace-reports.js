@@ -343,7 +343,7 @@ function reportCell(row, col) {
 }
 
 function renderReportsPage() {
-  const collapseFilters = reportFilters.type === 'clientDebtorInfo';
+  const collapseFilters = true;
   const filtersOpen = document.getElementById('clientInfoReportFilters')?.open;
   $('#content').innerHTML =
     `<div class="panel"><div class="panelhead"><div><h2>Rapor Merkezi</h2><p>Kayıtlı işlemleri süzün, yazdırın veya Excel için CSV indirin.</p></div><div class="toolbar"><button class="primary" id="openExpenseReport">Gider Raporu</button><button class="primary" id="openMarketingReport">Pazarlama Raporlama</button><button class="primary monthly-payroll-report-button" id="openMonthlyPayrollReport">Aylık Maaş ve Prim Raporu</button><button class="primary ins-report-button" id="openInsReport">İNS Raporu</button><button class="primary client-list-report-button" id="openClientListReport">Müvekkil Listesi</button><button class="primary client-debtor-report-button" id="openClientDebtorInfo">Müvekkil Borçlu Bilgi Raporu</button><button class="secondary" id="printReport">Yazdır / PDF</button><button class="primary" id="exportReport">CSV İndir</button></div></div>${collapseFilters ? `<details class="borrower-filter-section" id="clientInfoReportFilters"${filtersOpen ? ' open' : ''}><summary>Filtrele</summary>` : ''}<div class="formbody grid"><label class="field full">Rapor Türü<select id="reportType">${Object.entries(
