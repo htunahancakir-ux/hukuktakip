@@ -395,7 +395,7 @@ async function handleDataRoutes(ctx) {
         'taxOffice',
         'identity',
         'officeIdentity',
-        'imatikFolioNumber',
+
         'receivables',
         'enforcementOffice',
         'enforcementFileNumber',

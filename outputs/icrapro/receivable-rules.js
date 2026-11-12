@@ -10,6 +10,40 @@
     'Diğer',
   ];
   const cents = (value) => Math.round(Number(value || 0) * 100);
+  function storageType(doc) {
+    return doc.receivables?.length === 1 ? doc.receivables[0].docType : 'Diğer';
+  }
+  function applyType(doc) {
+    if (!Array.isArray(doc.receivables) || !doc.receivables.length) return;
+    doc.docType = storageType(doc);
+    if (doc.receivables.length === 1) {
+      const item = doc.receivables[0];
+      for (const key of [
+        'due',
+        'serial',
+        'issued',
+        'bank',
+        'branch',
+        'account',
+        'contractSubject',
+        'court',
+        'courtFile',
+        'decisionDate',
+        'vehiclePlate',
+        'chassisNumber',
+        'parkingName',
+        'parkingEntry',
+        'vehicleKind',
+        'parkingCommissionRate',
+        'invoiceSubject',
+        'otherDocumentDescription',
+      ])
+        if (Object.hasOwn(item, key)) doc[key] = item[key];
+    } else {
+      delete doc.parkingCommissionRate;
+      doc.otherDocumentDescription = 'Tek föyde alacak evrakları';
+    }
+  }
   const date = (value) => {
     const stamp = Date.parse(value + 'T00:00:00Z');
     return (
@@ -170,7 +204,7 @@
       base: result.standardPrincipal + amount,
     };
   }
-  const api = { types, normalize, summarize, sync, charges };
+  const api = { types, normalize, summarize, sync, charges, storageType, applyType };
   if (typeof module !== 'undefined') module.exports = api;
   else root.HanReceivables = api;
 })(globalThis);
