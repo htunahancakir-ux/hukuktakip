@@ -16,7 +16,11 @@ async function handleAiRoutes(ctx) {
     if (ctx.req.method !== 'POST') throw ctx.fail(405, 'Yöntem desteklenmiyor.');
     const result = await ai.testConnection(ctx.state.aiConfig, await ctx.body(ctx.req));
     const next = structuredClone(ctx.state);
-    if (result.usage) next.aiUsage = ai.addUsage(next.aiUsage, result.usage);
+    if (result.usage) {
+      next.aiUsage = ai.addUsage(next.aiUsage, result.usage);
+      // Metered for the platform after the save commits (lib/application.cjs finalizeUsage).
+      (ctx.res.hanAiUsage ||= []).push(result.usage);
+    }
     ctx.persist(next);
     ctx.send(ctx.res, 200, { ok: true, ...result });
     return true;

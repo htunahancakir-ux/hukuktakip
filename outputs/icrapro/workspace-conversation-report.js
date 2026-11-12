@@ -16,6 +16,8 @@ function conversationReportLength(report) {
   return count + ' / ' + limit + ' karakter (+' + (count - limit) + ' cümle tamamlama payı)';
 }
 async function requestConversationReport(documentId, { force = false } = {}) {
+  if (globalThis.hanModules?.['ai-assistant'] === false)
+    throw Error('Yapay zekâ modülü bu büroda etkin değil.');
   // A forced click while the automatic refresh is still pending must join the
   // same operation. Parallel generations can race when persisting one file.
   const requestKey = documentId;
@@ -88,6 +90,7 @@ function bindConversationReport(doc, form) {
   else status.textContent = 'Görüşme kaydedildiğinde tüm geçmişten otomatik oluşturulur.';
 }
 async function prepareConversationReportRows(rows, isCurrent = () => true) {
+  if (globalThis.hanModules?.['ai-assistant'] === false) return true;
   for (const row of rows) {
     if (!isCurrent()) return false;
     if (!row.cells.reportPending) continue;

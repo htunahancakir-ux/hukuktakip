@@ -300,6 +300,15 @@ test('VoIP tables created after tenant isolation receive tenant keys and RLS', a
     await pg.exec('BEGIN');
     await pg.exec(fs.readFileSync(path.join(directory, voipMigration), 'utf8'));
     await pg.exec('COMMIT');
+    // Current code assumes the full schema, so later migrations (control plane) follow.
+    for (const name of fs
+      .readdirSync(directory)
+      .filter((name) => name.endsWith('.sql') && name > voipMigration)
+      .sort()) {
+      await pg.exec('BEGIN');
+      await pg.exec(fs.readFileSync(path.join(directory, name), 'utf8'));
+      await pg.exec('COMMIT');
+    }
     const { rows } = await pool.query(`SELECT c.relname, c.relrowsecurity AS rls,
       EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attname='tenant_id') AS tenant
       FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace

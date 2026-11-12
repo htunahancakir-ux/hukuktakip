@@ -156,17 +156,18 @@ function intake(editId, showNew = false, recordReady = false) {
     recordTabs.before(typePicker);
     typePicker.after(recordHeader);
   } else $('#intakeForm .panelhead').after(recordHeader);
-  const legacyPhoneKeys = ['phone2', 'referencePhone1', 'referencePhone2', 'officePhone1', 'officePhone2'];
+  // The form shows Tel-1 and, as extra rows, the debtor's other own numbers (Tel-2, Tel-3…).
+  // Reference and office numbers are edited in the borrower sheet and left untouched here.
+  const ownPhones = original ? borrowerPhoneSlots(original) : null;
   const contactRecord = original
     ? {
         ...original,
-        additionalPhones: [
-          ...(original.additionalPhones || []),
-          ...legacyPhoneKeys.map((key) => original[key]).filter(Boolean),
-        ],
+        additionalPhones: [ownPhones.phone2, ...ownPhones.additionalPhones].filter(Boolean),
       }
     : {};
   setupExtraContacts($('#intakeForm'), contactRecord);
+  if (original && !$('#intakeForm').elements.phone1.value)
+    $('#intakeForm').elements.phone1.value = ownPhones.phone1;
   if (embeddedIntake) prepareEmbeddedIntake($('#intakeForm'));
   else {
     const clientSelect = $('#intakeForm').elements.client;
@@ -240,10 +241,12 @@ function intake(editId, showNew = false, recordReady = false) {
         ? window.top.readExtraContacts(window.top.document.getElementById('intakeForm'))
         : readExtraContacts(form),
     );
-    if (original) {
-      d.docType = original.docType || 'Senet';
-      for (const key of legacyPhoneKeys) d[key] = '';
-    }
+    if (original) d.docType = original.docType || 'Senet';
+    // First extra row is Tel-2, the rest Tel-3, Tel-4…
+    Object.assign(
+      d,
+      borrowerPhoneSlots({ phone1: d.phone1, phone2: '', additionalPhones: d.additionalPhones || [] }),
+    );
     if (['Senet', 'Diğer'].includes(d.docType)) {
       const total = financeCents(d.amount),
         paid = financeCents(d.preTrackingPayment || 0);

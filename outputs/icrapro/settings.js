@@ -228,17 +228,41 @@ function bindBackupFiles(lastDownload) {
   refresh();
 }
 
+// Add-on modules this office was sold. Anything not listed in `hanModules` stays visible
+// (the answer may not have arrived yet; the server enforces the real rule).
+const INTEGRATION_MODULE = {
+  ai: 'ai-assistant',
+  voip: 'voip',
+  whatsapp: 'whatsapp',
+  maps: 'marketing-routes',
+};
+function integrationAvailable(id) {
+  const code = INTEGRATION_MODULE[id];
+  return !code || globalThis.hanModules?.[code] !== false;
+}
+function firstIntegrationTab() {
+  return ['voip', 'whatsapp', 'ai', 'maps', 'iyzico'].find(integrationAvailable) || 'iyzico';
+}
+
 function settingsSectionTabs(active) {
-  const integration = ['ai', 'voip', 'whatsapp', 'maps'].includes(active);
+  const integration = ['ai', 'voip', 'whatsapp', 'maps', 'iyzico'].includes(active);
   const tabs = [
     ['firm', 'Firma Bilgileri'],
     ['contact', 'İletişim ve Adres'],
     ['preferences', 'Uygulama Tercihleri'],
     ['staff', 'Personel'],
-    ...(['ceo', 'admin'].includes(hanAuth.role) ? [['permissions', 'Yetkilendirme']] : []),
+    ...(['ceo', 'admin'].includes(hanAuth.role) && globalThis.hanModules?.['voip'] !== false
+      ? [['permissions', 'Yetkilendirme']]
+      : []),
     ['audit', 'İşlem Kayıtları'],
     ['employeeTerms', 'Gizlilik Sözleşmesi'],
     ...(hanAuth.role === 'ceo' ? [['integrations', 'Entegrasyonlar']] : []),
+    ...(['ceo', 'admin'].includes(hanAuth.role) && globalThis.hanModules?.['supportDesk'] === true
+      ? [['support', 'Destek']]
+      : []),
+    ...(['ceo', 'admin'].includes(hanAuth.role) && globalThis.hanModules?.['catalog'] === true
+      ? [['modules', 'Modüller']]
+      : []),
     ['backup', 'Yedekleme'],
   ];
   return `<div class="settings-tabs" role="tablist" aria-label="Ayar sekmeleri">${tabs
@@ -253,7 +277,9 @@ function settingsSectionTabs(active) {
           ['voip', 'VoIP / Telefon'],
           ['whatsapp', 'WhatsApp Business'],
           ['maps', 'Google Haritalar'],
+          ['iyzico', 'iyzico Ödeme'],
         ]
+          .filter(([id]) => integrationAvailable(id))
           .map(
             ([id, label]) =>
               `<button type="button" id="tab-${id}" role="tab" aria-selected="${id === active}" data-settings-tab="${id}" class="${id === active ? 'selected' : ''}">${label}</button>`,
@@ -359,7 +385,7 @@ let settingsRenderId = 0;
 settings = async function () {
   const renderId = ++settingsRenderId;
   const requestedTab = settingsTab;
-  const pinScope = ['integrations', 'voip', 'ai', 'whatsapp', 'maps'].includes(settingsTab)
+  const pinScope = ['integrations', 'voip', 'ai', 'whatsapp', 'maps', 'iyzico'].includes(settingsTab)
     ? 'integrations'
     : settingsTab === 'permissions'
       ? 'permissions'
@@ -369,7 +395,11 @@ settings = async function () {
     if (!(await requireCeoPin(pinScope))) return;
     if (renderId !== settingsRenderId || requestedTab !== settingsTab || page !== 'settings') return;
   }
-  if (settingsTab === 'integrations') settingsTab = 'voip';
+  if (settingsTab === 'integrations') settingsTab = firstIntegrationTab();
+  // A tab for an add-on this office does not have is never reachable, even from a stale link.
+  if (INTEGRATION_MODULE[settingsTab] && !integrationAvailable(settingsTab))
+    settingsTab = firstIntegrationTab();
+  if (settingsTab === 'permissions' && globalThis.hanModules?.['voip'] === false) settingsTab = 'firm';
   if (settingsTab === 'voip') return voipSettingsPage();
   if (settingsTab === 'permissions') return voipPermissionsPage();
   if (settingsTab === 'backup') return backupSettingsPage();
@@ -377,6 +407,10 @@ settings = async function () {
   if (settingsTab === 'whatsapp') return whatsappSettingsPage();
   if (settingsTab === 'ai') return aiSettingsPage();
   if (settingsTab === 'maps') return mapsSettingsPage();
+  if (settingsTab === 'iyzico') return iyzicoSettingsPage();
+  if (settingsTab === 'support') return supportSettingsPage();
+  if (settingsTab === 'modules' && globalThis.hanModules?.['catalog'] !== true) settingsTab = 'firm';
+  if (settingsTab === 'modules') return modulesSettingsPage();
   if (settingsTab === 'employeeTerms') return employeeTermsSettingsPage();
   originalSettings();
   const notice = document.querySelector('#settingsForm .notice');

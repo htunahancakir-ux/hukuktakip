@@ -18,7 +18,7 @@ fs.mkdirSync(publicRoot, { recursive: true });
 for (const file of files) {
   const source = path.join(sourceRoot, file);
   const destination = path.join(publicRoot, file);
-  if (file === 'index.html')
+  if (file.endsWith('.html'))
     fs.writeFileSync(
       destination,
       fs.readFileSync(source, 'utf8').replaceAll('__ASSET_VERSION__', assetVersion),

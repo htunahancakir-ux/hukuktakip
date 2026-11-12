@@ -18,6 +18,8 @@ const { searchWorkspace } = require('../../lib/workspace-search.cjs');
 const { notificationSummary } = require('../../lib/notification-summary.cjs');
 const { handleWhatsAppRoutes } = require('./access-whatsapp.cjs');
 const { handleAiRoutes } = require('./access-ai.cjs');
+const { handleIyzicoRoutes } = require('./access-iyzico.cjs');
+const { handleSupportAccountRoutes } = require('./access-support-account.cjs');
 const { handleMarketingRoutes } = require('./access-marketing.cjs');
 const { hasMarketingAccess } = require('../../lib/marketing-routes.cjs');
 const { activeArchives } = require('../../lib/document-archive.cjs');
@@ -98,6 +100,8 @@ function createAccess(stateFile, options = {}) {
     testAccount: u.testAccount === true,
     canDelete: (u.role === 'ceo' || u.readOnly !== true) && canDelete(u),
     activeBreak: u.role === 'ceo' ? null : u.activeBreak || null,
+    // The platform's support team, connected through a time-limited support access.
+    platformSupport: u.platformSupport === true,
   });
   function userEnabled(u) {
     if (options.userEnabled) return options.userEnabled(u);
@@ -299,7 +303,7 @@ function createAccess(stateFile, options = {}) {
         return true;
       }
       const termsRequired =
-        u?.role === 'ceo'
+        u?.role === 'ceo' || u?.platformSupport
           ? false
           : options.employeeTermsRequired
             ? options.employeeTermsRequired(u)
@@ -367,7 +371,11 @@ function createAccess(stateFile, options = {}) {
         return true;
       if (await handleEmployeeTermsRoutes(ctx)) return true;
       if (
-        ['/api/password-reset/request', '/api/password-reset/complete'].includes(url.pathname) &&
+        [
+          '/api/password-reset/request',
+          '/api/password-reset/complete',
+          '/api/password-reset/sms-complete',
+        ].includes(url.pathname) &&
         (await handleWhatsAppRoutes(ctx))
       )
         return true;
@@ -379,6 +387,8 @@ function createAccess(stateFile, options = {}) {
       if (!u) throw fail(401, 'Giriş yapın.');
       if (await require('./access-ceo-pin.cjs').handleCeoPin(ctx)) return true;
       if (await handleAiRoutes(ctx)) return true;
+      if (await handleIyzicoRoutes(ctx)) return true;
+      if (await handleSupportAccountRoutes(ctx)) return true;
       if (await handleMarketingRoutes(ctx)) return true;
       if (url.pathname === '/api/notifications' && req.method === 'GET') {
         send(res, 200, notificationSummary(state, u, url.searchParams.get('after')));
@@ -413,4 +423,4 @@ function createAccess(stateFile, options = {}) {
   };
   return access;
 }
-module.exports = { createAccess };
+module.exports = { createAccess, defaultData: defaults };

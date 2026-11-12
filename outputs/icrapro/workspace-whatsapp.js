@@ -55,7 +55,15 @@ function whatsappDeliveryNotice(result) {
   if (delivery.accepted) counts.push(delivery.accepted + ' gönderim Meta tarafından kabul edildi');
   if (delivery.skipped)
     counts.push(delivery.skipped + ' alıcı atlandı (bağlantı, şablon veya onaylı numara eksik)');
-  if (delivery.failed) counts.push(delivery.failed + ' gönderim başarısız');
+  if (delivery.failed) {
+    const reasons = (Array.isArray(delivery.errors) ? delivery.errors : []).map(
+      (row) =>
+        (row.code ? 'Hata ' + row.code + ': ' : '') +
+        row.message +
+        (delivery.failed > 1 && row.count > 1 ? ' (' + row.count + ' gönderim)' : ''),
+    );
+    counts.push(delivery.failed + ' gönderim başarısız' + (reasons.length ? ' — ' + reasons.join('; ') : ''));
+  }
   return counts.length ? ' WhatsApp: ' + counts.join('; ') + '.' : '';
 }
 
@@ -127,6 +135,7 @@ function whatsappAccountDialog(user) {
 
 function addWhatsAppFileButton(actions, doc, kind, eventId, extra = {}) {
   if (!actions || !doc) return;
+  if (globalThis.hanModules?.['whatsapp'] === false) return;
   if (
     kind === 'clientAttachment'
       ? !hanPageAllowed('clients')

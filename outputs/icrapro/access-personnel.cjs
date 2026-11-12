@@ -1,3 +1,5 @@
+const { assertWithinUserLimit } = require('../../lib/seat-limit.cjs');
+
 async function handlePersonnelRoutes(ctx) {
   const {
     req,
@@ -301,6 +303,7 @@ async function handlePersonnelRoutes(ctx) {
     }
     if (index < 0) next.data['icrapro-personnel-v1'].push(record);
     else next.data['icrapro-personnel-v1'][index] = record;
+    assertWithinUserLimit(ctx.options?.userLimit, ctx.state, next, fail);
     persist(next);
     if (user && user.id !== u.id) invalidate(user.id);
     send(res, 200, { ok: true });

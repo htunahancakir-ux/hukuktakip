@@ -1,5 +1,6 @@
 const { version: appVersion } = require('../../package.json');
 const { attemptKey } = require('../../lib/session-policy.cjs');
+const { assertWithinUserLimit } = require('../../lib/seat-limit.cjs');
 
 async function handleSessionRoutes(ctx) {
   const {
@@ -63,7 +64,10 @@ async function handleSessionRoutes(ctx) {
           u.username ===
             String(v.username || '')
               .trim()
-              .toLocaleLowerCase('tr') && userEnabled(u),
+              .toLocaleLowerCase('tr') &&
+          userEnabled(u) &&
+          // The platform support account is entered only through a support access link.
+          !u.platformSupport,
       );
     if (!user || !(await passwordOK(v.password, user))) {
       rate.count++;
@@ -156,6 +160,7 @@ async function handleAccountRoutes(ctx) {
     if (!(await passwordOK(v.currentPassword, u))) throw fail(400, 'Mevcut şifreniz yanlış.');
     if (typeof v.password !== 'string' || v.password.length < 10 || v.password.length > 128)
       throw fail(400, 'Yeni şifre 10–128 karakter olmalı.');
+    if (u.platformSupport) throw fail(403, 'Destek oturumunda şifre değiştirilemez.');
     const next = structuredClone(ctx.state);
     const account = next.users.find((user) => user.id === u.id);
     account.salt = crypto.randomBytes(16).toString('hex');
@@ -172,7 +177,7 @@ async function handleAccountRoutes(ctx) {
     if (!['ceo', 'admin'].includes(u.role))
       throw fail(403, 'Şifre sıfırlamak için yönetici yetkisi gerekli.');
     const v = await body(req),
-      target = ctx.state.users.find((x) => x.id === v.id);
+      target = ctx.state.users.find((x) => x.id === v.id && !x.platformSupport);
     if (!target) throw fail(404, 'Kullanıcı bulunamadı.');
     if (target.role === 'ceo' && u.role !== 'ceo')
       throw fail(403, 'CEO şifresini yalnızca CEO değiştirebilir.');
@@ -202,10 +207,12 @@ async function handleAccountRoutes(ctx) {
       send(
         res,
         200,
-        ctx.state.users.map((user) => {
-          const contact = require('../../lib/account-contact.cjs').profile(ctx.state, user);
-          return { ...publicUser(user), email: contact.email, mobilePhone: contact.mobilePhone };
-        }),
+        ctx.state.users
+          .filter((user) => !user.platformSupport)
+          .map((user) => {
+            const contact = require('../../lib/account-contact.cjs').profile(ctx.state, user);
+            return { ...publicUser(user), email: contact.email, mobilePhone: contact.mobilePhone };
+          }),
       );
       return true;
     }
@@ -214,7 +221,7 @@ async function handleAccountRoutes(ctx) {
       next = structuredClone(ctx.state);
     if (v.role === 'ceo' && u.role !== 'ceo') throw fail(403, 'CEO yetkisini yalnızca CEO verebilir.');
     if (v.id) {
-      const user = next.users.find((x) => x.id === v.id);
+      const user = next.users.find((x) => x.id === v.id && !x.platformSupport);
       if (!user) throw fail(404, 'Kullanıcı bulunamadı.');
       if (user.role === 'ceo' && u.role !== 'ceo')
         throw fail(403, 'CEO hesabını yalnızca CEO değiştirebilir.');
@@ -235,9 +242,10 @@ async function handleAccountRoutes(ctx) {
         user.hash = await hash(v.password, user.salt);
       }
     } else next.users.push(await newUser(v));
+    assertWithinUserLimit(ctx.options?.userLimit, ctx.state, next, fail);
     persist(next);
     if (v.id && v.id !== u.id) invalidate(v.id);
-    send(res, 200, ctx.state.users.map(publicUser));
+    send(res, 200, ctx.state.users.filter((user) => !user.platformSupport).map(publicUser));
     return true;
   }
   return false;

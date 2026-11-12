@@ -276,11 +276,13 @@ function render() {
     intake();
     window.scrollTo({ top: 0, behavior: 'instant' });
   } else if (page === 'marketing') {
-    if (typeof marketingView !== 'undefined' && marketingView === 'routes') return marketingRoutePage();
+    const routesOff = globalThis.hanModules?.['marketing-routes'] === false;
+    if (typeof marketingView !== 'undefined' && marketingView === 'routes' && !routesOff)
+      return marketingRoutePage();
     document.getElementById('content').innerHTML = `
       <section class="panel">
         <div class="panelhead"><div><h2>Pazarlama</h2><p>Potansiyel müvekkil bilgileri</p></div>
-          <div class="toolbar"><button class="primary" type="button" id="openRouteFinder">⌖ Rota Bulma</button><button class="primary" type="button" id="addProspect" aria-expanded="false" aria-controls="prospectForm">＋ Potansiyel Müvekkil Ekle</button><button class="secondary" type="button" id="marketingBack">← Geri</button></div>
+          <div class="toolbar">${routesOff ? '' : '<button class="primary" type="button" id="openRouteFinder">⌖ Rota Bulma</button>'}<button class="primary" type="button" id="addProspect" aria-expanded="false" aria-controls="prospectForm">＋ Potansiyel Müvekkil Ekle</button><button class="secondary" type="button" id="marketingBack">← Geri</button></div>
         </div>
         <form id="prospectForm" class="formbody" hidden>
           <h3>Potansiyel Müvekkil Bilgileri</h3>
@@ -303,7 +305,8 @@ function render() {
       </section>`;
     setupClientCity('prospect');
     setupClientDistrict('prospect');
-    document.getElementById('openRouteFinder').onclick = openMarketingRouteFinder;
+    const routeFinder = document.getElementById('openRouteFinder');
+    if (routeFinder) routeFinder.onclick = openMarketingRouteFinder;
     const button = document.getElementById('addProspect');
     const form = document.getElementById('prospectForm');
     document.getElementById('marketingBack').onclick = () => {

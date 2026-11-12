@@ -1349,3 +1349,11 @@ dialog.voip-active-call {
   font-size: 12px;
   white-space: nowrap;
 }
+
+.voip-mic-notice { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 8px 10px; border-radius: 8px; background: #fff7e6; border: 1px solid #f0c36d; font-size: 13px; }
+.voip-diagnosis { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.voip-diagnosis li { display: grid; gap: 2px; padding: 8px 10px; border-radius: 8px; border: 1px solid #dfe5ea; background: #fff; }
+.voip-diagnosis li[data-ok='no'] { border-color: #e7a3a3; background: #fff3f3; }
+.voip-diagnosis li[data-ok='yes'] { border-color: #a9d8b8; background: #f2fbf5; }
+.voip-diagnosis li span { color: #4a5865; overflow-wrap: anywhere; }
+.voip-diagnosis-wait { font-size: 13px; color: #4a5865; margin: 8px 0 0; }

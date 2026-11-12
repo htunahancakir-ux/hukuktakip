@@ -9,8 +9,21 @@
     }
   },
   "crons": [{ "path": "/api/backups/cron", "schedule": "0 3 * * *" }],
-  "rewrites": [{ "source": "/api/:path*", "destination": "/api/index?route=:path*" }],
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api/index?route=:path*" },
+    { "source": "/", "has": [{ "type": "host", "value": "admin[.].*" }], "destination": "/platform.html" }
+  ],
   "headers": [
+    {
+      "source": "/platform.html",
+      "headers": [
+        { "key": "X-Frame-Options", "value": "DENY" },
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'"
+        }
+      ]
+    },
     {
       "source": "/(.*)",
       "headers": [

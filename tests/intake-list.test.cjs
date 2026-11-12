@@ -222,6 +222,7 @@ test('Borrower TC is optional: blank saves with warning and filled values keep f
     messages = [];
   let saves = 0;
   w.eval(fs.readFileSync('outputs/icrapro/html-safety.js', 'utf8'));
+  w.eval(fs.readFileSync('outputs/icrapro/phone-format.js', 'utf8'));
   Object.assign(w, {
     esc: w.escapeHtml,
     structuredClone,
@@ -234,6 +235,7 @@ test('Borrower TC is optional: blank saves with warning and filled values keep f
           identity: '',
           officeIdentity: '00123456789',
           phone1: '05321234567',
+          additionalPhones: ['05321234568', '05321234569'],
           address: 'Address',
         },
       ],
@@ -264,6 +266,7 @@ test('Borrower TC is optional: blank saves with warning and filled values keep f
   for (const [file, name] of [
     ['form-inputs.js', 'field'],
     ['borrower-sheet.js', 'editBorrower'],
+    ['borrower-sheet.js', 'bindBorrowerExtraPhones'],
   ]) {
     const source = fs.readFileSync('outputs/icrapro/' + file, 'utf8');
     const node = parsers.babel
@@ -273,6 +276,13 @@ test('Borrower TC is optional: blank saves with warning and filled values keep f
   }
   w.editBorrower('d');
   let form = w.document.querySelector('#editBorrowerForm');
+  // Numbers added earlier from the call panel fill the empty Tel-2, then Tel-3.
+  assert.equal(form.elements.phone2.value, '05321234568');
+  assert.deepEqual(
+    [...form.querySelectorAll('[data-extra-phone-label]')].map((l) => l.textContent),
+    ['Tel-3'],
+  );
+  assert.equal(form.querySelector('[data-extra-phone]').value, '05321234569');
   assert.equal(form.elements.identity.required, false);
   assert.equal(form.elements.identity.dataset.optional, 'true');
   form.requestSubmit();
@@ -280,14 +290,24 @@ test('Borrower TC is optional: blank saves with warning and filled values keep f
   assert.match(messages.at(-1), /Uyarı: TC bilgisi girilmedi/);
   assert.equal(w.db.docs[0].identity, '');
   assert.equal(w.db.docs[0].officeIdentity, '00123456789');
+  assert.equal(w.db.docs[0].phone2, '05321234568');
+  assert.deepEqual([...w.db.docs[0].additionalPhones], ['05321234569']);
+  w.editBorrower('d');
+  form = w.document.querySelector('#editBorrowerForm');
+  form.querySelector('[data-add-extra-phone]').click();
+  form.querySelectorAll('[data-extra-phone]')[1].value = '05321234570';
+  assert.equal(form.querySelectorAll('[data-extra-phone-label]')[1].textContent, 'Tel-4');
+  form.requestSubmit();
+  assert.equal(saves, 2);
+  assert.deepEqual([...w.db.docs[0].additionalPhones], ['05321234569', '05321234570']);
   w.editBorrower('d');
   form = w.document.querySelector('#editBorrowerForm');
   form.elements.identity.value = 'abc';
   form.requestSubmit();
-  assert.equal(saves, 1);
+  assert.equal(saves, 2);
   form.elements.identity.value = '12345678901';
   form.requestSubmit();
-  assert.equal(saves, 2);
+  assert.equal(saves, 3);
   assert.doesNotMatch(messages.at(-1), /Uyarı/);
 });
 const tick = async () => {

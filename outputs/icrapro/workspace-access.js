@@ -39,6 +39,7 @@ async function userManagement(editId) {
     document.querySelectorAll('[data-reset-password]').forEach((b) => {
       b.onclick = () => userManagement(b.dataset.resetPassword);
       const account = users.find((user) => user.id === b.dataset.resetPassword);
+      if (globalThis.hanModules?.['whatsapp'] === false) return;
       const whatsapp = document.createElement('button');
       whatsapp.type = 'button';
       whatsapp.className = 'link';

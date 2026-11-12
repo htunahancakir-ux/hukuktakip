@@ -207,6 +207,7 @@ function reportRows(type) {
             ? d.conversationReport.text
             : '',
         reportPending:
+          globalThis.hanModules?.['ai-assistant'] !== false &&
           (d.conversations || []).length > 0 &&
           d.conversationReport?.sourceCount !== (d.conversations || []).length,
       });

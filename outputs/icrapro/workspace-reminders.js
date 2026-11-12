@@ -100,6 +100,7 @@ function openPaymentPromise(id, options = {}) {
 }
 
 function loadPaymentPromisesHome() {
+  if (typeof loadPlatformNewsHome === 'function') loadPlatformNewsHome();
   loadDueInstallmentsHome();
   loadCallRemindersHome();
   let host = document.getElementById('paymentPromisesHome');

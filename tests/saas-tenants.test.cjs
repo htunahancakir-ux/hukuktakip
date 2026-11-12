@@ -115,7 +115,7 @@ test('SaaS tenant lifecycle and access boundaries', async (t) => {
       }
       const { rows } = await pool.query(`SELECT relname, relrowsecurity FROM pg_class
         WHERE relnamespace = 'han_saas'::regnamespace AND relkind = 'r'`);
-      assert.equal(rows.length, 3);
+      assert.ok(rows.length >= 11, "every control-plane table is listed");
       assert.ok(rows.every((row) => row.relrowsecurity));
     });
   } finally {

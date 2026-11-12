@@ -246,3 +246,76 @@ aside > .brand-home strong { min-width: 0; letter-spacing: 0; }
 #staffBreakLock .actions { justify-content: center; }
 
 #staffBreakLock .staff-break-unlock { margin-top: 20px; text-align: left; }
+
+.support-thread { display: grid; gap: 10px; max-height: 50vh; overflow-y: auto; }
+.support-msg { border: 1px solid var(--line, #d9dee5); border-radius: 8px; padding: 10px 12px; background: #fff; }
+.support-msg.support-reply { background: #f1f6f8; border-color: #bcd3dc; margin-left: 24px; }
+.support-msg small { color: #5d6c78; }
+.support-msg p { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.news-card { margin-bottom: 18px; padding: 14px 18px; border-left: 4px solid #377b60; }
+.news-card.news-maintenance { border-left-color: #d4a647; }
+.news-card.news-campaign { border-left-color: #2f6fb0; }
+.news-card.news-price_change { border-left-color: #b4572b; }
+.news-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.news-kind { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; border-radius: 20px; padding: 3px 10px; background: #edf7f2; color: #377b60; }
+.news-maintenance .news-kind { background: #fff0cc; color: #744b00; }
+.news-campaign .news-kind { background: #e3effa; color: #1e4f80; }
+.news-price_change .news-kind { background: #fbe9df; color: #8a3e17; }
+.news-title { margin: 0; font-size: 16px; }
+.news-card p { margin: 6px 0 0; overflow-wrap: anywhere; }
+.news-body { white-space: pre-wrap; }
+.news-until, .news-coupon { color: #5d6c78; font-size: 12px; }
+.news-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.news-thanks, .module-requested { color: #377b60; font-weight: 600; }
+
+.module-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.module-card { border: 1px solid var(--line, #d9dee5); border-radius: 8px; padding: 14px 16px; background: #fff; display: flex; flex-direction: column; gap: 6px; }
+.module-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.module-card h3 { margin: 0; font-size: 15px; }
+.module-card p { margin: 0; overflow-wrap: anywhere; }
+.module-desc { color: #4a5a68; }
+.module-features { margin: 0; padding-left: 18px; font-size: 13px; }
+.module-trial, .module-campaign { font-size: 12px; color: #5d6c78; }
+.module-campaign { color: #1e4f80; }
+.module-soon { background: #fff0cc; color: #744b00; }
+.module-actions { margin-top: auto; padding-top: 8px; }
+#moduleRequestDialog { width: min(480px, 94vw); }
+
+#supportDialog { width: min(760px, 94vw); }
+.support-access-options { border-top: 1px solid #edf0f3; padding-top: 6px; }
+.support-access-detail { display: grid; gap: 8px; margin: 4px 0 6px 30px; max-width: 360px; }
+.support-access-detail[hidden] { display: none; }
+.support-access-hint { margin: 0; font-size: 12px; color: #5d6c78; }
+.support-access-box { border-top: 1px solid #edf0f3; display: grid; gap: 8px; justify-items: start; }
+.support-access-box h3 { margin: 0; font-size: 14px; }
+.support-access-box p { margin: 0; overflow-wrap: anywhere; }
+.support-access-box .field { width: min(260px, 100%); }
+
+.support-button { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 11px; border: 1px solid #dce5eb; border-radius: 8px; background: #ffffff; color: #557084; font-size: 12px; font-weight: 650; white-space: nowrap; transition: background 140ms ease, border-color 140ms ease, color 140ms ease; }
+.support-button svg { width: 17px; height: 17px; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.support-button:hover { border-color: #b9cbd7; background: #f2f7f8; color: #174356; }
+.support-button:focus-visible { outline: 2px solid #315767; outline-offset: 2px; }
+@media (max-width: 640px) { .support-button span { display: none; } .support-button { width: 34px; padding: 0; justify-content: center; } }
+
+/* The strip for remote support access and for a support answer that waits for the office. */
+.support-strip { position: sticky; top: 0; z-index: 6; box-shadow: 0 2px 8px #183b4b1a; }
+.support-strip[hidden] { display: none; }
+body.has-support-strip .shell > header { top: var(--support-strip-h, 0px); }
+.support-strip-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px clamp(14px, 2vw, 26px); font-size: 13px; line-height: 1.4; border-bottom: 1px solid #00000014; background: #e3effa; color: #173f66; }
+.support-strip-connected { background: #fff0cc; color: #5f3d00; }
+.support-strip-overtime { background: #fbe9df; color: #7a3413; }
+.support-strip-extension { background: #fff7e0; color: #5f3d00; }
+.support-strip-answered { background: #e6f4ee; color: #1d5a42; }
+.support-strip-self { background: #183b4b; color: #ffffff; }
+.support-strip-text { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+.support-strip-clock { font-variant-numeric: tabular-nums; }
+.support-strip-button { flex: none; padding: 4px 11px; border: 1px solid currentColor; border-radius: 6px; background: #ffffff; color: inherit; font-size: 12px; font-weight: 650; }
+.support-strip-button:hover { background: #f2f7f8; }
+.support-strip-button:focus-visible { outline: 2px solid #315767; outline-offset: 2px; }
+.support-strip-primary { background: #183b4b; border-color: #183b4b; color: #ffffff; }
+.support-strip-primary:hover { background: #122e3b; }
+.support-strip-danger { color: #8c2f23; border-color: #8c2f23; }
+@media print { .support-strip { display: none; } }
+.message-whatsapp-summary{display:block;margin-top:4px;color:#475467}.message-whatsapp-summary.is-bad{color:#b42318;font-weight:600}
+.message-whatsapp{margin-top:16px;padding:14px 18px;border:1px solid #e4e7ec;border-radius:8px}.message-whatsapp ul{margin:8px 0 0;padding-left:18px;display:grid;gap:6px}.message-whatsapp li.is-ok{color:#067647}.message-whatsapp li.is-bad{color:#b42318}.message-whatsapp li.is-muted{color:#475467}

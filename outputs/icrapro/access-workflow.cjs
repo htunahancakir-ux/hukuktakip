@@ -143,8 +143,10 @@ async function handleWorkflowRoutes(ctx) {
       }
       const next = structuredClone(ctx.state);
       next.data['icrapro-v1'].docs.find((x) => x.id === d.id).conversationReport = report;
-      if (report.aiUsage)
+      if (report.aiUsage) {
         next.aiUsage = require('../../lib/ai-settings.cjs').addUsage(next.aiUsage, report.aiUsage);
+        (res.hanAiUsage ||= []).push(report.aiUsage);
+      }
       persist(next);
     }
     send(res, 200, { report });
@@ -250,11 +252,13 @@ async function handleWorkflowRoutes(ctx) {
     doc.conversationReport = await generateReport(voipConversations.merge(doc.conversations, updatedCalls), {
       aiConfig: next.aiConfig,
     });
-    if (doc.conversationReport.aiUsage)
+    if (doc.conversationReport.aiUsage) {
       next.aiUsage = require('../../lib/ai-settings.cjs').addUsage(
         next.aiUsage,
         doc.conversationReport.aiUsage,
       );
+      (res.hanAiUsage ||= []).push(doc.conversationReport.aiUsage);
+    }
     if (patch) {
       if (req.hanSaveVoipResult) req.hanSaveVoipResult(patch);
       else

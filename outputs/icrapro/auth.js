@@ -409,6 +409,7 @@ function returnToMainMenu(event) {
 }
 function accessMenu() {
   if (typeof setupStaffBreakButton === 'function') setupStaffBreakButton();
+  if (typeof setupSupportButton === 'function') setupSupportButton();
 
   document.querySelectorAll('aside .brand-home').forEach((link) => {
     link.onclick = returnToMainMenu;
@@ -475,7 +476,22 @@ function installServerStorage() {
     return set.call(this, key, value);
   };
 }
+// Paid add-ons (phone, AI) the office was sold. The server enforces them; this only hides the
+// screens (`globalThis.hanModules?.[code] === false`). Until the answer arrives, or if it cannot be
+// fetched, nothing is hidden.
+window.hanModules = {};
+async function loadModuleFlags() {
+  try {
+    const response = await fetch('/api/modules', {
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: { 'X-Han-Request': '1' },
+    });
+    if (response.ok) window.hanModules = await response.json();
+  } catch {}
+}
 async function launchApplication() {
+  await loadModuleFlags();
   await loadClassicScript('record-patch.js');
   await preloadServerData();
   for (const key of protectedKeys) localStorage.removeItem(key);
@@ -490,6 +506,7 @@ async function launchApplication() {
   if (embeddedIntake) return;
   setupWorkspaceSearch();
   startMessageNotifications();
+  if (typeof startSupportAccess === 'function') startSupportAccess();
   startCollectionNotices();
   startWorkflowNotices();
   startScheduledReminderNotices();

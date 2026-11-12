@@ -1,4 +1,5 @@
 const wa = require('../../lib/whatsapp.cjs');
+const smsRecovery = require('../../lib/sms-recovery.cjs');
 
 const manager = (user) => ['ceo', 'admin'].includes(user?.role);
 
@@ -29,6 +30,23 @@ function accountTarget(ctx, id) {
   if (target.role === 'ceo' && ctx.u.role !== 'ceo')
     throw ctx.fail(403, 'CEO hesabını yalnızca CEO yönetebilir.');
   return target;
+}
+
+// The one enabled account matching a username or a registered phone (WhatsApp number for the
+// WhatsApp channel, mobile phone for SMS), or null when none or several match.
+function recoveryAccount(ctx, input, channel) {
+  const username = input.toLocaleLowerCase('tr');
+  const phone =
+    channel === 'sms' ? require('../../lib/verimor-sms.cjs').smsNumber(input) : wa.normalizePhone(input);
+  const matches = ctx.state.users.filter(
+    (user) =>
+      ctx.userEnabled(user) &&
+      (user.username === username ||
+        (phone &&
+          (channel === 'sms' ? smsRecovery.smsPhone(ctx.state, user) : wa.contactPhone(ctx.state, user)) ===
+            phone)),
+  );
+  return matches.length === 1 ? matches[0] : null;
 }
 
 function requestReset(ctx, user, { silent }) {
@@ -168,15 +186,54 @@ async function handleWhatsAppRoutes(ctx) {
     throttle(ctx, 'password-wa-request', 8);
     const input = String((await body(req)).account || '').trim();
     if (!input || input.length > 80) throw fail(400, 'Telefon veya kullanıcı adı girin.');
-    const username = input.toLocaleLowerCase('tr');
-    const phone = wa.normalizePhone(input);
-    const matches = ctx.state.users.filter(
-      (user) =>
-        ctx.userEnabled(user) &&
-        (user.username === username || (phone && wa.contactPhone(ctx.state, user) === phone)),
-    );
-    requestReset(ctx, matches.length === 1 ? matches[0] : null, { silent: true });
-    send(res, 200, { ok: true });
+    const cfg = ctx.state.whatsappConfig;
+    // The office's own WhatsApp wins once it is set up; until then the platform's SMS service
+    // sends a one-time temporary password. The answer never says whether the account exists.
+    if (!(cfg?.enabled && cfg.resetTemplate) && ctx.options.smsAvailable === true) {
+      const user = recoveryAccount(ctx, input, 'sms');
+      const phone = user && smsRecovery.smsPhone(ctx.state, user);
+      if (phone) {
+        const next = structuredClone(ctx.state);
+        const code = smsRecovery.issueCode(
+          next,
+          next.users.find((row) => row.id === user.id),
+        );
+        if (code) {
+          ctx.persist(next);
+          res.hanSms = { to: phone, text: smsRecovery.message(code), silent: true };
+        }
+      }
+      send(res, 200, { ok: true, channel: 'sms' });
+      return true;
+    }
+    requestReset(ctx, recoveryAccount(ctx, input, 'whatsapp'), { silent: true });
+    send(res, 200, { ok: true, channel: 'whatsapp' });
+    return true;
+  }
+  if (route === '/api/password-reset/sms-complete' && req.method === 'POST') {
+    throttle(ctx, 'password-sms-complete', 12);
+    const input = await body(req);
+    const { password } = input;
+    if (typeof password !== 'string' || password.length < 10 || password.length > 128)
+      throw fail(400, 'Yeni şifre 10–128 karakter olmalı.');
+    const account = String(input.account || '').trim();
+    if (!account || account.length > 80) throw fail(400, 'Telefon veya kullanıcı adı girin.');
+    const user = recoveryAccount(ctx, account, 'sms');
+    const next = structuredClone(ctx.state);
+    const target = user && next.users.find((row) => row.id === user.id);
+    const check = target ? smsRecovery.checkCode(next, target, input.code) : { ok: false, changed: false };
+    if (!check.ok) {
+      // 200 so the wrong-attempt count commits; the body says it failed.
+      if (check.changed) ctx.persist(next);
+      send(res, 200, { ok: false, error: 'Geçici şifre hatalı veya süresi dolmuş. Yeni şifre isteyin.' });
+      return true;
+    }
+    target.salt = ctx.crypto.randomBytes(16).toString('hex');
+    target.hash = await ctx.hash(password, target.salt);
+    ctx.invalidate(target.id);
+    res.hanAuditActor = { id: target.id, name: target.name, username: target.username };
+    ctx.persist(next);
+    send(res, 200, { ok: true, username: target.username });
     return true;
   }
   if (route === '/api/password-reset/complete' && req.method === 'POST') {

@@ -7,7 +7,23 @@ const { Writable } = require('node:stream');
 const { createVoipHandler, configure, number, phones, updateEvent } = require('../lib/voip.cjs');
 const { createRecordingStore, filename } = require('../lib/voip-recordings.cjs');
 process.env.VOIP_ENCRYPTION_KEY = 'ab'.repeat(32);
-function harness(fetcher) {
+// A browser that supports the web phone and where the microphone was already allowed.
+function allowMicrophone(w, { state = 'granted', devices = [{ kind: 'audioinput' }], getUserMedia } = {}) {
+  Object.defineProperty(w, 'isSecureContext', { value: true, configurable: true });
+  w.RTCPeerConnection = function RTCPeerConnection() {};
+  Object.defineProperty(w.navigator, 'permissions', {
+    value: { query: async () => ({ state }) },
+    configurable: true,
+  });
+  Object.defineProperty(w.navigator, 'mediaDevices', {
+    value: {
+      enumerateDevices: async () => devices,
+      getUserMedia: getUserMedia || (async () => ({ getTracks: () => [{ stop() {} }] })),
+    },
+    configurable: true,
+  });
+}
+function harness(fetcher, extra = {}) {
   let state = {
     users: [
       { id: 'u', active: true, name: 'CEO' },
@@ -63,6 +79,7 @@ function harness(fetcher) {
     fetcher,
     background: (p) => jobs.push(p),
     recordings: { available: true, save: async () => {}, read: async () => Buffer.from('test') },
+    ...extra,
   });
   return {
     get state() {
@@ -102,6 +119,11 @@ test('phone normalization deduplicates numbers and excludes invalid values', () 
   assert.equal(
     phones({ phone1: '05320000000', phone2: '905320000000', additionalPhones: ['05320000001'] }).length,
     2,
+  );
+  // Numbers added earlier land in additionalPhones; they fill an empty Tel-2 first.
+  assert.deepEqual(
+    phones({ phone1: '05320000000', additionalPhones: ['05320000001', '05320000002'] }).map((p) => p.label),
+    ['Tel-1', 'Tel-2', 'Tel-3'],
   );
 });
 test('known originate failures are actionable and unknown provider responses never expose secrets', async () => {
@@ -202,6 +224,7 @@ test('standalone dialer shows last call before allowing a repeated call', async 
     });
     w.eval(await fs.readFile('outputs/icrapro/modal-dismissal.js', 'utf8'));
     w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    allowMicrophone(w);
     w.setupVoipNavigation();
     w.document.querySelector('[data-standalone-voip]').click();
     const form = w.document.querySelector('.voip-standalone-form');
@@ -249,6 +272,7 @@ test('single dial entry opens the webphone and restoring it does not reload an o
       },
     });
     w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    allowMicrophone(w);
     w.setupVoipNavigation();
     assert.equal(w.document.querySelector('[data-global-webphone]'), null);
     w.document.querySelector('[data-standalone-voip]').click();
@@ -651,7 +675,7 @@ test('UI keeps numbers, history and role-controlled audio together without prelo
       hanAuth: { id: 's', role: 'staff' },
       esc: (v) => String(v).replaceAll('<', '&lt;'),
       saveRecordIntakeMetadata: async (_before, next) => {
-        savedPhone = next.additionalPhones[0];
+        savedPhone = JSON.parse(JSON.stringify([next.phone1, next.phone2, next.additionalPhones]));
         return next;
       },
       fetch: async (url) =>
@@ -684,9 +708,15 @@ test('UI keeps numbers, history and role-controlled audio together without prelo
               }),
             },
     });
+    w.eval(await fs.readFile('outputs/icrapro/phone-format.js', 'utf8'));
     w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    allowMicrophone(w);
     w.eval(await fs.readFile('outputs/icrapro/modal-dismissal.js', 'utf8'));
-    w.setupBorrowerVoip(w.document.querySelector('dialog'), { id: 'd' });
+    w.setupBorrowerVoip(w.document.querySelector('dialog'), {
+      id: 'd',
+      phone1: '0 (532) 000 00 00',
+      additionalPhones: ['05320000001'],
+    });
     w.document.querySelector('[data-open-voip]').click();
     await new Promise((r) => setImmediate(r));
     assert.match(w.document.body.textContent, /Other Staff/);
@@ -698,7 +728,9 @@ test('UI keeps numbers, history and role-controlled audio together without prelo
     add.elements.phone.value = '05320000009';
     add.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
     await new Promise((r) => setImmediate(r));
-    assert.equal(savedPhone, '905320000009');
+    // An older extra number moves up into the empty Tel-2; the new one follows as Tel-3.
+    assert.deepEqual(savedPhone, ['0 (532) 000 00 00', '05320000001', ['0 (532) 000 00 09']]);
+    assert.match(w.document.body.textContent, /Tel-3 alanına eklendi/);
     assert.equal(w.document.querySelectorAll('audio').length, 0);
     const panel = w.document.querySelector('.voip-number-panel');
     assert.equal(panel.querySelectorAll('[data-close-voip]').length, 0);
@@ -882,6 +914,7 @@ test('recovering an active call never nests its controls inside the minimized we
       }),
     });
     w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    allowMicrophone(w);
     w.setupVoipNavigation();
     await new Promise(setImmediate);
     const host = w.document.querySelector('#voipActiveCall');
@@ -959,6 +992,7 @@ test('recordings archive filters status and result, plays on demand and offers n
       },
     });
     w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    allowMicrophone(w);
     w.voipRecordingsPage();
     await new Promise((r) => setImmediate(r));
     assert.equal(w.document.querySelectorAll('[data-voip-result]').length, 0);
@@ -1186,6 +1220,7 @@ test('cancel control is immediately visible while originate is pending', async (
       return { ok: true, json: async () => ({ ok: true }) };
     };
     w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    allowMicrophone(w);
     const pending = w.voipStartCancelable(
       { requestId: 'cancel-ui-start-001' },
       w.document.getElementById('area'),
@@ -1201,6 +1236,8 @@ test('cancel control is immediately visible while originate is pending', async (
     );
     const globalHangup = w.document.querySelector('.header-actions [data-global-hangup]');
     assert(globalHangup, 'global hangup exists before originate completes');
+    // Wait until the microphone check passed and the start request is with the switchboard.
+    while (!release) await new Promise(setImmediate);
     globalHangup.click();
     await new Promise(setImmediate);
     assert.equal(cancellations, 1);
@@ -1271,6 +1308,7 @@ test('borrower calling initializes the shared background webphone without requir
       }),
     });
     w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    allowMicrophone(w);
     w.setupBorrowerVoip(w.document.querySelector('dialog'), { id: 'd' });
     w.document.querySelector('[data-open-voip]').click();
     await new Promise(setImmediate);
@@ -1520,6 +1558,7 @@ test('closing standalone dialer releases phone and ignores a late webphone token
         }),
     });
     w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    allowMicrophone(w);
     w.openStandaloneVoip();
     w.document.querySelector('#voipStandalone [data-close]').click();
     resolveToken({ ok: true, json: async () => ({ url: 'https://example.test/phone' }) });
@@ -1590,4 +1629,202 @@ test('unanswered call saves its outcome automatically and preserves live note', 
   assert(call.resultAt);
   assert.match(call.note, /Sonra tekrar kontrol et/);
   assert.equal(call.draftNote, undefined);
+});
+
+test('a web phone that is still registering gets a few more tries; nothing else is retried', async () => {
+  let originates = 0;
+  const waits = [];
+  const h = harness(
+    async (url) => {
+      if (new URL(url).pathname === '/originate') {
+        originates++;
+        return originates < 3
+          ? new Response('extension 1001 is not registered', { status: 400 })
+          : new Response('call-0000000001');
+      }
+      return new Response('[]');
+    },
+    { wait: async (ms) => waits.push(ms) },
+  );
+  h.state.voipConfig.webphoneUrl = 'https://oim.verimor.com.tr/webphone';
+  const started = await h.call('start', 'POST', {
+    documentId: 'd',
+    phone: '05320000000',
+    requestId: 'register-wait-001',
+    browserManaged: true,
+    waitForPhone: true,
+  });
+  assert.equal(started.call.status, 'ringing');
+  assert.equal(originates, 3);
+  assert.deepEqual(waits, [3000, 3000]);
+  assert.equal(h.state.voipCalls.length, 1, 'one call record however many tries');
+  assert.equal(h.state.voipCalls[0].providerError, undefined);
+
+  // Still offline after every try: one failed record, and a machine-readable reason.
+  let offlineTries = 0;
+  const offline = harness(
+    async () => {
+      offlineTries++;
+      return new Response('extension 1001 is not registered', { status: 400 });
+    },
+    { wait: async () => {} },
+  );
+  offline.state.voipConfig.webphoneUrl = 'https://oim.verimor.com.tr/webphone';
+  await assert.rejects(
+    offline.call('start', 'POST', {
+      documentId: 'd',
+      phone: '05320000001',
+      requestId: 'register-wait-002',
+      browserManaged: true,
+      waitForPhone: true,
+    }),
+    (e) => /santrale bağlı değil/.test(e.message) && e.reason === 'extension_unregistered',
+  );
+  assert.equal(offlineTries, 4);
+  assert.equal(offline.state.voipCalls.length, 1);
+  assert.equal(offline.state.voipCalls[0].status, 'failed');
+
+  // Other refusals (e.g. a wrong caller id) are never retried.
+  let other = 0;
+  const strict = harness(
+    async () => {
+      other++;
+      return new Response('invalid caller_id: 902120000000', { status: 400 });
+    },
+    { wait: async () => assert.fail('must not wait') },
+  );
+  strict.state.voipConfig.webphoneUrl = 'https://oim.verimor.com.tr/webphone';
+  await assert.rejects(
+    strict.call('start', 'POST', {
+      documentId: 'd',
+      phone: '05320000000',
+      requestId: 'caller-id-request-0001',
+      browserManaged: true,
+      waitForPhone: true,
+    }),
+    /Dış arama numarası/,
+  );
+  assert.equal(other, 1);
+});
+
+test("phone-status asks Verimor about the user's own extension and respects its 2-per-minute limit", async () => {
+  const asked = [];
+  let reply = () => new Response('[{"user":1001,"status":"UNREGISTERED"}]');
+  const h = harness(async (url) => {
+    const u = new URL(url);
+    asked.push(u.pathname + '?user=' + u.searchParams.get('user'));
+    return reply();
+  });
+  assert.deepEqual(await h.call('phone-status'), { extension: '1001', status: 'UNREGISTERED' });
+  assert.deepEqual(asked, ['/user_statuses?user=1001']);
+  assert.equal((await h.call('phone-status')).cached, true, 'answered from cache within 30 s');
+  assert.equal(asked.length, 1);
+
+  const limited = harness(async () => new Response('Too Many Requests', { status: 429 }));
+  assert.equal((await limited.call('phone-status')).status, 'RATE_LIMITED');
+  const dnd = harness(async () => new Response('[{"user":1001,"status":"SS_DND"}]'));
+  assert.equal((await dnd.call('phone-status')).status, 'SS_DND');
+});
+
+test('before dialing the browser checks the microphone and explains each problem; nothing reaches Verimor', async () => {
+  const { JSDOM } = require('jsdom');
+  const script = await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8');
+  const run = async (mic) => {
+    const dom = new JSDOM(
+      '<div class="header-actions"></div><div id="area"><button id="launch">Ara</button></div>',
+      {
+        url: 'https://example.test',
+        runScripts: 'dangerously',
+      },
+    );
+    const w = dom.window;
+    const requests = [];
+    w.fetch = async (url) => {
+      requests.push(url);
+      return { ok: true, json: async () => ({ call: { id: 'call', status: 'ringing' } }) };
+    };
+    w.eval(script);
+    allowMicrophone(w, mic);
+    try {
+      const result = await w.voipStartCancelable(
+        { requestId: 'microphone-check-01' },
+        w.document.getElementById('area'),
+        () => {},
+        w.document.getElementById('launch'),
+      );
+      return { result, requests, launch: !!w.document.getElementById('launch') };
+    } catch (error) {
+      return { error, requests, launch: !!w.document.getElementById('launch') };
+    } finally {
+      w.close();
+    }
+  };
+  const denied = await run({ state: 'denied' });
+  assert.match(denied.error.message, /Mikrofon izni engellenmiş.*kilit.*İzin ver/);
+  assert.equal(denied.error.reason, 'microphone_denied');
+  assert.deepEqual(denied.requests, [], 'no call is started without a microphone');
+  assert.equal(denied.launch, true, 'the Ara button comes back');
+
+  let asked = 0;
+  const firstTime = await run({
+    state: 'prompt',
+    getUserMedia: async () => (asked++, { getTracks: () => [{ stop() {} }] }),
+  });
+  assert.equal(asked, 1, 'the permission is asked from the Ara click');
+  assert.equal(firstTime.result.call.status, 'ringing');
+  assert.deepEqual(firstTime.requests, ['/api/voip/start']);
+
+  const fail = (name) => async () => {
+    throw Object.assign(new Error(name), { name });
+  };
+  assert.match(
+    (await run({ state: 'prompt', getUserMedia: fail('NotAllowedError') })).error.message,
+    /engellenmiş/,
+  );
+  assert.match(
+    (await run({ state: 'prompt', getUserMedia: fail('NotFoundError') })).error.message,
+    /mikrofon veya kulaklık bulunamadı/,
+  );
+  assert.match(
+    (await run({ state: 'prompt', getUserMedia: fail('NotReadableError') })).error.message,
+    /Teams, Zoom/,
+  );
+  assert.match(
+    (await run({ state: 'granted', devices: [] })).error?.message || '',
+    /^$/,
+    'granted + asking uses getUserMedia, not the device list',
+  );
+});
+
+test('connection test lists microphone, firewall and Verimor extension status in plain words', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('<div id="host" hidden></div>', {
+    url: 'https://example.test',
+    runScripts: 'dangerously',
+  });
+  const w = dom.window;
+  try {
+    w.esc = (v) => String(v).replaceAll('<', '&lt;');
+    w.fetch = async (url) => {
+      if (String(url).startsWith('https://oim.verimor.com.tr/')) throw new TypeError('Failed to fetch');
+      return { ok: true, json: async () => ({ extension: '1001', status: 'UNREGISTERED' }) };
+    };
+    w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    allowMicrophone(w, { state: 'denied' });
+    await w.voipShowDiagnosis(w.document.getElementById('host'));
+    const items = [...w.document.querySelectorAll('.voip-diagnosis li')].map((li) => [
+      li.dataset.ok,
+      li.textContent,
+    ]);
+    assert.equal(items[0][0], 'no');
+    assert.match(items[0][1], /Mikrofon izni engellenmiş/);
+    assert.equal(items[1][0], 'no');
+    assert.match(items[1][1], /güvenlik duvarı.*oim\.verimor\.com\.tr.*443/);
+    assert.equal(items[2][0], 'no');
+    assert.match(items[2][1], /çevrimdışı/);
+    assert.match(items[3][1], /tek bilgisayarda/);
+    assert.equal(w.document.getElementById('host').hidden, false);
+  } finally {
+    w.close();
+  }
 });
