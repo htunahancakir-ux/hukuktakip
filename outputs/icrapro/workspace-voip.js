@@ -1233,7 +1233,7 @@ function setupBorrowerVoip(dialog, doc) {
         const form = document.createElement('form');
         form.className = 'voip-add-phone';
         form.innerHTML =
-          '<label>Yeni telefon numarası<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="05XX XXX XX XX" required></label><div><button class="primary" type="submit">Kaydet</button><button class="link" type="button" data-cancel-phone>Vazgeç</button></div><small>Numara bu borçlu föyüne eklenir; ardından listeden arayabilirsiniz.</small><span role="alert"></span>';
+          '<label>Yeni telefon numarası<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="05XX XXX XX XX" required></label><div><button class="primary" type="submit">Kaydet</button><button class="link" type="button" data-cancel-phone>Vazgeç</button></div><small>Numara borçlunun boş Tel-1 / Tel-2 alanına, bunlar doluysa Tel-3, Tel-4… olarak eklenir.</small><span role="alert"></span>';
         panel.querySelector('.voip-panel-heading').after(form);
         panel.querySelector('[data-add-phone]').disabled = true;
         form.elements.phone.focus();
@@ -1259,13 +1259,21 @@ function setupBorrowerVoip(dialog, doc) {
           }
           form.querySelector('[type="submit"]').disabled = true;
           try {
-            const saved = await saveRecordIntakeMetadata(doc, {
-              ...doc,
-              additionalPhones: [...(doc.additionalPhones || []), normalized],
-            });
+            // The debtor's own Tel-1 / Tel-2 fill first; the rest follow as Tel-3, Tel-4…
+            const stored =
+              typeof formatPhoneNumber === 'function' ? formatPhoneNumber(normalized) : normalized;
+            const next = { ...doc, additionalPhones: [...(doc.additionalPhones || []), stored] };
+            if (typeof borrowerPhoneSlots === 'function') Object.assign(next, borrowerPhoneSlots(next));
+            const saved = await saveRecordIntakeMetadata(doc, next);
             Object.assign(doc, saved);
             addingPhone = false;
-            message('Numara föye eklendi. Listeden arayabilirsiniz.', 'notice');
+            const slot =
+              next.phone1 === stored
+                ? 'Tel-1'
+                : next.phone2 === stored
+                  ? 'Tel-2'
+                  : 'Tel-' + (next.additionalPhones.indexOf(stored) + 3);
+            message('Numara borçlunun ' + slot + ' alanına eklendi. Listeden arayabilirsiniz.', 'notice');
             await refresh();
           } catch (error) {
             form.querySelector('[role="alert"]').textContent = error.message;

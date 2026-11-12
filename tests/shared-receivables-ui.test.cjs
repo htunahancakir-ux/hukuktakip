@@ -49,6 +49,7 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
   });
   w.HTMLElement.prototype.scrollIntoView = function () {};
   for (const file of [
+    'phone-format.js',
     'form-inputs.js',
     'parking-fees.js',
     'receivable-rules.js',

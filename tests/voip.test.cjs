@@ -119,6 +119,10 @@ test('phone normalization deduplicates numbers and excludes invalid values', () 
   assert.equal(
     phones({ phone1: '05320000000', phone2: '905320000000', additionalPhones: ['05320000001'] }).length,
     2,
+  );  // Numbers added earlier land in additionalPhones; they fill an empty Tel-2 first.
+  assert.deepEqual(
+    phones({ phone1: '05320000000', additionalPhones: ['05320000001', '05320000002'] }).map((p) => p.label),
+    ['Tel-1', 'Tel-2', 'Tel-3'],
   );
 });
 test('known originate failures are actionable and unknown provider responses never expose secrets', async () => {
@@ -722,7 +726,7 @@ test('UI keeps numbers, history and role-controlled audio together without prelo
       hanAuth: { id: 's', role: 'staff' },
       esc: (v) => String(v).replaceAll('<', '&lt;'),
       saveRecordIntakeMetadata: async (_before, next) => {
-        savedPhone = next.additionalPhones[0];
+        savedPhone = JSON.parse(JSON.stringify([next.phone1, next.phone2, next.additionalPhones]));
         return next;
       },
       fetch: async (url) =>
@@ -755,10 +759,15 @@ test('UI keeps numbers, history and role-controlled audio together without prelo
               }),
             },
     });
+    w.eval(await fs.readFile('outputs/icrapro/phone-format.js', 'utf8'));
     w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
     allowMicrophone(w);
     w.eval(await fs.readFile('outputs/icrapro/modal-dismissal.js', 'utf8'));
-    w.setupBorrowerVoip(w.document.querySelector('dialog'), { id: 'd' });
+    w.setupBorrowerVoip(w.document.querySelector('dialog'), {
+      id: 'd',
+      phone1: '0 (532) 000 00 00',
+      additionalPhones: ['05320000001'],
+    });
     w.document.querySelector('[data-open-voip]').click();
     await new Promise((r) => setImmediate(r));
     assert.match(w.document.body.textContent, /Other Staff/);
@@ -770,7 +779,9 @@ test('UI keeps numbers, history and role-controlled audio together without prelo
     add.elements.phone.value = '05320000009';
     add.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
     await new Promise((r) => setImmediate(r));
-    assert.equal(savedPhone, '905320000009');
+    // An older extra number moves up into the empty Tel-2; the new one follows as Tel-3.
+    assert.deepEqual(savedPhone, ['0 (532) 000 00 00', '05320000001', ['0 (532) 000 00 09']]);
+    assert.match(w.document.body.textContent, /Tel-3 alanına eklendi/);
     assert.equal(w.document.querySelectorAll('audio').length, 0);
     const panel = w.document.querySelector('.voip-number-panel');
     assert.equal(panel.querySelectorAll('[data-close-voip]').length, 0);
