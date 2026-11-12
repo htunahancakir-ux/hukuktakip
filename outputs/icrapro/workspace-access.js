@@ -160,6 +160,7 @@ function staffBorrowerDetail(id, record) {
   setupBorrowerNavigation(dialog, id);
   if (typeof setupBorrowerVoip === 'function') setupBorrowerVoip(dialog, d);
   if (!dialog.open) dialog.showModal();
+  if (typeof bindFolioLock === 'function') bindFolioLock(dialog, id);
 }
 
 function staffDashboard() {

@@ -2,6 +2,7 @@
 // dashboard state and application entry point, which render the first page.
 const workspaceScripts = [
   'workspace-ceo-pin.js',
+  'workspace-document-leases.js',
   'workspace-contact.js',
   'accounting-rules.js',
   'profit-rules.js',

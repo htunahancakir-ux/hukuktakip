@@ -125,6 +125,7 @@ function borrowerDetail(id, savedForm) {
     if (document.querySelector('.pinned-borrower-sheet')) dialog.show();
     else dialog.showModal();
   }
+  if (typeof bindFolioLock === 'function') bindFolioLock(dialog, id);
 }
 
 function borrowerFinanceOverview(d, f) {
@@ -514,6 +515,7 @@ function editBorrower(id) {
         : 'Borçlu bilgileri güncellendi. Uyarı: TC bilgisi girilmedi.',
     );
   };
+  if (typeof bindFolioLock === 'function') bindFolioLock(dialog, id);
 }
 
 function propertyFields(record, prefix) {
@@ -1155,6 +1157,7 @@ function setupBorrowerPin(dialog, d) {
     setupBorrowerDragging(pinned);
     dialog.close();
     pinned.show();
+    if (typeof bindFolioLock === 'function') bindFolioLock(pinned, d.id);
   };
 }
 

@@ -78,6 +78,7 @@ function editDocumentPrincipal(id) {
     }
   };
   dialog.showModal();
+  if (typeof bindFolioLock === 'function') bindFolioLock(dialog, id);
 }
 
 function manuallyCloseDocument(id) {
@@ -135,6 +136,7 @@ function manuallyCloseDocument(id) {
     }
   };
   dialog.showModal();
+  if (typeof bindFolioLock === 'function') bindFolioLock(dialog, id);
 }
 
 function isParkingDocument(d) {
@@ -645,6 +647,7 @@ function financialOperations(id, mode) {
   };
   $('#financeEntry').onsubmit = saveFinanceEntry;
   $('#expenseEntry').onsubmit = saveFinanceEntry;
+  if (typeof bindFolioLock === 'function') bindFolioLock($('#modal'), id);
 }
 
 function financeHistoryMarkup(id) {
@@ -864,6 +867,7 @@ function openLegalCalculator(id) {
   dialog.innerHTML = `<form id="legalCalculatorForm"><div class="panelhead"><h2>Yasal Faiz ve İcra Vekâlet Ücreti</h2><button type="button" class="link" id="closeLegal">Kapat</button></div><div class="formbody"><div class="notice">Para alacağı için icra takibi açılmış varsayımıyla ön hesap. Gerçek takip açılmaz. Başlangıç vadedir; başlangıç dahil, hesap tarihi hariç; basit faiz ve 365 gün esası kullanılır. Özel faiz veya ilam hükmü varsa bu hesabı uygulamayın. Oran doğrulama sınırı: ${esc(displayDate(legalRateVerifiedThrough))}. Tarife: 03.11.2026 AAÜT, icra takibi.</div><div class="grid">${field('Vade / Faiz Başlangıcı', 'start', 'date', d.due || '', true)}${field('Varsayımsal Takip / Hesap Tarihi', 'end', 'date', businessDate(), true)}<label class="field">Vekâlet Ücreti Matrahı<select name="baseMode"><option value="principalInterest">Anapara + hesaplanan işlemiş faiz</option><option value="principal">Yalnız anapara</option></select></label><label class="field">Ödeme Aşaması<select name="early"><option value="no">Tam ücret — ödeme süresi indirimi yok</option><option value="yes">Ödeme süresinde ödeme — dörtte üç ücret</option></select></label></div><p>Anapara: <b>${money(d.amount)}</b> · Masraflar ve vekâlet ücreti faiz matrahına alınmaz.</p><button class="secondary" type="submit">Hesaplamayı Göster</button><div id="legalCalculationOutput" style="margin-top:20px"></div><p><a href="https://mevzuat.adalet.gov.tr/mevzuat/104794" target="_blank" rel="noopener">3095 sayılı Kanun</a> · <a href="https://www.barobirlik.org.tr/dosyalar/belgeler/AvUcretTarifesi/tbb2026.pdf" target="_blank" rel="noopener">AAÜT — madde 11 ve üçüncü kısım</a> · <a href="https://www.tcmb.gov.tr/wps/wcm/connect/TR/TCMB%2BTR/Main%2BMenu/Temel%2BFaaliyetler/Para%2BPolitikasi/Reeskont%2Bve%2BAvans%2BFaiz%2BOranlari?v=1.0.8" target="_blank" rel="noopener">TCMB</a></p></div></form>`;
   $('#closeLegal').onclick = () => dialog.close();
   dialog.showModal();
+  if (typeof bindFolioLock === 'function') bindFolioLock(dialog, id);
   const form = $('#legalCalculatorForm');
   let result = null;
   form.oninput = () => {
@@ -985,6 +989,7 @@ function openRepayment(d) {
   dialog.innerHTML = `<form id="repaymentForm"><div class="panelhead"><div><h2>Borcu Yapılandır</h2><p>${esc(d.debtor)} · ${esc(d.number)}</p></div><button type="button" class="secondary" id="closeRepayment">Kapat</button></div><div class="formbody"><div class="notice">Kalan borç: <b>${money(finance.remaining / 100)}</b>. Kuruş farkları eşit bölmede ilk taksitlere dağıtılır.</div><div class="grid"><label class="field">Yapılandırılacak Borç<select name="settlementMode"><option value="full">Borcun Tamamı</option><option value="discounted">İndirimli Tutar</option></select></label><label class="field">Anlaşılan Yeni Tutar (TL)<input type="text" inputmode="decimal" name="settlementAmount" data-optional="true" disabled value="${formatAmountInput(finance.remaining / 100)}"></label><label class="field full">İndirim Açıklaması<input type="text" name="discountReason" data-optional="true" disabled></label><label class="field">Yöntem<select name="method"><option value="equal">Eşit Böl</option><option value="manual">Manuel Taksitlendirme</option></select></label><label class="field">Kaç Taksit?<input type="number" name="count" min="1" max="120" step="1" value="1" required></label>${field('İlk Taksit Tarihi', 'firstDue', 'date', businessDate(), true)}</div><button type="button" class="secondary" id="generateInstallments" style="margin-top:18px">Taksitlendir</button><div id="installmentRows" style="margin-top:20px"></div></div></form>`;
   $('#closeRepayment').onclick = () => dialog.close();
   if (!dialog.open) dialog.showModal();
+  if (typeof bindFolioLock === 'function') bindFolioLock(dialog, d.id);
   const form = $('#repaymentForm');
   let generated = null;
   function invalidate() {
@@ -1376,6 +1381,7 @@ function clientPayoutForm(id) {
   dialog.innerHTML = `<form id="clientPayoutForm"><div class="panelhead"><div><h2>Müvekkile Ödeme Kaydet</h2><p>${esc(d.number)} · ${esc(client?.name || 'Müvekkil bulunamadı')}</p></div><button class="secondary" type="button" id="closeClientPayout">Kapat</button></div><div class="formbody"><div class="notice">Ödenecek tutar: <b>${money(p.remaining / 100)}</b>. Kayıt gider sayılmaz; seçilen hesaptan düşülür.</div><p>Banka: ${esc(client?.bankName || '—')} · Hesap sahibi: ${esc(client?.accountHolder || '—')}<br>IBAN: ${esc(client?.iban || '—')}</p><div class="grid">${remote ? payoutAccountField(remote.accounts) : collectionAccountField('out')}<label class="field">Ödeme Şekli<select name="paymentMode" data-optional="true"><option value="partial">Tutar Gir (Kısmi Ödeme)</option><option value="full">Ödemenin Tamamı</option></select></label>${field('Ödenecek Tutar (TL)', 'amount', 'number', '', true)}${field('Ödeme Tarihi', 'date', 'date', businessDate(), true)}${field('Dekont / Ödeme Açıklaması', 'note', 'text', '', true, true)}</div><p id="clientPayoutRemainingPreview" role="status" aria-live="polite"></p></div><div class="actions"><button class="primary" type="submit">Ödemeyi Kaydet</button></div></form>`;
   $('#closeClientPayout').onclick = () => dialog.close();
   if (!dialog.open) dialog.showModal();
+  if (typeof bindFolioLock === 'function') bindFolioLock(dialog, d.id);
   const form = $('#clientPayoutForm');
   const updateRemaining = () => {
     const amount = financeCents(form.elements.amount.value);
