@@ -239,29 +239,55 @@ async function handleDataRoutes(ctx) {
           }
         }
         const priorIds = new Set(ctx.state.data[key].map((e) => e.id));
+        const parkingProcessed = [],
+          parkingClosed = new Map();
         for (const event of v.value) {
           if (priorIds.has(event.id)) continue;
           priorIds.add(event.id);
           event.operatorId = u.id;
           event.operatorName = u.name;
+          delete event.turnoverCategory;
+          if (event.type === 'payment' && ['ceo', 'admin'].includes(u.role) && !event.turnoverStaffId)
+            throw fail(400, 'Ciroyu yapan personeli seçin.');
           if (event.turnoverStaffId) {
             if (event.type !== 'payment' || !['ceo', 'admin'].includes(u.role))
               throw fail(403, 'Ciro personelini yalnızca yönetici seçebilir.');
             const staff = ctx.state.data['icrapro-personnel-v1'].find(
               (person) => person.id === event.turnoverStaffId && person.active,
             );
-            if (!staff) throw fail(400, 'Aktif bir ciro personeli seçin.');
-            event.turnoverStaffName = staff.name;
+            const category = require('../../lib/turnover-categories.cjs').categoryName(event.turnoverStaffId);
+            if (!staff && !category) throw fail(400, 'Aktif personel veya geçerli bir ciro türü seçin.');
+            event.turnoverStaffName = category || staff.name;
+            if (category) event.turnoverCategory = event.turnoverStaffId;
           } else {
             delete event.turnoverStaffId;
             delete event.turnoverStaffName;
           }
           if (event.type === 'payment') {
             const document = ctx.state.data['icrapro-v1'].docs.find((d) => d.id === event.documentId);
+            const closed = require('../../lib/parking-collection.cjs').normalizeParkingCollection(
+              document,
+              event,
+              [...ctx.state.data[key], ...parkingProcessed],
+              parkingToday(),
+              parkingClosed.get(event.documentId) ?? document?.status === 'İnfaz',
+            );
+            if (document?.docType === 'Yediemin Park Ücreti') {
+              parkingClosed.set(event.documentId, closed);
+              parkingProcessed.push(event);
+            } else delete event.parkingPostClosure;
             event.collectionStaffId = event.turnoverStaffId || document?.relatedStaff || '';
             event.collectionStaffName =
+              (event.turnoverCategory ? event.turnoverStaffName : '') ||
               ctx.state.data['icrapro-personnel-v1'].find((p) => p.id === event.collectionStaffId)?.name ||
               '';
+            if (
+              !event.turnoverCategory &&
+              !ctx.state.data['icrapro-personnel-v1'].some(
+                (p) => p.id === event.collectionStaffId && p.active,
+              )
+            )
+              throw fail(400, 'Tahsilat için aktif bir ciro personeli seçilmeli veya dosyaya atanmalıdır.');
           }
           if (event.type === 'payment' && Number.isSafeInteger(event.amount) && event.amount > 0) {
             next.collectionNoticeSequence = Number(next.collectionNoticeSequence || 0) + 1;
@@ -271,6 +297,8 @@ async function handleDataRoutes(ctx) {
                 sequence: next.collectionNoticeSequence,
                 eventId: event.id,
                 operatorName: u.name,
+                collectionStaffId: event.turnoverCategory ? u.staffId || '' : event.collectionStaffId,
+                collectionStaffName: event.turnoverCategory ? u.name : event.collectionStaffName,
                 amount: event.amount,
                 closes: event.closes === true,
                 createdAt: new Date().toISOString(),
@@ -363,8 +391,14 @@ async function handleDataRoutes(ctx) {
         'client',
         'clientParty',
         'debtor',
+        'debtorType',
+        'taxOffice',
         'identity',
         'officeIdentity',
+
+        'receivables',
+        'enforcementOffice',
+        'enforcementFileNumber',
         'attachments',
         'additionalPhones',
         'additionalAddresses',
@@ -374,6 +408,7 @@ async function handleDataRoutes(ctx) {
         'referencePhone2',
         'officePhone1',
         'officePhone2',
+        'phoneSources',
         'city',
         'district',
         'address',

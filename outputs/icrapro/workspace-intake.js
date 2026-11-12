@@ -29,16 +29,28 @@ async function ensureIntakeClient(id) {
   return client;
 }
 function bindIntakeClientSelect(input, select, emptyLabel, result) {
+  select._intakeClientRequest?.abort();
   let timer, controller;
   const search = async () => {
     controller?.abort();
     const request = new AbortController();
     controller = request;
+    select._intakeClientRequest = request;
+    const query = input.value;
     try {
-      const response = await readIntakeJson(
-        '/api/records/search?' + new URLSearchParams({ kind: 'client', q: input.value }),
-        request.signal,
-      );
+      const items = new Map(),
+        cursors = new Set();
+      let after = '';
+      do {
+        const params = new URLSearchParams({ kind: 'client', q: query });
+        if (after) params.set('after', after);
+        const response = await readIntakeJson('/api/records/search?' + params, request.signal);
+        for (const item of response.items) items.set(item.id, item);
+        after = response.next || '';
+        if (after && cursors.has(after)) throw Error('Müvekkil listesi tamamlanamadı. Yeniden deneyin.');
+        cursors.add(after);
+      } while (after && !request.signal.aborted);
+      const response = { items: [...items.values()] };
       if (request.signal.aborted || !select.isConnected) return;
       const value = select.value,
         current = [...select.options].find((o) => o.value === value);
@@ -49,10 +61,7 @@ function bindIntakeClientSelect(input, select, emptyLabel, result) {
         select.append(new Option(item.name || item.label, item.id));
       }
       select.value = value;
-      if (result)
-        result.textContent = response.more
-          ? 'İlk 50 eşleşme gösteriliyor; aramayı daraltabilirsiniz.'
-          : response.items.length + ' eşleşme';
+      if (result) result.textContent = response.items.length + ' eşleşme';
     } catch (error) {
       if (!request.signal.aborted && input.isConnected) toast(error.message);
     }
@@ -283,6 +292,109 @@ async function hydrateIntakeBatch() {
     intakeBatchKey(),
     JSON.stringify(intakeBatchIds().filter((id) => !ids.includes(id) || valid.has(id))),
   );
+}
+
+function intakeBatchReceiptFilter() {
+  const dialog = document.getElementById('modal'),
+    today = businessDate();
+  dialog.innerHTML =
+    '<div class="panelhead"><div><h2>Teslim Tesellüm Al</h2><p>Müvekkil ve evrak kayıt tarihi aralığını seçin.</p></div><button type="button" class="secondary" data-close-receipt-filter>Kapat</button></div><form id="intakeReceiptFilter"><div class="formbody grid"><label class="field full">Müvekkil *<input type="search" data-receipt-client-search data-optional="true" placeholder="Müvekkil adı veya unvanı ara…"><select name="client" required><option value="">Müvekkil seçin</option></select><small data-receipt-client-count></small></label>' +
+    field('Başlangıç Tarihi', 'from', 'date', today.slice(0, 8) + '01', true) +
+    field('Bitiş Tarihi', 'to', 'date', today, true) +
+    '<p class="full" role="status" data-receipt-filter-status></p></div><div class="actions"><button type="submit" class="primary">Tutanağı Oluştur</button></div></form>';
+  const form = dialog.querySelector('form'),
+    select = form.elements.client;
+  if (window.hanRecordsEnabled) {
+    setIntakeClientOption(select, selected);
+    bindIntakeClientSelect(
+      form.querySelector('[data-receipt-client-search]'),
+      select,
+      'Müvekkil seçin',
+      form.querySelector('[data-receipt-client-count]'),
+    );
+  } else {
+    for (const client of db.clients) select.add(new Option(client.name, client.id));
+    select.value = selected;
+    form.querySelector('[data-receipt-client-search]').oninput = (event) => {
+      const query = normalizeSearch(event.target.value);
+      for (const option of select.options)
+        option.hidden = !!option.value && !normalizeSearch(option.textContent).includes(query);
+    };
+  }
+  const request = new AbortController();
+  dialog.querySelector('[data-close-receipt-filter]').onclick = () => dialog.close();
+  dialog.addEventListener(
+    'close',
+    () => {
+      request.abort();
+      select._intakeClientRequest?.abort();
+    },
+    { once: true },
+  );
+  let pending = false;
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    if (pending || !form.reportValidity()) return;
+    const value = Object.fromEntries(new FormData(form)),
+      status = form.querySelector('[data-receipt-filter-status]'),
+      button = form.querySelector('[type="submit"]');
+    if (value.from > value.to) {
+      status.textContent = 'Başlangıç tarihi bitiş tarihinden sonra olamaz.';
+      return;
+    }
+    try {
+      pending = true;
+      button.disabled = true;
+      status.textContent = 'Evraklar hazırlanıyor…';
+      let docs = [];
+      if (window.hanRecordsEnabled) {
+        let after = '';
+        const seen = new Set(),
+          records = new Map();
+        do {
+          const result = await readIntakeJson(
+            '/api/records/intake-batch?' + new URLSearchParams({ ...value, after }),
+            request.signal,
+          );
+          for (const item of result.items) {
+            mergeIntakeClient(item.client);
+            recordIntakeBatchDocs.set(item.record.id, item.record);
+            records.set(item.record.id, item.record);
+          }
+          after = result.next || '';
+          if (after && seen.has(after)) throw Error('Evrak listesi tamamlanamadı. Yeniden deneyin.');
+          seen.add(after);
+        } while (after && !request.signal.aborted);
+        docs = [...records.values()];
+      } else
+        docs = db.docs.filter((doc) => {
+          const date =
+            doc.trackingDate ||
+            (doc.created && Number.isFinite(Date.parse(doc.created))
+              ? businessDate(new Date(doc.created))
+              : '');
+          return doc.client === value.client && date >= value.from && date <= value.to;
+        });
+      if (request.signal.aborted || !form.isConnected) return;
+      if (!docs.length) {
+        status.textContent = 'Bu müvekkil ve tarih aralığında kayıtlı evrak bulunamadı.';
+        return;
+      }
+      docs.sort(
+        (a, b) =>
+          (a.trackingDate || '').localeCompare(b.trackingDate || '') ||
+          String(a.number || '').localeCompare(String(b.number || ''), 'tr', { numeric: true }),
+      );
+      const clientName = select.selectedOptions[0]?.textContent || '';
+      intakeBatchReceipt(true, { docs, clientName, from: value.from, to: value.to });
+    } catch (error) {
+      if (!request.signal.aborted) status.textContent = error.message;
+    } finally {
+      pending = false;
+      if (button.isConnected) button.disabled = false;
+    }
+  };
+  if (!dialog.open) dialog.showModal();
 }
 async function refreshRecordIntakeBatch() {
   try {

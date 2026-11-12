@@ -49,6 +49,16 @@ test('Legacy paid amount and parking commission reduce entitlement', () => {
   assert.throws(()=>validateNewClientPayouts(parking,ledger(parking,payment(80001)),actor),{code:400});
   validateNewClientPayouts(parking,ledger(parking,payment(80000)),actor);
 });
+test('Parking payout is capped by actual collections less the agreed percentage, including earlier partial collections', () => {
+  const state=fixture();Object.assign(state.data['icrapro-v1'].docs[0],{docType:'Yediemin Park Ücreti',parkingCommissionRate:20});
+  state.data['hanhukuk-finance-v1'][0].amount=150000;
+  state.data['hanhukuk-accounting-v1'].entries[0].amount=150000;
+  assert.throws(()=>validateNewClientPayouts(state,ledger(state,payment(120001)),actor),{code:400});
+  validateNewClientPayouts(state,ledger(state,payment(120000)),actor);
+  const partial=ledger(state,payment(50000));state.data['hanhukuk-accounting-v1']=partial;
+  assert.throws(()=>validateNewClientPayouts(state,ledger(state,payment(70001,'remaining')),actor),{code:400});
+  validateNewClientPayouts(state,ledger(state,payment(70000,'remaining')),actor);
+});
 test('Reject batch overpayment, duplicated IDs and changing old ledger entries', () => {
   const state=fixture();
   for(const entries of [[payment(60000,'a'),payment(60000,'b')],[payment(10000),payment(10000)]])

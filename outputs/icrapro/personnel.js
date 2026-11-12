@@ -1,9 +1,21 @@
 let personnelPayrollTodayMonth = '';
+function isRealPersonnelRecord(record) {
+  const id = String(record?.id || record?.staffId || '');
+  if (['turnover:bonus', 'turnover:hukuk-reddiyat', 'turnover:temlik-reddiyat'].includes(id)) return false;
+  const name = String(record?.name || record?.staffName || '')
+    .normalize('NFKC')
+    .trim()
+    .toLocaleLowerCase('tr-TR')
+    .replaceAll('ı', 'i')
+    .replace(/[\s_-]+/g, '');
+  return !['bonus', 'hukukreddiyat', 'temlikreddiyat'].includes(name);
+}
 let calculatedBonus2 = new Map(),
   bonus2Month = '';
 function loadCalculatedBonus2(month) {
   bonus2Month = month || businessDate().slice(0, 7);
   const result = authApi('/api/bonus2?month=' + bonus2Month);
+  result.rows = result.rows.filter(isRealPersonnelRecord);
   calculatedBonus2 = new Map(result.rows.map((r) => [r.staffId, r]));
   return result;
 }
@@ -13,9 +25,10 @@ try {
   if (Array.isArray(data)) personnel = data;
 } catch {}
 function staffSelect(label, name, value = '') {
-  const active = personnel.filter((p) => p.active);
+  const active = personnel.filter((p) => p.active && isRealPersonnelRecord(p));
   const current = personnel.find((p) => p.id === value);
-  const unavailable = value && !active.some((p) => p.id === value);
+  const unavailable =
+    value && !active.some((p) => p.id === value) && isRealPersonnelRecord(current || { id: value });
   return `<label class="field">${esc(label)}<select name="${name}"><option value="">Personel seçin</option>${active.map((p) => `<option value="${esc(p.id)}" ${p.id === value ? 'selected' : ''}>${esc(p.name)}${p.title ? ' · ' + esc(p.title) : ''}</option>`).join('')}${unavailable ? `<option value="${esc(value)}" selected>${esc(current ? current.name + ' (pasif)' : value + ' (eski kayıt)')}</option>` : ''}</select><small>${active.length ? 'Kayıtlı aktif personelden seçin.' : 'Önce Ayarlar → Personel bölümünden personel ekleyin.'}</small>${unavailable ? '<small>Mevcut atama korunur; değiştirmek için aktif personel seçin.</small>' : ''}</label>`;
 }
 function validStaffSelection(value, previous) {
@@ -144,9 +157,9 @@ function staffMoney(p) {
   return { official, unofficial, bonus, salary: official + unofficial, total: official + unofficial + bonus };
 }
 function payrollRows() {
-  return personnel.filter(
-    (p) => payrollScope === 'all' || (payrollScope === 'active' ? p.active : !p.active),
-  );
+  return personnel
+    .filter(isRealPersonnelRecord)
+    .filter((p) => payrollScope === 'all' || (payrollScope === 'active' ? p.active : !p.active));
 }
 function payrollTotals(rows) {
   return rows.reduce(
@@ -177,10 +190,21 @@ async function personnelSettings(editId) {
   const dailyPrimData = authApi('/api/daily-bonuses?month=' + businessDate().slice(0, 7));
   const dailyPrimTotal = (id) =>
     dailyPrimData.rows.filter((e) => e.staffId === id).reduce((sum, e) => sum + e.amount, 0);
+  const staffRows = personnel.filter(isRealPersonnelRecord).sort((a, b) =>
+    String(a.name || '')
+      .trim()
+      .localeCompare(String(b.name || '').trim(), 'tr-TR', { sensitivity: 'base' }),
+  );
   const isSettings = page === 'settings';
   $('#content').innerHTML =
     `${isSettings ? settingsSectionTabs('staff') : ''}<div class="settings-tabs" role="tablist" aria-label="Personel sekmeleri"><button role="tab" aria-selected="${personnelTab === 'records'}" data-staff-view="records" class="${personnelTab === 'records' ? 'selected' : ''}">Personel Kayıtları</button><button role="tab" aria-selected="${personnelTab === 'payroll'}" data-staff-view="payroll" class="${personnelTab === 'payroll' ? 'selected' : ''}">Maaş ve Prim</button></div><div id="personnelView"></div>`;
   if (isSettings) bindSettingsSectionTabs();
+  document
+    .querySelector('[data-staff-view="payroll"]')
+    .parentElement.insertAdjacentHTML(
+      'beforeend',
+      `<button type="button" role="tab" aria-selected="${personnelTab === 'ledger'}" data-staff-view="ledger" class="${personnelTab === 'ledger' ? 'selected' : ''}">Cari Hesap</button>`,
+    );
   document.querySelectorAll('[data-staff-view]').forEach(
     (b) =>
       (b.onclick = () => {
@@ -189,8 +213,9 @@ async function personnelSettings(editId) {
       }),
   );
   if (personnelTab === 'payroll') return personnelCompensationPage();
+  if (personnelTab === 'ledger') return personnelLedgerPage($('#personnelView'));
   $('#personnelView').innerHTML =
-    `<div class="panel"><div class="panelhead"><div><h2>Personel Kayıtları</h2><p>Bilgileri görmek ve düzenlemek için personel adına tıklayın.</p></div><div class="toolbar"><span class="badge">${personnel.filter((p) => p.active).length} aktif / ${personnel.length} kayıt</span><button type="button" class="primary" id="newPersonnel">Yeni Personel</button></div></div><div class="overflow"><table><thead><tr><th>AD SOYAD</th><th>BİRİM / GÖREV</th><th>TELEFON</th><th>MAAŞ + PRİM 1</th><th>PRİM 2</th><th>G. PRİM</th><th>GENEL TOPLAM</th><th>DURUM</th><th>İŞLEM</th></tr></thead><tbody>${personnel.map((p) => `<tr><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">${esc(p.name)}</button></td><td>${esc(p.department || '—')}<small>${esc(p.title || '—')}</small></td><td>${esc(p.phone || '—')}</td><td>${money(staffMoney(p).salary / 100)}</td><td>${money(staffMoney(p).bonus / 100)}</td><td>${money(dailyPrimTotal(p.id) / 100)}</td><td>${money((staffMoney(p).total + dailyPrimTotal(p.id)) / 100)}</td><td>${p.active ? 'Aktif' : 'Pasif'}</td><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">Düzenle</button></td></tr>`).join('') || '<tr><td colspan="9" class="empty">Henüz personel yok. Yeni Personel butonuyla ekleyin.</td></tr>'}</tbody><tfoot><tr><td colspan="3"><strong>ALT TOPLAM</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + staffMoney(p).salary, 0) / 100)}</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + staffMoney(p).bonus, 0) / 100)}</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + dailyPrimTotal(p.id), 0) / 100)}</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + staffMoney(p).total + dailyPrimTotal(p.id), 0) / 100)}</strong></td><td colspan="2"></td></tr></tfoot></table></div></div>`;
+    `<div class="panel"><div class="panelhead"><div><h2>Personel Kayıtları</h2><p>Bilgileri görmek ve düzenlemek için personel adına tıklayın.</p></div><div class="toolbar"><span class="badge">${staffRows.filter((p) => p.active).length} aktif / ${staffRows.length} kayıt</span><button type="button" class="primary" id="newPersonnel">Yeni Personel</button></div></div><div class="overflow"><table><thead><tr><th>AD SOYAD</th><th>BİRİM / GÖREV</th><th>TELEFON</th><th>MAAŞ + PRİM 1</th><th>PRİM 2</th><th>G. PRİM</th><th>GENEL TOPLAM</th><th>DURUM</th><th>İŞLEM</th></tr></thead><tbody>${staffRows.map((p) => `<tr><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">${esc(p.name)}</button></td><td>${esc(p.department || '—')}<small>${esc(p.title || '—')}</small></td><td>${esc(p.phone || '—')}</td><td>${money(staffMoney(p).salary / 100)}</td><td>${money(staffMoney(p).bonus / 100)}</td><td>${money(dailyPrimTotal(p.id) / 100)}</td><td>${money((staffMoney(p).total + dailyPrimTotal(p.id)) / 100)}</td><td>${p.active ? 'Aktif' : 'Pasif'}</td><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">Düzenle</button></td></tr>`).join('') || '<tr><td colspan="9" class="empty">Henüz personel yok. Yeni Personel butonuyla ekleyin.</td></tr>'}</tbody><tfoot><tr><td colspan="3"><strong>ALT TOPLAM</strong></td><td><strong>${money(staffRows.reduce((sum, p) => sum + staffMoney(p).salary, 0) / 100)}</strong></td><td><strong>${money(staffRows.reduce((sum, p) => sum + staffMoney(p).bonus, 0) / 100)}</strong></td><td><strong>${money(staffRows.reduce((sum, p) => sum + dailyPrimTotal(p.id), 0) / 100)}</strong></td><td><strong>${money(staffRows.reduce((sum, p) => sum + staffMoney(p).total + dailyPrimTotal(p.id), 0) / 100)}</strong></td><td colspan="2"></td></tr></tfoot></table></div></div>`;
   $('#newPersonnel').onclick = () => openPersonnelRecord();
   $('#personnelView')
     .querySelectorAll('[data-personnel-edit]')
@@ -217,11 +242,10 @@ async function openPersonnelRecord(editId) {
   if (!dialog) {
     dialog = document.createElement('dialog');
     dialog.id = 'personnelRecordDialog';
-    dialog.style.width = '900px';
     dialog.setAttribute('aria-labelledby', 'personnelRecordTitle');
     document.body.append(dialog);
   }
-  dialog.innerHTML = `<div class="panelhead"><div><h2 id="personnelRecordTitle">${editId ? esc(current.name) : 'Yeni Personel'}</h2><p>Personel kayıt ve bilgileri</p></div><button type="button" class="secondary" data-personnel-close>Kapat</button></div><form id="personnelForm"><div class="formbody"><h3 class="sectiontitle">${editId ? 'Personel düzenle' : 'Yeni personel'}</h3><div class="grid">${field('Ad Soyad', 'staffName', 'text', current.name, true)}<label class="field">TC Kimlik Numarası (isteğe bağlı)<input name="identity" data-optional="true" inputmode="numeric" maxlength="11" pattern="[0-9]{11}" title="11 rakam girin" value="${esc(current.identity || '')}"></label>${field('E-posta (isteğe bağlı)', 'email', 'email', current.email).replace('<input ', '<input data-optional="true" ')}${field('Cep telefonu (isteğe bağlı)', 'mobilePhone', 'tel', current.mobilePhone ?? (/^(?:90|0)?5\d{9}$/.test(String(current.phone || '').replace(/\D/g, '')) ? current.phone : '')).replace('<input ', '<input data-optional="true" ')}${field('Telefon (isteğe bağlı)', 'phone', 'tel', current.phone).replace('<input ', '<input data-optional="true" ')}<label class="field">Birimi<select name="department"><option value="">Birim seçin</option>${['Yönetici', 'Pazarlama', 'Callcenter', 'Call Center-Y', 'Call Center-E', 'Muhasebe', 'İcra', 'Evrak Takip', 'Temlik', 'Diğer'].map((unit) => `<option value="${unit}" ${(loginAccount?.role === 'admin' ? 'Yönetici' : current.department) === unit ? 'selected' : ''}>${unit}</option>`).join('')}${current.department && !['Yönetici', 'Pazarlama', 'Callcenter', 'Call Center-Y', 'Call Center-E', 'Muhasebe', 'İcra', 'Evrak Takip', 'Temlik', 'Diğer'].includes(current.department) ? `<option value="${esc(current.department)}" selected>${esc(current.department)} (önceki kayıt)</option>` : ''}</select></label>${clientCityField(current, 'staff')}<label class="field full">Açık Adres<textarea name="address" rows="3">${esc(current.address || '')}</textarea></label></div><h3 class="sectiontitle" style="margin-top:25px">Personel Giriş Bilgileri ve Yetkileri</h3><div class="grid"><label class="field">Kullanıcı Adı<input name="loginUsername" autocomplete="off" value="${esc(loginAccount?.username || '')}" ${editId && !loginAccount ? 'data-optional="true"' : 'required'}></label><label class="field">${loginAccount ? 'Yeni Şifre (değiştirmek için doldurun)' : 'Şifre'}<input name="loginPassword" type="password" minlength="10" autocomplete="new-password" ${editId ? 'data-optional="true"' : 'required'}></label><div class="full"><p>Personel bu kullanıcı adı ve şifreyle giriş yapar. Ana sayfasında yalnızca kendi dosyalarının tahsilatını, brüt kârını ve şimdilik 0 TL primini görür.</p>${[
+  dialog.innerHTML = `<div class="panelhead"><div><h2 id="personnelRecordTitle">${editId ? esc(current.name) : 'Yeni Personel'}</h2><p>Personel kayıt ve bilgileri</p></div><button type="button" class="secondary" data-personnel-close>Kapat</button></div><form id="personnelForm"><div class="formbody"><h3 class="sectiontitle">${editId ? 'Personel düzenle' : 'Yeni personel'}</h3><div class="grid">${field('Ad Soyad', 'staffName', 'text', current.name, true)}<label class="field">TC Kimlik Numarası (isteğe bağlı)<input name="identity" data-optional="true" inputmode="numeric" maxlength="11" pattern="[0-9]{11}" title="11 rakam girin" value="${esc(current.identity || '')}"></label>${field('E-posta (isteğe bağlı)', 'email', 'email', current.email).replace('<input ', '<input data-optional="true" ')}${field('Cep telefonu (isteğe bağlı)', 'mobilePhone', 'tel', current.mobilePhone ?? (/^(?:90|0)?5\d{9}$/.test(String(current.phone || '').replace(/\D/g, '')) ? current.phone : '')).replace('<input ', '<input data-optional="true" ')}${field('Telefon (isteğe bağlı)', 'phone', 'tel', current.phone).replace('<input ', '<input data-optional="true" ')}<label class="field">Birimi<select name="department"><option value="">Birim seçin</option>${['Yönetici', 'Pazarlama', 'Callcenter', 'Call Center-Y', 'Call Center-E', 'Muhasebe', 'İcra', 'Evrak Takip', 'Temlik', 'Diğer'].map((unit) => `<option value="${unit}" ${(loginAccount?.role === 'admin' ? 'Yönetici' : current.department) === unit ? 'selected' : ''}>${unit}</option>`).join('')}${current.department && !['Yönetici', 'Pazarlama', 'Callcenter', 'Call Center-Y', 'Call Center-E', 'Muhasebe', 'İcra', 'Evrak Takip', 'Temlik', 'Diğer'].includes(current.department) ? `<option value="${esc(current.department)}" selected>${esc(current.department)} (önceki kayıt)</option>` : ''}</select></label>${clientCityField(current, 'staff')}<label class="field full">Açık Adres<textarea name="address" rows="3">${esc(current.address || '')}</textarea></label></div><h3 class="sectiontitle" style="margin-top:25px">Personel Giriş Bilgileri ve Yetkileri</h3><div class="grid"><label class="field">Kullanıcı Adı<input name="loginUsername" autocomplete="off" value="${esc(loginAccount?.username || '')}" ${editId && !loginAccount ? 'data-optional="true"' : 'required'}></label><label class="field">${loginAccount ? 'Yeni Şifre (değiştirmek için doldurun)' : 'Şifre'}<input name="loginPassword" type="password" minlength="10" autocomplete="new-password" ${editId ? 'data-optional="true"' : 'required'}></label><div class="full"><p>Personel bu kullanıcı adı ve şifreyle giriş yapar. Ana sayfasında yalnızca kendi dosyalarının tahsilatını, brüt kârını ve hesaplanan primini görür.</p>${[
     ['clients', 'Müvekkil Kayıtları'],
     ['documents', 'Evrak / Borçlu Kayıtları'],
     ['cashIn', 'Muhasebe Para Girişi'],
@@ -241,6 +265,9 @@ async function openPersonnelRecord(editId) {
   setupPersonnelPhoneRelationships(form, current);
   setupPersonnelCompensationTabs(form, current, editId);
   setupPersonnelDepartmentRole(form, loginAccount, !!editId);
+  setupPersonnelSalaryRequirements(form);
+  if (typeof installPasswordVisibility === 'function')
+    installPasswordVisibility(dialog.querySelector('#personnelForm'));
   setupClientCity('staff');
   setupClientDistrict('staff');
   form.onsubmit = (e) => {
@@ -264,6 +291,8 @@ async function openPersonnelRecord(editId) {
       );
     if (!city || !district) return toast('Geçerli bir il ve o ilin ilçesini seçin.');
     if (!String(data.unofficialSalary ?? '').trim()) data.unofficialSalary = '0';
+    const otherDepartment = data.department === 'Diğer';
+    if (otherDepartment && !String(data.officialSalary ?? '').trim()) data.officialSalary = '0';
     const amounts = { bonus: Number(data.bonus || 0) };
     for (const key of ['officialSalary', 'unofficialSalary']) {
       if (
@@ -275,7 +304,7 @@ async function openPersonnelRecord(editId) {
         return toast('Maaş ve Prim 1 alanlarını doldurun.');
       amounts[key] = Math.round(Number(data[key]) * 100) / 100;
     }
-    if (amounts.officialSalary <= 0) return toast('Maaş sıfırdan büyük olmalıdır.');
+    if (!otherDepartment && amounts.officialSalary <= 0) return toast('Maaş sıfırdan büyük olmalıdır.');
     const next = structuredClone(personnel);
     const record = {
       ...current,
@@ -326,6 +355,37 @@ async function openPersonnelRecord(editId) {
 }
 function salaryField(label, name, value) {
   return `<label class="field">${esc(label)}<input name="${name}" type="number" min="0" step="0.01" value="${esc(value ?? '')}" ${name === 'unofficialSalary' ? 'data-optional="true"' : 'required'}></label>`;
+}
+function setupPersonnelSalaryRequirements(form, department) {
+  const controls = ['officialSalary', 'unofficialSalary'].map((name) => {
+    const input = form.elements[name];
+    return {
+      input,
+      required: input.required,
+      optional: input.dataset.optional,
+      label: input.closest('label')?.firstChild?.textContent,
+    };
+  });
+  const update = () => {
+    const other = (form.elements.department?.value ?? department) === 'Diğer';
+    for (const { input, required, optional, label } of controls) {
+      input.required = other ? false : required;
+      if (other) input.dataset.optional = 'true';
+      else if (optional === undefined) delete input.dataset.optional;
+      else input.dataset.optional = optional;
+      if (other) {
+        input.removeAttribute('aria-required');
+        input.setCustomValidity('');
+      }
+      const text = input.closest('label')?.firstChild;
+      if (text?.nodeType === 3)
+        text.textContent = other
+          ? label.replace(/\s*\*/g, '').replace(/\s*\(isteğe bağlı\)/g, '') + ' (isteğe bağlı) '
+          : label;
+    }
+  };
+  form.elements.department?.addEventListener('change', update);
+  update();
 }
 function payrollView() {
   loadCalculatedBonus2();
@@ -516,6 +576,7 @@ function dailyBonusForm(staffId, onSaved) {
   dialog.innerHTML =
     '<form><div class="panelhead"><h2>Günlük Prim Ekle</h2><button type="button" class="secondary close-align-right" data-close-bonus>Kapat</button></div><div class="formbody grid"><label class="field full">Personel<select name="staffId" required><option value="">Personel seçin</option>' +
     personnel
+      .filter(isRealPersonnelRecord)
       .map(
         (p) =>
           '<option value="' +
@@ -572,6 +633,7 @@ function editPersonnelPayroll(id) {
     salaryField('Prim 2', 'bonus', p.bonus) +
     '</div><div class="actions"><button class="primary">Kaydet</button></div></form>';
   const autoBonus = calculatedBonus2.get(id);
+  setupPersonnelSalaryRequirements(dialog.querySelector('form'), p.department);
   if (autoBonus && !autoBonus.manual) {
     dialog.querySelector('[name="bonus"]').value = autoBonus.total / 100;
     dialog.querySelector('[name="bonus"]').readOnly = true;
@@ -600,6 +662,7 @@ function personnelBonus2View() {
     esc(data.month) +
     '"></label></div><div class="overflow"><table><thead><tr><th>PERSONEL</th><th>TAHSİLAT</th><th>ORAN</th><th>ORAN PRİMİ</th><th>EK HEDEF PRİMİ</th><th>EKİP</th><th>1–15</th><th>16–AY SONU</th><th>PRİM 2 TOPLAMI</th></tr></thead><tbody>' +
     data.rows
+      .filter((r) => r.kind !== 'marketing' && r.kind !== 'other')
       .map(
         (r) =>
           '<tr><td>' +
@@ -616,13 +679,72 @@ function personnelBonus2View() {
       )
       .join('') +
     '</tbody><tfoot><tr><td colspan="8">TOPLAM</td><td>' +
-    money(data.rows.reduce((sum, r) => sum + r.total, 0) / 100) +
-    '</td></tr></tfoot></table></div></div>';
+    money(
+      data.rows
+        .filter((r) => r.kind !== 'marketing' && r.kind !== 'other')
+        .reduce((sum, r) => sum + r.total, 0) / 100,
+    ) +
+    '</td></tr></tfoot></table></div></div>' +
+    personnelOtherBonusMarkup(data) +
+    personnelMarketingBonusMarkup(data);
   $('#personnelView').querySelector('[data-bonus2-month]').onchange = (e) => {
     if (e.target.value) {
       bonus2Month = e.target.value;
       personnelCompensationPage();
     }
+  };
+}
+
+function personnelOtherBonusMarkup(data) {
+  const rows = data.rows.filter((r) => r.kind === 'other');
+  if (!rows.length) return '';
+  return (
+    '<section class="panel"><div class="panelhead"><div><h2>Diğer Birim · Prim 2</h2><p>Evrakı alan personelin infaza geçen dosyalarının toplam tahsilatının %12,5’i. Önceki kısmi tahsilatlar infaz ayına dahil edilir.</p></div></div><div class="overflow"><table><thead><tr><th>PERSONEL</th><th>İNFAZ ADEDİ</th><th>İNFAZ CİROSU</th><th>ORAN</th><th>PRİM 2</th></tr></thead><tbody>' +
+    rows
+      .map(
+        (r) =>
+          '<tr><td>' +
+          esc(r.name) +
+          '</td><td>' +
+          esc(r.closedCount) +
+          '</td><td>' +
+          money(r.collected / 100) +
+          '</td><td>%12,5</td><td><b>' +
+          money(r.total / 100) +
+          '</b></td></tr>',
+      )
+      .join('') +
+    '</tbody><tfoot><tr><td colspan="4">TOPLAM</td><td><b>' +
+    money(rows.reduce((sum, r) => sum + r.total, 0) / 100) +
+    '</b></td></tr></tfoot></table></div></section>'
+  );
+}
+function personnelMarketingBonusMarkup(data) {
+  const rows = data.rows.filter((r) => r.kind === 'marketing');
+  const sum = (key) => money(rows.reduce((total, r) => total + (r[key] || 0), 0) / 100);
+  const totals = [
+    'documentBonus',
+    'parkingCollected',
+    'parkingBonus',
+    'officeTargetBonus',
+    'newFirmBonus',
+    'total',
+  ];
+  return `<section class="panel" data-marketing-bonus><div class="panelhead"><div><h2>Pazarlama Primi</h2><p>${esc(data.month)} · Ofis tahsilatı: <b>${money((rows[0]?.officeCollected || 0) / 100)}</b></p></div></div><div class="formbody"><p>200 evrağa kadar adet başına 100 TL; 201 ve üzerinde tüm evraklar 150 TL. Yediemin aylık tahsilatı en az 1.000.000 TL ise birinci 15.000 TL, ikinci 7.500 TL alır. Eşit cirolar aynı sıra primini alır.</p><p>Ofis aylık tahsilatı en az 10.000.000 TL ve personel en az 100 evrak: 7.500 TL. Yeni kazanılan firma aynı ay en az 10 evrak getirirse firma başına 2.500 TL.</p><p>Primler Prim 2 olarak bordroya ve personel carisine işlenir. Ciro, tahsil edilen toplam paradır; karma föylerin yediemin payı anapara oranında ayrılır.</p></div><div class="overflow"><table><thead><tr><th>PERSONEL</th><th>EVRAK ADEDİ</th><th>BİRİM PRİM</th><th>EVRAK PRİMİ</th><th>YEDİEMİN CİROSU</th><th>SIRA</th><th>YEDİEMİN PRİMİ</th><th>OFİS HEDEF PRİMİ</th><th>YENİ FİRMA PRİMİ</th><th>TOPLAM PRİM</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${esc(r.documentCount)}</td><td>${money((r.documentRate || 0) / 100)}</td><td>${money(r.documentBonus / 100)}</td><td>${money(r.parkingCollected / 100)}</td><td>${esc(r.parkingRank || '—')}</td><td>${money(r.parkingBonus / 100)}</td><td>${money(r.officeTargetBonus / 100)}</td><td>${money(r.newFirmBonus / 100)}${r.newFirms?.length ? `<details><summary>Firma dökümü</summary>${r.newFirms.map((firm) => `<p>${esc(firm.name || 'Firma')} · ${esc(firm.documentCount)} evrak · ${money(firm.bonus / 100)}</p>`).join('')}</details>` : ''}</td><td><strong>${money(r.total / 100)}</strong></td></tr>`).join('') || '<tr><td colspan="10" class="empty">Bu ay için pazarlama personeli bulunmuyor.</td></tr>'}</tbody><tfoot><tr><td colspan="3">TOPLAM</td><td>${sum(totals[0])}</td><td>${sum(totals[1])}</td><td></td>${totals
+    .slice(2)
+    .map((key) => `<td><strong>${sum(key)}</strong></td>`)
+    .join('')}</tr></tfoot></table></div></section>`;
+}
+
+function personnelMarketingBonusView(host) {
+  const data = loadCalculatedBonus2(bonus2Month || businessDate().slice(0, 7));
+  host.innerHTML =
+    `<div class="panelhead"><div><h2>Pazarlama Prim Dökümü</h2><p>Aylık otomatik hesaplama · Evrakı Alan Personel esas alınır.</p></div><label class="field">Ay<input type="month" data-marketing-bonus-month data-optional="true" value="${esc(data.month)}"></label></div>` +
+    personnelMarketingBonusMarkup(data);
+  host.querySelector('[data-marketing-bonus-month]').onchange = (e) => {
+    if (!e.target.value) return;
+    bonus2Month = e.target.value;
+    personnelCompensationPage();
   };
 }
 
@@ -634,6 +756,7 @@ function personnelCompensationPage() {
       ['salary', 'Maaş'],
       ['bonus1', 'Prim 1'],
       ['bonus2', 'Prim 2'],
+      ['marketing', 'Pazarlama Primi'],
       ['daily', 'Günlük Prim'],
       ['history', 'Geçmiş Ay Raporu'],
     ]
@@ -666,6 +789,10 @@ function personnelCompensationPage() {
     dailyBonusSection(body);
     return;
   }
+  if (payrollSubTab === 'marketing') {
+    personnelMarketingBonusView(body);
+    return;
+  }
   if (payrollSubTab === 'bonus2') {
     personnelBonus2View();
     const content = [...host.children];
@@ -695,6 +822,10 @@ function setupPersonnelCompensationTabs(form, current, editId) {
   nav.className = 'settings-tabs';
   nav.innerHTML =
     '<button type="button" data-personnel-section="general" class="selected">Personel Bilgileri</button><button type="button" data-personnel-section="payroll">Maaş ve Prim</button><button type="button" data-personnel-section="files">Fotoğraf / PDF Ekle ve Gör</button>';
+  nav.insertAdjacentHTML(
+    'beforeend',
+    '<button type="button" data-personnel-section="ledger">Cari Hesap</button>',
+  );
   const sub = document.createElement('div');
   sub.className = 'settings-tabs';
   payroll.append(sub);
@@ -740,10 +871,18 @@ function setupPersonnelCompensationTabs(form, current, editId) {
   const files = document.createElement('section');
   files.hidden = true;
   form.after(files);
+  const ledgerPanel = document.createElement('section');
+  ledgerPanel.hidden = true;
+  form.after(ledgerPanel);
   let filesLoaded = false;
   function select(section) {
     files.hidden = section !== 'files';
-    form.querySelector('.actions').hidden = section === 'files';
+    ledgerPanel.hidden = section !== 'ledger';
+    form.querySelector('.actions').hidden = ['files', 'ledger'].includes(section);
+    if (section === 'ledger') {
+      if (editId) personnelLedgerPage(ledgerPanel, editId);
+      else ledgerPanel.innerHTML = '<p class="notice">Cari hesap için önce personeli kaydedin.</p>';
+    }
     if (section === 'files' && !filesLoaded) {
       filesLoaded = true;
       if (editId) personnelAttachmentsPage(files, editId);
@@ -776,10 +915,14 @@ function setupPersonnelCompensationTabs(form, current, editId) {
 
 function setupPersonnelPhoneRelationships(form, record) {
   function addRelationship(phoneLabel, value, primary) {
-    const pair = document.createElement('div');
-    pair.className = 'full personnel-phone-pair';
-    phoneLabel.before(pair);
-    pair.append(phoneLabel);
+    let pair = phoneLabel.closest('.phone-source-pair');
+    if (!pair) {
+      pair = document.createElement('div');
+      pair.className = 'full';
+      phoneLabel.before(pair);
+      pair.append(phoneLabel);
+    }
+    pair.classList.add('personnel-phone-pair');
     const label = document.createElement('label');
     label.className = 'field';
     label.textContent = 'Yakınlık Derecesi';

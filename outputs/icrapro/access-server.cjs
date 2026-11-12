@@ -17,6 +17,8 @@ const {
 const { searchWorkspace } = require('../../lib/workspace-search.cjs');
 const { notificationSummary } = require('../../lib/notification-summary.cjs');
 const { handleWhatsAppRoutes } = require('./access-whatsapp.cjs');
+const { handleSmsRoutes } = require('./access-sms.cjs');
+const { handleFeedbackRoutes } = require('./access-feedback.cjs');
 const { handleAiRoutes } = require('./access-ai.cjs');
 const { handleIyzicoRoutes } = require('./access-iyzico.cjs');
 const { handleSupportAccountRoutes } = require('./access-support-account.cjs');
@@ -390,7 +392,14 @@ function createAccess(stateFile, options = {}) {
       if (await handleIyzicoRoutes(ctx)) return true;
       if (await handleSupportAccountRoutes(ctx)) return true;
       if (await handleMarketingRoutes(ctx)) return true;
+      if (await handleSmsRoutes(ctx)) return true;
+      if (await handleFeedbackRoutes(ctx)) return true;
       if (url.pathname === '/api/notifications' && req.method === 'GET') {
+        if (!u.readOnly) {
+          const next = structuredClone(state);
+          if (require('../../lib/reminder-repeat.cjs').advanceRepeatingReminders(next, Date.now(), u.id))
+            saveState(next);
+        }
         send(res, 200, notificationSummary(state, u, url.searchParams.get('after')));
         return true;
       }

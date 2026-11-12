@@ -217,14 +217,34 @@ function openMessage(message) {
     dialog.id = 'messageDetailDialog';
     document.body.append(dialog);
   }
-  dialog.innerHTML = `<div class="panelhead"><h2>${esc(message.subject)}</h2><button class="secondary" id="closeMessageDetail">Kapat</button></div><div class="formbody"><p><b>Gönderen:</b> ${esc(message.senderName)}</p><p><b>Alıcılar:</b> ${esc(message.recipientNames.join(', '))}</p><p><b>Tarih:</b> ${messageTimestamp(message.createdAt)}</p><div class="message-text">${esc(message.text)}</div>${messageWhatsAppDetail(message)}</div><div class="actions">${message.senderId !== hanAuth.id ? '<button class="primary" id="replyMessage">Gönderene Yanıtla</button>' : ''}</div>`;
+  dialog.innerHTML = `<div class="panelhead"><h2>${esc(message.subject)}</h2><button class="secondary" id="closeMessageDetail">Kapat</button></div><div class="formbody"><p><b>Gönderen:</b> ${esc(message.senderName)}</p><p><b>Alıcılar:</b> ${esc(message.recipientNames.join(', '))}</p><p><b>Tarih:</b> ${messageTimestamp(message.createdAt)}</p><div class="message-text">${esc(message.text)}</div>${messageWhatsAppDetail(message)}</div><div class="actions">${hanAuth.canDelete ? '<button type="button" class="secondary danger" id="deleteMessage">Mesajı Sil</button>' : ''}${message.senderId !== hanAuth.id ? '<button class="primary" id="replyMessage">Gönderene Yanıtla</button>' : ''}</div>`;
   $('#closeMessageDetail').onclick = () => dialog.close();
   if ($('#replyMessage'))
     $('#replyMessage').onclick = () => {
       dialog.close();
       composeMessage(message);
     };
+  if ($('#deleteMessage')) $('#deleteMessage').onclick = () => deleteMessage(message, dialog);
   dialog.showModal();
+}
+
+// Only the CEO (and the technical support account, which is a CEO account) may delete; the
+// server keeps an archive copy like every other deleted record.
+async function deleteMessage(message, dialog) {
+  if (!hanAuth.canDelete) return;
+  if (!confirm('"' + message.subject + '" mesajı herkes için silinecek. Emin misiniz?')) return;
+  if (typeof requireCeoPin === 'function' && !(await requireCeoPin('delete'))) return;
+  try {
+    const row = authApi('/api/operations/delete?' + new URLSearchParams({ type: 'messages', id: message.id }))
+      .items[0];
+    if (!row) throw new Error('Mesaj bulunamadı; listeyi yenileyin.');
+    authApi('/api/operations/delete', 'POST', { type: 'messages', id: row.id, revision: row.revision });
+    dialog.close();
+    messagesPage();
+    toast('Mesaj silindi; arşiv kopyası korundu.');
+  } catch (error) {
+    toast(error.message, dialog);
+  }
 }
 
 function applyMessageSummary(result) {
@@ -341,7 +361,7 @@ function composeWorkOrder() {
     dialog.id = 'workOrderComposeDialog';
     document.body.append(dialog);
   }
-  dialog.innerHTML = `<form id="workOrderComposeForm"><div class="panelhead"><h2>İş Emri Ata</h2><button type="button" class="secondary" id="closeWorkCompose">Kapat</button></div><div class="formbody grid"><fieldset class="full"><legend>Atanacak Kişiler</legend><div class="message-recipients">${messageRecipientGroups(users)}</div></fieldset><label class="field full">İş Başlığı<select name="title" required><option value="">İş başlığı seçin</option><option>Arama Yap</option><option>Borçluya Geri Dön</option><option>İcra Aç</option><option>Diğer</option></select></label><label class="field full">İş Açıklaması<textarea name="description" data-optional="true" maxlength="10000" rows="6"></textarea></label><label class="field full">Son Tarih (isteğe bağlı)<input name="due" type="date" data-optional="true"></label></div><div class="actions"><button type="submit" class="primary">İş Emrini Ata</button></div></form>`;
+  dialog.innerHTML = `<form id="workOrderComposeForm"><div class="panelhead"><h2>İş Emri Ata</h2><button type="button" class="secondary" id="closeWorkCompose">Kapat</button></div><div class="formbody grid"><fieldset class="full"><legend>Atanacak Kişiler</legend><div class="message-recipients">${messageRecipientGroups(users)}</div></fieldset><label class="field full">İş Başlığı<select name="title" required><option value="">İş başlığı seçin</option><option>Arama Yap</option><option>Borçluya Geri Dön</option><option>İcra Aç</option><option>İade Et</option><option>Diğer</option></select></label><label class="field full">İş Açıklaması<textarea name="description" data-optional="true" maxlength="10000" rows="6"></textarea></label><label class="field full">Son Tarih (isteğe bağlı)<input name="due" type="date" data-optional="true"></label></div><div class="actions"><button type="submit" class="primary">İş Emrini Ata</button></div></form>`;
   $('#closeWorkCompose').onclick = () => dialog.close();
   const form = $('#workOrderComposeForm');
   form
@@ -444,7 +464,7 @@ function openWorkOrder(order) {
 function showPendingWorkOrders() {
   let result;
   try {
-    result = authApi('/api/work-orders?scope=mine&status=pending');
+    result = authApi('/api/work-orders?scope=mine&status=pending&notification=1');
   } catch {
     return;
   }

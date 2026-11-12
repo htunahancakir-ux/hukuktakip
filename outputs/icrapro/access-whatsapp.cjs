@@ -1,5 +1,6 @@
 const wa = require('../../lib/whatsapp.cjs');
 const smsRecovery = require('../../lib/sms-recovery.cjs');
+const smsSettings = require('../../lib/sms-settings.cjs');
 
 const manager = (user) => ['ceo', 'admin'].includes(user?.role);
 
@@ -187,9 +188,11 @@ async function handleWhatsAppRoutes(ctx) {
     const input = String((await body(req)).account || '').trim();
     if (!input || input.length > 80) throw fail(400, 'Telefon veya kullanıcı adı girin.');
     const cfg = ctx.state.whatsappConfig;
-    // The office's own WhatsApp wins once it is set up; until then the platform's SMS service
-    // sends a one-time temporary password. The answer never says whether the account exists.
-    if (!(cfg?.enabled && cfg.resetTemplate) && ctx.options.smsAvailable === true) {
+    // WhatsApp wins when it is set up; otherwise the office's own SMS integration (Settings →
+    // Integrations → SMS), and failing that the platform's SMS service, sends a one-time
+    // temporary password. The answer never says whether the account exists.
+    const officeSms = smsSettings.publicConfig(ctx.state.smsConfig).enabled;
+    if (!(cfg?.enabled && cfg.resetTemplate) && (officeSms || ctx.options.smsAvailable === true)) {
       const user = recoveryAccount(ctx, input, 'sms');
       const phone = user && smsRecovery.smsPhone(ctx.state, user);
       if (phone) {
@@ -200,7 +203,12 @@ async function handleWhatsAppRoutes(ctx) {
         );
         if (code) {
           ctx.persist(next);
-          res.hanSms = { to: phone, text: smsRecovery.message(code), silent: true };
+          res.hanSms = {
+            ...(officeSms ? { config: ctx.state.smsConfig } : {}),
+            to: phone,
+            text: smsRecovery.message(code),
+            silent: true,
+          };
         }
       }
       send(res, 200, { ok: true, channel: 'sms' });

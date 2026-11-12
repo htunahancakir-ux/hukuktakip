@@ -2,7 +2,7 @@
 -- directory. On a database where tenant isolation was applied before VoIP existed,
 -- give those tables the same tenant key, foreign key, RLS policy and runtime grant.
 DO $$ DECLARE t text; r record; BEGIN
-  FOREACH t IN ARRAY ARRAY['voip_config','voip_calls','voip_recording_access'] LOOP
+  FOREACH t IN ARRAY ARRAY['voip_config','voip_calls','voip_recording_access','voip_presence'] LOOP
     IF to_regclass('han_private.' || t) IS NULL OR EXISTS (
       SELECT 1 FROM pg_attribute
       WHERE attrelid = ('han_private.' || t)::regclass AND attname = 'tenant_id' AND NOT attisdropped

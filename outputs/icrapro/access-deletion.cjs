@@ -12,6 +12,7 @@ function rowsFor(state, type) {
     personnel: data['icrapro-personnel-v1'],
     cases: data['icrapro-cases-v1'],
     marketing: state.marketingProspects || [],
+    messages: (state.messages ||= []),
   };
   if (type === 'conversations')
     return records.docs.flatMap((d) =>
@@ -39,16 +40,24 @@ async function handleDeletionRoutes(ctx) {
       transfer: 'Transfer',
       advance: 'Avans',
     };
+    const only = url.searchParams.get('id');
     const items = rows
-      .filter((r) => r.id)
+      .filter((r) => r.id && (!only || r.id === only))
       .map((r) => ({
         id: r.id,
         documentId: r.documentId,
-        label: [
-          r.number || r.documentNumber || docs.find((d) => d.id === r.documentId)?.number,
-          r.name || r.company || r.debtor || labels[r.type] || r.type,
-          r.note || r.notes || r.title,
-        ]
+        label: (type === 'messages'
+          ? [
+              (r.senderName || '') + ' → ' + (r.recipientNames || []).join(', '),
+              r.subject,
+              String(r.text || '').slice(0, 120),
+            ]
+          : [
+              r.number || r.documentNumber || docs.find((d) => d.id === r.documentId)?.number,
+              r.name || r.company || r.debtor || labels[r.type] || r.type,
+              r.note || r.notes || r.title,
+            ]
+        )
           .filter(Boolean)
           .join(' · ')
           .slice(0, 250),
@@ -62,6 +71,7 @@ async function handleDeletionRoutes(ctx) {
         revision: crypto.createHash('sha256').update(JSON.stringify(r)).digest('hex'),
       }))
       .filter((r) => !q || r.label.toLocaleLowerCase('tr').includes(q));
+    if (type === 'messages') items.sort((a, b) => String(b.date).localeCompare(String(a.date)));
     const offset = Math.max(0, Math.floor(Number(url.searchParams.get('offset')) || 0));
     send(res, 200, { items: items.slice(offset, offset + 50), total: items.length });
     return true;

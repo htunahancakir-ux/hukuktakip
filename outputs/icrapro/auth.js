@@ -311,13 +311,13 @@ async function openDeletionPanel() {
   }
   dialog.innerHTML = `<div class="panelhead"><h2>İşlem Silme</h2><button type="button" class="secondary" data-close>Kapat</button></div>
     <div class="formbody"><p>Silme yetkisi yalnızca hesabınıza aittir. Silinen kayıtların kopyası arşivde korunur.</p>
-    <form data-search class="grid"><label class="field">Kayıt Türü<select name="type">
+    <form data-search class="grid delete-ops-filter"><label class="field">Kayıt Türü<select name="type">
     <option value="accounting">Muhasebe / Müvekkil Ödemeleri</option><option value="finance">Tahsilat / Masraf</option>
-    <option value="conversations">Görüşmeler</option><option value="documents">Borçlu Dosyaları</option>
+    <option value="conversations">Görüşmeler</option><option value="messages">Personel Mesajları</option><option value="documents">Borçlu Dosyaları</option>
     <option value="clients">Müvekkiller</option><option value="accounts">Hesaplar</option>
     <option value="marketing">Pazarlama / Potansiyel Müvekkiller</option><option value="personnel">Personel</option><option value="cases">İcra İşlemleri</option></select></label>
-    <label class="field">Ara<input name="q" placeholder="Dosya numarası, ad veya açıklama"></label><button class="primary">Listele</button></form>
-    <p data-status role="status"></p><div data-rows></div><div class="actions"><button class="secondary" data-prev>Önceki</button><button class="secondary" data-next>Sonraki</button></div></div>`;
+    <label class="field">Ara<input name="q" data-optional="true" placeholder="Dosya numarası, ad veya açıklama"></label><button class="primary">Listele</button></form>
+    <p data-status role="status"></p><div data-rows class="delete-ops-rows"></div><div class="actions"><button class="secondary" data-prev>Önceki</button><button class="secondary" data-next>Sonraki</button></div></div>`;
   let offset = 0,
     dirty = false;
   const form = dialog.querySelector('[data-search]'),
@@ -339,7 +339,7 @@ async function openDeletionPanel() {
       host.replaceChildren();
       for (const row of result.items) {
         const box = document.createElement('div');
-        box.className = 'panel formbody';
+        box.className = 'delete-op-row';
         const label = document.createElement('p');
         label.textContent = row.label || row.id;
         const date = document.createElement('small');
@@ -501,6 +501,7 @@ async function launchApplication() {
   hanStartupData = null;
   accessMenu();
   setupVoipNavigation();
+  setupFeedbackButton();
   refreshBackupIndicator();
   startPresenceHeartbeat();
   if (embeddedIntake) return;
@@ -582,11 +583,12 @@ function startPresenceHeartbeat() {
 
 function installPasswordVisibility(form) {
   form.querySelectorAll('input[type="password"]').forEach((input, index) => {
+    if (input.parentElement.classList.contains('password-input-wrap')) return;
     const wrapper = document.createElement('span');
     wrapper.className = 'password-input-wrap';
     input.parentNode.insertBefore(wrapper, input);
     wrapper.append(input);
-    input.id = input.id || 'login-password-' + index;
+    input.id = input.id || (form.id || 'password-form') + '-password-' + index;
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'password-visibility';
@@ -607,7 +609,7 @@ function installPasswordVisibility(form) {
   });
 }
 function authGate(setup) {
-  loginFrame(`<form id="loginForm" class="panel" aria-labelledby="loginTitle">
+  loginFrame(`<form id="loginForm" autocomplete="off" class="panel" aria-labelledby="loginTitle">
     <div class="login-heading"><h1 id="loginTitle">${setup ? 'İlk adımı atın.' : '<a class="brand-home" href="/">HAN (PATAN) HUKUK</a>'}</h1>
       <p>${setup ? 'Han Hukuk çalışma alanınız için ilk yönetici hesabını oluşturun.' : 'Çalışma alanınıza erişmek için<br>hesap bilgilerinizle giriş yapın.'}</p></div>
     <div class="login-fields">
@@ -617,9 +619,9 @@ function authGate(setup) {
       </label>
       <div class="field"><div class="login-field-label"><label for="login-password">Şifre</label>
         ${setup ? '' : '<button type="button" class="login-link" id="forgotPassword">Şifremi unuttum</button>'}</div>
-        <div class="login-control">${loginIcon('lock')}<input id="login-password" name="password" type="password" required ${setup ? 'minlength="10"' : ''} autocomplete="${setup ? 'new-password' : 'off'}" placeholder="Şifrenizi girin" aria-describedby="authError"></div>
+        <div class="login-control">${loginIcon('lock')}<input id="login-password" name="password" type="password" required ${setup ? 'minlength="10"' : ''} autocomplete="new-password" placeholder="Şifrenizi girin" aria-describedby="authError"></div>
       </div>
-      ${setup ? '' : '<label class="login-remember"><input id="rememberLogin" name="remember" type="checkbox" autocomplete="off"><span><strong>Beni hatırla</strong><small>Bu seçeneği yalnızca kişisel ve güvenilir cihazlarda kullanın.</small></span></label>'}
+      ${setup ? '' : '<label class="login-remember"><input id="rememberLogin" name="remember" type="checkbox" autocomplete="off"><span><strong>Bu bilgisayarda beni hatırla</strong><small>Yalnızca bu tarayıcıdaki oturum açık tutulur. Şifreniz saklanmaz.</small></span></label>'}
       ${setup ? '<label class="field" for="login-confirm">Şifre tekrar<input id="login-confirm" name="confirm" type="password" required minlength="10" autocomplete="new-password" placeholder="Şifrenizi tekrar girin"></label><p class="login-note">Şifreniz en az 10 karakter olmalı. Bu tarayıcıdaki mevcut kayıtlar yönetici kurulumunda sunucuya taşınır.</p>' : ''}
     </div>
     <p id="authError" class="login-status" role="alert"></p>
@@ -635,19 +637,18 @@ function authGate(setup) {
     };
     const remember = document.getElementById('rememberLogin');
     const password = document.getElementById('login-password');
-    const syncPasswordAutocomplete = () => {
-      password.autocomplete = remember.checked ? 'current-password' : 'off';
+    // Persist only this browser's preference, never a password or an account-wide setting.
+    try {
+      remember.checked = localStorage.getItem('han-remember-this-browser-v1') === 'true';
+    } catch {}
+    password.value = '';
+    remember.onchange = () => {
+      if (!remember.checked) {
+        try {
+          localStorage.removeItem('han-remember-this-browser-v1');
+        } catch {}
+      }
     };
-    remember.onchange = syncPasswordAutocomplete;
-    syncPasswordAutocomplete();
-    // Browsers may ignore autocomplete="off" on sign-in forms. Until the user
-    // explicitly opts in, clear any password manager fill that occurs on render.
-    const clearUnselectedAutofill = () => {
-      if (!remember.checked) password.value = '';
-    };
-    clearUnselectedAutofill();
-    requestAnimationFrame(() => requestAnimationFrame(clearUnselectedAutofill));
-    setTimeout(clearUnselectedAutofill, 150);
   }
   installPasswordVisibility(loginForm);
   loginForm.onsubmit = async (event) => {
@@ -676,6 +677,12 @@ function authGate(setup) {
         hanAuth = authApi(url, 'POST', { ...data, replaceSessions: true });
       }
       hanAuth = authApi('/api/session').user;
+      if (!setup) {
+        try {
+          if (data.remember === 'on') localStorage.setItem('han-remember-this-browser-v1', 'true');
+          else localStorage.removeItem('han-remember-this-browser-v1');
+        } catch {}
+      }
       await enterWorkspace();
     } catch (error) {
       const output = document.getElementById('authError');

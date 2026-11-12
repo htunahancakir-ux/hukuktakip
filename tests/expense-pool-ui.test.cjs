@@ -306,3 +306,35 @@ test('Avans hareketleri 50 kayıtlık sayfalarda gösterilir', () => {
     dom.window.close();
   }
 });
+
+test('Ciro Diğer seçimi üç seçenek açar ve seçilen kategoriyle tahsilat kaydeder', () => {
+  const { dom, w } = setup();
+  try {
+    w.staffSelect = () =>
+      '<label>Ciro Personeli<select name="turnoverStaffId"><option value="">Personel seçin</option></select></label>';
+    w.businessDate = () => '2026-01-02';
+    let saved;
+    const original = w.Storage.prototype.setItem;
+    w.Storage.prototype.setItem = function (key, value) {
+      if (key === 'hanhukuk-finance-v1') saved = JSON.parse(value);
+      else original.call(this, key, value);
+    };
+    w.financialOperations('d1');
+    const form = w.document.querySelector('#financeEntry');
+    assert.equal(form.elements.turnoverOther.disabled, true);
+    form.elements.turnoverStaffId.value = '__other__';
+    form.elements.turnoverStaffId.onchange();
+    assert.equal(form.elements.turnoverOther.required, true);
+    assert.equal(form.elements.turnoverOther.closest('label').hidden, false);
+    assert.equal(form.elements.turnoverOther.options.length, 4);
+    form.elements.turnoverOther.value = 'turnover:bonus';
+    form.elements.amount.value = '25';
+    form.elements.date.value = '2026-01-02';
+    form.elements.note.value = 'Örnek tahsilat';
+    form.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+    assert.equal(saved.at(-1).turnoverStaffId, 'turnover:bonus');
+    assert.equal(saved.at(-1).turnoverStaffName, 'Bonus');
+  } finally {
+    dom.window.close();
+  }
+});

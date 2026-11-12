@@ -15,6 +15,12 @@ async function handleScheduledReminderRoutes(ctx) {
     );
   const rows = () => ctx.state.scheduledReminders || [];
   if (req.method === 'GET') {
+    const next = structuredClone(ctx.state);
+    if (
+      !u.readOnly &&
+      require('../../lib/reminder-repeat.cjs').advanceRepeatingReminders(next, Date.now(), u.id)
+    )
+      ctx.persistMetadata(next);
     const items = rows().filter((row) => row.accountId === u.id);
     const closed = url.searchParams.get('status') === 'closed';
     return reply({
@@ -39,10 +45,22 @@ async function handleScheduledReminderRoutes(ctx) {
   if (['complete', 'cancel'].includes(input?.action)) {
     const row = next.scheduledReminders.find((row) => row.accountId === u.id && row.id === input.id);
     if (!row) throw fail(404, 'Hatırlatma bulunamadı.');
-    if (!row.closedAt) {
-      row.closedAt = new Date().toISOString();
-      row.closeReason = input.action;
-      if (row.deliveryStatus === 'pending') row.deliveryStatus = 'cancelled';
+    if (!row.closedAt || (input.action === 'cancel' && row.repeat && row.repeat !== 'none')) {
+      const series = row.repeatSeriesId || row.id;
+      const affected =
+        input.action === 'cancel' && row.repeat && row.repeat !== 'none'
+          ? next.scheduledReminders.filter(
+              (item) =>
+                item.accountId === u.id && (item.repeatSeriesId || item.id) === series && !item.closedAt,
+            )
+          : [row];
+      for (const item of affected) {
+        item.closedAt = new Date().toISOString();
+        item.closeReason = input.action;
+        if (item.deliveryStatus === 'pending') item.deliveryStatus = 'cancelled';
+      }
+      if (input.action === 'complete')
+        require('../../lib/reminder-repeat.cjs').advanceRepeatingReminders(next, Date.now(), u.id);
       ctx.persistMetadata(next);
       res.hanReminderAudit = { action: 'update', id: row.id };
     }
@@ -58,6 +76,9 @@ async function handleScheduledReminderRoutes(ctx) {
   if (rows().filter((row) => row.accountId === u.id && !row.closedAt).length >= 200)
     throw fail(409, 'Yeni hatırlatma eklemek için bekleyen bir hatırlatmayı tamamlayın.');
   const whatsapp = input.whatsapp === true;
+  const repeat = input.repeat ?? 'none';
+  if (!Object.hasOwn(require('../../lib/reminder-repeat.cjs').repeats, repeat))
+    throw fail(400, 'Geçerli tekrar seçimi yapın.');
   if (whatsapp && !scheduled.deliveryAvailable(ctx.state, u, enabled()))
     throw fail(409, 'WhatsApp için onaylı numara, etkin bağlantı, şablon ve zamanlayıcı gerekir.');
   const id = crypto.randomUUID();
@@ -66,6 +87,8 @@ async function handleScheduledReminderRoutes(ctx) {
     accountId: u.id,
     note,
     dueAt,
+    repeat,
+    ...(repeat !== 'none' ? { repeatAnchorAt: dueAt, repeatSeriesId: id, repeatIndex: 0 } : {}),
     createdAt: new Date().toISOString(),
     targetType: input.targetType || null,
     targetId: input.targetType ? input.targetId : null,

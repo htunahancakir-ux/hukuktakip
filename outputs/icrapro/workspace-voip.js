@@ -155,24 +155,107 @@ async function voipShowDiagnosis(host, { ask = false } = {}) {
   if (host.isConnected) host.innerHTML = markup;
   return markup;
 }
+const voipRecentCall = (error) =>
+  error?.reason === 'recent_call' ||
+  (error?.status === 409 && /yakın zamanda arandı/.test(error?.message || ''));
 const voipNeedsDiagnosis = (error) =>
   error?.reason === 'extension_unregistered' || String(error?.reason || '').startsWith('microphone_');
-function voipGlobalHangup(action) {
-  voipUi.globalHangup = action;
-  let button = document.querySelector('[data-global-hangup]');
-  if (!action) {
-    button?.remove();
-    return;
+// Call bar: one always-visible strip at the top of the page shell, from the moment dialing
+// starts until the call closes. It belongs to the page, not to the call window, so it stays
+// reachable when that window is moved, minimized or hidden, when the page scrolls and on
+// every menu. Dynamic values are always written with textContent.
+const voipBarIcons = {
+  mic: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path><path class="voip-call-bar-slash" d="M4 4l16 16"></path></svg>',
+  note: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 20h4L19 9l-4-4L4 16z"></path><path d="M13 7l4 4"></path></svg>',
+};
+function voipInitials(name) {
+  const words = String(name || '')
+    .trim()
+    .split(/\s+/u)
+    .filter((word) => /^\p{L}/u.test(word));
+  if (!words.length) return '☎';
+  return (words[0][0] + (words.length > 1 ? words.at(-1)[0] : '')).toLocaleUpperCase('tr-TR');
+}
+function voipCallBarTick() {
+  const state = voipUi.bar,
+    time = document.querySelector('#voipCallBar [data-bar-time]');
+  if (state && time)
+    time.textContent = voipDuration(Math.max(0, Math.floor((Date.now() - state.startedAt) / 1000)));
+}
+function voipCallBarRender() {
+  const state = voipUi.bar;
+  if (!state) return;
+  let bar = document.getElementById('voipCallBar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'voipCallBar';
+    bar.className = 'voip-call-bar';
+    bar.setAttribute('role', 'region');
+    bar.setAttribute('aria-label', 'Aktif arama');
+    bar.innerHTML = `<div class="voip-call-bar-who"><span class="voip-call-bar-avatar" data-bar-avatar aria-hidden="true"></span><span class="voip-call-bar-text"><strong data-bar-name></strong><small data-bar-detail></small></span></div>
+      <div class="voip-call-bar-state"><span class="voip-call-bar-dot" aria-hidden="true"></span><span data-bar-status role="status"></span><time data-bar-time>00:00</time></div>
+      <span class="voip-call-bar-line" data-bar-line></span>
+      <div class="voip-call-bar-actions">
+        <button type="button" class="voip-call-bar-round" data-bar-mute aria-pressed="false" title="Sessize al" aria-label="Sessize al">${voipBarIcons.mic}</button>
+        <button type="button" class="voip-call-bar-round" data-bar-open title="Not ve sonuç penceresini aç" aria-label="Not ve sonuç penceresini aç">${voipBarIcons.note}</button>
+        <button type="button" class="voip-call-bar-hangup" data-global-hangup aria-label="Aramayı sonlandır"><span aria-hidden="true">☎</span> <span data-bar-hangup-label>Sonlandır</span></button>
+      </div>`;
+    (document.querySelector('.shell') || document.body).prepend(bar);
+    document.body.classList.add('voip-call-bar-open');
+    bar.querySelector('[data-global-hangup]').onclick = () => voipUi.bar?.hangup?.();
+    bar.querySelector('[data-bar-mute]').onclick = () => voipUi.bar?.mute?.();
+    bar.querySelector('[data-bar-open]').onclick = () => voipUi.bar?.open?.();
   }
-  if (!button) {
-    button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'voip-hangup';
-    button.dataset.globalHangup = '';
-    button.textContent = '☎ Sonlandır';
-    document.querySelector('.header-actions')?.prepend(button);
-  }
-  button.onclick = () => voipUi.globalHangup?.();
+  if (!voipUi.barTimer) voipUi.barTimer = setInterval(voipCallBarTick, 1000);
+  const dialing = state.phase === 'dialing',
+    hangup = bar.querySelector('[data-global-hangup]'),
+    mute = bar.querySelector('[data-bar-mute]'),
+    line = bar.querySelector('[data-bar-line]'),
+    detail = bar.querySelector('[data-bar-detail]');
+  bar.dataset.phase = state.ending ? 'ending' : state.phase || 'dialing';
+  bar.querySelector('[data-bar-avatar]').textContent = voipInitials(state.name);
+  bar.querySelector('[data-bar-name]').textContent = state.name || 'Arama';
+  detail.textContent = state.detail || '';
+  detail.hidden = !state.detail;
+  bar.querySelector('[data-bar-status]').textContent = state.ending
+    ? dialing
+      ? 'İptal ediliyor…'
+      : 'Sonlandırılıyor…'
+    : state.status || 'Aranıyor…';
+  line.textContent = state.line || '';
+  line.hidden = !state.line;
+  mute.hidden = !state.mute;
+  mute.disabled = !!state.muteBusy || !!state.ending;
+  mute.setAttribute('aria-pressed', String(!!state.muted));
+  bar.querySelector('[data-bar-open]').hidden = !state.open;
+  hangup.disabled = !!state.ending;
+  hangup.setAttribute('aria-label', state.ending ? 'Arama sonlandırılıyor' : 'Aramayı sonlandır');
+  bar.querySelector('[data-bar-hangup-label]').textContent = state.ending
+    ? dialing
+      ? 'İptal ediliyor…'
+      : 'Sonlandırılıyor…'
+    : 'Sonlandır';
+  voipCallBarTick();
+}
+function voipCallBarOpen(state) {
+  voipUi.bar = { startedAt: Date.now(), phase: 'dialing', ...state };
+  voipCallBarRender();
+}
+function voipCallBarUpdate(patch) {
+  if (!voipUi.bar) return;
+  voipUi.bar = { ...voipUi.bar, ...patch };
+  voipCallBarRender();
+}
+function voipCallBarClose() {
+  clearInterval(voipUi.barTimer);
+  voipUi.barTimer = null;
+  voipUi.bar = null;
+  document.getElementById('voipCallBar')?.remove();
+  document.body.classList.remove('voip-call-bar-open');
+}
+function voipCallLabel(doc, call) {
+  const number = call.documentNumber || (doc.id && doc.number !== 'Dosyasız arama' ? doc.number : '');
+  return number ? 'Föy ' + number : call.documentId || doc.id ? '' : 'Dosyasız arama';
 }
 function voipCancelWait(frame, waiting) {
   frame.querySelector(':scope > .voip-cancel-wait')?.remove();
@@ -186,7 +269,7 @@ function voipCancelWait(frame, waiting) {
     '<div><strong>Arama sonlandırılıyor…</strong><span>Kapanana kadar lütfen bekleyiniz.</span></div>';
   frame.append(notice);
 }
-async function voipStartCancelable(input, container, report, launchButton) {
+async function voipStartCancelable(input, container, report, launchButton, context = {}) {
   if (voipUi.startPending) throw Error('Arama başlatılıyor; mevcut işlemin bitmesini bekleyin.');
   voipUi.startPending = true;
   document.querySelectorAll('.local-feedback').forEach((el) => el.remove());
@@ -215,10 +298,21 @@ async function voipStartCancelable(input, container, report, launchButton) {
       }
     }
   };
-  voipGlobalHangup(() => cancel.click());
+  // A running call keeps its own bar; a failed second start must never replace or close it.
+  const ownsBar = !voipUi.bar;
+  if (ownsBar)
+    voipCallBarOpen({
+      owner: 'start',
+      phase: 'dialing',
+      status: 'Aranıyor…',
+      name: context.name || voipPhone(input.phone),
+      detail: [context.name ? voipPhone(input.phone) : '', context.detail || ''].filter(Boolean).join(' · '),
+      hangup: () => cancel.click(),
+    });
   cancel.onclick = () => {
     if (requested) return;
     requested = true;
+    if (ownsBar) voipCallBarUpdate({ ending: true });
     cancel.disabled = true;
     cancel.textContent = 'İptal ediliyor…';
     voipCancelWait(frame, true);
@@ -253,7 +347,7 @@ async function voipStartCancelable(input, container, report, launchButton) {
     else cancel.remove();
     voipCancelWait(frame, false);
     voipUi.startPending = false;
-    voipGlobalHangup(null);
+    if (ownsBar && voipUi.bar?.owner === 'start') voipCallBarClose();
   }
 }
 function voipDate(value) {
@@ -275,6 +369,66 @@ function voipDuration(value) {
     (seconds % 60).toString().padStart(2, '0')
   );
 }
+// Where an inbound call goes when nobody who takes inbound calls can answer: a Verimor target
+// written as type/number. The settings page offers the types with what each one does.
+const VOIP_FALLBACK_TYPES = [
+  ['', 'Yok'],
+  ['group', 'Çağrı grubu'],
+  ['queue', 'Kuyruk'],
+  ['user', 'Dahili'],
+  ['voicemail', 'Sesli mesaj'],
+  ['external', 'Cep telefonu'],
+];
+const VOIP_FALLBACK_HELP = {
+  '': 'Yedek hedef yok: kimse ulaşılamazsa arama föy sorumlusunun (yoksa son arayan personelin) dahilisine gider; o da bağlı değilse hiçbir yer çalmaz ve arama cevapsız kalır. Bir yedek hedef seçmeniz önerilir.',
+  group:
+    "Verimor'daki çağrı grubunun numarası (ör. 700). Gruptaki bütün dahililer aynı anda çalar; ilk açan konuşur. Gelen aramaları karşılayabilecek herkesi (sekreter, masa telefonu, softphone) bir gruba koymanız önerilir.",
+  queue:
+    "Verimor'daki kuyruğun numarası (ör. 201). Arayan sırada bekler, bekleme anonsunu veya müziğini duyar ve boşalan ilk personele bağlanır.",
+  user: 'Tek bir dahili çalar (ör. sekreter ya da masa telefonu). O dahili meşgulse veya bağlı değilse arama cevapsız kalabilir.',
+  voicemail: 'Seçilen dahilinin sesli mesaj kutusu: arayan mesaj bırakır.',
+  external:
+    'Bir cep telefonu (ör. büronun nöbetçi hattı). Arama bu numaraya yönlendirilir; dış arama ücreti oluşabilir.',
+};
+function voipBindFallback(form, saved) {
+  const [savedType, savedNumber = ''] = String(saved || '').split('/');
+  const type = form.elements.fallbackType,
+    number = form.elements.fallbackNumber,
+    person = form.elements.fallbackUser,
+    help = form.querySelector('[data-fallback-help]');
+  type.value = VOIP_FALLBACK_TYPES.some(([id]) => id === savedType) ? savedType : '';
+  if (['user', 'voicemail'].includes(type.value)) person.value = savedNumber;
+  else number.value = savedNumber;
+  const show = () => {
+    const kind = type.value;
+    number.hidden = !['group', 'queue', 'external'].includes(kind);
+    person.hidden = !['user', 'voicemail'].includes(kind);
+    number.placeholder = kind === 'external' ? '05XX XXX XX XX' : kind === 'queue' ? 'ör. 201' : 'ör. 700';
+    help.textContent = VOIP_FALLBACK_HELP[kind] || '';
+  };
+  type.onchange = show;
+  show();
+}
+// Builds the type/number value the server expects, or throws a readable error.
+function voipFallbackValue(form) {
+  const kind = form.elements.fallbackType.value;
+  if (!kind) return '';
+  if (['user', 'voicemail'].includes(kind)) {
+    const extension = form.elements.fallbackUser.value;
+    if (!/^\d{2,8}$/.test(extension)) throw Error('Yedek hedef için bir dahili seçin.');
+    return kind + '/' + extension;
+  }
+  const raw = form.elements.fallbackNumber.value.replace(/[\s()+.-]/g, '');
+  if (kind === 'external') {
+    const digits = /^90\d{10}$/.test(raw) ? '0' + raw.slice(2) : /^\d{10}$/.test(raw) ? '0' + raw : raw;
+    if (!/^0\d{10}$/.test(digits))
+      throw Error('Yedek hedef için geçerli bir telefon numarası girin (05XX XXX XX XX).');
+    return 'external/' + digits;
+  }
+  if (!/^\d{1,10}$/.test(raw))
+    throw Error('Yedek hedef için ' + (kind === 'queue' ? 'kuyruk' : 'çağrı grubu') + ' numarasını girin.');
+  return kind + '/' + raw;
+}
 function voipSettingsPage() {
   if (hanAuth.role !== 'ceo') return;
   $('#content').innerHTML =
@@ -295,18 +449,58 @@ function voipSettingsPage() {
       <label class="field full">Web telefonu adresi<input data-optional="true" name="webphoneUrl" type="url" value="${esc(config.webphoneUrl || '')}" placeholder="Verimor’un verdiği HTTPS iframe adresi"><small>Tokensız adresi girin. Dahiliye Verimor personel hesabı atanmış olmalı. Masa telefonu / softphone kullanıyorsanız boş bırakabilirsiniz.</small></label>
       <label class="field">Tekrar arama uyarısı (dakika)<input data-optional="true" name="recentMinutes" type="number" min="1" max="10080" value="${config.recentMinutes}"><small>Görüşülen numaralar için uyarır; ulaşılamayan veya meşgul numaralarda onay istemez.</small></label>
       <label class="settings-check"><input data-optional="true" name="clearKey" type="checkbox"> Kayıtlı API anahtarını sil</label>
-      <div class="notice full">Dahili numaralarını Ayarlar → Yetkilendirme → Telefon Dahilileri bölümünden CEO veya yöneticiler değiştirebilir.</div>
-      <div class="notice full"><strong>Ses kaydı ve arşiv</strong><p>Verimor’da ilgili dahililerin görüşme kaydını açın. Hazır kayıtlar yeniden sıkıştırılmadan, şifreli arşive alınır ve 5 yıl saklanacak şekilde işaretlenir. CEO ve yönetici dinleyebilir; dosya sorumlularına Ayarlar → Yetkilendirme bölümünden dinleme yetkisi verilebilir.</p><p>${config.archiveReady ? 'Kalıcı depolama kullanılabilir.' : 'Bulutta kalıcı arşiv için R2 ortam değişkenlerini tamamlayın.'} ${config.encryptionReady ? 'Şifreleme anahtarı hazır.' : 'Sunucuda VOIP_ENCRYPTION_KEY tanımlanmalı: 64 haneli hex anahtar.'}</p></div>
+      <div class="notice full">Dahili numaralarını VoIP / Telefon → Dahililer ve yetkiler sekmesinden CEO veya yöneticiler değiştirebilir.</div>
+      <div class="notice full"><strong>Ses kaydı ve arşiv</strong><p>Verimor’da ilgili dahililerin görüşme kaydını açın. Hazır kayıtlar yeniden sıkıştırılmadan, şifreli arşive alınır ve 5 yıl saklanacak şekilde işaretlenir. CEO ve yönetici dinleyebilir; dosya sorumlularına VoIP / Telefon → Dahililer ve yetkiler sekmesinden dinleme yetkisi verilebilir.</p><p>${config.archiveReady ? 'Kalıcı depolama kullanılabilir.' : 'Bulutta kalıcı arşiv için R2 ortam değişkenlerini tamamlayın.'} ${config.encryptionReady ? 'Şifreleme anahtarı hazır.' : 'Sunucuda VOIP_ENCRYPTION_KEY tanımlanmalı: 64 haneli hex anahtar.'}</p></div>
+      <fieldset class="full voip-inbound-settings"><legend>Gelen aramalar</legend>
+        <p>İşaretli personelin web telefonu uygulamaya girdiği sürece bağlı kalır ve dışarıdan gelen aramalar onun tarayıcısında çalar. Yalnızca dahilisi olan personel seçilebilir.</p>
+        <div class="voip-inbound-users">${
+          (config.users || [])
+            .filter((u) => config.extensions?.[u.id])
+            .map(
+              (u) =>
+                `<label class="settings-check"><input type="checkbox" name="inboundUsers" value="${esc(u.id)}" ${(config.inboundUsers || []).includes(u.id) ? 'checked' : ''}> ${esc(u.name)} <small>dahili ${esc(config.extensions[u.id])}</small></label>`,
+            )
+            .join('') || '<small>Önce personele dahili atayın.</small>'
+        }</div>
+        <div class="field full voip-fallback"><span>Yedek hedef</span>
+          <div class="voip-fallback-row">
+            <select name="fallbackType" aria-label="Yedek hedef türü">${VOIP_FALLBACK_TYPES.map(([id, label]) => `<option value="${id}">${esc(label)}</option>`).join('')}</select>
+            <input data-optional="true" name="fallbackNumber" maxlength="15" inputmode="numeric" aria-label="Yedek hedef numarası">
+            <select name="fallbackUser" aria-label="Yedek hedef dahilisi">${
+              (config.users || [])
+                .filter((u) => config.extensions?.[u.id])
+                .map(
+                  (u) =>
+                    `<option value="${esc(config.extensions[u.id])}">${esc(u.name)} · dahili ${esc(config.extensions[u.id])}</option>`,
+                )
+                .join('') || '<option value="">Dahilisi olan personel yok</option>'
+            }</select>
+          </div>
+          <small data-fallback-help></small>
+        </div>
+        <label class="field full">Gelen arama yönlendirme adresi<input readonly value="${esc(config.routePath ? location.origin + config.routePath : 'İlk kayıttan sonra oluşur.')}"><small>Verimor → Gelen Arama Yönetimi'nde dış hattın hedefini "Santral Programlama API" yapın ve bu adresi girin. Arama önce borçlunun föyünün sorumlusuna, o bağlı veya boş değilse borçluyu en son arayan personele, sonra işaretli başka bir personele, o da yoksa yedek hedefe gider.</small></label>
+      </fieldset>
       <label class="field full">Çağrı bildirim adresi<input readonly value="${esc(config.webhookPath ? location.origin + config.webhookPath : 'İlk kayıttan sonra oluşur.')}"><small>Verimor CRM entegrasyonunda çalma, cevaplanma ve kapanma bildirimleri için bu adresi kullanın. Adres gizli bildirim anahtarı içerir.</small></label>
     </div><p id="voipConfigStatus" role="status"></p><div class="actions"><button class="primary" type="submit">VoIP Ayarlarını Kaydet</button></div></form>`;
       const form = host.querySelector('form');
+      voipBindFallback(form, config.inboundFallback || '');
       form.onsubmit = async (event) => {
         event.preventDefault();
         const button = form.querySelector('[type="submit"]');
-        button.disabled = true;
         const value = Object.fromEntries(new FormData(form));
         value.enabled = form.elements.enabled.checked;
         value.clearKey = form.elements.clearKey.checked;
+        value.inboundUsers = [...form.querySelectorAll('[name="inboundUsers"]:checked')].map(
+          (box) => box.value,
+        );
+        for (const key of ['fallbackType', 'fallbackNumber', 'fallbackUser']) delete value[key];
+        try {
+          value.inboundFallback = voipFallbackValue(form);
+        } catch (error) {
+          host.querySelector('#voipConfigStatus').textContent = error.message;
+          return;
+        }
+        button.disabled = true;
         try {
           await voipApi('config', 'PUT', value);
           voipSettingsPage();
@@ -320,49 +514,122 @@ function voipSettingsPage() {
       if (host.isConnected) host.textContent = error.message;
     });
 }
+// Telefon Dahilileri: one row per extension (read from the switchboard, plus any added here);
+// the person is picked by typing a name, with matching active users suggested.
 async function voipExtensionsPanel(before) {
   const panel = document.createElement('section');
-  panel.className = 'panel formbody';
+  panel.className = 'panel formbody voip-extensions';
   panel.style.marginBottom = '16px';
   before.before(panel);
   panel.textContent = 'Telefon dahilileri yükleniyor…';
+  const render = (data) => {
+    const users = data.users;
+    const label = (u) => u.name + ' (' + (u.username || '') + ')';
+    const byLabel = new Map(users.map((u) => [label(u), u]));
+    panel.innerHTML =
+      '<h2>Telefon Dahilileri</h2><p>Her dahilinin yanına personelin adını yazmaya başlayın ve önerilenlerden seçin. Bir personelin tek dahilisi olur; başka birine ait dahiliyi seçerseniz eski kişiden alınır. Yalnızca CEO ve yöneticiler değiştirebilir. Buradaki numaralar Verimor’daki dahililerle aynı olmalıdır; bu ekran Verimor’da yeni dahili oluşturmaz.</p>' +
+      (data.switchboardListed
+        ? ''
+        : '<p class="voip-notice">Dahili listesi Verimor’dan alınamadı; atanmış ve burada eklenmiş dahililer gösteriliyor.</p>') +
+      '<datalist id="voipExtensionPeople">' +
+      users.map((u) => '<option value="' + esc(label(u)) + '"></option>').join('') +
+      '</datalist><div class="overflow"><table><thead><tr><th>Dahili</th><th>Personel</th><th></th></tr></thead><tbody>' +
+      (data.extensions
+        .map((row) => {
+          const owner = users.find((u) => u.id === row.userId);
+          return (
+            '<tr><td><strong>' +
+            esc(row.extension) +
+            '</strong>' +
+            (row.fromSwitchboard ? '' : '<small>Verimor listesinde görünmüyor</small>') +
+            '</td><td><form class="toolbar" data-extension-row="' +
+            esc(row.extension) +
+            '"><input name="person" list="voipExtensionPeople" autocomplete="off" data-optional="true" placeholder="Personel adı yazın…" aria-label="' +
+            esc(row.extension) +
+            ' dahilisinin personeli" value="' +
+            esc(owner ? label(owner) : '') +
+            '"><button class="secondary" type="submit">Kaydet</button>' +
+            (owner ? '<button class="link" type="button" data-unassign>Atamayı kaldır</button>' : '') +
+            (!owner && !row.fromSwitchboard
+              ? '<button class="link" type="button" data-remove-extension>Listeden çıkar</button>'
+              : '') +
+            '<span role="status"></span></form></td><td></td></tr>'
+          );
+        })
+        .join('') || '<tr><td colspan="3" class="empty">Henüz dahili yok.</td></tr>') +
+      '</tbody></table></div><form class="toolbar voip-extension-add" data-extension-add><label class="field">Dahili ekle<input name="extension" inputmode="numeric" pattern="[0-9]{2,8}" maxlength="8" placeholder="ör. 1002" data-optional="true"></label><button class="secondary" type="submit">Ekle</button><span role="status"></span></form>';
+    const save = async (form, body, okText) => {
+      const status = form.querySelector('[role="status"]');
+      form.querySelectorAll('button').forEach((b) => (b.disabled = true));
+      status.textContent = 'Kaydediliyor…';
+      try {
+        render(await voipApi('extensions', 'PUT', body));
+        const again = panel.querySelector(
+          body.addExtension || body.removeExtension
+            ? '[data-extension-add] [role="status"]'
+            : '[data-extension-row="' + (body.extension || form.dataset.extensionRow) + '"] [role="status"]',
+        );
+        if (again) again.textContent = okText;
+      } catch (error) {
+        status.textContent = error.message;
+        form.querySelectorAll('button').forEach((b) => (b.disabled = false));
+      }
+    };
+    panel.querySelectorAll('[data-extension-row]').forEach((form) => {
+      const extension = form.dataset.extensionRow;
+      const current = data.extensions.find((r) => r.extension === extension)?.userId || '';
+      form.onsubmit = (event) => {
+        event.preventDefault();
+        const typed = form.elements.person.value.trim();
+        const person =
+          byLabel.get(typed) ||
+          users.find((u) => u.name.toLocaleLowerCase('tr') === typed.toLocaleLowerCase('tr'));
+        const status = form.querySelector('[role="status"]');
+        if (!typed) {
+          if (current) return save(form, { userId: current, extension: '' }, 'Atama kaldırıldı.');
+          status.textContent = 'Personel adı yazın ve önerilenlerden seçin.';
+          return;
+        }
+        if (!person) {
+          status.textContent = 'Bu adla aktif personel bulunamadı. Önerilenlerden seçin.';
+          return;
+        }
+        if (person.id === current) {
+          status.textContent = 'Zaten bu personele atanmış.';
+          return;
+        }
+        if (
+          person.extension &&
+          person.extension !== extension &&
+          !window.confirm(
+            person.name + ' şu an ' + person.extension + ' dahilisinde. Bu dahiliye geçirilsin mi?',
+          )
+        )
+          return;
+        save(form, { userId: person.id, extension, replace: true }, 'Kaydedildi.');
+      };
+      form.querySelector('[data-unassign]')?.addEventListener('click', () => {
+        if (!window.confirm(extension + ' dahilisinin personel ataması kaldırılsın mı?')) return;
+        save(form, { userId: current, extension: '' }, 'Atama kaldırıldı.');
+      });
+      form
+        .querySelector('[data-remove-extension]')
+        ?.addEventListener('click', () => save(form, { removeExtension: extension }, 'Listeden çıkarıldı.'));
+    });
+    const add = panel.querySelector('[data-extension-add]');
+    add.onsubmit = (event) => {
+      event.preventDefault();
+      const value = add.elements.extension.value.trim();
+      if (!/^\d{2,8}$/.test(value)) {
+        add.querySelector('[role="status"]').textContent = 'Dahili numarası 2–8 rakam olmalı.';
+        return;
+      }
+      save(add, { addExtension: value }, 'Eklendi.');
+    };
+  };
   try {
     const data = await voipApi('extensions');
-    if (!panel.isConnected) return;
-    panel.innerHTML =
-      '<h2>Telefon Dahilileri</h2><p>Yalnızca CEO ve yöneticiler değiştirebilir. Personel kendi dahilisini değiştiremez. Buradaki numara Verimor’da tanımlı dahiliyle aynı olmalıdır; bu işlem Verimor’da yeni dahili oluşturmaz.</p><div class="overflow"><table><thead><tr><th>Kullanıcı</th><th>Dahili / İşlem</th></tr></thead><tbody>' +
-      data.users
-        .map(
-          (u) =>
-            `<tr><td><strong>${esc(u.name)}</strong><small>Kullanıcı: ${esc(u.username || '')} · ${u.role === 'ceo' ? 'CEO' : u.role === 'admin' ? 'Yönetici' : 'Personel'}</small></td><td><form data-extension-user="${esc(u.id)}" class="toolbar"><input aria-label="${esc(u.name)} dahili numarası" name="extension" type="text" inputmode="numeric" pattern="[0-9]{2,8}" maxlength="8" value="${esc(u.extension)}" placeholder="Atanmadı" data-optional="true" style="width:120px"><button class="secondary" type="submit">Kaydet</button><span role="status"></span></form></td></tr>`,
-        )
-        .join('') +
-      '</tbody></table></div>';
-    panel.querySelectorAll('form').forEach(
-      (form) =>
-        (form.onsubmit = async (event) => {
-          event.preventDefault();
-          const button = form.querySelector('button'),
-            status = form.querySelector('[role="status"]');
-          button.disabled = true;
-          status.textContent = 'Kaydediliyor…';
-          try {
-            const saved = await voipApi('extensions', 'PUT', {
-              userId: form.dataset.extensionUser,
-              extension: form.elements.extension.value.trim(),
-            });
-            form.elements.extension.value = saved.users.find(
-              (u) => u.id === form.dataset.extensionUser,
-            ).extension;
-            form.elements.extension.defaultValue = form.elements.extension.value;
-            status.textContent = 'Kaydedildi.';
-          } catch (error) {
-            status.textContent = error.message;
-          } finally {
-            button.disabled = false;
-          }
-        }),
-    );
+    if (panel.isConnected) render(data);
   } catch (error) {
     if (panel.isConnected) panel.textContent = error.message;
   }
@@ -450,21 +717,40 @@ function voipTranscriptMarkup(call) {
       : '')
   );
 }
+// What the phone exchange reported for the call, so an unexpected result can be explained.
+function voipProviderLine(call) {
+  const end = call.providerEnd;
+  if (!end) return '';
+  const parts = [
+    end.answered === true ? 'cevaplandı' : end.answered === false ? 'cevaplanmadı' : '',
+    Number.isFinite(end.talkSeconds) ? 'konuşma ' + end.talkSeconds + ' sn' : '',
+    end.legAnswered === true ? 'karşı taraf açtı' : end.legAnswered === false ? 'karşı taraf açmadı' : '',
+    end.result ? 'sonuç ' + end.result : '',
+    end.cause ? 'neden ' + (end.reason ? end.reason + ' (' + end.cause + ')' : end.cause) : '',
+    end.code ? 'kod ' + end.code : '',
+    end.by === 'caller' ? 'kapatan arayan taraf' : end.by === 'callee' ? 'kapatan aranan taraf' : '',
+    call.hangupRequestedAt || call.cancelRequested ? 'siz sonlandırdınız' : '',
+  ].filter(Boolean);
+  return parts.length
+    ? '<p class="voip-provider-line">Santral yanıtı: ' + esc(parts.join(' · ')) + '</p>'
+    : '';
+}
 function voipCallMarkup(call, results) {
-  return `<article class="voip-call-entry" data-call-state="${esc(call.status)}"><div class="voip-call-top"><strong>${esc(voipDate(call.createdAt))}</strong><span class="voip-status-pill">${esc(call.statusLabel)}</span></div>
-    <div class="voip-history-meta"><strong>${esc(voipPhone(call.phone))}</strong><span>${esc(call.staffName)}</span>${window.testRecordBadge?.(call) || ''}<span>${esc(voipDuration(call.duration))}</span>${call.documentNumber ? '<span>Föy ' + esc(call.documentNumber) + '</span>' : ''}</div>
-    <p class="voip-history-result"><span>Görüşme sonucu</span><b>${esc(call.result || 'Henüz girilmedi')}</b></p>
-    <div class="toolbar">${call.canListen ? `<button class="secondary" type="button" data-voip-listen="${esc(call.id)}">▶ Dinle</button>` : ''}${call.archivedAt && call.canListen && ['ceo', 'admin'].includes(hanAuth.role) ? `<a class="link" href="/api/voip/media?id=${encodeURIComponent(call.id)}&download=1">İndir</a>` : ''}${call.recordingPresent && !call.archivedAt && ['ceo', 'admin'].includes(hanAuth.role) ? `<button class="link" type="button" data-voip-archive="${esc(call.id)}">Arşivlemeyi yeniden dene</button>` : ''}${voipActiveStatuses.has(call.status) && (call.userId === hanAuth.id || ['ceo', 'admin'].includes(hanAuth.role)) ? `<button class="link" type="button" data-voip-sync="${esc(call.id)}">Durumu doğrula</button>` : ''}</div>
+  return `<article class="voip-call-entry" data-call-state="${esc(call.status)}"><div class="voip-call-top"><strong>${esc(voipDate(call.createdAt))}</strong>${call.direction === 'inbound' ? '<span class="voip-direction-badge">Gelen</span>' : ''}<span class="voip-status-pill">${esc(call.statusLabel)}</span></div>
+    <div class="voip-history-meta"><strong>${esc(call.phone ? voipPhone(call.phone) : call.callerNumber || 'Gizli numara')}</strong><span>${esc(call.staffName || (call.direction === 'inbound' ? 'Cevaplanmadı' : ''))}</span>${window.testRecordBadge?.(call) || ''}<span>${esc(voipDuration(call.duration))}</span>${call.documentNumber ? '<span>Föy ' + esc(call.documentNumber) + '</span>' : ''}</div>
+    <p class="voip-history-result"><span>Görüşme sonucu</span><b>${esc(call.result || 'Henüz girilmedi')}</b></p>${voipProviderLine(call)}
+    <div class="toolbar">${call.canListen ? `<button class="secondary" type="button" data-voip-listen="${esc(call.id)}">▶ Dinle</button>` : ''}${call.archivedAt && call.canListen && ['ceo', 'admin'].includes(hanAuth.role) ? `<a class="link" href="/api/voip/media?id=${encodeURIComponent(call.id)}&download=1">İndir</a>` : ''}${call.recordingPresent && !call.archivedAt && ['ceo', 'admin'].includes(hanAuth.role) ? `<button class="link" type="button" data-voip-archive="${esc(call.id)}">Arşivlemeyi yeniden dene</button>` : ''}${call.direction !== 'inbound' && voipActiveStatuses.has(call.status) && (call.userId === hanAuth.id || ['ceo', 'admin'].includes(hanAuth.role)) ? `<button class="link" type="button" data-voip-sync="${esc(call.id)}">Durumu doğrula</button>` : ''}</div>
     ${call.archiveError ? '<p class="voip-notice">' + esc(call.archiveError) + '</p>' : ''}
     ${call.draftNote || call.note ? `<details class="voip-personal-note"><summary>Personel notu</summary><p class="voip-note">${esc(call.draftNote ?? call.note ?? '')}</p></details>` : ''}${voipTranscriptMarkup(call)}
-    ${!voipActiveStatuses.has(call.status) && (call.userId === hanAuth.id || ['ceo', 'admin'].includes(hanAuth.role)) ? `<details><summary>Sonuç / not düzenle</summary><form data-voip-result="${esc(call.id)}" data-voip-document="${esc(call.documentId)}" class="voip-result-form"><label class="field">Görüşme sonucu<select name="result" required><option value="">Seçin</option>${results.map((r) => `<option ${r === (call.result || (call.status === 'busy' ? 'Meşgul' : call.status === 'unanswered' ? 'Ulaşılamadı' : '')) ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select></label><label class="field">Görüşme notu<textarea data-optional="true" name="note" maxlength="3000" rows="3">${esc(call.draftNote ?? call.note ?? '')}</textarea></label><button class="primary" type="submit">Kaydet</button></form></details>` : ''}
+    ${call.direction !== 'inbound' && !voipActiveStatuses.has(call.status) && (call.userId === hanAuth.id || ['ceo', 'admin'].includes(hanAuth.role)) ? `<details><summary>Sonuç / not düzenle</summary><form data-voip-result="${esc(call.id)}" data-voip-document="${esc(call.documentId)}" class="voip-result-form"><label class="field">Görüşme sonucu<select name="result" required><option value="">Seçin</option>${results.map((r) => `<option ${r === (call.result || (call.status === 'busy' ? 'Meşgul' : call.status === 'unanswered' ? 'Ulaşılamadı' : '')) ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select></label><label class="field">Görüşme notu<textarea data-optional="true" name="note" maxlength="3000" rows="3">${esc(call.draftNote ?? call.note ?? '')}</textarea></label><button class="primary" type="submit">Kaydet</button></form></details>` : ''}
     <div class="voip-entry-feedback" role="status"></div></article>`;
 }
 async function completeVoipConversation(call, values) {
-  if (!call.documentId) {
-    await voipApi('result', 'POST', { id: call.id, ...values });
-    return;
-  }
+  return sendVoipConversation(call, values, await prepareVoipConversation(call, values));
+}
+// The interactive part of saving a result: a callback plan or a payment promise is asked for here.
+async function prepareVoipConversation(call, values) {
+  if (!call.documentId) return null;
   const doc = (typeof db !== 'undefined' && db.docs.find((d) => d.id === call.documentId)) || {
     id: call.documentId,
     number: call.documentNumber,
@@ -493,6 +779,18 @@ async function completeVoipConversation(call, values) {
     if (!promise) throw Error('Ödeme sözü tamamlanmadı. Görüşme notunuz korunuyor.');
     input.paymentPromiseId = promise.id;
   }
+  return input;
+}
+// The network part. For a borrower call the server also refreshes the conversation report (and
+// asks the AI provider when one is set up), which can take a few seconds.
+async function sendVoipConversation(call, values, input) {
+  if (!call.documentId) {
+    await voipApi('result', 'POST', { id: call.id, ...values });
+    return;
+  }
+  const doc = (typeof db !== 'undefined' && db.docs.find((d) => d.id === call.documentId)) || {
+    id: call.documentId,
+  };
   const response = await fetch('/api/documents/conversations', {
     method: 'POST',
     credentials: 'same-origin',
@@ -823,11 +1121,13 @@ function setupBorrowerVoip(dialog, doc) {
           .map((p) => {
             const calls = data.calls.filter((c) => c.phone === p.phone),
               last = calls[0],
-              active = calls.find((c) => voipActiveStatuses.has(c.status));
+              lastOutbound = calls.find((c) => c.direction !== 'inbound'),
+              active = calls.find((c) => voipActiveStatuses.has(c.status) && c.direction !== 'inbound');
+            // Same rule as the server: the last call the office made to this number.
             const recent =
-              last &&
-              Date.now() - Date.parse(last.createdAt) < data.recentMinutes * 60000 &&
-              !['unanswered', 'busy', 'failed'].includes(last.status);
+              lastOutbound &&
+              Date.now() - Date.parse(lastOutbound.createdAt) < data.recentMinutes * 60000 &&
+              !['unanswered', 'busy', 'failed'].includes(lastOutbound.status);
             const state = active ? 'active' : last?.status || 'empty';
             const action =
               active && (active.userId === hanAuth.id || ['ceo', 'admin'].includes(hanAuth.role))
@@ -852,14 +1152,17 @@ function setupBorrowerVoip(dialog, doc) {
               esc(p.label) +
               '</small><strong>' +
               esc(voipPhone(p.phone)) +
-              '</strong>' +
+              '</strong><span class="voip-phone-source">Kaynak / Kime Ait: ' +
+              esc(p.source || '—') +
+              '</span>' +
               (recent && !active ? '<span class="voip-recent-mark">Yakın zamanda görüşüldü</span>' : '') +
               '</div><div class="voip-phone-history">' +
               (last
                 ? '<span class="voip-last-time">' +
+                  (last.direction === 'inbound' ? '<span class="voip-direction-badge">Gelen</span>' : '') +
                   esc(voipDate(last.createdAt)) +
                   '</span><span class="voip-last-person">' +
-                  esc(last.staffName) +
+                  esc(last.staffName || (last.direction === 'inbound' ? 'Cevaplanmadı' : '')) +
                   ' <span aria-hidden="true">·</span> ' +
                   esc(voipDuration(last.duration)) +
                   '</span><span class="voip-status-line"><span class="voip-status-pill">' +
@@ -936,6 +1239,7 @@ function setupBorrowerVoip(dialog, doc) {
           '<label>Yeni telefon numarası<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="05XX XXX XX XX" required></label><div><button class="primary" type="submit">Kaydet</button><button class="link" type="button" data-cancel-phone>Vazgeç</button></div><small>Numara borçlunun boş Tel-1 / Tel-2 alanına, bunlar doluysa Tel-3, Tel-4… olarak eklenir.</small><span role="alert"></span>';
         panel.querySelector('.voip-panel-heading').after(form);
         panel.querySelector('[data-add-phone]').disabled = true;
+        setupPhoneSources(form, {});
         form.elements.phone.focus();
         form.querySelector('[data-cancel-phone]').onclick = () => {
           addingPhone = false;
@@ -962,7 +1266,11 @@ function setupBorrowerVoip(dialog, doc) {
             // The debtor's own Tel-1 / Tel-2 fill first; the rest follow as Tel-3, Tel-4…
             const stored =
               typeof formatPhoneNumber === 'function' ? formatPhoneNumber(normalized) : normalized;
-            const next = { ...doc, additionalPhones: [...(doc.additionalPhones || []), stored] };
+            const next = {
+              ...doc,
+              additionalPhones: [...(doc.additionalPhones || []), stored],
+              phoneSources: { ...cleanPhoneSources(doc.phoneSources), ...readPhoneSources(form) },
+            };
             if (typeof borrowerPhoneSlots === 'function') Object.assign(next, borrowerPhoneSlots(next));
             const saved = await saveRecordIntakeMetadata(doc, next);
             Object.assign(doc, saved);
@@ -1016,6 +1324,7 @@ function setupBorrowerVoip(dialog, doc) {
             panel,
             (text) => message(text, 'notice'),
             [...panel.querySelectorAll('[data-dial-phone]')].find((b) => b.dataset.dialPhone === phone),
+            { name: doc.debtor || '', detail: voipCallLabel(doc, { documentId: doc.id }) },
           );
           confirmation = '';
           feedback = '';
@@ -1027,6 +1336,8 @@ function setupBorrowerVoip(dialog, doc) {
           showVoipActive(doc, result.call);
         } catch (error) {
           message(error.message);
+          // The server knows of a recent conversation the list did not show: ask, don't block.
+          if (voipRecentCall(error) && !confirmed) repeatPrompt(phone);
           if (voipNeedsDiagnosis(error)) {
             trouble = '<p class="voip-diagnosis-wait" role="status">Bağlantı kontrol ediliyor…</p>';
             voipDiagnose().then((rows) => {
@@ -1149,7 +1460,30 @@ function setupBorrowerVoip(dialog, doc) {
     history,
   );
 }
-function voipPhoneDock(reveal = true) {
+// The shared phone frame sits in the bottom-right corner, except when it is opened from the
+// header's "Numara ara" button: then it opens right below that button, inside the viewport.
+function voipPlaceDock(dock, anchor) {
+  const rect = anchor?.isConnected ? anchor.getBoundingClientRect() : null;
+  if (!rect || !rect.width) {
+    for (const side of ['top', 'left', 'right', 'bottom', 'width', 'maxHeight']) dock.style[side] = '';
+    delete dock.dataset.anchored;
+    return;
+  }
+  const margin = 12,
+    width = Math.min(460, window.innerWidth - margin * 2),
+    left = Math.max(margin, Math.min(rect.right - width, window.innerWidth - width - margin)),
+    top = Math.round(rect.bottom + 8);
+  Object.assign(dock.style, {
+    top: top + 'px',
+    left: Math.round(left) + 'px',
+    right: 'auto',
+    bottom: 'auto',
+    width: width + 'px',
+    maxHeight: 'calc(100dvh - ' + (top + margin) + 'px)',
+  });
+  dock.dataset.anchored = 'header';
+}
+function voipPhoneDock(reveal = true, anchor = null) {
   let dock = document.getElementById('voipPhoneDock');
   if (!dock) {
     dock = document.createElement('div');
@@ -1158,14 +1492,24 @@ function voipPhoneDock(reveal = true) {
     dock.setAttribute('popover', 'manual');
     dock.hidden = true;
     document.body.append(dock);
+    // The header button moves when the window is resized; keep the frame under it.
+    window.addEventListener('resize', () => {
+      if (!dock.hidden && dock.dataset.anchored)
+        voipPlaceDock(dock, document.querySelector('[data-standalone-voip]'));
+    });
   }
   if (reveal) {
+    // Placement is decided when the frame opens; later calls leave it where it is.
+    if (dock.hidden || anchor) voipPlaceDock(dock, anchor);
     dock.hidden = false;
     if (dock.showPopover && !dock.matches(':popover-open')) dock.showPopover();
   }
   return dock;
 }
 async function openVoipWebphone(feedback, background = false) {
+  // A pending idle teardown is canceled: the same registered web phone serves the next call.
+  clearTimeout(voipUi.releaseTimer);
+  voipUi.releaseTimer = null;
   const generation = voipUi.phoneGeneration || 0;
   try {
     const dock = voipPhoneDock(!background);
@@ -1188,15 +1532,22 @@ async function openVoipWebphone(feedback, background = false) {
       phone.id = 'voipWebphone';
       phone.className = 'voip-webphone';
       phone.innerHTML =
-        '<div class="panelhead"><h2>HAN HUKUK WEB TELEFON</h2><div class="voip-phone-window-actions"><button type="button" class="secondary" data-phone-minimize>Küçült</button><button type="button" class="secondary" data-phone-close>Kapat</button></div></div><iframe title="HAN HUKUK web telefonu" allow="microphone; autoplay" referrerpolicy="no-referrer"></iframe>';
+        '<div class="panelhead"><h2>HAN HUKUK WEB TELEFON</h2><div class="voip-phone-window-actions"><button type="button" class="secondary" data-phone-minimize>Küçült</button><button type="button" class="secondary" data-phone-close>Kapat</button></div></div><p class="voip-answer-hint" role="status">Gelen aramayı açmak için aşağıdaki telefonda yeşil düğmeye basın.</p><iframe title="HAN HUKUK web telefonu" allow="microphone; autoplay" referrerpolicy="no-referrer"></iframe>';
       dock.append(phone);
+      // Esc must not close the phone while it waits to be answered: that would reload it.
+      phone.addEventListener('cancel', (event) => {
+        if (phone.dataset.answering) event.preventDefault();
+      });
       phone.querySelector('button').onclick = () => {
+        // While answering, both header buttons only put the phone back out of the way.
+        if (phone.dataset.answering) return voipWebphoneAnswering(false);
         dock.classList.toggle('voip-dock-minimized');
         phone.querySelector('button').textContent = dock.classList.contains('voip-dock-minimized')
           ? 'Genişlet'
           : 'Küçült';
       };
       phone.querySelector('[data-phone-close]').onclick = () => {
+        if (phone.dataset.answering) return voipWebphoneAnswering(false);
         const active = document.getElementById('voipActiveCall');
         if (active && active.dataset.ended !== 'true') {
           if (!voipUi.minimized) active.querySelector('[data-current-minimize]')?.click();
@@ -1214,7 +1565,30 @@ async function openVoipWebphone(feedback, background = false) {
     feedback.textContent = error.message;
   }
 }
+// Removing Verimor's web phone (it unregisters and closes its audio) right as a call ends competes
+// with the result window. Hide it now and remove it once the browser is idle; a new call before
+// then simply keeps using it.
+function releaseVoipWebphoneSoon() {
+  clearTimeout(voipUi.releaseTimer);
+  const phone = document.getElementById('voipWebphone');
+  if (!phone) return;
+  phone.style.visibility = 'hidden';
+  // Staff who take inbound calls keep the web phone registered between calls.
+  if (voipUi.alwaysOn) return;
+  voipUi.releaseTimer = setTimeout(() => {
+    voipUi.releaseTimer = null;
+    const run = () => {
+      const active = document.getElementById('voipActiveCall');
+      if (voipUi.startPending || (active && active.dataset.ended !== 'true')) return;
+      releaseVoipWebphone();
+    };
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 3000 });
+    else run();
+  }, 1500);
+}
 function releaseVoipWebphone() {
+  clearTimeout(voipUi.releaseTimer);
+  voipUi.releaseTimer = null;
   voipUi.phoneGeneration = (voipUi.phoneGeneration || 0) + 1;
   const phone = document.getElementById('voipWebphone');
   if (phone) {
@@ -1260,7 +1634,7 @@ function showVoipActive(doc, call) {
   host.hidden = false;
   host.innerHTML = `<div class="voip-workspace-heading"><div><span data-current-status></span><strong>${esc(voipPhone(call.phone))}</strong><small>${esc(call.documentNumber || doc.number || '')} · ${esc(call.debtorName || doc.debtor || '')}</small><time data-current-duration aria-label="Çağrı süresi">00:00</time></div><button type="button" class="link" data-current-minimize>Küçült</button></div>
     <div class="voip-workspace-feedback" data-current-feedback role="alert" hidden></div>
-    <form data-current-form><div class="voip-workspace-actions"><button class="secondary" type="button" data-current-mute aria-pressed="false" title="Sessize al">🎙 Sessize al</button><button class="secondary" type="button" data-current-hold disabled title="Verimor’un harici bekletme kontrolü henüz doğrulanmadı.">Ⅱ Beklet</button><button class="link" type="button" data-current-sync hidden>Durumu doğrula</button><button class="voip-hangup" type="button" data-current-hangup title="Aramayı sonlandır">☎ Sonlandır</button><button class="primary" type="submit" data-current-save hidden>Tamam</button><span class="voip-outbound-line" data-outbound-line role="status"></span></div><label class="voip-live-note">Görüşme notu<textarea data-optional="true" name="note" maxlength="3000" rows="4" placeholder="Görüşme sürerken notunuzu yazabilirsiniz…"></textarea></label><span class="voip-draft-status" data-draft-status role="status"></span>
+    <form data-current-form><div class="voip-workspace-actions"><button class="secondary" type="button" data-current-mute aria-pressed="false" title="Sessize al">🎙 Sessize al</button><button class="secondary" type="button" data-current-hold disabled title="Verimor’un harici bekletme kontrolü henüz doğrulanmadı.">Ⅱ Beklet</button><button class="link" type="button" data-current-sync hidden>Durumu doğrula</button><button class="secondary" type="button" data-current-transfer hidden title="Görüşmeyi başka personele aktar">⇄ Aktar</button><button class="voip-hangup" type="button" data-current-hangup title="Aramayı sonlandır">☎ Sonlandır</button><button class="primary" type="submit" data-current-save hidden>Tamam</button><span class="voip-outbound-line" data-outbound-line role="status"></span></div><label class="voip-live-note">Görüşme notu<textarea data-optional="true" name="note" maxlength="3000" rows="4" placeholder="Görüşme sürerken notunuzu yazabilirsiniz…"></textarea></label><span class="voip-draft-status" data-draft-status role="status"></span>
     <fieldset class="voip-outcomes" data-current-outcomes hidden><legend>Görüşme sonucu</legend><p data-current-suggestion hidden>Santral sonucu seçildi; gerekirse değiştirebilirsiniz.</p><div data-current-choices></div></fieldset>
 </form>`;
   const form = host.querySelector('form'),
@@ -1330,7 +1704,7 @@ function showVoipActive(doc, call) {
   };
   voipUi.disposeActive = () => {
     resetHeaderCall();
-    voipGlobalHangup(null);
+    voipCallBarClose();
     clearInterval(heartbeatTimer);
     disposed = true;
     clearTimeout(draftTimer);
@@ -1380,17 +1754,36 @@ function showVoipActive(doc, call) {
       line.textContent =
         next.outboundLine && display ? next.outboundLine + '. hat · ' + display : 'Dış hat doğrulanıyor…';
     }
+    const ending = !ended && !next.cancelError && (next.cancelRequested || hangupPending);
     if (ended) {
       resetHeaderCall();
-      voipGlobalHangup(null);
-    }
-    voipCancelWait(host, !ended && !next.cancelError && (next.cancelRequested || hangupPending));
+      voipCallBarClose();
+    } else
+      voipCallBarUpdate({
+        phase: { ringing: 'ringing', answered: 'answered', unknown: 'unknown' }[next.status] || 'dialing',
+        status: next.statusLabel || 'Aranıyor…',
+        line: line ? line.textContent : '',
+        ending,
+      });
+    voipCancelWait(host, ending);
     // Busy/canceled calls keep the registered webphone ready for the next attempt.
-    if (ended && !wasEnded && next.status === 'completed') releaseVoipWebphone();
+    if (ended && !wasEnded && next.status === 'completed') releaseVoipWebphoneSoon();
     outcomes.hidden = !ended;
     host.querySelector('[data-current-hangup]').hidden = ended;
     host.querySelector('[data-current-sync]').hidden = true;
     host.querySelector('[data-current-hold]').hidden = ended;
+    host.querySelector('[data-current-transfer]').hidden = ended || next.status !== 'answered';
+    // An inbound call another extension took over (transfer or pick-up) belongs to that person now,
+    // including its evaluation.
+    if (next.direction === 'inbound' && next.userId && next.userId !== hanAuth.id) {
+      clearInterval(voipUi.timer);
+      voipUi.disposeActive?.();
+      host.remove();
+      voipUi.activeId = '';
+      if (typeof toast === 'function')
+        toast('Görüşme ' + (next.staffName || 'diğer personele') + ' aktarıldı.');
+      return;
+    }
     if (
       (next.resultAt &&
         (next.status === 'busy' ||
@@ -1458,6 +1851,29 @@ function showVoipActive(doc, call) {
     }
   };
   voipUi.updateActive = update;
+  // The top bar controls this call from any screen, even while the window below is hidden.
+  const debtorName = call.debtorName || doc.debtor || '';
+  voipCallBarOpen({
+    phase: 'dialing',
+    startedAt: started,
+    name: debtorName || voipPhone(call.phone),
+    detail: [debtorName ? voipPhone(call.phone) : '', voipCallLabel(doc, call)].filter(Boolean).join(' · '),
+    muted,
+    mute: () => host.querySelector('[data-current-mute]')?.click(),
+    open: () => {
+      if (voipUi.minimized) host.querySelector('[data-current-minimize]').click();
+      else {
+        host.hidden = false;
+        if (!host.open && typeof host.showModal === 'function') host.showModal();
+      }
+      note.focus({ preventScroll: true });
+    },
+    hangup: () => {
+      host.hidden = false;
+      if (!host.open && typeof host.showModal === 'function') host.showModal();
+      host.querySelector('[data-current-hangup]')?.click();
+    },
+  });
   update(call);
   if (call.cancelRequested)
     message(
@@ -1468,10 +1884,12 @@ function showVoipActive(doc, call) {
   const muteLabel = () => {
     muteButton.setAttribute('aria-pressed', String(muted));
     muteButton.textContent = muted ? '🔇 Sesi aç' : '🎙 Sessize al';
+    voipCallBarUpdate({ muted });
   };
   muteLabel();
   muteButton.onclick = async () => {
     muteButton.disabled = true;
+    voipCallBarUpdate({ muteBusy: true });
     try {
       const result = await voipApi('mute', 'POST', { id: call.id, muted: !muted });
       muted = result.muted;
@@ -1480,12 +1898,60 @@ function showVoipActive(doc, call) {
       message(error.message);
     } finally {
       muteButton.disabled = false;
+      voipCallBarUpdate({ muteBusy: false });
+    }
+  };
+  host.querySelector('[data-current-transfer]').onclick = async (event) => {
+    const button = event.currentTarget;
+    if (host.querySelector('[data-transfer-box]')) return;
+    button.disabled = true;
+    try {
+      const { targets } = await voipApi('transfer-targets');
+      if (!targets.length) return message('Aktarılabilecek dahilisi olan başka personel yok.');
+      const box = document.createElement('div');
+      box.className = 'voip-transfer-box';
+      box.dataset.transferBox = '';
+      box.innerHTML =
+        '<label>Kime aktarılsın?<select>' +
+        targets
+          .map(
+            (t) =>
+              '<option value="' +
+              esc(t.id) +
+              '">' +
+              esc(t.name) +
+              ' · ' +
+              esc(t.extension) +
+              (t.online ? ' · bağlı' : '') +
+              '</option>',
+          )
+          .join('') +
+        '</select></label><button type="button" class="primary" data-transfer-go>Aktar</button><button type="button" class="link" data-transfer-cancel>Vazgeç</button>';
+      host.querySelector('.voip-workspace-actions').after(box);
+      box.querySelector('[data-transfer-cancel]').onclick = () => box.remove();
+      box.querySelector('[data-transfer-go]').onclick = async (go) => {
+        const send = go.currentTarget;
+        send.disabled = true;
+        try {
+          await voipApi('transfer', 'POST', { id: call.id, userId: box.querySelector('select').value });
+          box.remove();
+          message('Aktarma istendi. Karşı taraf açınca görüşme ve değerlendirmesi ona geçer.', 'notice');
+        } catch (error) {
+          message(error.message);
+          send.disabled = false;
+        }
+      };
+    } catch (error) {
+      message(error.message);
+    } finally {
+      button.disabled = false;
     }
   };
   host.querySelector('[data-current-hangup]').onclick = async (event) => {
     event.target.disabled = true;
     hangupPending = true;
     voipCancelWait(host, true);
+    voipCallBarUpdate({ ending: true });
     try {
       await voipApi('hangup', 'POST', { id: call.id });
       message('Sonlandırma istendi. Santralden kapanış bilgisi bekleniyor.', 'notice');
@@ -1494,17 +1960,34 @@ function showVoipActive(doc, call) {
     } catch (error) {
       hangupPending = false;
       voipCancelWait(host, false);
+      voipCallBarUpdate({ ending: false });
       message(error.message);
+      // The exchange cannot confirm the end (409): let the person close the record themselves.
+      if (error.status === 409) offerManualClose();
     } finally {
       event.target.disabled = false;
     }
   };
-  if (!ended)
-    voipGlobalHangup(() => {
-      host.hidden = false;
-      if (!host.open && typeof host.showModal === 'function') host.showModal();
-      host.querySelector('[data-current-hangup]')?.click();
-    });
+  function offerManualClose() {
+    if (host.querySelector('[data-manual-close]')) return;
+    const box = document.createElement('div');
+    box.className = 'voip-manual-close';
+    box.innerHTML =
+      '<span>Santral bu görüşmenin bittiğini doğrulayamıyor. Görüşme gerçekten bittiyse kaydı kapatabilirsiniz; santrale bir şey gönderilmez.</span><button type="button" class="secondary" data-manual-close>Görüşmeyi kapalı olarak işaretle</button>';
+    host.querySelector('.voip-workspace-actions').after(box);
+    box.querySelector('[data-manual-close]').onclick = async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      try {
+        const result = await voipApi('close', 'POST', { id: call.id });
+        box.remove();
+        if (result.call) update(result.call);
+      } catch (closeError) {
+        message(closeError.message);
+        button.disabled = false;
+      }
+    };
+  }
   const sync = async () => {
     if (syncing || disposed || ended) return;
     syncing = true;
@@ -1539,26 +2022,44 @@ function showVoipActive(doc, call) {
       await sync();
     } catch (error) {
       message(error.message);
+      if (error.status === 409) offerManualClose();
     }
   };
+  let prepared = null;
   form.onsubmit = async (event) => {
     event.preventDefault();
     const result = form.querySelector('[name="result"]:checked')?.value;
     if (!ended || !result) return message('Görüşme bittikten sonra bir sonuç seçin.');
     clearTimeout(draftTimer);
-    const button = host.querySelector('[data-current-save]');
+    const values = { result, note: note.value };
+    // Only the extra questions (callback plan, payment promise) wait for the user. A retry after
+    // a failed save reuses what was already answered for the same result.
+    if (prepared?.result !== result) {
+      try {
+        prepared = { result, input: await prepareVoipConversation(call, values) };
+      } catch (error) {
+        return message(error.message);
+      }
+    }
     form.querySelectorAll('input,textarea,button').forEach((input) => {
       input.disabled = true;
     });
+    // Close at once and give the screen back. A new call must not dispose this window while its
+    // save is still running, so it leaves the active-call slot.
+    voipUi.disposeActive();
+    if (host.open) host.close();
+    host.hidden = true;
+    host.removeAttribute('id');
+    voipUi.activeId = '';
+    const dock = document.getElementById('voipPhoneDock');
+    if (dock && !document.getElementById('voipActiveCall') && !voipUi.startPending) {
+      if (dock.hidePopover) dock.hidePopover();
+      dock.hidden = true;
+    }
     try {
       await saveQueue.catch(() => {});
-      await completeVoipConversation(call, { result, note: note.value });
-      voipUi.disposeActive();
+      await sendVoipConversation(call, values, prepared.input);
       host.remove();
-      voipUi.activeId = '';
-      const dock = document.getElementById('voipPhoneDock');
-      if (dock?.hidePopover) dock.hidePopover();
-      if (dock) dock.hidden = true;
       if (typeof toast === 'function') {
         const panel = document.querySelector('.voip-number-panel:not([hidden])');
         toast('Görüşme sonucu kaydedildi.', panel || undefined);
@@ -1566,10 +2067,15 @@ function showVoipActive(doc, call) {
         if (notice) setTimeout(() => notice.remove(), 4000);
       }
     } catch (error) {
-      message(error.message);
+      // Nothing is lost: the same window returns with the chosen result and note.
+      voipPhoneDock().prepend(host);
+      host.hidden = false;
+      if (typeof host.showModal === 'function') host.showModal();
+      else host.show();
       form.querySelectorAll('input,textarea,button').forEach((input) => {
         input.disabled = false;
       });
+      message('Görüşme sonucu kaydedilemedi: ' + error.message + ' Tekrar Tamam’a basın.');
     }
   };
   if (!ended) voipUi.timer = setInterval(sync, 2500);
@@ -1614,7 +2120,7 @@ function voipRecordingsPage() {
   if (!['ceo', 'admin'].includes(hanAuth.role)) return;
   $('#content').innerHTML =
     '<section class="panel voip-archive">' +
-    '<form id="voipArchiveSearch" class="voip-archive-filters"><label class="field voip-archive-query">Kayıtlarda ara<input data-optional="true" name="q" type="search" maxlength="100" placeholder="Müvekkil, föy, borçlu, numara veya personel"></label><label class="field">Tarih<input data-optional="true" name="date" type="date"></label><label class="field">Çağrı durumu<select data-optional="true" name="status"><option value="">Tüm durumlar</option><option value="completed">Görüşüldü</option><option value="unanswered">Ulaşılamadı</option><option value="busy">Meşgul</option><option value="failed">Başarısız</option><option value="active">Devam eden / doğrulanacak</option></select></label><label class="field">Görüşme sonucu<select data-optional="true" name="result"><option value="">Tüm sonuçlar</option></select></label><div class="voip-filter-actions"><button class="primary" type="submit">Filtrele</button><button class="link" type="button" data-clear-archive>Temizle</button></div></form>' +
+    '<form id="voipArchiveSearch" class="voip-archive-filters"><label class="field voip-archive-query">Kayıtlarda ara<input data-optional="true" name="q" type="search" maxlength="100" placeholder="Müvekkil, föy, borçlu, numara veya personel"></label><label class="field">Tarih<input data-optional="true" name="date" type="date"></label><label class="field">Çağrı durumu<select data-optional="true" name="status"><option value="">Tüm durumlar</option><option value="completed">Görüşüldü</option><option value="unanswered">Ulaşılamadı</option><option value="busy">Meşgul</option><option value="failed">Başarısız</option><option value="active">Devam eden / doğrulanacak</option></select></label><label class="field">Yön<select data-optional="true" name="flow"><option value="">Tüm yönler</option><option value="outbound">Giden</option><option value="inbound">Gelen</option></select></label><label class="field">Görüşme sonucu<select data-optional="true" name="result"><option value="">Tüm sonuçlar</option></select></label><div class="voip-filter-actions"><button class="primary" type="submit">Filtrele</button><button class="link" type="button" data-clear-archive>Temizle</button></div></form>' +
     '<div class="voip-transcription-toolbar"><span data-selected-count>0 kayıt seçildi</span><button class="link" type="button" data-select-page>Bu sayfayı seç</button><select data-transcription-mode aria-label="Yazıya çevrilecek kayıtlar"><option value="selected">Seçilen ses kayıtları</option><option value="filtered">Filtrelenen ses kayıtları</option><option value="all">Tüm ses kayıtları</option></select><button class="primary" type="button" data-transcribe-bulk>Yazıya çevir</button><button class="link" type="button" data-refresh-archive>Yenile</button><span data-transcription-feedback role="status"></span></div><div class="voip-archive-summary"><strong id="voipArchiveTotal" role="status"></strong><span>Tarihler İstanbul saatindedir</span></div><div class="voip-archive-table" id="voipArchiveRows"></div>' +
     '<div class="actions voip-archive-pagination"><span id="voipArchiveCount"></span><div><button type="button" class="secondary" id="voipArchivePrevious">Önceki</button><button type="button" class="secondary" id="voipArchiveNext">Sonraki</button></div></div></section>';
   const form = $('#voipArchiveSearch'),
@@ -1720,7 +2226,7 @@ function voipRecordingsPage() {
           data.calls
             .map(
               (c) =>
-                `<tr data-voip-entry data-call-state="${esc(c.status)}"><td><input class="voip-record-select" type="checkbox" data-select-call="${esc(c.id)}" aria-label="${esc(c.documentNumber || c.phone)} görüşmesini seç" ${selected.has(c.id) ? 'checked' : ''} ${!c.recordingPresent ? 'disabled' : ''}><strong>${esc(voipDate(c.createdAt))}</strong><small>${esc(voipDuration(c.duration))}</small></td><td class="voip-archive-file"><strong>${esc(c.clientName || 'Müvekkil belirtilmedi')}</strong><span>${esc(c.documentNumber || '—')} · ${esc(c.debtorName || '')}</span>${c.note || c.draftNote ? '<details class="voip-archive-notes"><summary>Personel notu</summary><p>' + esc(c.draftNote ?? c.note) + '</p></details>' : ''}${voipTranscriptMarkup(c)}</td><td>${esc(c.staffName || '—')}${window.testRecordBadge?.(c) || ''}</td><td class="voip-archive-phone">${esc(voipPhone(c.phone))}</td><td><span class="voip-status-pill">${esc(c.statusLabel)}</span><small>${esc(c.result || (voipActiveStatuses.has(c.status) ? 'Görüşme sürüyor' : 'Sonuç girilmedi'))}</small></td><td class="voip-archive-audio"><button class="secondary" type="button" data-voip-listen="${esc(c.id)}" ${!c.canListen ? 'disabled' : ''}>▶ Dinle</button>${!c.recordingPresent ? '<small>Kayıt yok / henüz hazır değil</small>' : !c.archivedAt ? '<small>Arşivden hazırlanacak</small>' : ''}<div data-voip-player></div><div class="voip-entry-feedback" role="status"></div></td></tr>`,
+                `<tr data-voip-entry data-call-state="${esc(c.status)}"><td><input class="voip-record-select" type="checkbox" data-select-call="${esc(c.id)}" aria-label="${esc(c.documentNumber || c.phone || c.callerNumber || '')} görüşmesini seç" ${selected.has(c.id) ? 'checked' : ''} ${!c.recordingPresent ? 'disabled' : ''}><strong>${esc(voipDate(c.createdAt))}</strong><small>${esc(voipDuration(c.duration))}</small></td><td class="voip-archive-file"><strong>${esc(c.clientName || 'Müvekkil belirtilmedi')}</strong><span>${esc(c.documentNumber || '—')} · ${esc(c.debtorName || '')}</span>${c.note || c.draftNote ? '<details class="voip-archive-notes"><summary>Personel notu</summary><p>' + esc(c.draftNote ?? c.note) + '</p></details>' : ''}${voipTranscriptMarkup(c)}</td><td>${esc(c.staffName || (c.direction === 'inbound' ? 'Cevaplanmadı' : '—'))}${window.testRecordBadge?.(c) || ''}</td><td class="voip-archive-phone">${esc(c.phone ? voipPhone(c.phone) : c.callerNumber || (c.direction === 'inbound' ? 'Gizli numara' : ''))}</td><td>${c.direction === 'inbound' ? '<span class="voip-direction-badge">Gelen</span>' : ''}<span class="voip-status-pill">${esc(c.statusLabel)}</span><small>${esc(c.result || (voipActiveStatuses.has(c.status) ? 'Görüşme sürüyor' : 'Sonuç girilmedi'))}</small>${voipProviderLine(c)}</td><td class="voip-archive-audio"><button class="secondary" type="button" data-voip-listen="${esc(c.id)}" ${!c.canListen ? 'disabled' : ''}>▶ Dinle</button>${!c.recordingPresent ? '<small>Kayıt yok / henüz hazır değil</small>' : !c.archivedAt ? '<small>Arşivden hazırlanacak</small>' : ''}<div data-voip-player></div>${hanAuth.canDelete && !voipActiveStatuses.has(c.status) ? `<button class="link danger" type="button" data-voip-delete="${esc(c.id)}">Kaydı Sil</button>` : ''}<div class="voip-entry-feedback" role="status"></div></td></tr>`,
             )
             .join('') +
           '</tbody></table>'
@@ -1731,6 +2237,9 @@ function voipRecordingsPage() {
       $('#voipArchivePrevious').disabled = !offset;
       $('#voipArchiveNext').disabled = offset + 50 >= data.total;
       bindVoipHistory(host, refresh);
+      host.querySelectorAll('[data-voip-delete]').forEach((button) => {
+        button.onclick = () => deleteVoipRecord(button, refresh);
+      });
       host.querySelectorAll('[data-select-call]').forEach((input) => {
         input.onchange = () => {
           if (input.checked) selected.add(input.dataset.selectCall);
@@ -1815,13 +2324,46 @@ function voipRecordingsPage() {
   };
   refresh();
 }
-function openStandaloneVoip() {
+// CEO only (the technical support account is a CEO account): the call record, its transcript
+// and its encrypted audio are removed permanently.
+async function deleteVoipRecord(button, refresh) {
+  if (!hanAuth.canDelete) return;
+  const row = button.closest('tr');
+  const label = row?.querySelector('.voip-archive-file span')?.textContent || 'Bu görüşme';
+  if (
+    !confirm(
+      label +
+        '\n\nGörüşme kaydı, yazıya dökümü ve ses kaydı kalıcı olarak silinecek. Bu işlem geri alınamaz. Emin misiniz?',
+    )
+  )
+    return;
+  if (typeof requireCeoPin === 'function' && !(await requireCeoPin('delete'))) return;
+  const feedback = row?.querySelector('.voip-entry-feedback');
+  button.disabled = true;
+  try {
+    const result = await voipApi('delete', 'POST', { id: button.dataset.voipDelete });
+    toast(
+      result.audioRemoved === false
+        ? 'Kayıt silindi; ses dosyası silinemedi, teknik ekibe bildirin.'
+        : 'Görüşme kaydı silindi.',
+    );
+    await refresh();
+  } catch (error) {
+    button.disabled = false;
+    if (feedback) feedback.textContent = error.message;
+    else toast(error.message);
+  }
+}
+
+function openStandaloneVoip(anchor = document.querySelector('[data-standalone-voip]')) {
+  // Opens right below the header's "Numara ara" button instead of the bottom-right corner.
+  const dock = voipPhoneDock(true, anchor);
   let dialog = document.getElementById('voipStandalone');
   if (!dialog) {
     dialog = document.createElement('dialog');
     dialog.id = 'voipStandalone';
     dialog.className = 'voip-standalone';
-    voipPhoneDock().prepend(dialog);
+    dock.prepend(dialog);
   }
   dialog.innerHTML =
     '<div class="panelhead"><div><h2>Numara ile arama</h2><p>Dosyasız arama · Telefon bağlantısı arka planda açılır.</p></div><div class="toolbar"><button type="button" class="link" data-voip-diagnose>Bağlantı testi</button><button type="button" class="secondary" data-close>Kapat</button></div></div><form class="voip-standalone-form" data-ignore-dirty><label class="field">Aranacak telefon numarası<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="05XX XXX XX XX" required></label><button type="submit" class="primary">Geçmişi kontrol et</button></form><div data-feedback role="alert"></div><div data-voip-trouble hidden></div><div data-preview></div>';
@@ -1829,7 +2371,7 @@ function openStandaloneVoip() {
     voipShowDiagnosis(dialog.querySelector('[data-voip-trouble]'), { ask: true });
   dialog.querySelector('[data-close]').onclick = () => {
     dialog.close();
-    if (!document.getElementById('voipActiveCall') && !voipUi.startPending) {
+    if (!document.getElementById('voipActiveCall') && !voipUi.startPending && !voipUi.alwaysOn) {
       releaseVoipWebphone();
       const dock = document.getElementById('voipPhoneDock');
       if (dock?.hidePopover) dock.hidePopover();
@@ -1865,11 +2407,11 @@ function openStandaloneVoip() {
         );
       const normalized = phone.length === 10 ? '90' + phone : phone.length === 11 ? '9' + phone : phone;
       const calls = data.calls.filter((c) => c.phone === normalized);
-      const last = calls[0];
-      const recent =
-        last &&
-        Date.now() - Date.parse(last.createdAt) < data.recentMinutes * 60000 &&
-        !['unanswered', 'busy', 'failed'].includes(last.status);
+      const lastOutbound = calls.find((c) => c.direction !== 'inbound');
+      let recent =
+        lastOutbound &&
+        Date.now() - Date.parse(lastOutbound.createdAt) < data.recentMinutes * 60000 &&
+        !['unanswered', 'busy', 'failed'].includes(lastOutbound.status);
       preview.innerHTML =
         '<div class="voip-standalone-history"><strong>Son 5 arama</strong>' +
         (calls.length
@@ -1878,9 +2420,10 @@ function openStandaloneVoip() {
               .map(
                 (c) =>
                   '<div class="voip-recent-call"><span>' +
+                  (c.direction === 'inbound' ? '<span class="voip-direction-badge">Gelen</span>' : '') +
                   esc(voipDate(c.createdAt)) +
                   ' · ' +
-                  esc(c.staffName || '—') +
+                  esc(c.staffName || (c.direction === 'inbound' ? 'Cevaplanmadı' : '—')) +
                   ' · ' +
                   esc(voipDuration(c.duration)) +
                   '</span><small>' +
@@ -1931,6 +2474,11 @@ function openStandaloneVoip() {
         } catch (error) {
           feedback.textContent = error.message;
           e.target.disabled = false;
+          // The next press confirms the repeat call.
+          if (voipRecentCall(error) && !recent) {
+            recent = true;
+            e.target.textContent = 'Kontrol ettim, tekrar ara';
+          }
           if (voipNeedsDiagnosis(error)) voipShowDiagnosis(dialog.querySelector('[data-voip-trouble]'));
         }
       };
@@ -1945,6 +2493,173 @@ function openStandaloneVoip() {
   if (!dialog.open) dialog.show();
   form.elements.phone.focus();
 }
+// Staff marked to take inbound calls: the web phone stays registered while the app is open, a
+// check-in every few seconds tells the server this person is reachable, and a call ringing on
+// their extension shows who is calling. Answering happens in Verimor's web phone window.
+function voipInboundSchedule(ms) {
+  clearTimeout(voipUi.inboundTimer);
+  voipUi.inboundTimer = setTimeout(voipInboundPoll, ms);
+}
+async function voipInboundPoll() {
+  let data;
+  try {
+    data = await voipApi('incoming');
+  } catch {
+    return voipInboundSchedule(20000);
+  }
+  // The page went away while the check-in was in flight.
+  if (!globalThis.document?.body) return;
+  voipUi.alwaysOn = data.alwaysOn === true;
+  if (!voipUi.alwaysOn) {
+    voipInboundShow(null);
+    return voipInboundSchedule(60000);
+  }
+  if (data.results?.length && !voipUi.results?.length) voipUi.results = data.results;
+  const notice = {
+    set textContent(text) {
+      voipInboundNotice(text);
+    },
+  };
+  if (!document.getElementById('voipWebphone') && !voipUi.webphoneTokenRequest)
+    openVoipWebphone(notice, true);
+  if (!voipUi.inboundMicChecked) {
+    voipUi.inboundMicChecked = true;
+    voipMicrophoneCheck().then((mic) => {
+      if (!mic.ok) voipInboundNotice('Gelen aramaları alabilmek için: ' + mic.message, mic.kind !== 'denied');
+    });
+  }
+  voipInboundShow(data.call);
+  voipInboundSchedule(document.hidden ? 10000 : 4000);
+}
+function voipInboundNotice(text, canAsk = false) {
+  let note = document.getElementById('voipInboundNotice');
+  if (!text) return note?.remove();
+  if (!note) {
+    note = document.createElement('div');
+    note.id = 'voipInboundNotice';
+    note.className = 'voip-mic-notice voip-inbound-notice';
+    note.setAttribute('role', 'status');
+    (document.querySelector('.shell') || document.body).prepend(note);
+  }
+  note.innerHTML =
+    '<span>' +
+    esc(text) +
+    '</span>' +
+    (canAsk ? '<button type="button" class="secondary" data-inbound-mic>Mikrofona izin ver</button>' : '') +
+    '<button type="button" class="link" data-inbound-dismiss>Kapat</button>';
+  note.querySelector('[data-inbound-dismiss]').onclick = () => note.remove();
+  note.querySelector('[data-inbound-mic]')?.addEventListener('click', async () => {
+    const mic = await voipMicrophoneCheck({ ask: true });
+    if (mic.ok) note.remove();
+    else note.querySelector('span').textContent = 'Gelen aramaları alabilmek için: ' + mic.message;
+  });
+}
+// Verimor's web phone is normally kept hidden (the app has its own call controls), but an inbound
+// call can only be answered with the green button inside it. While a call rings it is shown on top
+// as a modal, so it stays clickable even when a borrower file (itself modal) is open.
+function voipWebphoneAnswering(on) {
+  const phone = document.getElementById('voipWebphone');
+  const dock = document.getElementById('voipPhoneDock');
+  if (!phone) return;
+  if (on) {
+    phone.dataset.answering = 'true';
+    phone.classList.add('voip-answering');
+    phone.style.visibility = 'visible';
+    dock?.classList.add('voip-dock-answering');
+    dock?.classList.remove('voip-dock-minimized');
+    if (phone.dataset.modal !== 'true' && typeof phone.showModal === 'function') {
+      if (phone.open) phone.close();
+      phone.showModal();
+      phone.dataset.modal = 'true';
+    }
+    return;
+  }
+  if (!phone.dataset.answering) return;
+  delete phone.dataset.answering;
+  phone.classList.remove('voip-answering');
+  dock?.classList.remove('voip-dock-answering');
+  if (phone.dataset.modal === 'true') {
+    delete phone.dataset.modal;
+    phone.close();
+    phone.show();
+  }
+}
+// Re-showing a popover puts it last in the top layer, i.e. above every dialog opened since.
+function voipInboundRaise() {
+  const strip = document.getElementById('voipIncoming');
+  if (!strip || typeof strip.showPopover !== 'function') return;
+  try {
+    if (strip.matches(':popover-open')) strip.hidePopover();
+    strip.showPopover();
+  } catch {
+    /* an unsupported browser keeps it as a plain banner */
+  }
+}
+function voipInboundShow(call) {
+  let strip = document.getElementById('voipIncoming');
+  if (call?.status === 'answered') {
+    strip?.remove();
+    voipWebphoneAnswering(false);
+    if (voipUi.activeId !== call.id) {
+      voipUi.minimized = false;
+      showVoipActive(
+        { id: call.documentId, number: call.documentNumber || 'Gelen arama', debtor: call.debtorName || '' },
+        call,
+      );
+    }
+    return;
+  }
+  if (call?.status !== 'ringing') {
+    strip?.remove();
+    voipWebphoneAnswering(false);
+    // The phone window was brought up for the ringing call; tuck it away again.
+    if (voipUi.inboundRevealed && !document.getElementById('voipActiveCall')) {
+      voipUi.inboundRevealed = false;
+      const dock = document.getElementById('voipPhoneDock');
+      if (dock?.hidePopover) dock.hidePopover();
+      if (dock) dock.hidden = true;
+    }
+    return;
+  }
+  if (strip?.dataset.callId === call.id) return voipInboundRaise();
+  strip?.remove();
+  strip = document.createElement('div');
+  strip.id = 'voipIncoming';
+  strip.className = 'voip-incoming';
+  strip.setAttribute('popover', 'manual');
+  strip.dataset.callId = call.id;
+  strip.setAttribute('role', 'alert');
+  const who = call.debtorName || (call.phone ? voipPhone(call.phone) : call.callerNumber || 'Gizli numara');
+  const detail = [
+    call.debtorName && call.phone ? voipPhone(call.phone) : '',
+    call.documentNumber ? 'Föy ' + call.documentNumber : '',
+    call.clientName || '',
+    call.ownerName ? 'Son arayan: ' + call.ownerName : '',
+  ].filter(Boolean);
+  strip.innerHTML =
+    '<span class="voip-incoming-pulse" aria-hidden="true">☎</span><div><strong>Gelen arama: ' +
+    esc(who) +
+    '</strong><small>' +
+    esc(detail.join(' · ') || 'Kayıtlı bir föyle eşleşmedi') +
+    '</small><small>Açmak için sağ alttaki telefonda yeşil düğmeye basın.</small></div><button type="button" class="primary" data-incoming-open>Telefonu göster</button>';
+  const showPhone = () =>
+    openVoipWebphone({
+      set textContent(text) {
+        voipInboundNotice(text);
+      },
+    }).then(() => {
+      if (document.getElementById('voipIncoming')?.dataset.callId !== call.id) return;
+      voipWebphoneAnswering(true);
+      voipInboundRaise();
+    });
+  strip.querySelector('[data-incoming-open]').onclick = showPhone;
+  document.body.append(strip);
+  voipInboundRaise();
+  // Answering is done in Verimor's own web phone window, so bring it up.
+  voipUi.inboundRevealed = true;
+  voipPhoneDock().classList.remove('voip-dock-minimized');
+  showPhone();
+}
 function setupVoipNavigation() {
   if (globalThis.hanModules?.['voip'] === false) return;
   document.querySelector('[data-global-webphone]')?.remove();
@@ -1954,7 +2669,7 @@ function setupVoipNavigation() {
     dial.className = 'secondary';
     dial.dataset.standaloneVoip = '';
     dial.textContent = '☎ Numara ara';
-    dial.onclick = openStandaloneVoip;
+    dial.onclick = (event) => openStandaloneVoip(event.currentTarget);
     document.querySelector('.header-actions')?.prepend(dial);
     voipApi('calls')
       .then((data) => {
@@ -1967,6 +2682,10 @@ function setupVoipNavigation() {
         );
       })
       .catch(() => {});
+  }
+  if (!voipUi.inboundStarted && !hanAuth.readOnly) {
+    voipUi.inboundStarted = true;
+    voipInboundPoll();
   }
   if (!['ceo', 'admin'].includes(hanAuth.role) || document.querySelector('[data-page="callRecordings"]'))
     return;

@@ -44,7 +44,14 @@ test('Pazarlama erişimi personel birimine ve yönetici rolüne göre uygulanır
       const get = await fetch(server.url + '/api/marketing-prospects', { headers });
       assert.equal(get.status, allowed ? 200 : 403);
       if (id === 'marketing') {
-        const entry = { company: 'Örnek', date: '2026-11-09', status: 'Mevcut Müvekkil', notes: 'Görüşme' };
+        const entry = {
+          company: 'Örnek',
+          date: '2026-11-09',
+          status: 'Mevcut Müvekkil',
+          notes: 'Görüşme',
+          phone: '05321234567',
+          phoneSource: 'Firma yetkilisi',
+        };
         const post = await fetch(server.url + '/api/marketing-prospects', {
           method: 'POST',
           headers,
@@ -53,6 +60,9 @@ test('Pazarlama erişimi personel birimine ve yönetici rolüne göre uygulanır
         assert.equal(post.status, 201);
         const saved = await (await fetch(server.url + '/api/marketing-prospects', { headers })).json();
         assert.equal(saved.items.find((item) => item.company === 'Örnek').notes, 'Görüşme');
+        assert.deepEqual(saved.items.find((item) => item.company === 'Örnek').phoneSources, {
+          5321234567: 'Firma yetkilisi',
+        });
         const invalid = await fetch(server.url + '/api/marketing-prospects', {
           method: 'POST',
           headers,

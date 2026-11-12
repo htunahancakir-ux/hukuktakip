@@ -150,6 +150,17 @@
   border: 1px solid #d5e3ec;
   border-radius: 8px;
 }
+.voip-add-phone > .phone-source-pair {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 600px) {
+  .voip-add-phone > .phone-source-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .voip-add-phone label {
   display: grid;
   gap: 5px;
@@ -680,6 +691,18 @@ dialog.voip-webphone {
 [data-call-state='active'] .voip-status-pill {
   background: #e5f0fc;
   color: #245d8b;
+}
+.voip-direction-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #e8f1fb;
+  color: #1f5f99;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 .voip-result-label {
   font-size: 10px;
@@ -1357,3 +1380,419 @@ dialog.voip-active-call {
 .voip-diagnosis li[data-ok='yes'] { border-color: #a9d8b8; background: #f2fbf5; }
 .voip-diagnosis li span { color: #4a5865; overflow-wrap: anywhere; }
 .voip-diagnosis-wait { font-size: 13px; color: #4a5865; margin: 8px 0 0; }
+/* Call bar: always visible from the moment dialing starts, on every screen. It sits at the
+   top of the page shell and sticks there, with the app header pushed below it. */
+:root {
+  --voip-bar-h: 0px;
+}
+body.voip-call-bar-open {
+  --voip-bar-h: 58px;
+}
+body.voip-call-bar-open .shell > header {
+  top: var(--voip-bar-h);
+}
+.voip-call-bar {
+  position: sticky;
+  top: 0;
+  z-index: 7;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: var(--voip-bar-h);
+  padding: 0 clamp(14px, 2vw, 26px);
+  background: #0f1d2a;
+  color: #ffffff;
+  box-shadow: 0 2px 14px #0f1d2a66;
+}
+.voip-call-bar [hidden] {
+  display: none !important;
+}
+.voip-call-bar-who {
+  display: flex;
+  flex: 1 1 240px;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.voip-call-bar-avatar {
+  display: grid;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 50%;
+  background: #2f7f8f;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+}
+.voip-call-bar-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.voip-call-bar-text strong {
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.voip-call-bar-text small {
+  overflow: hidden;
+  color: #a9bccb;
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.voip-call-bar-state {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.voip-call-bar-state time {
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+.voip-call-bar-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #8fa3b3;
+}
+.voip-call-bar[data-phase='dialing'] .voip-call-bar-dot,
+.voip-call-bar[data-phase='ringing'] .voip-call-bar-dot {
+  background: #f5b942;
+  animation: voip-call-bar-pulse 1.2s ease-in-out infinite;
+}
+.voip-call-bar[data-phase='answered'] .voip-call-bar-dot {
+  background: #35c27a;
+}
+.voip-call-bar[data-phase='ending'] .voip-call-bar-dot {
+  background: #ff6b6b;
+}
+@keyframes voip-call-bar-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+.voip-call-bar-line {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: #8fa3b3;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.voip-call-bar-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+.voip-call-bar-round {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #12202e;
+  cursor: pointer;
+}
+.voip-call-bar-round:hover:not(:disabled) {
+  background: #dbe7ef;
+}
+.voip-call-bar-round:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.voip-call-bar-round[aria-pressed='true'] {
+  background: #ffe3e3;
+  color: #c4313a;
+}
+.voip-call-bar-slash {
+  display: none;
+}
+.voip-call-bar-round[aria-pressed='true'] .voip-call-bar-slash {
+  display: block;
+}
+.voip-call-bar-hangup {
+  height: 38px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: #e5484d;
+  color: #ffffff;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.voip-call-bar-hangup:hover:not(:disabled) {
+  background: #cf3a3f;
+}
+.voip-call-bar-hangup:disabled {
+  opacity: 0.75;
+  cursor: wait;
+}
+.voip-call-bar button:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+@media (max-width: 980px) {
+  .voip-call-bar-line {
+    display: none;
+  }
+}
+@media (max-width: 700px) {
+  .voip-call-bar {
+    gap: 10px;
+  }
+  .voip-call-bar-text small,
+  .voip-call-bar-avatar {
+    display: none;
+  }
+}
+@media (max-width: 520px) {
+  body.voip-call-bar-open {
+    --voip-bar-h: 52px;
+  }
+  .voip-call-bar-state {
+    gap: 6px;
+    font-size: 12px;
+  }
+  .voip-call-bar-state time {
+    font-size: 14px;
+  }
+  .voip-call-bar-actions {
+    gap: 6px;
+  }
+  .voip-call-bar-hangup {
+    padding: 0 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .voip-call-bar-dot {
+    animation: none !important;
+  }
+}
+@media print {
+  .voip-call-bar {
+    display: none;
+  }
+}
+
+/* What the phone exchange reported for a call (history entries). */
+.voip-provider-line {
+  margin: 2px 0 6px;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.voip-mic-notice {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fff7e6;
+  border: 1px solid #f0c36d;
+  font-size: 13px;
+}
+.voip-diagnosis {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.voip-diagnosis li {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #dfe5ea;
+  background: #fff;
+}
+.voip-diagnosis li[data-ok='no'] {
+  border-color: #e7a3a3;
+  background: #fff3f3;
+}
+.voip-diagnosis li[data-ok='yes'] {
+  border-color: #a9d8b8;
+  background: #f2fbf5;
+}
+.voip-diagnosis li span {
+  color: #4a5865;
+  overflow-wrap: anywhere;
+}
+.voip-diagnosis-wait {
+  font-size: 13px;
+  color: #4a5865;
+  margin: 8px 0 0;
+}
+
+.voip-incoming {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #0f5132;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+.voip-incoming strong {
+  display: block;
+  font-size: 15px;
+}
+.voip-incoming small {
+  display: block;
+  opacity: 0.85;
+  font-size: 12px;
+}
+.voip-incoming > div {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.voip-incoming-pulse {
+  font-size: 20px;
+  animation: voip-incoming-pulse 1s ease-in-out infinite;
+}
+@keyframes voip-incoming-pulse {
+  50% {
+    transform: scale(1.18);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .voip-incoming-pulse {
+    animation: none;
+  }
+}
+.voip-inbound-notice {
+  margin: 8px 16px 0;
+}
+.voip-transfer-box {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: end;
+  margin: 8px 0;
+}
+.voip-transfer-box label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.voip-inbound-settings {
+  display: grid;
+  gap: 10px;
+}
+.voip-inbound-users {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+
+/* An inbound call rings: Verimor's web phone (normally hidden) is shown so it can be answered. */
+.voip-answer-hint {
+  display: none;
+  margin: 0;
+  padding: 8px 12px;
+  background: #e9f7ef;
+  color: #0f5132;
+  font-size: 13px;
+  font-weight: 600;
+}
+.voip-phone-dock > dialog.voip-webphone.voip-answering,
+dialog.voip-webphone.voip-answering {
+  display: block !important;
+  position: fixed;
+  inset: auto 16px 16px auto;
+  margin: 0;
+  padding: 0;
+  width: 340px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  background: #fff;
+  border: 2px solid #0f5132;
+  border-radius: 12px;
+  box-shadow: 0 12px 50px #15354770;
+}
+.voip-webphone.voip-answering .voip-answer-hint {
+  display: block;
+}
+.voip-phone-dock .voip-webphone.voip-answering iframe,
+.voip-webphone.voip-answering iframe {
+  display: block !important;
+  width: 100%;
+  height: min(620px, calc(100dvh - 120px));
+  zoom: 1;
+}
+.voip-webphone.voip-answering::backdrop {
+  background: rgba(15, 31, 45, 0.25);
+}
+.voip-phone-dock.voip-dock-answering {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+#voipIncoming[popover] {
+  position: fixed;
+  inset: 0 0 auto 0;
+  margin: 0;
+  width: 100%;
+  max-width: none;
+  border: 0;
+  z-index: 2147483647;
+}
+
+.voip-manual-close {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fff7e6;
+  border: 1px solid #f0c36d;
+  font-size: 13px;
+}
+
+.voip-fallback {
+  display: grid;
+  gap: 6px;
+}
+.voip-fallback-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.voip-fallback-row select,
+.voip-fallback-row input {
+  min-width: 180px;
+  flex: 1 1 180px;
+}
+.voip-fallback-row [hidden] {
+  display: none;
+}

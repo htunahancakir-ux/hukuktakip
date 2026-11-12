@@ -66,6 +66,7 @@ async function userManagement(editId) {
   $('#showInactiveUsers').onchange = renderRows;
   renderRows();
   if (!selected) return;
+  installPasswordVisibility($('#passwordResetForm'));
   $('#cancelPasswordReset').onclick = () => userManagement();
   $('#passwordResetForm').onsubmit = (e) => {
     e.preventDefault();
@@ -160,6 +161,7 @@ function staffBorrowerDetail(id, record) {
   setupBorrowerNavigation(dialog, id);
   if (typeof setupBorrowerVoip === 'function') setupBorrowerVoip(dialog, d);
   if (!dialog.open) dialog.showModal();
+  if (typeof bindFolioLock === 'function') bindFolioLock(dialog, id);
 }
 
 function staffDashboard() {

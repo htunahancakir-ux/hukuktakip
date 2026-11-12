@@ -19,7 +19,7 @@ function showNextCollectionNotice() {
     'collection-receipt ' + (notice.closes ? 'collection-receipt-closed' : 'collection-receipt-partial');
   host.setAttribute('role', 'status');
   host.setAttribute('aria-live', 'polite');
-  host.innerHTML = `<div class="receipt-brand">HANHUKUK · TAHSİLAT</div><div class="receipt-rule"></div><strong>${notice.closes ? 'DOSYA İNFAZ EDİLDİ' : 'KISMİ ÖDEME'}</strong><div class="receipt-amount">${money(notice.amount / 100)}</div><p>${esc(notice.operatorName)} personeli ${money(notice.amount / 100)} tahsilat yapmıştır.</p><b>${notice.closes ? 'Tebrikler, teşekkürler!' : 'Tebrikler!'}</b><small>${messageTimestamp(notice.createdAt)}</small><div class="receipt-rule"></div><div class="receipt-barcode">▌▏▎▍▌▎▏▌▍▎▌▏▎▍▌</div>`;
+  host.innerHTML = `<div class="receipt-brand">HANHUKUK · TAHSİLAT</div><div class="receipt-rule"></div><strong>${notice.closes ? 'DOSYA İNFAZ EDİLDİ' : 'KISMİ ÖDEME'}</strong><div class="receipt-amount">${money(notice.amount / 100)}</div><p>${esc(notice.collectionStaffName || notice.operatorName)} personeli ${money(notice.amount / 100)} tahsilat yapmıştır.</p><b>${notice.closes ? 'Tebrikler, teşekkürler!' : 'Tebrikler!'}</b><small>${messageTimestamp(notice.createdAt)}</small><div class="receipt-rule"></div><div class="receipt-barcode">▌▏▎▍▌▎▏▌▍▎▌▏▎▍▌</div>`;
   document.body.append(host);
   if (host.showPopover)
     try {
@@ -118,7 +118,10 @@ function loadPaymentPromisesHome() {
     host.textContent = error.message;
     return;
   }
-  host.innerHTML = `<div class="panelhead"><div><h2>Ödeme Sözü Veren Borçlularım</h2><p>Bugün veya daha önce ödeme sözü vermiş, size atanmış dosyalar.</p></div><button class="secondary" id="refreshPaymentPromises">Yenile</button></div><div class="overflow"><table><thead><tr><th>BORÇLU / EVRAK</th><th>ÖDEME TARİHİ</th><th>SÖZ VERİLEN</th><th>KARŞILANMAYAN</th><th>AÇIKLAMA</th></tr></thead><tbody>${result.rows.map((r) => `<tr><td><button class="link" data-promise-borrower="${esc(r.documentId)}">${esc(r.debtor)}</button><small>${esc(r.number)}</small></td><td>${esc(displayDate(r.date))}${r.date < result.today ? ' · Gecikmiş' : ''}</td><td>${money(r.amount / 100)}</td><td>${money(r.remaining / 100)}</td><td class="conversation-note">${esc(r.description)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">Tarihi gelmiş bekleyen ödeme sözü yok.</td></tr>'}</tbody></table></div>`;
+  const manager = result.manager === true;
+  const columns = manager ? 6 : 5;
+  const state = (r) => (r.upcoming ? ' · Yaklaşan' : r.date < result.today ? ' · Gecikmiş' : ' · Bugün');
+  host.innerHTML = `<div class="panelhead"><div><h2>${manager ? 'Ödeme Sözü Veren Borçlular' : 'Ödeme Sözü Veren Borçlularım'}</h2><p>${manager ? 'Tüm dosyalardaki karşılanmamış ödeme sözleri: önce tarihi gelenler ve gecikenler, sonra yaklaşanlar.' : 'Size atanmış dosyalardaki karşılanmamış ödeme sözleri: önce tarihi gelenler ve gecikenler, sonra yaklaşanlar.'}</p></div><button class="secondary" id="refreshPaymentPromises">Yenile</button></div><div class="overflow"><table><thead><tr><th>BORÇLU / EVRAK</th>${manager ? '<th>SORUMLU</th>' : ''}<th>ÖDEME TARİHİ</th><th>SÖZ VERİLEN</th><th>KARŞILANMAYAN</th><th>AÇIKLAMA</th></tr></thead><tbody>${result.rows.map((r) => `<tr${r.upcoming ? ' class="promise-upcoming"' : ''}><td><button class="link" data-promise-borrower="${esc(r.documentId)}">${esc(r.debtor)}</button><small>${esc(r.number)}</small></td>${manager ? `<td>${esc(r.staffName || '—')}</td>` : ''}<td>${esc(displayDate(r.date))}${state(r)}</td><td>${money(r.amount / 100)}</td><td>${money(r.remaining / 100)}</td><td class="conversation-note">${esc(r.description)}</td></tr>`).join('') || `<tr><td colspan="${columns}" class="empty">Bekleyen ödeme sözü yok.</td></tr>`}</tbody></table></div>`;
   $('#refreshPaymentPromises').onclick = loadPaymentPromisesHome;
   host
     .querySelectorAll('[data-promise-borrower]')

@@ -21,6 +21,27 @@ async function handlePersonnelRoutes(ctx) {
     applyParkingFee,
     recognizedCollectionRevenue,
   } = ctx;
+  if (url.pathname === '/api/personnel-ledger' && req.method === 'GET') {
+    if (!['ceo', 'admin'].includes(u.role))
+      throw fail(403, 'Personel carilerini yalnızca yönetici görebilir.');
+    const staffId = url.searchParams.get('staffId') || '';
+    const accounts = ctx.state.data['hanhukuk-accounting-v1'].accounts;
+    const people = ctx.state.data['icrapro-personnel-v1'].map((person) => ({
+      id: person.id,
+      name: person.name,
+      active: person.active !== false,
+    }));
+    const summary = staffId
+      ? require('../../lib/personnel-ledger.cjs').details(ctx.state, staffId, parkingToday())
+      : {};
+    send(res, 200, {
+      people,
+      accounts,
+      startMonth: require('../../lib/personnel-ledger.cjs').START_MONTH,
+      ...summary,
+    });
+    return true;
+  }
   if (url.pathname === '/api/payroll-report' && req.method === 'GET') {
     const month = url.searchParams.get('month') || parkingToday().slice(0, 7);
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw fail(400, 'Geçerli ay seçin.');
@@ -50,7 +71,15 @@ async function handlePersonnelRoutes(ctx) {
   if (url.pathname === '/api/bonus2' && req.method === 'GET') {
     const month = url.searchParams.get('month') || parkingToday().slice(0, 7);
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw fail(400, 'Geçerli ay seçin.');
-    const calculated = calculateCallcenterBonus(ctx.state, month, 'each'),
+    const calculated = [
+        ...calculateCallcenterBonus(ctx.state, month, 'each'),
+        ...require('./marketing-bonus.cjs').calculateMarketingBonus(ctx.state, month, parkingToday()),
+        ...require('./other-personnel-bonus.cjs').calculateOtherPersonnelBonus(
+          ctx.state,
+          month,
+          parkingToday(),
+        ),
+      ],
       rows = ctx.state.payrollPeriods?.[month]?.closed
         ? ctx.state.payrollPeriods[month].rows.map(
             (r) => r.bonus2Details || { staffId: r.staffId, name: r.name, total: r.bonus2, manual: true },
@@ -77,6 +106,12 @@ async function handlePersonnelRoutes(ctx) {
     const amounts = {};
     for (const key of ['officialSalary', 'unofficialSalary', 'bonus']) {
       if (key === 'unofficialSalary' && !String(v[key] ?? '').trim()) v[key] = 0;
+      if (
+        p.department === 'Diğer' &&
+        ['officialSalary', 'unofficialSalary'].includes(key) &&
+        !String(v[key] ?? '').trim()
+      )
+        v[key] = 0;
       const n = Number(v[key]);
       if (
         v[key] === '' ||
@@ -88,11 +123,12 @@ async function handlePersonnelRoutes(ctx) {
         throw fail(400, 'Geçerli maaş ve prim tutarlarını girin.');
       amounts[key] = Math.round(n * 100) / 100;
     }
-    if (amounts.officialSalary + amounts.unofficialSalary <= 0)
+    if (p.department !== 'Diğer' && amounts.officialSalary + amounts.unofficialSalary <= 0)
       throw fail(400, 'Toplam maaş sıfırdan büyük olmalıdır.');
     const next = structuredClone(ctx.state),
       record = next.data['icrapro-personnel-v1'].find((p) => p.id === v.staffId);
-    if (isCallcenter(record)) amounts.bonus = record.bonus || 0;
+    if (isCallcenter(record) || require('./other-personnel-bonus.cjs').isOtherPersonnel(record))
+      amounts.bonus = record.bonus || 0;
     Object.assign(record, amounts);
     persist(next);
     send(res, 200, { record });
@@ -209,8 +245,19 @@ async function handlePersonnelRoutes(ctx) {
       collected,
       grossProfit,
       bonus:
-        calculateCallcenterBonus(ctx.state, date.slice(0, 7), 'each').find((r) => r.staffId === u.staffId)
-          ?.total ?? Math.round(Number(staff?.bonus || 0) * 100),
+        [
+          ...calculateCallcenterBonus(ctx.state, date.slice(0, 7), 'each'),
+          ...require('./marketing-bonus.cjs').calculateMarketingBonus(
+            ctx.state,
+            date.slice(0, 7),
+            parkingToday(),
+          ),
+          ...require('./other-personnel-bonus.cjs').calculateOtherPersonnelBonus(
+            ctx.state,
+            date.slice(0, 7),
+            parkingToday(),
+          ),
+        ].find((r) => r.staffId === u.staffId)?.total ?? Math.round(Number(staff?.bonus || 0) * 100),
       dailyBonusTotal: (ctx.state.dailyBonuses || [])
         .filter((e) => e.staffId === u.staffId && e.date.startsWith(date.slice(0, 7)))
         .reduce((sum, e) => sum + e.amount, 0),
@@ -227,6 +274,8 @@ async function handlePersonnelRoutes(ctx) {
       account = v.account || {};
     if (!record?.id || !String(record.name || '').trim()) throw fail(400, 'Geçerli personel girin.');
     if (!String(record.unofficialSalary ?? '').trim()) record.unofficialSalary = 0;
+    if (record.department === 'Diğer' && !String(record.officialSalary ?? '').trim())
+      record.officialSalary = 0;
     for (const key of ['officialSalary', 'unofficialSalary']) {
       if (
         record[key] == null ||
@@ -236,7 +285,8 @@ async function handlePersonnelRoutes(ctx) {
       )
         throw fail(400, 'Geçerli maaş ve prim tutarı girin.');
     }
-    if (Number(record.officialSalary) <= 0) throw fail(400, 'Maaş sıfırdan büyük olmalıdır.');
+    if (record.department !== 'Diğer' && Number(record.officialSalary) <= 0)
+      throw fail(400, 'Maaş sıfırdan büyük olmalıdır.');
     const next = structuredClone(ctx.state),
       index = next.data['icrapro-personnel-v1'].findIndex((p) => p.id === record.id);
     let user = next.users.find((x) => x.staffId === record.id);

@@ -373,7 +373,7 @@ function clientModal(id, loadedRecord) {
   let c = loadedRecord || db.clients.find((x) => x.id === id) || {};
   kind = c.type || 'Şahıs';
   $('#modal').innerHTML =
-    `<form id="clientForm"><div class="panelhead"><div><h2>${id ? 'Müvekkili Düzenle' : 'Yeni Müvekkil Kaydı'}</h2><p>Kimlik, iletişim ve adres bilgileri</p></div><button class="link" type="button" id="close">✕</button></div><div class="formbody"><div class="segments">${['Şahıs', 'Şirket', 'Şahıs Şirketi'].map((t) => `<button type="button" class="${kind === t ? 'selected' : ''}" data-kind="${t}">${t}</button>`).join('')}</div><label class="field" style="margin-bottom:23px">Müvekkil Türü<select name="clientCategory" required><option value="">Müvekkil türü seçin</option>${['Mağaza', 'Yediemin', 'Diğer'].map((category) => `<option value="${category}" ${c.clientCategory === category ? 'selected' : ''}>${category}</option>`).join('')}</select></label><h3 class="sectiontitle">01 &nbsp; Müvekkil bilgileri</h3><div class="grid">${field('Ticari Unvan', 'tradeName', 'text', c.tradeName ?? (c.type && c.type !== 'Şahıs' ? c.name : ''), false).replace('<input ', '<input data-optional="true" ')}${field('Ad Soyad', 'fullName', 'text', c.fullName ?? (!c.type || c.type === 'Şahıs' ? c.name : ''), false).replace('<input ', '<input data-optional="true" ')}${field('TC Kimlik / Vergi Numarası', 'identity', 'text', c.identity)}${field('Telefon', 'phone', 'tel', c.phone)}${field('E-posta', 'email', 'email', c.email, false, true)}${clientCityField(c)}<label class="field full">Açık Adres<textarea name="address" rows="2">${esc(c.address || '')}</textarea></label>${field('Referans', 'reference', 'text', c.reference, false, true)}${staffSelect('Evrak Alan Personel', 'documentStaff', c.documentStaff)}${staffSelect('Evrak Kaydeden *', 'recordedBy', c.recordedBy).replace('<select ', '<select required ')}${staffSelect('Tahsilat Uzmanı Personel', 'collectionStaff', c.collectionStaff).replace('<select name="collectionStaff"', '<select data-optional="true" name="collectionStaff"')}<h3 class="sectiontitle full">Banka Bilgileri</h3>${field('Banka Adı', 'bankName', 'text', c.bankName)}${field('Şube', 'bankBranch', 'text', c.bankBranch)}${field('Hesap Sahibi', 'accountHolder', 'text', c.accountHolder, false, true)}<label class="field full">IBAN (isteğe bağlı)<input name="iban" data-optional="true" type="text" value="${esc(c.iban || '')}" placeholder="TR00 0000 0000 0000 0000 0000 00" maxlength="32" autocomplete="off"></label>${clientAttachmentFields(c)}<label class="field full">Notlar<textarea name="notes" rows="2" data-optional="true">${esc(c.notes || '')}</textarea></label></div></div><div class="actions"><button type="button" class="secondary" id="cancel">Vazgeç</button><button class="primary">Müvekkili Kaydet</button></div></form>`;
+    `<form id="clientForm"><div class="panelhead"><div><h2>${id ? 'Müvekkili Düzenle' : 'Yeni Müvekkil Kaydı'}</h2><p>Kimlik, iletişim ve adres bilgileri</p></div><button class="link" type="button" id="close">✕</button></div><div class="formbody"><div class="segments">${['Şahıs', 'Şirket', 'Şahıs Şirketi'].map((t) => `<button type="button" class="${kind === t ? 'selected' : ''}" data-kind="${t}">${t}</button>`).join('')}</div><label class="field" style="margin-bottom:23px">Müvekkil Türü<select name="clientCategory" required><option value="">Müvekkil türü seçin</option>${['Mağaza', 'Yediemin', 'Diğer'].map((category) => `<option value="${category}" ${c.clientCategory === category ? 'selected' : ''}>${category}</option>`).join('')}</select></label><h3 class="sectiontitle">01 &nbsp; Müvekkil bilgileri</h3><div class="grid">${field('Ticari Unvan', 'tradeName', 'text', c.tradeName ?? (c.type && c.type !== 'Şahıs' ? c.name : ''), false).replace('<input ', '<input data-optional="true" ')}${field('Ad Soyad', 'fullName', 'text', c.fullName ?? (!c.type || c.type === 'Şahıs' ? c.name : ''), false).replace('<input ', '<input data-optional="true" ')}${field('TC Kimlik / Vergi Numarası', 'identity', 'text', c.identity)}${field('Vergi Dairesi (isteğe bağlı)', 'taxOffice', 'text', c.taxOffice).replace('<input ', '<input data-optional="true" ')}${field('MERSİS No (isteğe bağlı)', 'mersisNumber', 'text', c.mersisNumber).replace('<input ', '<input data-optional="true" ')}${field('Telefon', 'phone', 'tel', c.phone)}${field('E-posta', 'email', 'email', c.email, false, true)}${clientCityField(c)}<label class="field full">Açık Adres<textarea name="address" rows="2">${esc(c.address || '')}</textarea></label>${field('Referans', 'reference', 'text', c.reference, false, true)}${staffSelect('Evrak Alan Personel', 'documentStaff', c.documentStaff)}${staffSelect('Evrak Kaydeden *', 'recordedBy', c.recordedBy).replace('<select ', '<select required ')}${staffSelect('Tahsilat Uzmanı Personel', 'collectionStaff', c.collectionStaff).replace('<select name="collectionStaff"', '<select data-optional="true" name="collectionStaff"')}<h3 class="sectiontitle full">Banka Bilgileri</h3>${field('Banka Adı', 'bankName', 'text', c.bankName)}${field('Şube', 'bankBranch', 'text', c.bankBranch)}${field('Hesap Sahibi', 'accountHolder', 'text', c.accountHolder, false, true)}<label class="field full">IBAN (isteğe bağlı)<input name="iban" data-optional="true" type="text" value="${esc(c.iban || '')}" placeholder="TR00 0000 0000 0000 0000 0000 00" maxlength="32" autocomplete="off"></label>${clientAttachmentFields(c)}<label class="field full">Notlar<textarea name="notes" rows="2" data-optional="true">${esc(c.notes || '')}</textarea></label></div></div><div class="actions"><button type="button" class="secondary" id="cancel">Vazgeç</button><button class="primary">Müvekkili Kaydet</button></div></form>`;
   for (const name of ['email', 'iban']) {
     document.getElementById('clientForm').elements[name].dataset.optional = 'true';
   }
@@ -382,9 +382,11 @@ function clientModal(id, loadedRecord) {
   clientIbanInput.addEventListener('input', () => clientIbanInput.setCustomValidity(''));
   $('#clientForm').dataset.clientId = id || '';
   setupRecordFormTabs($('#clientForm'), 'client');
+  syncClientCompanyFields($('#clientForm'), kind);
   if (id && ['ceo', 'admin'].includes(window.hanAuth?.role))
     setupClientStatement($('#clientForm'), id, c.name || c.tradeName || c.fullName || '');
   setupExtraContacts($('#clientForm'), c);
+  setupClientBankAccounts($('#clientForm'), c);
   for (const selector of ['#clientPhotos', '#clientPowerOfAttorney']) bindMultipleFileInput($(selector));
   $('#modal').showModal();
   setupClientCity();
@@ -394,6 +396,7 @@ function clientModal(id, loadedRecord) {
     (b) =>
       (b.onclick = () => {
         kind = b.dataset.kind;
+        syncClientCompanyFields($('#clientForm'), kind);
         document.querySelectorAll('[data-kind]').forEach((a) => a.classList.toggle('selected', a === b));
       }),
   );
@@ -430,6 +433,8 @@ function clientModal(id, loadedRecord) {
     if (!validStaffSelection(v, c)) return toast('Kayıtlı ve aktif bir personel seçin.');
     v.tradeName = String(v.tradeName || '').trim();
     v.fullName = String(v.fullName || '').trim();
+    v.taxOffice = String(v.taxOffice || '').trim();
+    v.mersisNumber = String(v.mersisNumber || '').trim();
     v.name = kind === 'Şahıs' ? v.fullName || v.tradeName : v.tradeName || v.fullName;
     if (!v.name) return toast('Ticari unvan veya ad soyad girin.');
     const duplicate =
@@ -447,6 +452,11 @@ function clientModal(id, loadedRecord) {
       input.setCustomValidity('Geçerli bir Türkiye IBAN numarası girin.');
       input.reportValidity();
       return;
+    }
+    try {
+      v.additionalBankAccounts = e.target.readAdditionalBankAccounts();
+    } catch (error) {
+      return toast(error.message);
     }
     const button = e.target.querySelector('button.primary');
     if (button.disabled) return;
@@ -479,6 +489,20 @@ function clientModal(id, loadedRecord) {
       button.disabled = false;
     }
   };
+}
+
+function syncClientCompanyFields(form, type) {
+  const company = ['Şirket', 'Şahıs Şirketi'].includes(type);
+  for (const name of ['taxOffice', 'mersisNumber']) {
+    const input = form.elements[name];
+    if (!input) continue;
+    input.closest('label').hidden = !company;
+    input.disabled = !company;
+    input.required = false;
+    input.dataset.optional = 'true';
+    input.removeAttribute('aria-required');
+    input.setCustomValidity('');
+  }
 }
 
 function validClientIban(value) {
@@ -619,6 +643,7 @@ function clientDebtorIdentityConflict(kind, id, value, borrowerName) {
 }
 
 function setupExtraContacts(form, record) {
+  setupPhoneSources(form, record);
   for (const type of ['phone', 'address']) {
     const anchor =
       form.elements[type === 'phone' ? (form.elements.phone ? 'phone' : 'phone1') : 'address']?.closest(
@@ -628,7 +653,7 @@ function setupExtraContacts(form, record) {
     const section = document.createElement('section');
     section.className = 'full extra-contacts';
     section.dataset.extraContact = type;
-    anchor.after(section);
+    (anchor.closest('.phone-source-pair') || anchor).after(section);
     const list = document.createElement('div');
     list.className = 'grid';
     const add = document.createElement('button');
@@ -673,6 +698,7 @@ function setupExtraContacts(form, record) {
       remove.onclick = () => box.remove();
       box.append(remove);
       list.append(box);
+      if (type === 'phone') bindPhoneSource(form, box.querySelector('input[type=tel]'), record);
     }
     add.onclick = () => row();
     for (const value of record[type === 'phone' ? 'additionalPhones' : 'additionalAddresses'] || [])
@@ -689,9 +715,93 @@ function readExtraContacts(form) {
       ),
     );
   return {
+    phoneSources: readPhoneSources(form),
     additionalPhones: values('phone')
       .map((r) => r.phone)
       .filter(Boolean),
     additionalAddresses: values('address').filter((r) => r.address || r.city || r.district),
   };
+}
+
+function setupClientBankAccounts(form, record) {
+  const host = document.createElement('section');
+  host.className = 'full client-bank-accounts';
+  const primary = document.createElement('div');
+  primary.className = 'client-bank-account';
+  primary.innerHTML = '<h4>Banka Hesabı 1</h4><div class="grid"></div>';
+  const bankName = form.elements.bankName.closest('label');
+  bankName.before(host);
+  host.append(primary);
+  for (const name of HanClientBanks.fields)
+    primary.querySelector('.grid').append(form.elements[name].closest('label'));
+  const list = document.createElement('div');
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'secondary';
+  add.dataset.addClientBank = 'true';
+  add.textContent = '＋ Banka Ekle';
+  const status = document.createElement('small');
+  status.setAttribute('role', 'status');
+  host.append(list, add, status);
+  function refresh() {
+    const rows = [...list.children];
+    rows.forEach((row, index) => (row.querySelector('h4').textContent = 'Banka Hesabı ' + (index + 2)));
+    add.disabled = rows.length >= 2;
+    status.textContent =
+      rows.length + 1 + ' / 3 banka hesabı · Mevcut hesap dahil en fazla 3 hesap ekleyebilirsiniz.';
+  }
+  function row(account = {}) {
+    if (list.children.length >= 2) return;
+    const section = document.createElement('section');
+    section.className = 'client-bank-account';
+    section.dataset.clientBank = 'true';
+    section.innerHTML =
+      '<div class="toolbar"><h4></h4><button type="button" class="link" data-remove-client-bank>Hesabı Kaldır</button></div><div class="grid">' +
+      [
+        ['bankName', 'Banka Adı'],
+        ['bankBranch', 'Şube'],
+        ['accountHolder', 'Hesap Sahibi'],
+        ['iban', 'IBAN (isteğe bağlı)'],
+      ]
+        .map(
+          ([key, label]) =>
+            '<label class="field">' +
+            esc(label) +
+            '<input type="text" data-bank-field="' +
+            key +
+            '" data-optional="true" maxlength="' +
+            (key === 'iban' ? '32' : '200') +
+            '" value="' +
+            esc(key === 'iban' ? formatIbanNumber(account[key]) : account[key] || '') +
+            '"></label>',
+        )
+        .join('') +
+      '</div>';
+    section.querySelector('[data-bank-field="iban"]').addEventListener('input', (event) => {
+      event.target.value = formatIbanNumber(event.target.value);
+      event.target.setCustomValidity('');
+    });
+    section.querySelector('[data-remove-client-bank]').onclick = () => {
+      section.remove();
+      refresh();
+    };
+    list.append(section);
+    refresh();
+    return section;
+  }
+  for (const account of record.additionalBankAccounts || []) row(account);
+  add.onclick = () => row()?.querySelector('input').focus();
+  form.readAdditionalBankAccounts = () =>
+    HanClientBanks.additional({
+      iban: form.elements.iban.value,
+      additionalBankAccounts: [...list.children].map((section) =>
+        Object.fromEntries(
+          [...section.querySelectorAll('[data-bank-field]')].map((input) => [
+            input.dataset.bankField,
+            input.value,
+          ]),
+        ),
+      ),
+    });
+  refresh();
 }

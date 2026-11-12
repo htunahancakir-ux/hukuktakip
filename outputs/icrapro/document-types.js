@@ -1,4 +1,11 @@
 const documentTypes = {
+  'Alacak Föyü': {
+    amount: 'Toplam Alacak (₺)',
+    serial: 'Föy Açıklaması',
+    due: 'İlk Vade',
+    requiredDue: false,
+    extras: [],
+  },
   Senet: {
     amount: 'Senet Tutarı (₺)',
     serial: 'Senet Numarası',
@@ -53,7 +60,7 @@ const documentTypes = {
       ['Yediemin Otoparkı', 'parkingName'],
       ['Giriş / Men Tarihi', 'parkingEntry', 'date'],
       ['Araç Cinsi', 'vehicleKind', 'select', ['Motosiklet', 'Otomobil', 'Diğer']],
-      ['%', 'parkingCommissionRate', 'number'],
+      ['Anlaşılan %', 'parkingCommissionRate', 'number'],
     ],
   },
   Fatura: {
@@ -72,36 +79,25 @@ const documentTypes = {
   },
 };
 function docType(d) {
+  if (Array.isArray(d.receivables))
+    return d.receivables.length === 1 ? d.receivables[0].docType : 'Alacak Föyü';
   return documentTypes[d.docType] ? d.docType : 'Senet';
 }
 function nextDocumentNumber(type, documents, archivedNumbers = []) {
-  const prefixes = {
-    Senet: 'S',
-    Çek: 'Ç',
-    Sözleşme: 'SÖZ',
-    'Cari Ekstre': 'CARİ',
-    'Yediemin Park Ücreti': 'Y',
-    İlam: 'İLAM',
-    Fatura: 'F',
-    Diğer: 'D',
-  };
-  const prefix = (prefixes[type] || 'EVR') + '-';
-  let maximum = 0;
-  for (const doc of [...documents, ...archivedNumbers.map((number) => ({ number }))]) {
-    const number = String(doc.number || '').toLocaleUpperCase('tr');
-    if (!number.startsWith(prefix)) continue;
-    const suffix = number.slice(prefix.length);
-    if (/^\d+$/.test(suffix)) {
-      const value = Number(suffix);
-      if (Number.isSafeInteger(value)) maximum = Math.max(maximum, value);
-    }
-  }
-  return prefix + String(maximum + 1).padStart(4, '0');
+  const values = [...documents.map((doc) => doc.number), ...archivedNumbers];
+  const maximum = values.reduce((max, value) => {
+    const match = String(value || '').match(/([0-9]+)$/);
+    return Math.max(max, match ? Number(match[1]) : 0);
+  }, 0);
+  if (!Number.isSafeInteger(maximum + 1)) throw Error('Föy numarası güvenli sınırı aşıyor.');
+  return String(maximum + 1);
 }
+
 function documentTypePicker() {
   return `<div class="segments document-types" role="group" aria-label="Evrak türü">${Object.keys(
     documentTypes,
   )
+    .filter((type) => type !== 'Alacak Föyü')
     .map(
       (type, i) =>
         `<button type="button" data-doc-type="${type}" aria-pressed="${i === 0}" class="${i === 0 ? 'selected' : ''}">${type} Ekle</button>`,
@@ -267,9 +263,10 @@ function setupParkingIdentityFields(form) {
   for (const key of ['identity', 'vehiclePlate', 'chassisNumber']) {
     const input = form.elements[key];
     if (!input) continue;
-    input.dataset.optional = String(parking);
-    input.required = !parking;
-    input.setAttribute('aria-required', String(!parking));
+    const optional = parking || key === 'identity';
+    input.dataset.optional = String(optional);
+    input.required = !optional;
+    input.setAttribute('aria-required', String(!optional));
     input.setCustomValidity('');
     if (parking && input.closest('label')?.firstChild?.nodeType === 3)
       input.closest('label').firstChild.textContent = input

@@ -76,6 +76,12 @@ async function handleCommunicationRoutes(ctx) {
       time,
       contact,
       phone,
+      phoneSources: require('./phone-format.js').cleanPhoneSources({
+        [phone]:
+          input.phoneSource === undefined && editing
+            ? require('./phone-format.js').phoneSource(records[index], phone)
+            : clean('phoneSource', 200),
+      }),
       city,
       district,
       address,
@@ -105,7 +111,9 @@ async function handleCommunicationRoutes(ctx) {
         .filter(
           (w) =>
             (scope === 'all' || (scope === 'mine' ? w.assigneeId === u.id : w.assignerId === u.id)) &&
-            (status === 'all' || w.status === status),
+            (status === 'all' || w.status === status) &&
+            (url.searchParams.get('notification') !== '1' ||
+              require('../../lib/daily-notifications.cjs').current(w, u)),
         )
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
     send(res, 200, { total: rows.length, offset, orders: rows.slice(offset, offset + 50) });
@@ -231,7 +239,10 @@ async function handleCommunicationRoutes(ctx) {
           workOrderId: m.workOrderId || '',
           systemType: m.systemType || '',
           createdAt: m.createdAt,
-          isUnread: m.recipientIds.includes(u.id) && !m.readBy?.[u.id],
+          isUnread:
+            m.recipientIds.includes(u.id) &&
+            !m.readBy?.[u.id] &&
+            require('../../lib/daily-notifications.cjs').current(m, u),
           readCount: Object.keys(m.readBy || {}).length,
           ...whatsappView(m, u),
         })),

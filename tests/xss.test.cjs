@@ -16,6 +16,7 @@ const modules = [
   'client-records.js',
   'document-records.js',
   'borrower-sheet.js',
+  'workspace-receivables.js',
   'finance-operations.js',
   'workspace-reminders.js',
   'workspace-reports.js',

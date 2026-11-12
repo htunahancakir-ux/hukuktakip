@@ -110,6 +110,34 @@ test('Intake allocates server numbers, isolates edits, searches all clients and 
     const lookup = await get('/api/records/search?kind=client');
     assert.equal(lookup.items.length, 50);
     assert.equal(lookup.more, true);
+    const allClients = [...lookup.items];
+    let clientCursor = lookup.next;
+    while (clientCursor) {
+      const page = await get(
+        '/api/records/search?' + new URLSearchParams({ kind: 'client', after: clientCursor }),
+      );
+      allClients.push(...page.items);
+      clientCursor = page.next;
+    }
+    assert.equal(allClients.length, 123);
+    assert.equal(new Set(allClients.map((item) => item.id)).size, 123);
+    const matchingClients = [];
+    clientCursor = '';
+    do {
+      const page = await get(
+        '/api/records/search?' + new URLSearchParams({ kind: 'client', q: 'Client', after: clientCursor }),
+      );
+      matchingClients.push(...page.items);
+      clientCursor = page.next;
+    } while (clientCursor);
+    assert.equal(new Set(matchingClients.map((item) => item.id)).size, 123);
+    for (const after of [Buffer.from('null').toString('base64url'), lookup.next]) {
+      const response = await fetch(
+        server.url + '/api/records/search?' + new URLSearchParams({ kind: 'client', q: 'different', after }),
+        { headers },
+      );
+      assert.equal(response.status, 400);
+    }
     const found = await get('/api/records/search?kind=client&id=c122');
     assert.equal(found.items.length, 1);
     assert.equal(found.items[0].id, 'c122');
@@ -176,7 +204,13 @@ test('Intake allocates server numbers, isolates edits, searches all clients and 
       };
     };
     const old = pristine.data['icrapro-v1'].docs[0];
-    const saved = await patch(old, { ...old, notes: 'only selected changed', officeIdentity: '00123456789' });
+    const saved = await patch(old, {
+      ...old,
+      notes: 'only selected changed',
+      officeIdentity: '00123456789',
+      phone1: '05321234567',
+      phoneSources: { 5321234567: 'Eşi Ayşe' },
+    });
     pool.connect = connect;
     assert.equal(saved.status, 200, JSON.stringify(saved.body));
     assert(
@@ -193,6 +227,7 @@ test('Intake allocates server numbers, isolates edits, searches all clients and 
     const edited = editedState.data['icrapro-v1'].docs.find((d) => d.id === 'd0');
     assert.equal(edited.futureField.retained, true);
     assert.equal(edited.officeIdentity, '00123456789');
+    assert.deepEqual(edited.phoneSources, { 5321234567: 'Eşi Ayşe' });
     assert.equal(edited.fileData, old.fileData);
     assert.deepEqual(edited.conversations, old.conversations);
     assert.deepEqual(editedState.deletedDocuments, pristine.deletedDocuments);
@@ -229,7 +264,9 @@ test('Intake allocates server numbers, isolates edits, searches all clients and 
       patch(null, create('new2')),
     ]);
     for (const result of attempts) assert.equal(result.status, 200, JSON.stringify(result.body));
-    assert.deepEqual(attempts.map((r) => r.body.records[0].value.number).sort(), ['S-0201', 'S-0202']);
+    assert.equal(attempts[0].body.records[0].value.imatikFolioNumber, undefined);
+    assert.equal(attempts[1].body.records[0].value.imatikFolioNumber, undefined);
+    assert.deepEqual(attempts.map((r) => r.body.records[0].value.number).sort(), ['201', '202']);
     for (const r of attempts) assert.notEqual(r.body.records[0].value.trackingDate, '1990-01-01');
     assert.equal((await patch(null, create('new1'))).status, 409);
     assert.equal((await patch(null, create('bad-client', { client: 'missing' }))).status, 400);
@@ -265,7 +302,7 @@ test('Intake allocates server numbers, isolates edits, searches all clients and 
     assert.equal(staffSaved.status, 200, JSON.stringify(staffSaved.body));
     assert.equal(
       staffSaved.body.records[0].value.number,
-      'S-0203',
+      '203',
       'failed mutations roll back number allocation',
     );
     let commits = 0;
@@ -285,11 +322,11 @@ test('Intake allocates server numbers, isolates edits, searches all clients and 
     const retried = await patch(null, create('retried'));
     pool.connect = connect;
     assert.equal(retried.status, 200, JSON.stringify(retried.body));
-    assert.equal(retried.body.records[0].value.number, 'S-0204');
+    assert.equal(retried.body.records[0].value.number, '204');
     assert.equal(commits, 2, 'serialization retries rerun the complete rolled-back transaction');
     const check = await patch(null, create('cheque', { docType: 'Çek', identity: '40000000000' }));
     assert.equal(check.status, 200, JSON.stringify(check.body));
-    assert.equal(check.body.records[0].value.number, 'Ç-0010');
+    assert.equal(check.body.records[0].value.number, '205');
 
     const chain = await fetch(server.url + '/api/documents/chain', {
       method: 'POST',

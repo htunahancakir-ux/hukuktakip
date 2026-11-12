@@ -38,10 +38,11 @@ function runWorkflowAutomation(state, today, now = new Date().toISOString(), pre
     changed = true;
   }
   for (const doc of docs) {
-    if (!doc.relatedStaff || ['İnfaz','İade'].includes(doc.status) || events.some(e => e.documentId === doc.id && e.type === 'payment' && e.closes === true)) continue;
+    if (require('./parking-waiting.js').syncParkingWaiting(doc, today)) changed = true;
+    if (!doc.relatedStaff || ['İnfaz','İade','Bekleme'].includes(doc.status) || events.some(e => e.documentId === doc.id && e.type === 'payment' && e.closes === true)) continue;
     const lastAssign = (doc.assignmentHistory || []).map(a => a.date).sort().at(-1) || doc.created;
     const contacts = (doc.conversations || []).map(c => dateOf(c.date || c.createdAt)).filter(date => date && date <= today);
-    const anchor = [dateOf(doc.created), dateOf(lastAssign), ...contacts].filter(Boolean).sort().at(-1);
+    const anchor = [dateOf(doc.created), dateOf(lastAssign), dateOf(doc.parkingProcessOn), ...contacts].filter(Boolean).sort().at(-1);
     if (!anchor) continue;
     const age = Math.floor((Date.parse(today) - Date.parse(anchor)) / day), key = doc.relatedStaff + '|' + anchor;
     const owners = users.filter(u => u.staffId === doc.relatedStaff);

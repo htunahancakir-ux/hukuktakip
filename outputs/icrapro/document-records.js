@@ -27,7 +27,16 @@ function copySharedIntakeFields(form) {
     const parentInput = parentForm.elements[input.name];
     if (!parentInput) continue;
     if (input.type === 'radio') input.checked = input.value === parentInput.value;
-    else if ('value' in parentInput) input.value = parentInput.value;
+    else if (input.type === 'checkbox') input.checked = parentInput.checked;
+    else if ('value' in parentInput) {
+      if (input.tagName === 'SELECT' && parentInput.tagName === 'SELECT') {
+        for (const option of parentInput.selectedOptions) {
+          if (![...input.options].some((existing) => existing.value === option.value))
+            input.add(new Option(option.textContent, option.value));
+        }
+      }
+      input.value = parentInput.value;
+    }
     input.setCustomValidity('');
     input.dispatchEvent(new Event('change', { bubbles: true }));
   }
@@ -93,7 +102,7 @@ async function refreshIntakeBatchAfterSave() {
   if (embeddedIntake) window.parent.refreshIntakeBatchAfterSave();
 }
 
-function intake(editId, showNew = false, recordReady = false) {
+function intake(editId, showNew = true, recordReady = false) {
   if (window.hanRecordsEnabled && editId && !recordReady)
     return recordAction(editId, () => {
       selected = db.docs.find((d) => d.id === editId)?.client || '';
@@ -106,17 +115,15 @@ function intake(editId, showNew = false, recordReady = false) {
   const original = editId ? db.docs.find((d) => d.id === editId) : null;
   const receiptId = original?.id || intakeBatchIds().at(-1);
   $('#content').innerHTML =
-    `<div class="toolbar" style="margin-bottom:18px"><button type="button" class="primary new-document-button" id="newIntakeDocument" aria-controls="intakeForm" aria-expanded="${Boolean(original || showNew)}">＋ Yeni Evrak Ekle</button></div><form class="panel" id="intakeForm" ${original || showNew ? '' : 'hidden'}><div class="panelhead"><div><h2 id="intakeHeading">Evrak Kabul</h2><p>Müvekkil seçimi ve evrak bilgileri</p></div><span class="badge">Yeni kayıt</span></div><div class="formbody"><div class="notice">Evrak kaydı müvekkile bağlanır. Kaydettiğinizde evrak numarası atanır. Tek evrak tutanağını veya bu kabul grubunun toplu teslim tesellümünü ayrı düğmelerden oluşturabilirsiniz.</div><h3 class="sectiontitle">01 &nbsp; Müvekkil seçimi</h3><div class="grid"><label class="field full">Müvekkil *<select name="client" required><option value="">Müvekkil seçin</option>${(window.hanRecordsEnabled ? [intakeClient(selected)].filter(Boolean) : db.clients).map((c) => `<option value="${esc(c.id)}" ${selected === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label class="field full" data-record-group="document">Müvekkil Parti<input name="clientParty" type="text" data-optional="true" placeholder="Parti bilgisi (isteğe bağlı)"></label></div><h3 class="sectiontitle" style="margin-top:28px">02 &nbsp; Evrak türü ve borçlu bilgileri</h3>${documentTypePicker()}<div class="grid"><label class="field full">Föy Numarası<input id="intakeFolioNumber" type="text" readonly data-optional="true" value="${esc(original?.number || (window.hanRecordsEnabled ? 'Kaydedildiğinde atanır' : nextDocumentNumber('Senet', db.docs, db.archivedNumbers)))}" aria-label="Föy Numarası"><small>Otomatik atanır.</small></label><label class="field">Takip Tarihi<input id="intakeTrackingDate" type="text" readonly data-optional="true" value="${esc(displayDate(original ? borrowerTrackingDate(original) : businessDate()))}" aria-label="Takip Tarihi"><small>Kayıt sırasında otomatik atanır.</small></label>${field('Borçlu Ad Soyad / Unvan', 'debtor', 'text', '', true)}${field('Borçlu TC Kimlik / Vergi No', 'identity').replace('<input ', '<input data-optional="true" ')}${field('Ofis TC', 'officeIdentity').replace('<input ', '<input data-optional="true" ')}${field('Tel-1', 'phone1', 'tel')}${clientCityField({}, 'document')}<label class="field full">Borçlu Açık Adres<textarea name="address" rows="3" required></textarea></label><h3 class="sectiontitle full">Borçlu Adres-2</h3>${clientCityField({}, 'document2').replace('name="city"', 'name="address2City"').replace('name="district"', 'name="address2District"')}<label class="field full">Borçlu Adres-2 — Açık Adres<textarea name="address2" rows="3" required></textarea></label><h3 class="sectiontitle full">Borçlu Adres (Ofis)-3</h3>${clientCityField({}, 'document3').replace('name="city"', 'name="officeAddress3City"').replace('name="district"', 'name="officeAddress3District"')}<label class="field full">Borçlu Adres (Ofis)-3 — Açık Adres<textarea name="officeAddress3" rows="3" required></textarea></label>${field('Toplam Evrak Tutarı (₺)', 'amount', 'number', '', true)}<label class="field" data-pre-tracking-amount hidden>Takip Öncesi Ödeme (₺)<input name="preTrackingPayment" type="number" min="0" step="0.01" data-optional="true" disabled></label><label class="field" data-pre-tracking-amount hidden>Asıl Olacak (₺)<input id="intakePrincipal" type="text" readonly data-optional="true"></label>${field('Vade Tarihi', 'due', 'date', '', true)}${field('Düzenleme Tarihi', 'issued', 'date')}${field('Senet Numarası', 'serial')}${staffSelect('Teslim Alan', 'receivedBy')}${staffSelect('Evrak Kaydeden *', 'recordedBy').replace('<select ', '<select required ')}${field('Teslim Eden', 'deliveredBy', 'text', '', true)}${staffSelect('Dosya Sorumlusu', 'relatedStaff')}${propertyFields({}, 'intake')}<div class="full" id="intakeGuarantors"></div><fieldset class="field full original-document"><legend>Evrak Aslı *</legend><label><input type="radio" name="originalDocument" value="Alındı" required> Alındı</label><label><input type="radio" name="originalDocument" value="Firmada" required> Firmada</label></fieldset><label class="field">PDF Ekle (birden fazla seçebilirsiniz)<input id="attachment" data-optional="true" type="file" accept="application/pdf" multiple><small>PDF · Her dosya en fazla 10 MB</small></label><label class="field">Fotoğraf Ekle (birden fazla seçebilirsiniz)<input id="photoAttachment" data-optional="true" type="file" accept="image/png,image/jpeg,image/webp" multiple><small>PNG, JPEG veya WEBP · Her dosya en fazla 10 MB</small></label><label class="field full">Kabul notu<textarea name="notes" rows="3" placeholder="Evrakın durumu ve teslim notları…"></textarea></label></div></div><div class="formbody" ${original ? 'hidden' : ''}><label class="settings-check"><input type="checkbox" id="intakeAddAnother" data-optional="true"> Bu müvekkil için başka evrak var mı?</label></div><div class="actions"><button type="reset" class="secondary">Formu Temizle</button><button class="primary" id="accept">Evrakı Kaydet</button><button type="button" class="secondary" id="createIntakeReceipt" ${receiptId ? '' : 'disabled'}>Tutanak Oluştur</button></div></form>${embeddedIntake ? '' : intakeBatchToolbar() + intakeSearchMarkup()}`;
+    `<div class="toolbar" style="margin-bottom:18px"><button type="button" class="primary new-document-button" id="newIntakeDocument" aria-controls="intakeForm" aria-expanded="${Boolean(original || showNew)}">＋ Yeni Evrak Ekle</button></div><form class="panel" id="intakeForm" ${original || showNew ? '' : 'hidden'}><div class="panelhead"><div><h2 id="intakeHeading">Evrak Kabul</h2><p>Müvekkil seçimi ve evrak bilgileri</p></div><span class="badge">Yeni kayıt</span></div><div class="formbody"><div class="notice">Evrak kaydı müvekkile bağlanır. Kaydettiğinizde evrak numarası atanır. Tek evrak tutanağını veya bu kabul grubunun toplu teslim tesellümünü ayrı düğmelerden oluşturabilirsiniz.</div><h3 class="sectiontitle">01 &nbsp; Müvekkil seçimi</h3><div class="grid"><label class="field full">Müvekkil *<select name="client" required><option value="">Müvekkil seçin</option>${(window.hanRecordsEnabled ? [intakeClient(selected)].filter(Boolean) : db.clients).map((c) => `<option value="${esc(c.id)}" ${selected === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label class="field full" data-record-group="document">Müvekkil Parti<input name="clientParty" type="text" data-optional="true" placeholder="Parti bilgisi (isteğe bağlı)"></label></div><h3 class="sectiontitle" style="margin-top:28px">02 &nbsp; Evrak türü ve borçlu bilgileri</h3>${documentTypePicker()}<div class="grid"><label class="field full">Föy Numarası<input id="intakeFolioNumber" type="text" readonly data-optional="true" value="${esc(original?.number || (window.hanRecordsEnabled ? 'Kaydedildiğinde atanır' : nextDocumentNumber('Senet', db.docs, db.archivedNumbers)))}" aria-label="Föy Numarası"><small>Otomatik atanır.</small></label><label class="field">İcra Müdürlüğü (isteğe bağlı)<input name="enforcementOffice" type="text" data-optional="true" maxlength="200" value="${esc(original?.enforcementOffice || '')}"></label><label class="field">İcra Dosya Numarası (isteğe bağlı)<input name="enforcementFileNumber" type="text" data-optional="true" maxlength="100" value="${esc(original?.enforcementFileNumber || '')}"></label><label class="field">Takip Tarihi<input id="intakeTrackingDate" type="text" readonly data-optional="true" value="${esc(displayDate(original ? borrowerTrackingDate(original) : businessDate()))}" aria-label="Takip Tarihi"><small>Kayıt sırasında otomatik atanır.</small></label>${field('Borçlu Ad Soyad / Unvan', 'debtor', 'text', '', true)}${borrowerPartyFields(original || {})}${field('Borçlu TC Kimlik / Vergi No', 'identity').replace('<input ', '<input data-optional="true" ')}${field('Ofis TC', 'officeIdentity').replace('<input ', '<input data-optional="true" ')}${field('Tel-1', 'phone1', 'tel')}${clientCityField({}, 'document')}<label class="field full">Borçlu Açık Adres<textarea name="address" rows="3" required></textarea></label><h3 class="sectiontitle full">Borçlu Adres-2</h3>${clientCityField({}, 'document2').replace('name="city"', 'name="address2City"').replace('name="district"', 'name="address2District"')}<label class="field full">Borçlu Adres-2 — Açık Adres<textarea name="address2" rows="3" required></textarea></label><h3 class="sectiontitle full">Borçlu Adres (Ofis)-3</h3>${clientCityField({}, 'document3').replace('name="city"', 'name="officeAddress3City"').replace('name="district"', 'name="officeAddress3District"')}<label class="field full">Borçlu Adres (Ofis)-3 — Açık Adres<textarea name="officeAddress3" rows="3" required></textarea></label>${field('Toplam Evrak Tutarı (₺)', 'amount', 'number', '', true)}<label class="field" data-pre-tracking-amount hidden>Takip Öncesi Ödeme (₺)<input name="preTrackingPayment" type="number" min="0" step="0.01" data-optional="true" disabled></label><label class="field" data-pre-tracking-amount hidden>Asıl Olacak (₺)<input id="intakePrincipal" type="text" readonly data-optional="true"></label>${field('Vade Tarihi', 'due', 'date', '', true)}${field('Düzenleme Tarihi', 'issued', 'date')}${field('Senet Numarası', 'serial')}${staffSelect('Teslim Alan', 'receivedBy')}${staffSelect('Evrak Kaydeden *', 'recordedBy').replace('<select ', '<select required ')}${field('Teslim Eden', 'deliveredBy', 'text', '', true)}${staffSelect('Dosya Sorumlusu', 'relatedStaff')}${propertyFields({}, 'intake')}<div class="full" id="intakeGuarantors"></div><fieldset class="field full original-document"><legend>Evrak Aslı *</legend><label><input type="radio" name="originalDocument" value="Alındı" required> Alındı</label><label><input type="radio" name="originalDocument" value="Firmada" required> Firmada</label></fieldset><label class="field">PDF Ekle (birden fazla seçebilirsiniz)<input id="attachment" data-optional="true" type="file" accept="application/pdf" multiple><small>PDF · Her dosya en fazla 10 MB</small></label><label class="field">Fotoğraf Ekle (birden fazla seçebilirsiniz)<input id="photoAttachment" data-optional="true" type="file" accept="image/png,image/jpeg,image/webp" multiple><small>PNG, JPEG veya WEBP · Her dosya en fazla 10 MB</small></label><label class="field full">Kabul notu<textarea name="notes" rows="3" placeholder="Evrakın durumu ve teslim notları…"></textarea></label></div></div><div class="formbody" ${original ? 'hidden' : ''}><label class="settings-check"><input type="checkbox" id="intakeAddAnother" data-optional="true"> Bu müvekkil için başka evrak var mı?</label></div><div class="actions"><button type="reset" class="secondary">Formu Temizle</button><button class="primary" id="accept">Evrakı Kaydet</button><button type="button" class="secondary" id="createIntakeReceipt" ${receiptId ? '' : 'disabled'}>Tutanak Oluştur</button></div></form>${embeddedIntake ? '' : intakeBatchToolbar() + intakeSearchMarkup()}`;
   document.querySelector('.heading').append($('#newIntakeDocument'));
+  $('#newIntakeDocument').textContent = '＋ Yeni Boş Föy';
   $('#newIntakeDocument').onclick = () => {
-    const form = $('#intakeForm');
-    if (original) {
-      intake(undefined, true);
-      return;
-    }
-    form.hidden = !form.hidden;
-    $('#newIntakeDocument').setAttribute('aria-expanded', String(!form.hidden));
-    if (!form.hidden) form.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    selected = '';
+    intake(undefined, true);
+    renderClientScope();
+    stats();
+    $('#intakeForm').scrollIntoView({ block: 'start', behavior: 'smooth' });
   };
   $('#createIntakeReceipt').onclick = () => {
     if (receiptId) receipt(receiptId);
@@ -143,6 +150,7 @@ function intake(editId, showNew = false, recordReady = false) {
   }
   setupIntakePrincipal($('#intakeForm'), original);
   setupRecordFormTabs($('#intakeForm'), 'intake');
+  if (!embeddedIntake) setupReceivables($('#intakeForm'), original);
   const folioField = $('#intakeFolioNumber').closest('label');
   folioField.classList.add('intake-folio-header');
   const trackingField = $('#intakeTrackingDate').closest('label');
@@ -153,8 +161,9 @@ function intake(editId, showNew = false, recordReady = false) {
   const typePicker = $('#intakeForm .document-types'),
     recordTabs = $('#intakeForm .record-form-tabs');
   if (typePicker && recordTabs) {
-    recordTabs.before(typePicker);
-    typePicker.after(recordHeader);
+    if (!$('#intakeForm').readReceivables) recordTabs.before(typePicker);
+    if ($('#intakeForm').readReceivables) recordTabs.before(recordHeader);
+    else typePicker.after(recordHeader);
   } else $('#intakeForm .panelhead').after(recordHeader);
   // The form shows Tel-1 and, as extra rows, the debtor's other own numbers (Tel-2, Tel-3…).
   // Reference and office numbers are edited in the borrower sheet and left untouched here.
@@ -165,9 +174,9 @@ function intake(editId, showNew = false, recordReady = false) {
         additionalPhones: [ownPhones.phone2, ...ownPhones.additionalPhones].filter(Boolean),
       }
     : {};
-  setupExtraContacts($('#intakeForm'), contactRecord);
   if (original && !$('#intakeForm').elements.phone1.value)
     $('#intakeForm').elements.phone1.value = ownPhones.phone1;
+  setupExtraContacts($('#intakeForm'), contactRecord);
   if (embeddedIntake) prepareEmbeddedIntake($('#intakeForm'));
   else {
     const clientSelect = $('#intakeForm').elements.client;
@@ -235,19 +244,30 @@ function intake(editId, showNew = false, recordReady = false) {
     if (embeddedIntake && (!copySharedIntakeFields(form) || !form.reportValidity())) return;
     const keepForm = !original && (embeddedIntake || addAnother.checked);
     let d = Object.fromEntries(new FormData(form));
+    if (d.taxOffice !== undefined) d.taxOffice = String(d.taxOffice).trim();
+    if (form.readReceivables) {
+      try {
+        d.receivables = form.readReceivables();
+        HanReceivables.applyType(d);
+        HanReceivables.sync(d, businessDate(), parkingFeeInfo);
+        delete d.mixedParkingCommissionCents;
+      } catch (error) {
+        return toast(error.message);
+      }
+    }
     Object.assign(
       d,
       embeddedIntake
         ? window.top.readExtraContacts(window.top.document.getElementById('intakeForm'))
         : readExtraContacts(form),
     );
-    if (original) d.docType = original.docType || 'Senet';
+    if (original && !Array.isArray(d.receivables)) d.docType = original.docType || 'Senet';
     // First extra row is Tel-2, the rest Tel-3, Tel-4…
     Object.assign(
       d,
       borrowerPhoneSlots({ phone1: d.phone1, phone2: '', additionalPhones: d.additionalPhones || [] }),
     );
-    if (['Senet', 'Diğer'].includes(d.docType)) {
+    if (!Array.isArray(d.receivables) && ['Senet', 'Diğer'].includes(d.docType)) {
       const total = financeCents(d.amount),
         paid = financeCents(d.preTrackingPayment || 0);
       if (
@@ -278,7 +298,9 @@ function intake(editId, showNew = false, recordReady = false) {
     if (!validatePropertyFields(d)) return;
     if (d.docType === 'Yediemin Park Ücreti') {
       d.captureStatus = d.captureStatus || '';
-      d.captureDetails = d.captureStatus === 'Var' ? String(d.captureDetails || '').trim() : '';
+      d.captureDetails = ['Var', 'Yok'].includes(d.captureStatus)
+        ? String(d.captureDetails || '').trim()
+        : '';
     }
     if (!['Alındı', 'Firmada'].includes(d.originalDocument))
       return toast('Evrak aslı için Alındı veya Firmada seçeneğini işaretleyin.');
@@ -456,22 +478,61 @@ function intake(editId, showNew = false, recordReady = false) {
       window.modalFormSaved?.(form);
       refreshIntakeBatchAfterSave();
     } else {
-      intake(original?.id);
+      intake(d.receivables ? d.id : original?.id, Boolean(d.receivables), Boolean(d.receivables));
       stats();
     }
     toast(
       (original ? 'Evrak değişiklikleri kaydedildi.' : 'Evrak kaydedildi.') +
-        (String(d.identity || '').trim() ? '' : ' Uyarı: TC bilgisi girilmedi.'),
+        (String(d.identity || '').trim()
+          ? ''
+          : ['Şirket', 'Şahıs Şirketi'].includes(d.debtorType)
+            ? ' Uyarı: Vergi numarası girilmedi.'
+            : ' Uyarı: TC bilgisi girilmedi.'),
     );
     if (!original) {
       if (window.hanRecordsEnabled) offerRecordIdentityChain(d);
       else offerSameIdentityChain(d);
     }
   };
+  if (!embeddedIntake && $('#intakeForm').readReceivables)
+    setupIntakeBorrowerSheet($('#intakeForm'), original);
+  setupBorrowerPartyFields($('#intakeForm'));
+}
+
+function borrowerPartyFields(record = {}) {
+  const type = record.debtorType || 'Şahıs';
+  return `<label class="field">Borçlu Türü<select name="debtorType" required>${['Şahıs', 'Şirket', 'Şahıs Şirketi'].map((value) => `<option value="${value}" ${value === type ? 'selected' : ''}>${value}</option>`).join('')}</select></label>${field('Vergi Dairesi (isteğe bağlı)', 'taxOffice', 'text', record.taxOffice).replace('<input ', '<input data-optional="true" ')}`;
+}
+
+function setupBorrowerPartyFields(form) {
+  const select = form.elements.debtorType;
+  if (!select) return;
+  const update = () => {
+    const company = ['Şirket', 'Şahıs Şirketi'].includes(select.value);
+    const office = form.elements.taxOffice;
+    if (office) {
+      office.closest('label').hidden = !company;
+      office.disabled = !company;
+      office.dataset.optional = 'true';
+      office.required = false;
+      office.removeAttribute('aria-required');
+    }
+    const identity = form.elements.identity;
+    if (identity) {
+      const label = identity.closest('label')?.firstChild;
+      if (label?.nodeType === 3)
+        label.textContent = company ? 'Vergi No (isteğe bağlı)' : 'TC Kimlik No (isteğe bağlı)';
+      identity.dataset.optional = 'true';
+      identity.required = false;
+      identity.removeAttribute('aria-required');
+    }
+  };
+  select.addEventListener('change', update);
+  update();
 }
 
 function debtorStatus(d) {
-  return ['Derdest', 'İnfaz', 'İade', 'İcra'].includes(d.status) ? d.status : 'Derdest';
+  return ['Derdest', 'İnfaz', 'Bekleme', 'İade', 'İcra'].includes(d.status) ? d.status : 'Derdest';
 }
 
 function debtorColumnInput(key, label, options) {
@@ -521,7 +582,7 @@ function matchesDebtorColumns(doc) {
 function documents() {
   debtorStatusFilter = 'Derdest';
   $('#content').innerHTML =
-    `<div class="panel"><div class="panelhead"><div><h2>Borçlu kayıtları</h2><p id="globalSearchHint">Borçlu, telefon, müvekkil, kimlik, evrak no, tür, tutar, tarih veya not ile arayın.</p></div><div class="toolbar global-search"><input class="search" id="docSearch" type="search" placeholder="Tüm alanlarda ara…" aria-label="Borçlu listesinde global arama" aria-describedby="globalSearchHint"><button type="button" class="secondary" id="clearDocSearch" hidden>Temizle</button></div></div><details class="borrower-filter-section" id="borrowerFilterSection"><summary>Filtreleme</summary>${borrowerFilterMarkup()}</details><div class="segments" style="padding:0 24px 20px" role="group" aria-label="Borçlu durum filtresi">${['Derdest', 'İnfaz', 'İade', 'İcra', 'Tümü'].map((status) => `<button type="button" data-status-filter="${status}">${status}</button>`).join('')}</div><div class="overflow borrower-records-scroll"><table class="borrower-records-table"><thead><tr><th>DURUM<select id="debtorColumnStatus" data-optional="true" aria-label="Duruma göre süz" style="display:block;width:100%;margin-top:5px">${['Tümü', 'Derdest', 'İnfaz', 'İade', 'İcra'].map((status) => '<option>' + status + '</option>').join('')}</select></th><th>EVRAK / MÜVEKKİL${debtorColumnInput('type', 'Evrak türüne göre süz', Object.keys(documentTypes))}${debtorColumnInput('record', 'Föy veya müvekkile göre süz')}</th><th>BORÇLU${debtorColumnInput('debtor', 'Borçluya göre süz')}</th><th>DOSYA SORUMLUSU${debtorColumnInput('staff', 'Dosya sorumlusuna göre süz')}</th><th>ASIL ALACAK${debtorColumnInput('amount', 'Asıl alacağa göre süz')}</th><th id="debtorEntryDateHeading"><button type="button" class="link" id="sortDebtorEntryDate" style="padding:0;font:inherit;color:inherit;letter-spacing:inherit">TAKİP TARİHİ ↕</button>${debtorColumnInput('tracking', 'Takip tarihine göre süz')}</th><th>VADE${debtorColumnInput('due', 'Vadeye göre süz')}</th><th id="closureDateHeading" hidden>İNFAZ TARİHİ${debtorColumnInput('closure', 'İnfaz tarihine göre süz')}</th><th>İŞLEM</th></tr></thead><tbody id="docRows"></tbody></table></div><div class="tablefoot" id="docSearchCount" role="status" aria-live="polite"></div></div>`;
+    `<div class="panel"><div class="panelhead"><div><h2>Borçlu kayıtları</h2><p id="globalSearchHint">Borçlu, telefon, müvekkil, kimlik, evrak no, tür, tutar, tarih veya not ile arayın.</p></div><div class="toolbar global-search"><input class="search" id="docSearch" type="search" placeholder="Tüm alanlarda ara…" aria-label="Borçlu listesinde global arama" aria-describedby="globalSearchHint"><button type="button" class="secondary" id="clearDocSearch" hidden>Temizle</button></div></div><details class="borrower-filter-section" id="borrowerFilterSection"><summary>Filtreleme</summary>${borrowerFilterMarkup()}</details><div class="segments" style="padding:0 24px 20px" role="group" aria-label="Borçlu durum filtresi">${['Derdest', 'İnfaz', 'Bekleme', 'İade', 'İcra', 'Tümü'].map((status) => `<button type="button" data-status-filter="${status}">${status}</button>`).join('')}</div><div class="overflow borrower-records-scroll"><table class="borrower-records-table"><thead><tr><th>DURUM<select id="debtorColumnStatus" data-optional="true" aria-label="Duruma göre süz" style="display:block;width:100%;margin-top:5px">${['Tümü', 'Derdest', 'İnfaz', 'Bekleme', 'İade', 'İcra'].map((status) => '<option>' + status + '</option>').join('')}</select></th><th>EVRAK / MÜVEKKİL${debtorColumnInput('type', 'Evrak türüne göre süz', Object.keys(documentTypes))}${debtorColumnInput('record', 'Föy veya müvekkile göre süz')}</th><th>BORÇLU${debtorColumnInput('debtor', 'Borçluya göre süz')}</th><th>DOSYA SORUMLUSU${debtorColumnInput('staff', 'Dosya sorumlusuna göre süz')}</th><th>ASIL ALACAK${debtorColumnInput('amount', 'Asıl alacağa göre süz')}</th><th id="debtorEntryDateHeading"><button type="button" class="link" id="sortDebtorEntryDate" style="padding:0;font:inherit;color:inherit;letter-spacing:inherit">TAKİP TARİHİ ↕</button>${debtorColumnInput('tracking', 'Takip tarihine göre süz')}</th><th>VADE${debtorColumnInput('due', 'Vadeye göre süz')}</th><th id="closureDateHeading" hidden>İNFAZ TARİHİ${debtorColumnInput('closure', 'İnfaz tarihine göre süz')}</th><th>İŞLEM</th></tr></thead><tbody id="docRows"></tbody></table></div><div class="tablefoot" id="docSearchCount" role="status" aria-live="polite"></div></div>`;
   if (['ceo', 'admin'].includes(hanAuth.role)) {
     const archive = document.createElement('button');
     archive.type = 'button';
@@ -658,7 +719,7 @@ function paintDocumentRows(list, isAdmin, showClosureDate) {
     list
       .map(
         (d) =>
-          `<tr class="${debtorStatus(d) === 'İnfaz' ? 'status-closed' : debtorStatus(d) === 'İade' ? 'status-returned' : 'status-pending'}"><td><select ${isAdmin ? '' : 'disabled'} class="row-status" aria-label="${esc(d.debtor)} durumu" data-row-status="${esc(d.id)}">${['Derdest', 'İnfaz', 'İade', 'İcra'].map((status) => `<option ${status === debtorStatus(d) ? 'selected' : ''}>${status}</option>`).join('')}</select></td><td><strong>${esc(d.number)}</strong>${window.testRecordBadge?.(d) || ''}<small>${esc(docType(d))} · ${esc(d._clientName ?? db.clients.find((c) => c.id === d.client)?.name)}</small></td><td><button class="link debtor-name" data-debtor="${esc(d.id)}">${esc(d.debtor)}</button><small>${esc(d.status || 'Derdest')}</small></td><td>${borrowerAssignmentMarkup(d, isAdmin)}</td><td><strong>${d._principalCents ? recordMoney(d._principalCents) : money(d.amount)}</strong>${isAdmin ? `<small>Toplam alacak: ${d._targetCents ? recordMoney(d._targetCents) : money(docFinance(d).target / 100)}</small>` : ''}</td><td>${esc(displayDate(borrowerTrackingDate(d)) || '—')}</td><td>${esc(d.due ? displayDate(d.due) : '—')}</td>${showClosureDate ? '<td>' + esc(displayDate(clientPayoutClosureDate(d)) || '—') + '</td>' : ''}<td><button type="button" class="link" data-edit-debtor="${esc(d.id)}">Düzenle</button><button type="button" class="link" data-add-guarantor="${esc(d.id)}">Kefil Ekle</button><button class="link" data-receipt="${esc(d.id)}">Tutanak Görüntüle ↗</button>${isAdmin ? `<button class="link" data-finance="${esc(d.id)}">Finansal İşlemler</button>` : ''}${hanAuth.canDelete ? `<button type="button" class="link" data-delete-document="${esc(d.id)}">Dosyayı Sil</button>` : ''}${isAdmin && debtorStatus(d) === 'Derdest' ? `<button type="button" class="link" data-move-enforcement="${esc(d.id)}">İcraya Taşı</button>` : ''}</td></tr>`,
+          `<tr class="${debtorStatus(d) === 'İnfaz' ? 'status-closed' : debtorStatus(d) === 'İade' ? 'status-returned' : 'status-pending'}"><td><select ${isAdmin ? '' : 'disabled'} class="row-status" aria-label="${esc(d.debtor)} durumu" data-row-status="${esc(d.id)}">${['Derdest', 'İnfaz', 'Bekleme', 'İade', 'İcra'].map((status) => `<option ${status === debtorStatus(d) ? 'selected' : ''}>${status}</option>`).join('')}</select></td><td><strong>${esc(d.number)}</strong>${window.testRecordBadge?.(d) || ''}<small>${esc(docType(d))} · ${esc(d._clientName ?? db.clients.find((c) => c.id === d.client)?.name)}</small></td><td><button class="link debtor-name" data-debtor="${esc(d.id)}">${esc(d.debtor)}</button><small>${esc(d.status || 'Derdest')}</small></td><td>${borrowerAssignmentMarkup(d, isAdmin)}</td><td><strong>${d._principalCents ? recordMoney(d._principalCents) : money(d.amount)}</strong>${isAdmin ? `<small>Toplam alacak: ${d._targetCents ? recordMoney(d._targetCents) : money(docFinance(d).target / 100)}</small>` : ''}</td><td>${esc(displayDate(borrowerTrackingDate(d)) || '—')}</td><td>${esc(d.due ? displayDate(d.due) : '—')}</td>${showClosureDate ? '<td>' + esc(displayDate(clientPayoutClosureDate(d)) || '—') + '</td>' : ''}<td><button type="button" class="link" data-edit-debtor="${esc(d.id)}">Düzenle</button><button type="button" class="link" data-add-guarantor="${esc(d.id)}">Kefil Ekle</button><button class="link" data-receipt="${esc(d.id)}">Tutanak Görüntüle ↗</button>${isAdmin ? `<button class="link" data-finance="${esc(d.id)}">Finansal İşlemler</button>` : ''}${hanAuth.canDelete ? `<button type="button" class="link" data-delete-document="${esc(d.id)}">Dosyayı Sil</button>` : ''}${isAdmin && debtorStatus(d) === 'Derdest' ? `<button type="button" class="link" data-move-enforcement="${esc(d.id)}">İcraya Taşı</button>` : ''}</td></tr>`,
       )
       .join('') ||
     `<tr><td colspan="${showClosureDate ? 9 : 8}" class="empty">Seçili durum ve aramayla eşleşen borçlu bulunamadı.</td></tr>`;
@@ -741,7 +802,7 @@ function receipt(id, recordReady = false) {
   let d = db.docs.find((x) => x.id === id),
     c = db.clients.find((x) => x.id === d.client);
   $('#modal').innerHTML =
-    `<div class="receipt"><p class="eyebrow">hanhukuk 1.1.1 · EVRAK KABUL</p>${firmReceipt()}<h2>${esc(docType(d))} Teslim Tutanağı</h2><p><b>Evrak No:</b> ${esc(d.number)}<br><b>Kabul Tarihi:</b> ${new Date(d.created).toLocaleDateString('tr-TR')}<br><b>Müvekkil:</b> ${esc(c?.name)}<br><b>Borçlu:</b> ${esc(d.debtor)}<br><b>Evrak Aslı:</b> ${esc(d.originalDocument || 'Belirtilmedi')}<br><b>Evrak No / Referans:</b> ${esc(d.serial || '—')}${documentExtraReceipt(d)}<br><b>Tutar:</b> ${money(d.amount)}<br><b>Vade:</b> ${esc(d.due ? displayDate(d.due) : '—')}</p><p><b>Tel-1 / Tel-2:</b> ${esc(d.phone1 || '—')} / ${esc(d.phone2 || '—')}<br><b>Ref. Tel-1 / Tel-2:</b> ${esc(d.referencePhone1 || '—')} / ${esc(d.referencePhone2 || '—')}<br><b>Ofis Tel-1 / Tel-2:</b> ${esc(d.officePhone1 || '—')} / ${esc(d.officePhone2 || '—')}<br><b>Adres:</b> ${esc([d.address, d.district, d.city].filter(Boolean).join(' / '))}<br><b>Borçlu Adres-2:</b> ${esc([d.address2, d.address2District, d.address2City].filter(Boolean).join(' / ') || '—')}<br><b>Borçlu Adres (Ofis)-3:</b> ${esc([d.officeAddress3, d.officeAddress3District, d.officeAddress3City].filter(Boolean).join(' / ') || '—')}</p><p><b>Dosya Sorumlusu:</b> ${esc(personnel.find((p) => p.id === d.relatedStaff)?.name || d.relatedStaffName || '—')}<br><b>Teslim Eden:</b> ${esc(d.deliveredBy)}<br><b>Teslim Alan:</b> ${esc(d.receivedBy)}</p><p><b>Kabul Notu:</b> ${esc(d.notes || '—')}</p>${d.fileData ? `<p>${attachmentDownloadLink(d.fileData, d.fileName, 'Ekli evrakı indir: ' + (d.fileName || 'Evrak'), 'pdf')}</p>` : ''}${d.photoData ? `<p>${attachmentDownloadLink(d.photoData, d.photoFileName || 'fotograf', 'Fotoğrafı indir: ' + (d.photoFileName || 'Fotoğraf'), 'photo')}</p>` : ''}<div class="grid" style="margin-top:35px"><div>Teslim Eden İmza<br>________________</div><div>Teslim Alan İmza<br>________________</div></div><p style="font-size:11px;color:#8a95a2;margin-top:30px">Prototip çıktısıdır. Resmî işlem veya elektronik imza içermez.</p></div><div class="actions"><button class="secondary" id="closeReceipt">Kapat</button><button class="primary" id="print">Yazdır / PDF</button></div>`;
+    `<div class="receipt"><p class="eyebrow">hanhukuk 1.1.1 · EVRAK KABUL</p>${firmReceipt()}<h2>${esc(docType(d))} Teslim Tutanağı</h2><p><b>Evrak No:</b> ${esc(d.number)}<br><b>Kabul Tarihi:</b> ${new Date(d.created).toLocaleDateString('tr-TR')}<br><b>Müvekkil:</b> ${esc(c?.name)}<br><b>Borçlu:</b> ${esc(d.debtor)}<br><b>Evrak Aslı:</b> ${esc(d.originalDocument || 'Belirtilmedi')}<br><b>Evrak No / Referans:</b> ${esc(d.serial || '—')}${documentExtraReceipt(d)}<br><b>Tutar:</b> ${money(d.amount)}<br><b>Vade:</b> ${esc(d.due ? displayDate(d.due) : '—')}</p><p><b>Tel-1 / Tel-2:</b> ${esc(d.phone1 || '—')} / ${esc(d.phone2 || '—')}<br><b>Ref. Tel-1 / Tel-2:</b> ${esc(d.referencePhone1 || '—')} / ${esc(d.referencePhone2 || '—')}<br><b>Ofis Tel-1 / Tel-2:</b> ${esc(d.officePhone1 || '—')} / ${esc(d.officePhone2 || '—')}<br><b>Adres:</b> ${esc([d.address, d.district, d.city].filter(Boolean).join(' / '))}<br><b>Borçlu Adres-2:</b> ${esc([d.address2, d.address2District, d.address2City].filter(Boolean).join(' / ') || '—')}<br><b>Borçlu Adres (Ofis)-3:</b> ${esc([d.officeAddress3, d.officeAddress3District, d.officeAddress3City].filter(Boolean).join(' / ') || '—')}</p><p><b>Dosya Sorumlusu:</b> ${esc(personnel.find((p) => p.id === d.relatedStaff)?.name || d.relatedStaffName || '—')}<br><b>Teslim Eden:</b> ${esc(d.deliveredBy)}<br><b>Teslim Alan:</b> ${esc(d.receivedBy)}</p><p><b>Kabul Notu:</b> ${esc(d.notes || '—')}</p>${d.fileData ? `<p>${attachmentDownloadLink(d.fileData, d.fileName, 'Ekli evrakı indir: ' + (d.fileName || 'Evrak'), 'pdf')}</p>` : ''}${d.photoData ? `<p>${attachmentDownloadLink(d.photoData, d.photoFileName || 'fotograf', 'Fotoğrafı indir: ' + (d.photoFileName || 'Fotoğraf'), 'photo')}</p>` : ''}${receivableSummary(d)}<div class="grid" style="margin-top:35px"><div>Teslim Eden İmza<br>________________</div><div>Teslim Alan İmza<br>________________</div></div><p style="font-size:11px;color:#8a95a2;margin-top:30px">Prototip çıktısıdır. Resmî işlem veya elektronik imza içermez.</p></div><div class="actions"><button class="secondary" id="closeReceipt">Kapat</button><button class="primary" id="print">Yazdır / PDF</button></div>`;
   $('#modal').showModal();
   $('#closeReceipt').onclick = () => $('#modal').close();
   $('#print').onclick = () => window.print();
@@ -782,7 +843,17 @@ function setupOptionalDebtorFields() {
 
 function changeDebtorStatus(id, status) {
   const d = db.docs.find((d) => d.id === id);
-  if (!d || !['Derdest', 'İnfaz', 'İade', 'İcra'].includes(status)) return;
+  if (!d || !['Derdest', 'İnfaz', 'Bekleme', 'İade', 'İcra'].includes(status)) return;
+  const waiting = typeof parkingWaitingInfo === 'function' && parkingWaitingInfo(d, businessDate());
+  if (waiting?.waiting && ['Derdest', 'İcra'].includes(status)) {
+    toast(
+      waiting.readyOn
+        ? 'Dosya ' + displayDate(waiting.readyOn) + ' tarihinde Derdest’e geçecek.'
+        : 'Önce men tarihini girin.',
+    );
+    docRows();
+    return;
+  }
   if (status === 'İcra' && debtorStatus(d) !== 'İcra') return moveBorrowerToEnforcement(id);
   const totals = docFinance(d);
   if (status === 'İnfaz' && totals.remaining > 0) {
@@ -1029,7 +1100,6 @@ function addToIntakeBatch(id) {
 
 function intakeBatchToolbar() {
   const ids = intakeBatchIds();
-  const count = ids.length;
   const batch = ids
     .map((id) => (window.hanRecordsEnabled ? intakeBatchDocument(id) : db.docs.find((doc) => doc.id === id)))
     .filter(Boolean);
@@ -1043,16 +1113,14 @@ function intakeBatchToolbar() {
       '</ul>'
     : '';
   return (
-    '<div id="intakeBatchGroup" class="panel formbody" style="margin-bottom:20px"><div class="toolbar"><button type="button" class="primary" id="intakeBatchReceipt">Teslim Tesellüm (' +
-    count +
-    ')</button><button type="button" class="secondary" id="newIntakeBatch">Yeni Teslim Grubu</button></div><p>Bu kabul grubunda kaydedilen evraklar toplu listelenir. Yeni teslim grubu açmak kayıtlı evrakları silmez.</p>' +
+    '<div id="intakeBatchGroup" class="panel formbody" style="margin-bottom:20px"><div class="toolbar"><button type="button" class="primary" id="intakeBatchReceipt">Teslim Tesellüm Al</button><button type="button" class="secondary" id="newIntakeBatch">Yeni Teslim Grubu</button></div><p>Teslim tesellüm için müvekkil ve kayıt tarihi aralığı seçin. Bu oturumda kaydedilen evraklar aşağıda listelenir.</p>' +
     summary +
     '</div>'
   );
 }
 
 function bindIntakeBatchToolbar() {
-  $('#intakeBatchReceipt').onclick = () => intakeBatchReceipt();
+  $('#intakeBatchReceipt').onclick = () => intakeBatchReceiptFilter();
   $('#newIntakeBatch').onclick = () => {
     sessionStorage.setItem(intakeBatchKey(), '[]');
     intake();
@@ -1060,24 +1128,39 @@ function bindIntakeBatchToolbar() {
   };
 }
 
-function intakeBatchReceipt(recordReady = false) {
+function intakeBatchReceipt(recordReady = false, selection = null) {
   if (window.hanRecordsEnabled && !recordReady)
     return hydrateIntakeBatch()
       .then(() => intakeBatchReceipt(true))
       .catch((error) => toast(error.message));
-  const ids = intakeBatchIds(),
-    docs = ids
-      .map((id) => (window.hanRecordsEnabled ? intakeBatchDocument(id) : db.docs.find((d) => d.id === id)))
-      .filter(Boolean);
+  const batchIds = intakeBatchIds(),
+    docs =
+      selection?.docs ||
+      batchIds
+        .map((id) => (window.hanRecordsEnabled ? intakeBatchDocument(id) : db.docs.find((d) => d.id === id)))
+        .filter(Boolean);
+  const ids = docs.map((doc) => doc.id);
   if (!docs.length) return toast('Bu teslim grubunda henüz kaydedilmiş evrak yok.');
   const total = docs.reduce((sum, d) => sum + financeCents(d.amount), 0);
   $('#modal').innerHTML =
     `<div class="receipt">${firmReceipt()}<h2>Teslim Tesellüm Tutanağı</h2><p>Tarih: ${esc(displayDate(businessDate()))} · Evrak adedi: ${docs.length}</p><div class="overflow"><table><thead><tr><th>SIRA</th><th>EVRAK NO / TÜR</th><th>MÜVEKKİL</th><th>BORÇLU</th><th>VADE</th><th>EVRAK ASLI</th><th>TUTAR</th></tr></thead><tbody>${docs.map((d, i) => `<tr><td>${i + 1}</td><td>${esc(d.number)}<small>${esc(docType(d))}</small></td><td>${esc((window.hanRecordsEnabled ? intakeClient(d.client) : db.clients.find((c) => c.id === d.client))?.name || '—')}</td><td>${esc(d.debtor)}</td><td>${esc(displayDate(d.due) || '—')}</td><td>${esc(d.originalDocument || '—')}</td><td>${money(d.amount)}</td></tr>`).join('')}</tbody><tfoot><tr><td colspan="6"><b>TOPLAM</b></td><td><b>${money(total / 100)}</b></td></tr></tfoot></table></div><div class="grid" style="margin-top:35px"><div>Teslim Eden: ${esc([...new Set(docs.map((d) => d.deliveredBy).filter(Boolean))].join(', '))}<br>İmza: __________________</div><div>Teslim Alan: ${esc([...new Set(docs.map((d) => d.receivedBy).filter(Boolean))].join(', '))}<br>İmza: __________________</div></div><p>Yukarıda listelenen evraklar belirtilen asıl durumlarıyla teslim edilmiştir.</p></div><div class="actions"><button type="button" class="secondary" id="closeBatchReceipt">Kapat</button><button type="button" class="primary" id="printBatchReceipt">Yazdır / PDF</button></div>`;
+  if (selection) {
+    const line = document.createElement('p');
+    line.textContent =
+      'Müvekkil: ' +
+      selection.clientName +
+      ' · Kayıt / Takip Tarihi Aralığı: ' +
+      displayDate(selection.from) +
+      ' – ' +
+      displayDate(selection.to);
+    $('#modal .receipt h2').after(line);
+  }
   $('#closeBatchReceipt').onclick = () => $('#modal').close();
   $('#printBatchReceipt').onclick = () => window.print();
-  addWhatsAppFileButton($('#modal').querySelector('.actions'), docs[0], 'batchReceipt', null, {
-    documentIds: ids,
-  });
+  if (ids.length <= 50)
+    addWhatsAppFileButton($('#modal').querySelector('.actions'), docs[0], 'batchReceipt', null, {
+      documentIds: ids,
+    });
   $('#modal').showModal();
 }
 
@@ -1127,13 +1210,23 @@ function recordFieldGroup(node, kind) {
     )
   )
     return kind === 'client' ? 'staff' : 'delivery';
-  if (keys.some((k) => ['debtor', 'identity', 'officeIdentity'].includes(k)))
+  if (keys.some((k) => ['debtor', 'debtorType', 'taxOffice', 'identity', 'officeIdentity'].includes(k)))
     return kind === 'client' ? 'general' : 'debtor';
   if (
     kind === 'intake' &&
     (node.id === 'typeFields' ||
       node.classList.contains('document-types') ||
-      keys.some((k) => ['docType', 'amount', 'due', 'issued', 'serial'].includes(k)))
+      keys.some((k) =>
+        [
+          'docType',
+          'amount',
+          'due',
+          'issued',
+          'serial',
+          'enforcementOffice',
+          'enforcementFileNumber',
+        ].includes(k),
+      ))
   )
     return 'document';
   return kind === 'client' ? 'general' : 'document';
@@ -1283,7 +1376,12 @@ function filteredBorrowers(docs, filters, status, query, isAdmin) {
       )
     )
       return false;
-    if ((filters.client && d.client !== filters.client) || (filters.type && docType(d) !== filters.type))
+    if (
+      (filters.client && d.client !== filters.client) ||
+      (filters.type &&
+        docType(d) !== filters.type &&
+        !d.receivables?.some((item) => item.docType === filters.type))
+    )
       return false;
     if (
       filters.staff &&

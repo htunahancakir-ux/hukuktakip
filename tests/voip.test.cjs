@@ -119,8 +119,7 @@ test('phone normalization deduplicates numbers and excludes invalid values', () 
   assert.equal(
     phones({ phone1: '05320000000', phone2: '905320000000', additionalPhones: ['05320000001'] }).length,
     2,
-  );
-  // Numbers added earlier land in additionalPhones; they fill an empty Tel-2 first.
+  ); // Numbers added earlier land in additionalPhones; they fill an empty Tel-2 first.
   assert.deepEqual(
     phones({ phone1: '05320000000', additionalPhones: ['05320000001', '05320000002'] }).map((p) => p.label),
     ['Tel-1', 'Tel-2', 'Tel-3'],
@@ -350,60 +349,117 @@ test('configuration keeps keys encrypted and validates provider, host and duplic
     /iki kullanıcı/,
   );
 });
-test('manager extension panel saves a single user and shows the saved value', async () => {
+test('extension panel lists extensions and assigns a person picked by name', async () => {
   const { JSDOM } = require('jsdom');
   const dom = new JSDOM('<main><section id="permissions"></section></main>', { runScripts: 'outside-only' }),
     w = dom.window;
-  w.esc = (value) => String(value || '');
+  w.esc = (value) => String(value ?? '');
+  w.confirm = () => true;
   w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
-  let input;
+  const users = [
+    { id: 'u', name: 'Cihan Erol', username: 'cihan', role: 'staff', extension: '1000' },
+    { id: 's', name: 'Ayşe Kaya', username: 'ayse', role: 'staff', extension: '' },
+  ];
+  const puts = [];
+  const view = () => ({
+    users,
+    extensions: ['1000', '1001'].map((extension) => ({
+      extension,
+      userId: users.find((u) => u.extension === extension)?.id || '',
+      fromSwitchboard: true,
+    })),
+    switchboardListed: true,
+  });
   w.voipApi = async (path, method, value) => {
     assert.equal(path, 'extensions');
-    if (method === 'PUT') input = value;
-    return {
-      users: [
-        {
-          id: 's',
-          name: 'Personel',
-          username: 'staff',
-          role: 'staff',
-          extension: input ? input.extension : '1002',
-        },
-      ],
-    };
+    if (method === 'PUT') {
+      puts.push(value);
+      if (value.replace) for (const u of users) if (u.extension === value.extension) u.extension = '';
+      const target = users.find((u) => u.id === value.userId);
+      if (target) target.extension = value.extension;
+    }
+    return view();
   };
   await w.voipExtensionsPanel(w.document.querySelector('#permissions'));
-  const form = w.document.querySelector('form');
-  const personnelSource = await fs.readFile('outputs/icrapro/personnel.js', 'utf8');
-  w.eval(
-    personnelSource.slice(
-      personnelSource.indexOf('function mandatoryControls('),
-      personnelSource.indexOf('function validateSettingsDraft('),
-    ),
+  const row = (ext) => w.document.querySelector('[data-extension-row="' + ext + '"]');
+  assert.deepEqual(
+    [...w.document.querySelectorAll('[data-extension-row]')].map((f) => f.dataset.extensionRow),
+    ['1000', '1001'],
+    'one row per extension',
   );
-  w.enforceRequired(form);
-  form.elements.extension.value = '1000';
-  form.requestSubmit();
+  assert.equal(row('1000').elements.person.value, 'Cihan Erol (cihan)');
+  assert.equal(row('1001').elements.person.value, '');
+  assert.equal(w.document.querySelectorAll('#voipExtensionPeople option').length, 2, 'name suggestions');
+
+  row('1001').elements.person.value = 'Ayşe Kaya (ayse)';
+  row('1001').requestSubmit();
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(input.userId, 's');
-  assert.equal(input.extension, '1000');
-  assert.equal(form.querySelector('[role="status"]').textContent, 'Kaydedildi.');
-  assert.equal(form.elements.extension.defaultValue, '1000');
-  form.elements.extension.value = '';
-  assert.equal(
-    form.checkValidity(),
-    true,
-    'Blank extensions remain optional after the application form upgrader',
-  );
-  form.requestSubmit();
+  assert.deepEqual({ ...puts.at(-1) }, { userId: 's', extension: '1001', replace: true });
+  assert.equal(row('1001').elements.person.value, 'Ayşe Kaya (ayse)');
+  assert.equal(row('1001').querySelector('[role="status"]').textContent, 'Kaydedildi.');
+
+  // Typing a plain name works too; taking 1000 moves it from Cihan to Ayşe.
+  row('1000').elements.person.value = 'ayşe kaya';
+  row('1000').requestSubmit();
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(input.extension, '');
-  assert.equal(form.elements.extension.defaultValue, '');
-  assert.equal(form.querySelector('[role="status"]').textContent, 'Kaydedildi.');
-  form.elements.extension.value = 'abc';
-  assert.equal(form.checkValidity(), false, 'Nonempty extensions still require digits');
-  dom.window.close();
+  assert.deepEqual({ ...puts.at(-1) }, { userId: 's', extension: '1000', replace: true });
+
+  row('1000').elements.person.value = 'Olmayan Kişi';
+  row('1000').requestSubmit();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.match(row('1000').querySelector('[role="status"]').textContent, /bulunamadı/);
+  assert.equal(puts.length, 2, 'unknown names are not sent');
+
+  row('1000').querySelector('[data-unassign]').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual({ ...puts.at(-1) }, { userId: 's', extension: '' });
+
+  const add = w.document.querySelector('[data-extension-add]');
+  add.elements.extension.value = '1002';
+  add.requestSubmit();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual({ ...puts.at(-1) }, { addExtension: '1002' });
+  w.close();
 });
+
+test('extensions API: switchboard list, take-over with replace, and a kept list of added extensions', async () => {
+  let statusCalls = 0;
+  const h = harness(async (url) => {
+    if (new URL(url).pathname === '/user_statuses') {
+      statusCalls++;
+      return new Response('[{"user":1000,"status":"AVAILABLE"},{"user":1001,"status":"UNREGISTERED"}]');
+    }
+    return new Response('[]');
+  });
+  h.state.voipConfig.extensions = { u: '1001' };
+  const first = await h.call('extensions');
+  assert.deepEqual(
+    first.extensions.map((e) => [e.extension, e.userId, e.fromSwitchboard]),
+    [
+      ['1000', '', true],
+      ['1001', 'u', true],
+    ],
+  );
+  await h.call('extensions');
+  assert.equal(statusCalls, 1, 'switchboard list cached');
+  await assert.rejects(
+    h.call('extensions', 'PUT', { userId: 's', extension: '1001' }),
+    /başka bir kullanıcıya atanmış/,
+  );
+  const moved = await h.call('extensions', 'PUT', { userId: 's', extension: '1001', replace: true });
+  assert.deepEqual(h.state.voipConfig.extensions, { s: '1001' }, 'taken from u');
+  assert.equal(moved.extensions.find((e) => e.extension === '1001').userId, 's');
+  await h.call('extensions', 'PUT', { addExtension: '1002' });
+  assert.ok(
+    (await h.call('extensions')).extensions.some((e) => e.extension === '1002' && !e.fromSwitchboard),
+  );
+  await assert.rejects(h.call('extensions', 'PUT', { removeExtension: '1001' }), /Önce bu dahilinin/);
+  await h.call('extensions', 'PUT', { removeExtension: '1002' });
+  assert.ok(!(await h.call('extensions')).extensions.some((e) => e.extension === '1002'));
+  h.user = { id: 's', name: 'Personel', role: 'staff', staffId: 'p' };
+  await assert.rejects(h.call('extensions'), /yalnızca CEO ve yöneticiler/);
+});
+
 test('reservation prevents concurrent dialing and replays request without another provider call', async () => {
   let release,
     started = 0;
@@ -670,12 +726,14 @@ test('UI keeps numbers, history and role-controlled audio together without prelo
   try {
     const w = dom.window;
     let startCount = 0,
-      savedPhone;
+      savedPhone,
+      savedSources;
     Object.assign(w, {
       hanAuth: { id: 's', role: 'staff' },
       esc: (v) => String(v).replaceAll('<', '&lt;'),
       saveRecordIntakeMetadata: async (_before, next) => {
         savedPhone = JSON.parse(JSON.stringify([next.phone1, next.phone2, next.additionalPhones]));
+        savedSources = JSON.parse(JSON.stringify(next.phoneSources));
         return next;
       },
       fetch: async (url) =>
@@ -726,10 +784,13 @@ test('UI keeps numbers, history and role-controlled audio together without prelo
     w.document.querySelector('[data-add-phone]').click();
     const add = w.document.querySelector('.voip-add-phone');
     add.elements.phone.value = '05320000009';
+    assert.equal(add.querySelector('[data-phone-source]').required, false);
+    add.querySelector('[data-phone-source]').value = 'Kardeşi';
     add.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
     await new Promise((r) => setImmediate(r));
     // An older extra number moves up into the empty Tel-2; the new one follows as Tel-3.
     assert.deepEqual(savedPhone, ['0 (532) 000 00 00', '05320000001', ['0 (532) 000 00 09']]);
+    assert.deepEqual(savedSources, { 5320000009: 'Kardeşi' });
     assert.match(w.document.body.textContent, /Tel-3 alanına eklendi/);
     assert.equal(w.document.querySelectorAll('audio').length, 0);
     const panel = w.document.querySelector('.voip-number-panel');
@@ -863,7 +924,11 @@ test('live call workspace preserves typed notes across polling, then saves the c
     await new Promise((r) => setImmediate(r));
     assert.equal(w.document.querySelector('[data-current-outcomes]').hidden, false);
     assert.equal(textarea.value, draft);
-    assert.equal(w.document.getElementById('voipWebphone'), null, 'ended call releases microphone iframe');
+    assert.equal(
+      w.document.getElementById('voipWebphone').style.visibility,
+      'hidden',
+      'ended call hides the web phone at once; its teardown waits so the result form stays fast',
+    );
     assert.equal(
       w.document.getElementById('voipActiveCall').dataset.modalPromoted,
       'true',
@@ -874,9 +939,12 @@ test('live call workspace preserves typed notes across polling, then saves the c
       .querySelector('form')
       .dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
     await new Promise((r) => setImmediate(r));
+    assert.equal(w.document.getElementById('voipActiveCall'), null, 'the result window closes at once');
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
     assert.equal(saved.result, 'Olumlu');
     assert.equal(saved.note, draft);
-    assert.equal(w.document.getElementById('voipActiveCall'), null);
+    await new Promise((r) => setTimeout(r, 1600));
+    assert.equal(w.document.getElementById('voipWebphone'), null, 'ended call releases microphone iframe');
     w.showVoipActive({ id: 'd' }, { ...call, id: 'busy', status: 'busy', statusLabel: 'Meşgul' });
     assert.equal(w.document.querySelector('[name="result"]:checked').value, 'Meşgul');
   } finally {
@@ -984,6 +1052,7 @@ test('recordings archive filters status and result, plays on demand and offers n
                       recordingPresent: true,
                       archivedAt: '2026-11-09',
                       canListen: true,
+                      providerEnd: { answered: true, talkSeconds: 50, by: 'callee', result: 'Cevaplandı' },
                       transcription: { status: 'completed' },
                     },
                   ],
@@ -995,6 +1064,11 @@ test('recordings archive filters status and result, plays on demand and offers n
     allowMicrophone(w);
     w.voipRecordingsPage();
     await new Promise((r) => setImmediate(r));
+    // The recordings list shows what the exchange answered next to the status and the result.
+    assert.match(
+      w.document.querySelector('tr[data-voip-entry] .voip-provider-line').textContent,
+      /Santral yanıtı: cevaplandı · konuşma 50 sn · sonuç Cevaplandı · kapatan aranan taraf/,
+    );
     assert.equal(w.document.querySelectorAll('[data-voip-result]').length, 0);
     assert.equal(w.document.querySelectorAll('audio').length, 0);
     const form = w.document.querySelector('form');
@@ -1200,7 +1274,7 @@ test('canceling an in-flight originate persists intent and hangs up as soon as t
 test('cancel control is immediately visible while originate is pending', async () => {
   const { JSDOM } = require('jsdom');
   const dom = new JSDOM(
-    '<div class="header-actions"></div><div id="area"><span id="slot"><button id="launch">Ara</button></span></div>',
+    '<div class="shell"><header><div class="header-actions"></div></header></div><div id="area"><span id="slot"><button id="launch">Ara</button></span></div>',
     {
       url: 'https://example.test',
       runScripts: 'dangerously',
@@ -1234,7 +1308,14 @@ test('cancel control is immediately visible while originate is pending', async (
     await assert.rejects(
       w.voipStartCancelable({ requestId: 'second' }, w.document.getElementById('area'), () => {}),
     );
-    const globalHangup = w.document.querySelector('.header-actions [data-global-hangup]');
+    const bar = w.document.getElementById('voipCallBar');
+    assert(bar, 'call bar exists before originate completes');
+    assert.equal(bar.parentElement.className, 'shell', 'the bar is part of the page shell');
+    assert.equal(bar.nextElementSibling.tagName, 'HEADER', 'the bar sits above the app header');
+    assert(w.document.body.classList.contains('voip-call-bar-open'));
+    assert.match(bar.querySelector('[data-bar-status]').textContent, /Aranıyor/);
+    assert.equal(bar.querySelector('[data-bar-mute]').hidden, true, 'no mute before a call exists');
+    const globalHangup = bar.querySelector('[data-global-hangup]');
     assert(globalHangup, 'global hangup exists before originate completes');
     // Wait until the microphone check passed and the start request is with the switchboard.
     while (!release) await new Promise(setImmediate);
@@ -1245,9 +1326,13 @@ test('cancel control is immediately visible while originate is pending', async (
       w.document.querySelector('.voip-cancel-wait').textContent,
       /Kapanana kadar lütfen bekleyiniz/,
     );
+    assert.equal(globalHangup.disabled, true);
+    assert.match(bar.querySelector('[data-bar-status]').textContent, /İptal ediliyor/);
     release();
     assert.equal((await pending).call.cancelRequested, true);
     assert.equal(w.document.querySelector('[data-cancel-starting]'), null);
+    assert.equal(w.document.getElementById('voipCallBar'), null, 'the bar closes with the dial attempt');
+    assert.equal(w.document.body.classList.contains('voip-call-bar-open'), false);
   } finally {
     dom.window.close();
   }
@@ -1359,6 +1444,7 @@ test('confirmed automatically saved busy calls close without a second evaluation
     };
     w.showVoipActive({}, call);
     assert(w.document.getElementById('voipActiveCall'));
+    assert(w.document.getElementById('voipCallBar'), 'the bar shows while the call rings');
     w.showVoipActive(
       {},
       {
@@ -1370,6 +1456,7 @@ test('confirmed automatically saved busy calls close without a second evaluation
       },
     );
     assert.equal(w.document.getElementById('voipActiveCall'), null);
+    assert.equal(w.document.getElementById('voipCallBar'), null, 'busy closes the bar without a prompt');
     assert.equal(w.returnedToDial, true, 'busy returns to the originating dial screen');
     assert(w.document.querySelector('#voipWebphone iframe'), 'busy preserves registered webphone');
     assert.equal(w.document.getElementById('voipPhoneDock').hidden, true);
@@ -1631,6 +1718,685 @@ test('unanswered call saves its outcome automatically and preserves live note', 
   assert.equal(call.draftNote, undefined);
 });
 
+// Browser harness shared by the call bar tests: dialog methods behave like a modal-capable browser.
+async function callBarWindow(extra = {}) {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM(
+    '<div class="shell"><header><div class="header-actions"></div></header><main id="content">Sayfa</main></div><dialog id="borrowerDetail" open><button data-open-voip>☎ Ara</button></dialog>',
+    { url: 'https://example.test', runScripts: 'dangerously' },
+  );
+  const w = dom.window;
+  const calls = [];
+  w.HTMLDialogElement.prototype.show = function () {
+    this.open = true;
+  };
+  w.HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+  };
+  w.HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  Object.assign(w, {
+    hanAuth: { id: 'u', role: 'staff' },
+    esc: (v) => String(v).replaceAll('<', '&lt;'),
+    fetch: async (url, options = {}) => {
+      const body = options.body && JSON.parse(options.body);
+      calls.push({ url: url.replace(/^\/api\/voip\//, ''), body });
+      if (extra.fetch) return extra.fetch(url, body);
+      return {
+        ok: true,
+        json: async () =>
+          url.endsWith('/mute')
+            ? { muted: body.muted }
+            : url.includes('calls?')
+              ? { calls: [], results: ['Olumlu'] }
+              : { ok: true },
+      };
+    },
+  });
+  // Top-level const values stay local to eval, so hand the UI state to the test explicitly.
+  w.eval(
+    (await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8')) + '\nwindow.voipUiForTest = voipUi;',
+  );
+  allowMicrophone(w);
+  return { dom, w, calls };
+}
+const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
+const ui = (w) => w.voipUiForTest;
+
+test('call bar follows an active call on every screen and controls it while the call window is hidden', async () => {
+  const { dom, w, calls } = await callBarWindow();
+  try {
+    const call = {
+      id: 'bar-call',
+      documentId: 'd',
+      documentNumber: 'E-12',
+      phone: '905320000000',
+      status: 'ringing',
+      statusLabel: 'Çalıyor',
+      createdAt: new Date(Date.now() - 65000).toISOString(),
+      outboundLine: 2,
+      outboundNumber: '908501234567',
+    };
+    w.showVoipActive({ id: 'd', number: 'E-12', debtor: 'Ayşe Yılmaz' }, call);
+    const bar = w.document.getElementById('voipCallBar');
+    const field = (name) => bar.querySelector('[data-bar-' + name + ']');
+    assert(bar, 'the bar opens with the call');
+    assert.equal(bar.parentElement.className, 'shell');
+    assert.equal(bar.parentElement.firstElementChild, bar, 'above the header, at the very top of the shell');
+    assert.equal(field('name').textContent, 'Ayşe Yılmaz');
+    assert.equal(field('avatar').textContent, 'AY');
+    assert.match(field('detail').textContent, /0 \(532\) 000 00 00 · Föy E-12/);
+    assert.equal(field('status').textContent, 'Çalıyor');
+    assert.equal(bar.dataset.phase, 'ringing');
+    assert.match(field('time').textContent, /^01:0\d$/, 'timer counts from the dial moment');
+    assert.match(field('line').textContent, /2\. hat/);
+
+    // Changing menus or scrolling replaces page content only; the bar belongs to the shell.
+    w.document.getElementById('content').innerHTML = '<p>Başka menü</p>';
+    assert.equal(w.document.getElementById('voipCallBar'), bar);
+
+    // The provider answers: the same bar reflects it.
+    ui(w).updateActive({ ...call, status: 'answered', statusLabel: 'Görüşülüyor' });
+    assert.equal(bar.dataset.phase, 'answered');
+    assert.equal(field('status').textContent, 'Görüşülüyor');
+
+    // Muting from the bar goes through the confirmed provider call and mirrors on both controls.
+    const mute = bar.querySelector('[data-bar-mute]');
+    assert.equal(mute.hidden, false);
+    mute.click();
+    assert.equal(mute.disabled, true, 'busy while the provider confirms');
+    await settle();
+    assert(calls.some((entry) => entry.url === 'mute' && entry.body.muted === true));
+    assert.equal(mute.disabled, false);
+    assert.equal(mute.getAttribute('aria-pressed'), 'true');
+    assert.equal(w.document.querySelector('[data-current-mute]').getAttribute('aria-pressed'), 'true');
+
+    // Minimize hides the call window; the bar stays and can reopen it.
+    w.document.querySelector('[data-current-minimize]').click();
+    const host = w.document.getElementById('voipActiveCall');
+    assert.equal(host.hidden, true);
+    assert.equal(w.document.getElementById('voipCallBar'), bar, 'minimizing never removes the bar');
+    bar.querySelector('[data-bar-open]').click();
+    assert.equal(host.hidden, false);
+    assert.equal(host.open, true);
+    assert.equal(ui(w).minimized, false);
+    assert.equal(w.document.activeElement, host.querySelector('textarea'), 'notes receive focus');
+
+    // Hang up from the bar while the window is minimized again.
+    w.document.querySelector('[data-current-minimize]').click();
+    assert.equal(host.hidden, true);
+    bar.querySelector('[data-global-hangup]').click();
+    await settle();
+    assert(calls.some((entry) => entry.url === 'hangup' && entry.body.id === 'bar-call'));
+    assert.equal(field('status').textContent, 'Sonlandırılıyor…');
+    assert.equal(bar.dataset.phase, 'ending');
+    assert.equal(bar.querySelector('[data-global-hangup]').disabled, true);
+
+    // The provider confirms termination: the bar goes away and the result form takes over.
+    ui(w).updateActive({ ...call, status: 'completed', statusLabel: 'Görüşüldü', duration: 34 });
+    assert.equal(w.document.getElementById('voipCallBar'), null);
+    assert.equal(w.document.body.classList.contains('voip-call-bar-open'), false);
+    assert.equal(host.querySelector('[data-current-outcomes]').hidden, false);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('call bar closes without a prompt for busy and unreachable calls and survives a rejected second dial', async () => {
+  const { dom, w } = await callBarWindow({
+    fetch: async (url) =>
+      url.endsWith('/start')
+        ? { ok: false, status: 409, json: async () => ({ error: 'Zaten etkin bir aramanız var.' }) }
+        : { ok: true, json: async () => ({ ok: true }) },
+  });
+  try {
+    const call = { id: 'a', phone: '905320000000', status: 'ringing', createdAt: new Date().toISOString() };
+    w.showVoipActive({}, call);
+    const bar = w.document.getElementById('voipCallBar');
+    assert(bar);
+    // A second, rejected dial attempt must neither replace nor close the running call's bar.
+    await assert.rejects(
+      w.voipStartCancelable(
+        { requestId: 'second-dial-0001', phone: '905321111111' },
+        w.document.body,
+        () => {},
+      ),
+      /etkin bir aramanız var/,
+    );
+    assert.equal(w.document.getElementById('voipCallBar'), bar);
+    assert.match(bar.querySelector('[data-bar-name]').textContent, /0 \(532\) 000 00 00/);
+    assert.equal(bar.querySelector('[data-global-hangup]').hidden, false);
+
+    // Unreachable: the exchange reports the result itself, so no result form is shown.
+    ui(w).updateActive({
+      ...call,
+      status: 'unanswered',
+      result: 'Ulaşılamadı',
+      resultBy: 'Santral',
+      resultAt: new Date().toISOString(),
+      duration: 0,
+    });
+    assert.equal(w.document.getElementById('voipCallBar'), null);
+    assert.equal(
+      w.document.getElementById('voipActiveCall'),
+      null,
+      'no "choose a result and press OK" window',
+    );
+    assert.equal(w.document.body.classList.contains('voip-call-bar-open'), false);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('call bar writes names, details and statuses as text only', async () => {
+  const { dom, w } = await callBarWindow({
+    fetch: async () => ({ ok: true, json: async () => ({ ok: true }) }),
+  });
+  try {
+    w.voipStartCancelable(
+      { requestId: 'xss-dial-0001', phone: '905320000000' },
+      w.document.body,
+      () => {},
+      null,
+      { name: '<img src=x onerror="window.hacked=1">', detail: '<script>window.hacked=2</script>' },
+    ).catch(() => {});
+    const bar = w.document.getElementById('voipCallBar');
+    assert(bar);
+    assert.equal(bar.querySelector('[data-bar-name]').textContent, '<img src=x onerror="window.hacked=1">');
+    assert.match(bar.querySelector('[data-bar-detail]').textContent, /<script>/);
+    assert.equal(bar.querySelectorAll('img, script').length, 0);
+    assert.equal(w.hacked, undefined);
+    assert.match(
+      bar.querySelector('[data-bar-avatar]').textContent,
+      /^[\p{L}☎]{1,2}$/u,
+      'plain letters only',
+    );
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('call bar stays pinned at the top while the page scrolls and keeps the header below it', async () => {
+  const css = await fs.readFile('outputs/icrapro/voip.css', 'utf8');
+  const rule = (selector) =>
+    css.match(
+      new RegExp('(?:^|\\n)' + selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{([^}]*)\\}'),
+    )?.[1];
+  assert.match(rule('.voip-call-bar'), /position:\s*sticky/);
+  assert.match(rule('.voip-call-bar'), /top:\s*0/);
+  assert.match(rule('.voip-call-bar'), /height:\s*var\(--voip-bar-h\)/);
+  assert.match(rule('body.voip-call-bar-open .shell > header'), /top:\s*var\(--voip-bar-h\)/);
+  assert.match(rule('body.voip-call-bar-open'), /--voip-bar-h:\s*58px/);
+  assert.match(rule(':root'), /--voip-bar-h:\s*0px/);
+});
+
+test('a leg that connected for zero seconds is no conversation: unreachable is saved without asking', () => {
+  const base = () => ({ status: 'ringing', createdAt: new Date().toISOString() });
+  const silent = base();
+  updateEvent(silent, {
+    event_type: 'hangup',
+    answered: true,
+    duration: 0,
+    hangup_cause: 'NORMAL_CLEARING',
+  });
+  assert.equal(silent.status, 'unanswered', 'never "Görüşüldü" for a zero-second call');
+  assert.equal(silent.result, 'Ulaşılamadı');
+  assert.equal(silent.resultBy, 'Santral');
+  assert(silent.resultAt);
+  assert.equal(silent.note, 'Ulaşılamadı (santral bildirimi).');
+  assert.deepEqual(silent.providerEnd, {
+    answered: true,
+    talkSeconds: 0,
+    cause: 'NORMAL_CLEARING',
+    reason: 'Cevaplandı',
+  });
+
+  // Form-encoded webhooks send every value as a string.
+  const form = base();
+  updateEvent(form, { event_type: 'hangup', answered: 'true', duration: '0', failure_status: '480' });
+  assert.equal(form.status, 'unanswered');
+  assert.equal(form.providerEnd.code, '480');
+
+  // The person ended it themselves before anyone talked: their live note is kept and the reason is said.
+  const own = { ...base(), hangupRequestedAt: new Date().toISOString(), draftNote: 'Yazılmış not' };
+  updateEvent(own, { event_type: 'hangup', answered: true, duration: 0 });
+  assert.equal(own.status, 'unanswered');
+  assert.match(own.note, /^Yazılmış not\nUlaşılamadı: arama görüşme olmadan sonlandırıldı/);
+
+  // Only an explicit zero counts: a missing or empty duration, or a real one, stays a conversation.
+  for (const event of [
+    { answered: true },
+    { answered: true, duration: '' },
+    { answered: true, duration: null },
+    { answered: true, duration: 34 },
+  ]) {
+    const call = base();
+    updateEvent(call, { event_type: 'hangup', ...event });
+    assert.equal(call.status, 'completed', JSON.stringify(event));
+    assert.equal(call.result, undefined, 'the person still chooses the result');
+  }
+
+  // Late or repeated events never downgrade a recorded conversation or replace a saved result.
+  const talked = { ...base(), duration: 34 };
+  updateEvent(talked, { event_type: 'hangup', answered: true, duration: 0 });
+  assert.equal(talked.status, 'completed');
+  assert.equal(talked.duration, 34);
+  const saved = { ...base(), resultAt: '2026-11-10T10:00:00.000Z', result: 'Olumlu', resultBy: 'Personel' };
+  updateEvent(saved, { event_type: 'hangup', answered: true, duration: 0 });
+  assert.equal(saved.status, 'completed');
+  assert.equal(saved.result, 'Olumlu');
+
+  // Hostile or oversized provider text is never stored.
+  const odd = base();
+  updateEvent(odd, {
+    event_type: 'hangup',
+    answered: false,
+    hangup_cause: '<script>alert(1)</script>',
+    failure_status: 'x'.repeat(200),
+  });
+  assert.deepEqual(odd.providerEnd, { answered: false });
+});
+
+test('webhook and call-record checks save zero-talk calls as unreachable and remember who hung up', async () => {
+  const webhook = harness(async () => new Response('00000000-0000-0000-0000-000000000001'));
+  await webhook.call('start', 'POST', {
+    documentId: 'd',
+    phone: '05320000000',
+    requestId: 'zero-talk-hook-01',
+  });
+  await webhook.call(
+    'webhook?token=' + webhook.state.voipConfig.webhookSecret,
+    'POST',
+    {
+      domain_id: '123',
+      call_uuid: '00000000-0000-0000-0000-000000000001',
+      event_type: 'hangup',
+      answered: 'true',
+      duration: '0',
+      recording_present: 'false',
+    },
+    true,
+  );
+  const hooked = webhook.state.voipCalls[0];
+  assert.equal(hooked.status, 'unanswered');
+  assert.equal(hooked.result, 'Ulaşılamadı');
+  assert.equal(hooked.resultBy, 'Santral');
+  assert.equal(hooked.note, 'Ulaşılamadı (santral bildirimi).');
+
+  const closedByRecord = async (cdr, requestId) => {
+    const h = harness(async (url) => {
+      const path = new URL(url).pathname;
+      if (path === '/originate') return new Response('00000000-0000-0000-0000-000000000001');
+      if (path.startsWith('/hangup/')) return new Response('No such channel!', { status: 400 });
+      return new Response(
+        JSON.stringify({
+          cdr: {
+            end_stamp: '2026-11-10 18:00:00 +0300',
+            answer_stamp: '2026-11-10 17:59:48 +0300',
+            recording_present: false,
+            ...cdr,
+          },
+        }),
+      );
+    });
+    const { call } = await h.call('start', 'POST', { documentId: 'd', phone: '05320000000', requestId });
+    await h.call('hangup', 'POST', { id: call.id });
+    return h.state.voipCalls[0];
+  };
+  const none = await closedByRecord(
+    { talk_duration: '00:00:00', hangup_cause: 'NORMAL_CLEARING' },
+    'zero-talk-cdr-0001',
+  );
+  assert.equal(none.status, 'unanswered');
+  assert.equal(none.result, 'Ulaşılamadı');
+  assert(none.hangupRequestedAt, 'pressing Sonlandır is remembered');
+  assert.match(none.note, /görüşme olmadan sonlandırıldı/);
+  assert.deepEqual(none.providerEnd, {
+    answered: true,
+    talkSeconds: 0,
+    cause: 'NORMAL_CLEARING',
+    reason: 'Cevaplandı',
+  });
+
+  const unknown = await closedByRecord({}, 'zero-talk-cdr-0002');
+  assert.equal(unknown.status, 'completed', 'a record without talk time is not treated as zero');
+  assert.equal(unknown.result || '', '', 'the person still chooses the result');
+  const spoken = await closedByRecord({ talk_duration: '00:00:12' }, 'zero-talk-cdr-0003');
+  assert.equal(spoken.status, 'completed');
+  assert.equal(spoken.duration, 12);
+});
+
+test('call history shows what the exchange reported and escapes it', async () => {
+  const { dom, w } = await callBarWindow();
+  try {
+    const call = {
+      id: 'history-call',
+      documentId: 'd',
+      userId: 'u',
+      phone: '905320000000',
+      staffName: 'Personel',
+      status: 'unanswered',
+      statusLabel: 'Ulaşılamadı',
+      createdAt: new Date().toISOString(),
+      duration: 0,
+      result: 'Ulaşılamadı',
+      hangupRequestedAt: new Date().toISOString(),
+      providerEnd: { answered: true, talkSeconds: 0, cause: 'NORMAL_CLEARING', code: '480' },
+    };
+    const html = w.voipCallMarkup(call, ['Olumlu']);
+    assert.match(
+      html,
+      /Santral yanıtı: cevaplandı · konuşma 0 sn · neden NORMAL_CLEARING · kod 480 · siz sonlandırdınız/,
+    );
+    assert.equal(
+      w.voipCallMarkup({ ...call, providerEnd: undefined }, ['Olumlu']).includes('Santral yanıtı'),
+      false,
+    );
+    const hostile = w.voipCallMarkup({ ...call, providerEnd: { cause: '<img src=x>' } }, ['Olumlu']);
+    assert.equal(hostile.includes('<img'), false);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('"Numara ara" opens its frame right below the header button; other calls keep the corner', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('<div class="shell"><header><div class="header-actions"></div></header></div>', {
+    url: 'https://example.test',
+    runScripts: 'dangerously',
+  });
+  try {
+    const w = dom.window;
+    w.HTMLDialogElement.prototype.show = function () {
+      this.open = true;
+    };
+    w.HTMLDialogElement.prototype.close = function () {
+      this.open = false;
+    };
+    Object.assign(w, {
+      hanAuth: { id: 'u', role: 'staff' },
+      esc: String,
+      fetch: async () => ({ ok: true, json: async () => ({ url: 'https://example.test/webphone?token=x' }) }),
+    });
+    const width = (value) =>
+      Object.defineProperty(w, 'innerWidth', { value, configurable: true, writable: true });
+    w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    allowMicrophone(w);
+    // The real header button, created by the app, passes itself as the anchor when clicked.
+    w.setupVoipNavigation();
+    const button = w.document.querySelector('[data-standalone-voip]');
+    assert(button, 'the header button exists');
+    const place = (right) => {
+      button.getBoundingClientRect = () => ({
+        left: right - 180,
+        right,
+        top: 8,
+        bottom: 52,
+        width: 180,
+        height: 44,
+      });
+    };
+    width(1400);
+    place(1180);
+    button.click();
+    const dock = w.document.getElementById('voipPhoneDock');
+    assert.equal(dock.hidden, false);
+    assert.equal(dock.dataset.anchored, 'header');
+    // Eight pixels below the button, its right edge aligned with the button's right edge.
+    assert.deepEqual(
+      ['top', 'left', 'right', 'bottom', 'width'].map((side) => dock.style[side]),
+      ['60px', '720px', 'auto', 'auto', '460px'],
+    );
+    assert.equal(w.document.getElementById('voipStandalone').parentElement, dock);
+
+    // A narrow window keeps the frame inside the viewport.
+    width(700);
+    place(400);
+    w.dispatchEvent(new w.Event('resize'));
+    assert.deepEqual(
+      ['top', 'left', 'width'].map((side) => dock.style[side]),
+      ['60px', '12px', '460px'],
+    );
+    width(360);
+    place(340);
+    w.dispatchEvent(new w.Event('resize'));
+    assert.deepEqual(
+      ['left', 'width'].map((side) => dock.style[side]),
+      ['12px', '336px'],
+    );
+
+    // Closing hides the frame; any other call opens it in the default bottom-right corner again.
+    w.document.querySelector('#voipStandalone [data-close]').click();
+    assert.equal(dock.hidden, true);
+    w.voipPhoneDock();
+    assert.equal(dock.hidden, false);
+    assert.equal(dock.dataset.anchored, undefined);
+    assert.deepEqual(
+      ['top', 'left', 'right', 'bottom', 'width', 'maxHeight'].map((side) => dock.style[side]),
+      ['', '', '', '', '', ''],
+    );
+
+    // Opening it again from the header anchors it again, even after another call placed it.
+    place(1180);
+    width(1400);
+    button.click();
+    assert.equal(dock.style.top, '60px');
+    assert.equal(dock.style.left, '720px');
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('"Vazgeçildi", "Cevapsız" or "Reddedildi" is no conversation, even though the extension answered', () => {
+  const base = () => ({ status: 'ringing', createdAt: new Date().toISOString() });
+  // The exchange connects the extension first, so "answered" is true while the customer's phone rings.
+  const cases = [
+    [
+      'ORIGINATOR_CANCEL',
+      'Vazgeçildi',
+      'Ulaşılamadı: arama görüşme olmadan sonlandırıldı (santral bildirimi).',
+    ],
+    ['NO_ANSWER', 'Cevapsız', 'Ulaşılamadı: arama cevaplanmadı (santral bildirimi).'],
+    ['ALLOTTED_TIMEOUT', 'Cevapsız', 'Ulaşılamadı: arama cevaplanmadı (santral bildirimi).'],
+    ['NO_USER_RESPONSE', 'Ulaşılamıyor', 'Ulaşılamadı: arama cevaplanmadı (santral bildirimi).'],
+    ['RECOVERY_ON_TIMER_EXPIRE', 'Zamanaşımı', 'Ulaşılamadı: arama cevaplanmadı (santral bildirimi).'],
+    ['CALL_REJECTED', 'Reddedildi', 'Ulaşılamadı: arama reddedildi (santral bildirimi).'],
+  ];
+  for (const [cause, reason, note] of cases) {
+    const call = base();
+    updateEvent(call, { event_type: 'hangup', answered: true, hangup_cause: cause });
+    assert.equal(call.status, 'unanswered', cause);
+    assert.equal(call.result, 'Ulaşılamadı', cause);
+    assert.equal(call.resultBy, 'Santral', cause);
+    assert.equal(call.note, note, cause);
+    assert.deepEqual(call.providerEnd, { answered: true, cause, reason }, cause);
+  }
+
+  // A busy line stays "Meşgul".
+  const busy = base();
+  updateEvent(busy, { event_type: 'hangup', answered: true, hangup_cause: 'USER_BUSY' });
+  assert.equal(busy.status, 'busy');
+  assert.equal(busy.result, 'Meşgul');
+  assert.equal(busy.note, 'Meşgul (santral bildirimi).');
+
+  // The call record words the same outcomes in Turkish.
+  const worded = base();
+  updateEvent(worded, { event_type: 'hangup', answered: true, result: 'Vazgeçildi' });
+  assert.equal(worded.status, 'unanswered');
+  assert.equal(worded.providerEnd.result, 'Vazgeçildi', 'Turkish letters are kept');
+
+  // A normal ending alone decides nothing: the person still chooses the result.
+  for (const event of [
+    { hangup_cause: 'NORMAL_CLEARING' },
+    { hangup_cause: 'NORMAL_UNSPECIFIED' },
+    { result: 'Cevaplandı' },
+    { hangup_cause: 'constructor', result: '__proto__' },
+  ]) {
+    const call = base();
+    updateEvent(call, { event_type: 'hangup', answered: true, ...event });
+    assert.equal(call.status, 'completed', JSON.stringify(event));
+    assert.equal(call.result, undefined, JSON.stringify(event));
+  }
+
+  // A real conversation is never downgraded by a conflicting cause, and neither is a saved result.
+  const talked = base();
+  updateEvent(talked, {
+    event_type: 'hangup',
+    answered: true,
+    hangup_cause: 'ORIGINATOR_CANCEL',
+    duration: 12,
+  });
+  assert.equal(talked.status, 'completed');
+  assert.equal(talked.duration, 12);
+  const saved = { ...base(), result: 'Olumlu', resultBy: 'Personel', resultAt: '2026-11-10T10:00:00.000Z' };
+  updateEvent(saved, { event_type: 'hangup', answered: true, hangup_cause: 'NO_ANSWER' });
+  assert.equal(saved.status, 'completed');
+  assert.equal(saved.result, 'Olumlu');
+
+  // The live note and the Sonlandır press are kept, whatever wording the exchange used.
+  const own = { ...base(), hangupRequestedAt: new Date().toISOString(), draftNote: 'Not' };
+  updateEvent(own, { event_type: 'hangup', answered: true, hangup_cause: 'NO_ANSWER' });
+  assert.match(own.note, /^Not\nUlaşılamadı: arama görüşme olmadan sonlandırıldı/);
+});
+
+test("the customer's leg of the call record decides, not the extension the exchange connects first", () => {
+  const extension = {
+    destination_number: '1001',
+    answer_stamp: '2026-11-10 17:59:40 +0300',
+    result: 'Cevaplandı',
+  };
+  const customer = (leg) => ({
+    destination_number: '905447427442',
+    answer_stamp: '',
+    result: 'Cevaplandı',
+    ...leg,
+  });
+  const run = (flow, event = {}) => {
+    const call = { status: 'ringing', createdAt: new Date().toISOString(), phone: '905447427442' };
+    updateEvent(call, { event_type: 'hangup', answered: true, call_flow: flow, ...event });
+    return call;
+  };
+
+  // The person hung up while it rang: the extension answered, the customer never did.
+  const cancelled = run([extension, customer({ result: 'Vazgeçildi' })]);
+  assert.equal(cancelled.status, 'unanswered');
+  assert.equal(cancelled.result, 'Ulaşılamadı');
+  assert.equal(cancelled.note, 'Ulaşılamadı: arama görüşme olmadan sonlandırıldı (santral bildirimi).');
+  assert.deepEqual(cancelled.providerEnd, { answered: true, legAnswered: false, legResult: 'Vazgeçildi' });
+
+  // Never answered, no reason given: still no conversation.
+  const quiet = run([extension, customer({ result: '' })]);
+  assert.equal(quiet.status, 'unanswered');
+  assert.equal(quiet.note, 'Ulaşılamadı (santral bildirimi).');
+
+  // The customer picked up: a conversation, with or without a talk time.
+  const stamp = '2026-11-10 17:59:52 +0300';
+  const spoken = run([extension, customer({ answer_stamp: stamp })], { duration: 34 });
+  assert.equal(spoken.status, 'completed');
+  assert.equal(spoken.duration, 34);
+  assert.equal(spoken.providerEnd.legAnswered, true);
+  assert.equal(run([extension, customer({ answer_stamp: stamp })]).status, 'completed');
+
+  // Phone formats differ between the app and the exchange; the last ten digits match.
+  for (const destination of ['05447427442', '+90 544 742 74 42', '0090 544 742 74 42']) {
+    const call = run([extension, customer({ destination_number: destination, result: 'Cevapsız' })]);
+    assert.equal(call.status, 'unanswered', destination);
+  }
+
+  // Without a customer leg in the record, nothing is concluded from it.
+  const only = run([extension]);
+  assert.equal(only.status, 'completed');
+  assert.equal(only.providerEnd.legAnswered, undefined);
+  assert.equal(run('not a list').status, 'completed');
+  assert.equal(run([null, 7, 'x', { destination_number: null }]).status, 'completed');
+  assert.equal(run([], { result: 'Vazgeçildi' }).status, 'unanswered');
+
+  // A zeroed stamp means "never answered", like an empty one.
+  assert.equal(
+    run([extension, customer({ answer_stamp: '1970-01-01 03:00:00 +0300' })]).status,
+    'unanswered',
+  );
+
+  // Who ended the call is kept as the exchange words it; anything else is dropped.
+  assert.equal(run([extension], { sip_hangup_disposition: 'caller' }).providerEnd.by, 'caller');
+  const hostile = run([extension], {
+    sip_hangup_disposition: '<img src=x>',
+    result: '<b>x</b>',
+    hangup_cause: 'Vazgeçildi!',
+  });
+  assert.equal(hostile.providerEnd.by, undefined);
+  assert.equal(hostile.providerEnd.result, undefined);
+  assert.equal(hostile.providerEnd.cause, undefined);
+});
+
+test("Sonlandır while it rings: the call record's customer leg says nobody answered", async () => {
+  const closed = async (record, requestId) => {
+    const h = harness(async (url) => {
+      const path = new URL(url).pathname;
+      if (path === '/originate') return new Response('00000000-0000-0000-0000-000000000001');
+      if (path.startsWith('/hangup/')) return new Response('No such channel!', { status: 400 });
+      return new Response(JSON.stringify(record));
+    });
+    const { call } = await h.call('start', 'POST', { documentId: 'd', phone: '05320000000', requestId });
+    await h.call('hangup', 'POST', { id: call.id });
+    return h.state.voipCalls[0];
+  };
+  const extension = {
+    destination_number: '1001',
+    answer_stamp: '2026-11-10 17:59:48 +0300',
+    result: 'Cevaplandı',
+  };
+  const record = (legs, cdr = {}) => ({
+    cdr: {
+      end_stamp: '2026-11-10 18:00:00 +0300',
+      answer_stamp: '2026-11-10 17:59:48 +0300',
+      result: 'Cevaplandı',
+      sip_hangup_disposition: 'caller',
+      recording_present: false,
+      ...cdr,
+    },
+    ...(legs ? { call_flow: legs } : {}),
+  });
+
+  // Hung up while it rang: the call itself says "answered" (the extension), the customer leg does not.
+  const rang = await closed(
+    record([extension, { destination_number: '905320000000', answer_stamp: '', result: 'Vazgeçildi' }]),
+    'ring-cancel-record-0001',
+  );
+  assert.equal(rang.status, 'unanswered');
+  assert.equal(rang.result, 'Ulaşılamadı');
+  assert.equal(rang.resultBy, 'Santral');
+  assert(rang.hangupRequestedAt, 'pressing Sonlandır is remembered');
+  assert.match(rang.note, /görüşme olmadan sonlandırıldı/);
+  assert.equal(rang.providerEnd.by, 'caller');
+  assert.equal(rang.providerEnd.legAnswered, false);
+  assert.equal(rang.providerEnd.legResult, 'Vazgeçildi');
+
+  // The customer talked: a conversation, and the person still chooses the result.
+  const talk = await closed(
+    record(
+      [
+        extension,
+        {
+          destination_number: '905320000000',
+          answer_stamp: '2026-11-10 17:59:55 +0300',
+          result: 'Cevaplandı',
+        },
+      ],
+      { talk_duration: '00:00:41' },
+    ),
+    'ring-talk-record-0002',
+  );
+  assert.equal(talk.status, 'completed');
+  assert.equal(talk.duration, 41);
+  assert.equal(talk.result || '', '');
+
+  // A record without per-leg details keeps working as before.
+  const plain = await closed(record(null), 'ring-plain-record-0003');
+  assert.equal(plain.status, 'completed');
+});
+
 test('a web phone that is still registering gets a few more tries; nothing else is retried', async () => {
   let originates = 0;
   const waits = [];
@@ -1827,4 +2593,1056 @@ test('connection test lists microphone, firewall and Verimor extension status in
   } finally {
     w.close();
   }
+});
+
+test('the result window closes before the server answers and comes back unchanged if the save fails', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('<div class="header-actions"></div>', {
+    url: 'https://example.test',
+    runScripts: 'dangerously',
+  });
+  const w = dom.window;
+  try {
+    w.HTMLDialogElement.prototype.show = function () {
+      this.open = true;
+    };
+    w.HTMLDialogElement.prototype.close = function () {
+      this.open = false;
+    };
+    w.HTMLDialogElement.prototype.showModal = function () {
+      this.open = true;
+    };
+    let answer;
+    const saves = [];
+    Object.assign(w, {
+      hanAuth: { id: 'u', role: 'staff' },
+      esc: (v) => String(v).replaceAll('<', '&lt;'),
+      fetch: async (url, options) => {
+        if (url.endsWith('/result')) {
+          saves.push(JSON.parse(options.body));
+          return await new Promise((resolve) => (answer = resolve));
+        }
+        return { ok: true, json: async () => ({ ok: true }) };
+      },
+    });
+    w.eval(
+      (await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8')) +
+        '\nvoipUi.results=["Olumlu","Olumsuz"]',
+    );
+    const call = {
+      id: 'c1',
+      userId: 'u',
+      phone: '905320000000',
+      status: 'completed',
+      statusLabel: 'Görüşüldü',
+      duration: 20,
+    };
+    w.showVoipActive({ id: '' }, call);
+    const host = w.document.getElementById('voipActiveCall');
+    host.querySelector('[name="note"]').value = 'Önemli not';
+    host.querySelector('[name="result"][value="Olumsuz"]').checked = true;
+    host.querySelector('form').dispatchEvent(new w.Event('submit', { cancelable: true }));
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    assert.equal(saves.length, 1, 'the save is on its way');
+    assert.equal(host.open, false, 'the window is already closed while the server works');
+    assert.equal(w.document.getElementById('voipActiveCall'), null, 'a new call can start meanwhile');
+
+    answer({ ok: false, status: 503, json: async () => ({ error: 'Sunucu hazır değil.' }) });
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    assert.equal(host.open, true, 'a failed save brings the window back');
+    assert.equal(host.querySelector('[name="note"]').value, 'Önemli not');
+    assert.equal(host.querySelector('[name="result"]:checked').value, 'Olumsuz');
+    assert.match(
+      host.querySelector('[data-current-feedback]').textContent,
+      /kaydedilemedi: Sunucu hazır değil/,
+    );
+    assert.equal(host.querySelector('[data-current-save]').disabled, false);
+
+    host.querySelector('form').dispatchEvent(new w.Event('submit', { cancelable: true }));
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    answer({ ok: true, status: 200, json: async () => ({ ok: true }) });
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    assert.equal(saves.length, 2);
+    assert.deepEqual(saves[1], { id: 'c1', result: 'Olumsuz', note: 'Önemli not' });
+    assert.equal(host.isConnected, false, 'a successful retry removes the window');
+  } finally {
+    dom.window.close();
+  }
+});
+// ---- Inbound calls (a debtor calling the office) ----
+const inbound = (extra = {}) => ({
+  domain_id: '123',
+  event_type: 'ringing',
+  direction: 'inbound',
+  call_uuid: 'in-uuid-0001',
+  caller_id_number: '05320000000',
+  destination_number: '908501234567',
+  dialed_user: '1002',
+  ...extra,
+});
+const hookUrl = (h) => 'webhook?token=' + h.state.voipConfig.webhookSecret;
+const noRecording = async () => new Response('not found', { status: 404 });
+function seedOutbound(h, extra = {}) {
+  h.state.voipCalls.push({
+    id: crypto.randomUUID(),
+    requestId: 'seed-outbound-0001',
+    provider: 'verimor',
+    providerId: 'out-uuid-0001',
+    documentId: 'd',
+    documentNumber: 'D-1',
+    clientName: 'Test müvekkil',
+    debtorName: 'Test borçlu',
+    phone: '905320000000',
+    userId: 's',
+    staffName: 'Personel',
+    extension: '1002',
+    createdAt: new Date(Date.now() - 3 * 86400000).toISOString(),
+    endedAt: new Date(Date.now() - 3 * 86400000 + 60000).toISOString(),
+    status: 'completed',
+    duration: 30,
+    result: 'Olumlu',
+    note: '',
+    recordingPresent: false,
+    ...extra,
+  });
+}
+const inboundCalls = (h) => h.state.voipCalls.filter((c) => c.direction === 'inbound');
+test('inbound call from a number called before joins its file and earlier caller; answer and hangup complete it once', async () => {
+  const h = harness(noRecording);
+  seedOutbound(h);
+  const url = hookUrl(h);
+  assert.deepEqual(await h.call(url, 'POST', inbound()), { ok: true });
+  let [c] = inboundCalls(h);
+  assert.equal(inboundCalls(h).length, 1);
+  assert.equal(c.direction, 'inbound');
+  assert.equal(c.phone, '905320000000');
+  assert.equal(c.status, 'ringing');
+  assert.equal(c.requestId, 'in:in-uuid-0001');
+  assert.equal(c.documentId, 'd');
+  assert.equal(c.documentNumber, 'D-1');
+  assert.equal(c.debtorName, 'Test borçlu');
+  assert.equal(c.clientName, 'Test müvekkil');
+  assert.equal(c.ownerUserId, 's');
+  assert.equal(c.ownerName, 'Personel');
+  assert.equal(c.userId, '');
+  await h.call(url, 'POST', inbound({ event_type: 'answer', connected_user: '1002' }));
+  [c] = inboundCalls(h);
+  assert.equal(c.status, 'answered');
+  assert.equal(c.userId, 's');
+  assert.equal(c.staffName, 'Personel');
+  assert.equal(c.extension, '1002');
+  const hangup = inbound({
+    event_type: 'hangup',
+    answered: 'true',
+    duration: '42',
+    recording_present: 'true',
+  });
+  await h.call(url, 'POST', hangup);
+  await Promise.allSettled(h.jobs);
+  await h.call(url, 'POST', hangup);
+  await Promise.allSettled(h.jobs);
+  assert.equal(inboundCalls(h).length, 1);
+  assert.equal(h.state.voipCalls.length, 2);
+  [c] = inboundCalls(h);
+  assert.equal(c.status, 'completed');
+  assert.equal(c.duration, 42);
+  assert.equal(c.recordingPresent, true);
+  assert.equal(c.userId, 's');
+});
+test('missed inbound call is unanswered, labelled as incoming and not active for anyone', async () => {
+  const h = harness(noRecording);
+  const url = hookUrl(h);
+  await h.call(url, 'POST', inbound());
+  await h.call(url, 'POST', inbound({ event_type: 'hangup', answered: 'false', duration: '0' }));
+  const [c] = inboundCalls(h);
+  assert.equal(c.status, 'unanswered');
+  assert.equal(c.userId, '');
+  const view = await h.call('calls?documentId=d');
+  const listed = view.calls.find((x) => x.id === c.id);
+  assert.ok(listed, 'inbound call is listed on its file');
+  assert.equal(listed.statusLabel, 'Gelen arama – cevapsız');
+  assert.equal(listed.direction, 'inbound');
+  assert.equal(view.active.length, 0);
+});
+test('inbound caller matching: single file falls back to its staff; unknown and foreign/hidden numbers stay unattached', async () => {
+  const h = harness(noRecording);
+  const url = hookUrl(h);
+  await h.call(url, 'POST', inbound({ call_uuid: 'in-uuid-0031', caller_id_number: '05320000001' }));
+  await h.call(url, 'POST', inbound({ call_uuid: 'in-uuid-0032', caller_id_number: '05559998877' }));
+  await h.call(url, 'POST', inbound({ call_uuid: 'in-uuid-0033', caller_id_number: '004930123456' }));
+  await h.call(url, 'POST', inbound({ call_uuid: 'in-uuid-0034', caller_id_number: '' }));
+  const by = (uuid) => h.state.voipCalls.find((c) => c.providerId === uuid);
+  assert.equal(by('in-uuid-0031').documentId, 'd');
+  assert.equal(by('in-uuid-0031').ownerUserId, 's');
+  assert.equal(by('in-uuid-0031').phone, '905320000001');
+  assert.equal(by('in-uuid-0032').documentId, '');
+  assert.equal(by('in-uuid-0032').ownerUserId, '');
+  assert.equal(by('in-uuid-0032').phone, '905559998877');
+  assert.equal(by('in-uuid-0033').phone, '');
+  assert.equal(by('in-uuid-0033').callerNumber, '004930123456');
+  assert.equal(by('in-uuid-0033').documentId, '');
+  assert.equal(by('in-uuid-0034').phone, '');
+  assert.equal(by('in-uuid-0034').documentId, '');
+  assert.ok(!by('in-uuid-0034').callerNumber, 'no caller number is invented for a hidden caller');
+});
+test('transferred inbound call moves to the extension that answered last and keeps both handlers', async () => {
+  const h = harness(noRecording);
+  const url = hookUrl(h);
+  await h.call(url, 'POST', inbound());
+  await h.call(url, 'POST', inbound({ event_type: 'answer', connected_user: '1001' }));
+  assert.equal(inboundCalls(h)[0].userId, 'u');
+  await h.call(url, 'POST', inbound({ event_type: 'answer', connected_user: '1002' }));
+  await h.call(url, 'POST', inbound({ event_type: 'hangup', answered: 'true', duration: '20' }));
+  const [c] = inboundCalls(h);
+  assert.equal(c.status, 'completed');
+  assert.equal(c.userId, 's');
+  assert.equal(c.extension, '1002');
+  assert.deepEqual(c.handlers, ['u', 's']);
+});
+test('an answered inbound call never blocks starting an outbound call, and active lists only the outbound one', async () => {
+  const h = harness(async () => new Response('00000000-0000-0000-0000-000000000005'));
+  const url = hookUrl(h);
+  await h.call(url, 'POST', inbound({ dialed_user: '1001' }));
+  await h.call(url, 'POST', inbound({ event_type: 'answer', connected_user: '1001' }));
+  assert.equal(inboundCalls(h)[0].status, 'answered');
+  assert.equal(inboundCalls(h)[0].userId, 'u');
+  const { call } = await h.call('start', 'POST', {
+    documentId: 'd',
+    phone: '05320000001',
+    requestId: 'request-inbound-005',
+  });
+  assert.ok(call.id);
+  const { active } = await h.call('calls?documentId=d');
+  assert.deepEqual(
+    active.map((c) => c.id),
+    [call.id],
+  );
+  assert.notEqual(active[0].direction, 'inbound');
+});
+test('user_hangup is acknowledged and changes neither outbound nor inbound calls', async () => {
+  const h = harness(async () => new Response('00000000-0000-0000-0000-000000000006'));
+  const url = hookUrl(h);
+  const { call } = await h.call('start', 'POST', {
+    documentId: 'd',
+    phone: '05320000000',
+    requestId: 'request-inbound-006',
+  });
+  const outboundBefore = structuredClone(h.state.voipCalls.find((c) => c.id === call.id));
+  assert.deepEqual(
+    await h.call(url, 'POST', {
+      domain_id: '123',
+      event_type: 'user_hangup',
+      call_uuid: '00000000-0000-0000-0000-000000000006',
+    }),
+    { ok: true },
+  );
+  assert.deepEqual(
+    h.state.voipCalls.find((c) => c.id === call.id),
+    outboundBefore,
+  );
+  await h.call(url, 'POST', inbound({ call_uuid: 'in-uuid-0006', caller_id_number: '05559998877' }));
+  const inboundBefore = structuredClone(inboundCalls(h)[0]);
+  assert.deepEqual(
+    await h.call(
+      url,
+      'POST',
+      inbound({ event_type: 'user_hangup', call_uuid: 'in-uuid-0006', caller_id_number: '05559998877' }),
+    ),
+    { ok: true },
+  );
+  assert.deepEqual(inboundCalls(h)[0], inboundBefore);
+  assert.equal(inboundCalls(h)[0].status, 'ringing');
+  // A user_hangup for an unknown call creates nothing.
+  await h.call(url, 'POST', inbound({ event_type: 'user_hangup', call_uuid: 'in-uuid-0099' }));
+  assert.equal(inboundCalls(h).length, 1);
+});
+test('the extension leg of a call the app is still dialing does not create an inbound record', async () => {
+  let release;
+  const h = harness(async () => {
+    await new Promise((r) => {
+      release = r;
+    });
+    return new Response('00000000-0000-0000-0000-000000000007');
+  });
+  const url = hookUrl(h);
+  const pending = h.call('start', 'POST', {
+    documentId: 'd',
+    phone: '05320000000',
+    requestId: 'request-inbound-007',
+  });
+  while (!release) await new Promise((r) => setImmediate(r));
+  const dialing = h.state.voipCalls[0];
+  assert.equal(dialing.status, 'starting');
+  assert.ok(!dialing.providerId);
+  assert.deepEqual(await h.call(url, 'POST', inbound({ call_uuid: 'in-uuid-0007', dialed_user: '1001' })), {
+    ok: true,
+  });
+  assert.equal(inboundCalls(h).length, 0);
+  release();
+  await pending;
+  assert.equal(inboundCalls(h).length, 0);
+  assert.equal(h.state.voipCalls.length, 1);
+});
+test('conversation merge shows finished inbound calls with incoming labels and skips ringing ones', () => {
+  const { merge } = require('../lib/voip-conversations.cjs');
+  const base = {
+    phone: '905320000000',
+    staffName: '',
+    userId: '',
+    duration: 0,
+    createdAt: '2026-11-10T09:00:00Z',
+  };
+  const rows = merge(
+    [],
+    [
+      { ...base, id: 'in-done', direction: 'inbound', status: 'completed', userId: 's', duration: 42 },
+      { ...base, id: 'in-missed', direction: 'inbound', status: 'unanswered' },
+      { ...base, id: 'in-ringing', direction: 'inbound', status: 'ringing' },
+    ],
+  );
+  assert.deepEqual(
+    rows.map((r) => r.voipCallId),
+    ['in-done', 'in-missed'],
+  );
+  assert.equal(rows[0].direction, 'inbound');
+  assert.equal(rows[0].result, 'Gelen arama – görüşüldü');
+  assert.equal(rows[1].direction, 'inbound');
+  assert.equal(rows[1].result, 'Gelen arama – cevapsız');
+});
+test('inbound webhook with a wrong token is rejected and records nothing', async () => {
+  const h = harness(noRecording);
+  await assert.rejects(h.call('webhook?token=' + 'a'.repeat(64), 'POST', inbound()), (e) => e.status === 401);
+  await assert.rejects(h.call('webhook', 'POST', inbound()), (e) => e.status === 401);
+  assert.equal(h.state.voipCalls.length, 0);
+});
+test('recordings archive filters by call direction', async () => {
+  const h = harness(noRecording);
+  seedOutbound(h);
+  const url = hookUrl(h);
+  await h.call(url, 'POST', inbound());
+  await h.call(url, 'POST', inbound({ event_type: 'hangup', answered: 'false', duration: '0' }));
+  const inboundOnly = await h.call('recordings?flow=inbound');
+  assert.equal(inboundOnly.calls.length, 1);
+  assert.equal(inboundOnly.calls[0].direction, 'inbound');
+  const outboundOnly = await h.call('recordings?flow=outbound');
+  assert.equal(outboundOnly.calls.length, 1);
+  assert.notEqual(outboundOnly.calls[0].direction, 'inbound');
+  assert.equal((await h.call('recordings')).calls.length, 2);
+});
+// ---- Inbound routing, check-ins, incoming strip and transfer ----
+const WEBPHONE = 'https://oim.verimor.com.tr/webphone';
+function inboundHarness(fetcher = noRecording, inboundUsers = ['u', 's'], extra = {}) {
+  const h = harness(fetcher);
+  Object.assign(h.state.voipConfig, { webphoneUrl: WEBPHONE, inboundUsers, ...extra });
+  return h;
+}
+const CEO = { id: 'u', name: 'CEO', role: 'ceo' };
+const STAFF = { id: 's', name: 'Personel', role: 'staff', staffId: 'p' };
+const routeUrl = (h, cli = '05320000000', token = h.state.voipConfig.webhookSecret) =>
+  'route?token=' + token + '&uuid=route-uuid-0001&cli=' + cli + '&cld=908501234567&step=1';
+async function checkIn(h, user) {
+  h.user = user;
+  const value = await h.call('incoming');
+  h.user = CEO;
+  return value;
+}
+
+test('configure keeps only inbound users with an extension, validates the fallback and exposes the routing address', async () => {
+  const h = harness(noRecording);
+  const base = { provider: 'verimor', enabled: true, domainId: '123', extensions: { u: '1001' } };
+  await h.call('config', 'PUT', {
+    ...base,
+    inboundUsers: ['u', 's', 'ghost', 'u'],
+    inboundFallback: 'queue/201',
+  });
+  assert.deepEqual(h.state.voipConfig.inboundUsers, ['u'], 's has no extension now; ghost is unknown');
+  assert.equal(h.state.voipConfig.inboundFallback, 'queue/201');
+  const config = await h.call('config');
+  assert.equal(config.routePath, '/api/voip/route?token=' + h.state.voipConfig.webhookSecret);
+  assert.match(config.routePath, /^\/api\/voip\/route\?token=[a-f0-9]{64}$/);
+  assert.deepEqual(config.inboundUsers, ['u']);
+  assert.equal(config.inboundFallback, 'queue/201');
+  assert.equal(config.sealedKey, undefined);
+  assert.equal(config.webhookSecret, undefined);
+  for (const fallback of [
+    'queue/abc',
+    'queue/',
+    'user/1001;drop',
+    'external/5321234567',
+    'external/053212345678',
+    'http://x',
+  ])
+    await assert.rejects(
+      h.call('config', 'PUT', { ...base, inboundFallback: fallback }),
+      (e) => e.status === 400,
+      fallback,
+    );
+  await assert.rejects(h.call('config', 'PUT', { ...base, inboundUsers: 'u' }), (e) => e.status === 400);
+  for (const fallback of ['group/700', 'user/1001', 'ivr/1', 'voicemail/1001', 'external/05321234567']) {
+    await h.call('config', 'PUT', { ...base, inboundFallback: fallback });
+    assert.equal(h.state.voipConfig.inboundFallback, fallback);
+  }
+  // Omitted values keep what was saved.
+  await h.call('config', 'PUT', { ...base, extensions: { u: '1001', s: '1002' }, inboundUsers: ['s', 'u'] });
+  await h.call('config', 'PUT', { ...base, extensions: { u: '1001', s: '1002' } });
+  assert.deepEqual(h.state.voipConfig.inboundUsers, ['s', 'u']);
+  assert.equal(h.state.voipConfig.inboundFallback, 'external/05321234567');
+  // Removing an extension drops that user from inbound users.
+  await h.call('config', 'PUT', { ...base, extensions: { s: '1002' } });
+  assert.deepEqual(h.state.voipConfig.inboundUsers, ['s']);
+  h.user = STAFF;
+  await assert.rejects(h.call('config'), (e) => e.status === 403);
+});
+
+test('route sends a call to the last caller when reachable, else another reachable inbound user, else the fallback', async () => {
+  const h = inboundHarness(noRecording, ['u', 's']);
+  seedOutbound(h); // s called 0532 000 00 00 three days ago
+  await assert.rejects(h.call(routeUrl(h, '05320000000', 'a'.repeat(64))), (e) => e.status === 401);
+  await assert.rejects(h.call('route?cli=05320000000'), (e) => e.status === 401);
+  // Nobody checked in and no fallback: still the last caller's extension.
+  assert.deepEqual(await h.call(routeUrl(h)), { transfer: { target: 'user/1002' } });
+  h.state.voipConfig.inboundFallback = 'queue/201';
+  assert.deepEqual(await h.call(routeUrl(h)), { transfer: { target: 'queue/201' } });
+  // Both check in; the last caller wins even though u comes first in the list.
+  assert.equal((await checkIn(h, STAFF)).alwaysOn, true);
+  assert.equal((await checkIn(h, CEO)).alwaysOn, true);
+  assert.deepEqual(await h.call(routeUrl(h)), { transfer: { target: 'user/1002' } });
+  // s is on another (outbound) call: the other reachable inbound user takes it.
+  h.state.voipCalls.push({
+    id: 'busy-s',
+    requestId: 'busy-s-request',
+    providerId: 'busy-s-uuid',
+    documentId: '',
+    phone: '905559998877',
+    userId: 's',
+    createdAt: new Date().toISOString(),
+    status: 'answered',
+  });
+  assert.deepEqual(await h.call(routeUrl(h)), { transfer: { target: 'user/1001' } });
+  // An unknown number goes to whoever is reachable.
+  assert.deepEqual(await h.call(routeUrl(h, '05551112233')), { transfer: { target: 'user/1001' } });
+  // u is talking to an inbound caller: nobody is reachable, the fallback answers.
+  h.state.voipCalls.push({
+    id: 'busy-u',
+    requestId: 'in:busy-u',
+    providerId: 'busy-u-uuid',
+    direction: 'inbound',
+    documentId: '',
+    phone: '905551110000',
+    userId: 'u',
+    createdAt: new Date().toISOString(),
+    status: 'answered',
+  });
+  assert.deepEqual(await h.call(routeUrl(h)), { transfer: { target: 'queue/201' } });
+});
+
+test('route only counts check-ins from inbound users, uses the first inbound user without a fallback and 409s when nothing is set', async () => {
+  const h = inboundHarness(noRecording, ['u']);
+  // s is not an inbound user: checking in does nothing and the call is never routed to s.
+  assert.deepEqual(await checkIn(h, STAFF), { alwaysOn: false, call: null });
+  seedOutbound(h);
+  assert.deepEqual(await h.call(routeUrl(h)), { transfer: { target: 'user/1001' } });
+  await checkIn(h, CEO);
+  assert.deepEqual(await h.call(routeUrl(h, '05551112233')), { transfer: { target: 'user/1001' } });
+  const none = inboundHarness(noRecording, []);
+  await assert.rejects(none.call(routeUrl(none)), (e) => e.status === 409);
+  none.state.voipConfig.inboundFallback = 'group/700';
+  assert.deepEqual(await none.call(routeUrl(none)), { transfer: { target: 'group/700' } });
+});
+
+test('incoming returns the call ringing on or answered by the user and records the check-in', async () => {
+  const h = inboundHarness(noRecording, ['u', 's']);
+  seedOutbound(h);
+  const url = hookUrl(h);
+  // Not an inbound user (or no web phone) → no always-on phone.
+  h.state.voipConfig.inboundUsers = ['s'];
+  assert.deepEqual(await checkIn(h, CEO), { alwaysOn: false, call: null });
+  h.state.voipConfig.inboundUsers = ['u', 's'];
+  h.state.voipConfig.webphoneUrl = '';
+  assert.deepEqual(await checkIn(h, STAFF), { alwaysOn: false, call: null });
+  h.state.voipConfig.webphoneUrl = WEBPHONE;
+  let staff = await checkIn(h, STAFF);
+  assert.equal(staff.alwaysOn, true);
+  assert.equal(staff.call, null);
+  assert.ok(staff.results.includes('Olumlu'));
+  await h.call(url, 'POST', inbound({ dialed_user: '1002' }));
+  staff = await checkIn(h, STAFF);
+  assert.equal(staff.call.status, 'ringing');
+  assert.equal(staff.call.direction, 'inbound');
+  assert.equal(staff.call.debtorName, 'Test borçlu');
+  assert.equal(staff.call.documentNumber, 'D-1');
+  assert.equal(staff.call.ownerName, 'Personel');
+  assert.equal(staff.call.providerId, undefined, 'provider ids stay on the server');
+  assert.equal(staff.call.requestId, undefined);
+  assert.equal((await checkIn(h, CEO)).call, null, 'not ringing on 1001');
+  await h.call(url, 'POST', inbound({ event_type: 'answer', connected_user: '1002' }));
+  staff = await checkIn(h, STAFF);
+  assert.equal(staff.call.status, 'answered');
+  assert.equal(staff.call.userId, 's');
+  assert.equal((await checkIn(h, CEO)).call, null);
+  // Transfer targets list everyone else with an extension and who is checked in.
+  h.user = STAFF;
+  assert.deepEqual((await h.call('transfer-targets')).targets, [
+    { id: 'u', extension: '1001', name: 'CEO', online: true },
+  ]);
+  // Ended calls are no longer offered.
+  await h.call(url, 'POST', inbound({ event_type: 'hangup', answered: 'true', duration: '5' }));
+  assert.equal((await checkIn(h, STAFF)).call, null);
+});
+
+test('transfer hands an answered call to another extension and refuses everything else', async () => {
+  const requests = [];
+  const h = inboundHarness(async (url) => {
+    requests.push(new URL(url));
+    if (new URL(url).pathname.startsWith('/transfer/')) return new Response('OK');
+    return new Response('not found', { status: 404 });
+  });
+  h.state.users.push({ id: 'x', active: true, name: 'Diğer', role: 'staff', staffId: 'q' });
+  const url = hookUrl(h);
+  await h.call(url, 'POST', inbound({ dialed_user: '1002' }));
+  const [c] = inboundCalls(h);
+  // A ringing call belongs to nobody yet: staff may not act on it; a manager learns it is not answered.
+  h.user = STAFF;
+  await assert.rejects(h.call('transfer', 'POST', { id: c.id, userId: 'u' }), (e) => e.status === 403);
+  h.user = CEO;
+  await assert.rejects(h.call('transfer', 'POST', { id: c.id, userId: 's' }), (e) => e.status === 409);
+  h.user = STAFF;
+  await h.call(url, 'POST', inbound({ event_type: 'answer', connected_user: '1002' }));
+  await assert.rejects(h.call('transfer', 'POST', { id: c.id, userId: 's' }), (e) => e.status === 400);
+  await assert.rejects(h.call('transfer', 'POST', { id: c.id, userId: 'x' }), (e) => e.status === 400);
+  await assert.rejects(h.call('transfer', 'POST', { id: c.id, userId: '' }), (e) => e.status === 400);
+  h.user = { id: 'x', name: 'Diğer', role: 'staff', staffId: 'q' };
+  await assert.rejects(h.call('transfer', 'POST', { id: c.id, userId: 'u' }), (e) => e.status === 403);
+  assert.equal(requests.length, 0, 'nothing reached Verimor');
+  h.user = STAFF;
+  assert.deepEqual(await h.call('transfer', 'POST', { id: c.id, userId: 'u' }), { ok: true });
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].pathname, '/transfer/in-uuid-0001');
+  assert.equal(requests[0].searchParams.get('user_number'), '1001');
+  assert.ok(requests[0].searchParams.get('key'), 'the API key is sent');
+  assert.deepEqual(
+    { ...inboundCalls(h)[0].transferredTo, at: undefined },
+    { userId: 'u', extension: '1001', at: undefined },
+  );
+  // The next answer by 1001 moves the call (and its evaluation) to u.
+  await h.call(url, 'POST', inbound({ event_type: 'answer', connected_user: '1001' }));
+  assert.equal(inboundCalls(h)[0].userId, 'u');
+  assert.deepEqual(inboundCalls(h)[0].handlers, ['s', 'u']);
+  // A manager may transfer someone else's call.
+  h.user = CEO;
+  assert.deepEqual(await h.call('transfer', 'POST', { id: c.id, userId: 's' }), { ok: true });
+  assert.equal(requests.at(-1).searchParams.get('user_number'), '1002');
+});
+
+test('checking an inbound call against its call record keeps the incoming labels', async () => {
+  const h = inboundHarness(async (url) => {
+    if (new URL(url).pathname === '/cdrs/in-uuid-0001')
+      return new Response(
+        JSON.stringify({
+          cdr: {
+            direction: 'Gelen',
+            caller_id_number: '905320000000',
+            end_stamp: '2026-11-10 18:00:00 +0300',
+            answer_stamp: '2026-11-10 17:59:30 +0300',
+            talk_duration: '00:00:30',
+            hangup_cause: 'NORMAL_CLEARING',
+            recording_present: false,
+          },
+        }),
+      );
+    return new Response('not found', { status: 404 });
+  });
+  const url = hookUrl(h);
+  await h.call(url, 'POST', inbound());
+  await h.call(url, 'POST', inbound({ event_type: 'answer', connected_user: '1002' }));
+  h.user = STAFF;
+  const [c] = inboundCalls(h);
+  assert.deepEqual(await h.call('sync', 'POST', { id: c.id }), { ok: true });
+  await Promise.allSettled(h.jobs);
+  const [after] = inboundCalls(h);
+  assert.equal(after.status, 'completed');
+  assert.equal(after.duration, 30);
+  assert.equal(after.userId, 's');
+  assert.equal(after.outboundNumber, undefined, 'no outbound line is assigned to an incoming call');
+  assert.equal(after.result, '', 'no automatic outbound outcome');
+  const listed = (await h.call('calls?documentId=d')).calls.find((x) => x.id === c.id);
+  assert.equal(listed.statusLabel, 'Gelen arama – görüşüldü');
+  assert.equal(listed.direction, 'inbound');
+});
+
+test('always-on phone shows the incoming strip, opens the call window when I answer and closes it after a transfer', async () => {
+  let current = null;
+  const ringing = {
+    id: 'in-call-1',
+    direction: 'inbound',
+    documentId: 'd',
+    documentNumber: 'D-1',
+    debtorName: 'Test borçlu',
+    clientName: 'Test müvekkil',
+    ownerName: 'Personel',
+    phone: '905320000000',
+    userId: '',
+    status: 'ringing',
+    statusLabel: 'Gelen arama – çalıyor',
+    createdAt: new Date().toISOString(),
+  };
+  const { dom, w, calls } = await callBarWindow({
+    fetch: (url) => ({
+      ok: true,
+      json: async () =>
+        url.endsWith('/incoming')
+          ? { alwaysOn: true, call: current, results: ['Olumlu'] }
+          : url.endsWith('/webphone')
+            ? { url: WEBPHONE + '?token=W' + 'a1'.repeat(15) }
+            : url.endsWith('/transfer-targets')
+              ? { targets: [{ id: 's', extension: '1002', name: 'Personel', online: true }] }
+              : { ok: true },
+    }),
+  });
+  try {
+    await w.voipInboundPoll();
+    await settle();
+    assert.equal(w.document.getElementById('voipIncoming'), null, 'no call, no strip');
+    assert.equal(ui(w).alwaysOn, true);
+    const phone = w.document.getElementById('voipWebphone');
+    assert(phone, 'the web phone is registered in the background');
+    assert.match(phone.querySelector('iframe').src, /^https:\/\/oim\.verimor\.com\.tr\/webphone\?token=W/);
+
+    current = ringing;
+    await w.voipInboundPoll();
+    await settle();
+    const strip = w.document.getElementById('voipIncoming');
+    assert(strip, 'the strip shows the ringing call');
+    assert.match(strip.textContent, /Gelen arama: Test borçlu/);
+    assert.match(strip.textContent, /Föy D-1/);
+    assert.match(strip.textContent, /Son arayan: Personel/);
+    assert.equal(w.document.getElementById('voipPhoneDock').hidden, false, 'the web phone is revealed');
+    assert.equal(strip.querySelector('[data-incoming-open]').textContent, 'Telefonu göster');
+    assert.equal(phone.dataset.answering, 'true', 'the web phone is raised for answering');
+    assert.equal(phone.classList.contains('voip-answering'), true);
+    // Polling again with the same call keeps the same strip.
+    await w.voipInboundPoll();
+    assert.equal(w.document.getElementById('voipIncoming'), strip);
+
+    current = {
+      ...ringing,
+      status: 'answered',
+      statusLabel: 'Gelen arama – görüşülüyor',
+      userId: 'u',
+      staffName: 'CEO',
+      answeredAt: new Date().toISOString(),
+    };
+    await w.voipInboundPoll();
+    await settle();
+    assert.equal(w.document.getElementById('voipIncoming'), null);
+    const host = w.document.getElementById('voipActiveCall');
+    assert(host, 'the call window opens for the answered call');
+    assert.equal(phone.dataset.answering, undefined, 'the answering modal is released');
+    assert.equal(host.dataset.callId, 'in-call-1');
+    const transfer = host.querySelector('[data-current-transfer]');
+    assert.equal(transfer.hidden, false, 'Aktar is offered while answered');
+
+    // Aktar lists colleagues and asks the server to transfer.
+    transfer.click();
+    await settle();
+    const box = host.querySelector('[data-transfer-box]');
+    assert(box);
+    assert.match(box.textContent, /Personel · 1002 · bağlı/);
+    box.querySelector('[data-transfer-go]').click();
+    await settle();
+    assert(calls.some((c) => c.url === 'transfer' && c.body.id === 'in-call-1' && c.body.userId === 's'));
+    assert.equal(host.querySelector('[data-transfer-box]'), null);
+
+    // The call disappears from the check-in: no strip; the call window stays until the call ends.
+    current = null;
+    await w.voipInboundPoll();
+    await settle();
+    assert.equal(w.document.getElementById('voipIncoming'), null);
+
+    // The colleague answers: the call belongs to them now and my window closes.
+    ui(w).updateActive({ ...ringing, status: 'answered', userId: 's', staffName: 'Personel' });
+    assert.equal(w.document.getElementById('voipActiveCall'), null);
+    assert.equal(ui(w).activeId, '');
+  } finally {
+    try {
+      w.clearTimeout(ui(w).inboundTimer);
+      await settle();
+    } finally {
+      dom.window.close();
+    }
+  }
+});
+
+test('always-on phone stays registered after a call; a ringing call that stops ringing removes the strip', async () => {
+  let current = null;
+  let alwaysOn = true;
+  const ringing = {
+    id: 'in-call-2',
+    direction: 'inbound',
+    documentId: '',
+    phone: '905551112233',
+    userId: '',
+    status: 'ringing',
+    statusLabel: 'Gelen arama – çalıyor',
+    createdAt: new Date().toISOString(),
+  };
+  const { dom, w } = await callBarWindow({
+    fetch: (url) => ({
+      ok: true,
+      json: async () =>
+        url.endsWith('/incoming')
+          ? alwaysOn
+            ? { alwaysOn: true, call: current, results: ['Olumlu'] }
+            : { alwaysOn: false, call: null }
+          : url.endsWith('/webphone')
+            ? { url: WEBPHONE + '?token=W' + 'b2'.repeat(15) }
+            : { ok: true },
+    }),
+  });
+  try {
+    current = ringing;
+    await w.voipInboundPoll();
+    await settle();
+    const strip = w.document.getElementById('voipIncoming');
+    assert.match(strip.textContent, /Gelen arama: 0 \(555\) 111 22 33/);
+    assert.match(strip.textContent, /Kayıtlı bir föyle eşleşmedi/);
+    current = null;
+    await w.voipInboundPoll();
+    await settle();
+    assert.equal(w.document.getElementById('voipIncoming'), null);
+    assert.equal(
+      w.document.getElementById('voipPhoneDock').hidden,
+      true,
+      'the revealed phone is tucked away',
+    );
+    assert(w.document.getElementById('voipWebphone'), 'but stays registered');
+
+    // A finished call does not tear the web phone down for always-on staff.
+    current = { ...ringing, status: 'answered', userId: 'u', answeredAt: new Date().toISOString() };
+    await w.voipInboundPoll();
+    await settle();
+    assert(w.document.getElementById('voipActiveCall'));
+    ui(w).updateActive({
+      ...current,
+      status: 'completed',
+      statusLabel: 'Gelen arama – görüşüldü',
+      duration: 12,
+    });
+    assert.equal(ui(w).releaseTimer ?? null, null, 'no teardown is scheduled');
+    assert(w.document.getElementById('voipWebphone'));
+
+    // Leaving the inbound list turns the always-on phone off.
+    alwaysOn = false;
+    await w.voipInboundPoll();
+    assert.equal(ui(w).alwaysOn, false);
+  } finally {
+    try {
+      w.clearTimeout(ui(w).inboundTimer);
+      await settle();
+    } finally {
+      dom.window.close();
+    }
+  }
+});
+
+test('Sonlandır closes an inbound call whose channel is gone even when the exchange has no call record', async () => {
+  const h = inboundHarness(async (url) => {
+    const path = new URL(url).pathname;
+    if (path.startsWith('/hangup/')) return new Response('No such channel!', { status: 400 });
+    if (path.startsWith('/cdrs/')) return new Response('not found', { status: 404 });
+    return new Response('[]');
+  });
+  h.user = { id: 's', name: 'Personel', role: 'staff', staffId: 'p' };
+  await h.call(hookUrl(h), 'POST', inbound());
+  await h.call(hookUrl(h), 'POST', inbound({ event_type: 'answer', connected_user: '1002' }));
+  // The hangup event never arrives; the person presses Sonlandır.
+  const call = inboundCalls(h)[0];
+  assert.equal(call.status, 'answered');
+  assert.deepEqual(await h.call('hangup', 'POST', { id: call.id }), { ok: true });
+  const closed = inboundCalls(h)[0];
+  assert.equal(closed.status, 'completed', 'answered, so it ends as a finished conversation');
+  assert.equal(closed.endSource, 'channel-gone');
+  assert.ok(closed.endedAt);
+  const listed = await h.call('calls?documentId=d');
+  assert.deepEqual(listed.active, [], 'nothing stays "in progress"');
+});
+
+test('an inbound call left ringing for minutes is closed as unanswered at the next check-in', async () => {
+  const h = inboundHarness();
+  h.user = { id: 's', name: 'Personel', role: 'staff', staffId: 'p' };
+  await h.call(hookUrl(h), 'POST', inbound());
+  inboundCalls(h)[0].createdAt = new Date(Date.now() - 4 * 60000).toISOString();
+  const polled = await h.call('incoming');
+  assert.equal(polled.call, null, 'not offered as ringing any more');
+  const call = inboundCalls(h)[0];
+  assert.equal(call.status, 'unanswered');
+  assert.equal(call.endSource, 'ring-timeout');
+});
+
+test('answered inbound calls the exchange no longer shows as talking are closed automatically', async () => {
+  let talking = true;
+  const asked = [];
+  const h = inboundHarness(async (url) => {
+    const u = new URL(url);
+    asked.push(u.pathname);
+    if (u.pathname === '/user_statuses')
+      return new Response(JSON.stringify([{ user: 1002, status: talking ? 'TALKING' : 'AVAILABLE' }]));
+    if (u.pathname.startsWith('/cdrs/')) return new Response('not found', { status: 404 });
+    return new Response('[]');
+  });
+  h.user = { id: 's', name: 'Personel', role: 'staff', staffId: 'p' };
+  await h.call(hookUrl(h), 'POST', inbound());
+  await h.call(hookUrl(h), 'POST', inbound({ event_type: 'answer', connected_user: '1002' }));
+  // Younger than a minute: not checked yet.
+  assert.equal((await h.call('incoming')).call.status, 'answered');
+  assert.ok(!asked.includes('/user_statuses'));
+  inboundCalls(h)[0].answeredAt = new Date(Date.now() - 2 * 60000).toISOString();
+  // Still talking: stays open.
+  assert.equal((await h.call('incoming')).call.status, 'answered');
+  assert.equal(asked.filter((p) => p === '/user_statuses').length, 1);
+  // Checked at most every 30 s from the screen.
+  await h.call('incoming');
+  assert.equal(asked.filter((p) => p === '/user_statuses').length, 1);
+  // The hangup event is lost and the extension is free again: the next check closes it.
+  talking = false;
+  inboundCalls(h)[0].statusCheckedAt = new Date(Date.now() - 60000).toISOString();
+  assert.equal((await h.call('incoming')).call, null);
+  const call = inboundCalls(h)[0];
+  assert.equal(call.status, 'completed');
+  assert.equal(call.endSource, 'extension-idle');
+});
+
+test('the background job closes inbound calls stuck as answered and ringing calls over two minutes', async () => {
+  process.env.VOIP_CRON_SECRET ||= 'test-cron-secret-0123456789';
+  const h = inboundHarness(async (url) => {
+    const u = new URL(url);
+    if (u.pathname === '/user_statuses') return new Response('[{"user":1002,"status":"UNREGISTERED"}]');
+    return new Response('not found', { status: 404 });
+  });
+  await h.call(hookUrl(h), 'POST', inbound());
+  await h.call(hookUrl(h), 'POST', inbound({ event_type: 'answer', connected_user: '1002' }));
+  await h.call(hookUrl(h), 'POST', inbound({ call_uuid: 'in-uuid-0002', caller_id_number: '05320000001' }));
+  const [answered, ringing] = inboundCalls(h);
+  answered.answeredAt = new Date(Date.now() - 5 * 60000).toISOString();
+  ringing.createdAt = new Date(Date.now() - 150000).toISOString();
+  const result = await h.call('cron', 'POST', {}, false, {
+    authorization: 'Bearer ' + process.env.VOIP_CRON_SECRET,
+  });
+  assert.equal(result.inboundClosed, 1);
+  const [a, r] = inboundCalls(h);
+  assert.deepEqual([a.status, a.endSource], ['completed', 'extension-idle']);
+  assert.deepEqual([r.status, r.endSource], ['unanswered', 'ring-timeout']);
+});
+
+test('a call the exchange cannot confirm (no call id) can be closed by its person; nothing is sent to the exchange', async () => {
+  const asked = [];
+  const h = harness(async (url) => {
+    asked.push(new URL(url).pathname);
+    return new Response('[]');
+  });
+  h.user = { id: 's', name: 'Personel', role: 'staff', staffId: 'p' };
+  const base = {
+    provider: 'verimor',
+    documentId: 'd',
+    phone: '905320000000',
+    staffName: 'Personel',
+    extension: '1002',
+    createdAt: new Date(Date.now() - 600000).toISOString(),
+    status: 'unknown',
+    duration: 0,
+    result: '',
+    note: '',
+    recordingPresent: false,
+  };
+  const id = crypto.randomUUID();
+  h.state.voipCalls.push({ ...base, id, requestId: 'stuck-request-0001', userId: 's' });
+  await assert.rejects(h.call('hangup', 'POST', { id }), /Çağrı kimliği henüz alınamadı/);
+  const closed = await h.call('close', 'POST', { id });
+  assert.equal(closed.ok, true);
+  assert.equal(closed.call.status, 'failed', 'never answered');
+  const call = h.state.voipCalls.find((c) => c.id === id);
+  assert.equal(call.endSource, 'manual-close');
+  assert.equal(call.closedBy, 'Personel');
+  assert.deepEqual(asked, [], 'the exchange is not contacted');
+  assert.deepEqual((await h.call('calls?documentId=d')).active, [], 'no longer in progress');
+  const other = crypto.randomUUID();
+  h.state.voipCalls.push({ ...base, id: other, requestId: 'stuck-request-0002', userId: 'u' });
+  await assert.rejects(
+    h.call('close', 'POST', { id: other }),
+    /yetkiniz yok/,
+    "staff cannot close someone else's call",
+  );
+});
+
+test('a recent outbound conversation is reported as recent_call even when an inbound call came after it', async () => {
+  const h = harness(async () => new Response('call-0000000099'));
+  h.user = { id: 's', name: 'Personel', role: 'staff', staffId: 'p' };
+  const base = {
+    provider: 'verimor',
+    documentId: 'd',
+    phone: '905320000000',
+    staffName: 'Personel',
+    extension: '1002',
+    duration: 30,
+    result: '',
+    note: '',
+    recordingPresent: false,
+  };
+  h.state.voipCalls.push(
+    {
+      ...base,
+      id: crypto.randomUUID(),
+      requestId: 'recent-out-0001',
+      userId: 's',
+      status: 'completed',
+      createdAt: new Date(Date.now() - 600000).toISOString(),
+    },
+    {
+      ...base,
+      id: crypto.randomUUID(),
+      requestId: 'in:recent-in-0001',
+      userId: '',
+      direction: 'inbound',
+      status: 'unanswered',
+      createdAt: new Date(Date.now() - 60000).toISOString(),
+    },
+  );
+  await assert.rejects(
+    h.call('start', 'POST', { documentId: 'd', phone: '05320000000', requestId: 'recent-check-0001' }),
+    (e) => e.reason === 'recent_call' && /yakın zamanda arandı/.test(e.message),
+  );
+  const ok = await h.call('start', 'POST', {
+    documentId: 'd',
+    phone: '05320000000',
+    requestId: 'recent-check-0002',
+    confirmRecent: true,
+  });
+  assert.equal(ok.call.status, 'ringing', 'confirming lets the call go out');
+});
+
+test('the fallback target is chosen from a list with an explanation and saved as a Verimor target', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM(
+    '<form><select name="fallbackType"></select><input name="fallbackNumber"><select name="fallbackUser"><option value="1001">CEO · dahili 1001</option><option value="1002">Personel · dahili 1002</option></select><small data-fallback-help></small></form>',
+    { url: 'https://example.test', runScripts: 'dangerously' },
+  );
+  const w = dom.window;
+  try {
+    w.esc = (v) => String(v);
+    w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    const form = w.document.querySelector('form');
+    form.elements.fallbackType.innerHTML = ['', 'group', 'queue', 'user', 'voicemail', 'external']
+      .map((id) => `<option value="${id}">${id}</option>`)
+      .join('');
+    w.voipBindFallback(form, 'group/700');
+    assert.equal(form.elements.fallbackType.value, 'group');
+    assert.equal(form.elements.fallbackNumber.value, '700');
+    assert.equal(form.elements.fallbackUser.hidden, true);
+    assert.match(form.querySelector('[data-fallback-help]').textContent, /bütün dahililer aynı anda çalar/);
+    assert.equal(w.voipFallbackValue(form), 'group/700');
+
+    form.elements.fallbackType.value = 'voicemail';
+    form.elements.fallbackType.onchange();
+    assert.equal(form.elements.fallbackNumber.hidden, true);
+    assert.equal(form.elements.fallbackUser.hidden, false);
+    form.elements.fallbackUser.value = '1002';
+    assert.equal(w.voipFallbackValue(form), 'voicemail/1002');
+
+    form.elements.fallbackType.value = 'external';
+    form.elements.fallbackNumber.value = '+90 532 123 45 67';
+    assert.equal(w.voipFallbackValue(form), 'external/05321234567');
+    form.elements.fallbackNumber.value = '123';
+    assert.throws(() => w.voipFallbackValue(form), /geçerli bir telefon/);
+
+    form.elements.fallbackType.value = 'queue';
+    form.elements.fallbackNumber.value = '';
+    assert.throws(() => w.voipFallbackValue(form), /kuyruk numarasını/);
+
+    form.elements.fallbackType.value = '';
+    assert.equal(w.voipFallbackValue(form), '');
+    w.voipBindFallback(form, 'user/1001');
+    assert.equal(form.elements.fallbackUser.value, '1001');
+    assert.equal(w.voipFallbackValue(form), 'user/1001');
+  } finally {
+    w.close();
+  }
+});
+
+test('a call from a debtor rings the file assignee first, then the last caller, then anyone reachable', async () => {
+  // File d is assigned to staff p (user s, ext 1002); the last call to the number was made by u (1001).
+  const h = inboundHarness();
+  seedOutbound(h, { userId: 'u', staffName: 'CEO', extension: '1001', requestId: 'seed-outbound-by-ceo' });
+  h.user = CEO;
+  await checkIn(h, STAFF);
+  await checkIn(h, CEO);
+  assert.deepEqual(
+    await h.call(routeUrl(h)),
+    { transfer: { target: 'user/1002' } },
+    'assignee before last caller',
+  );
+
+  // The assignee is on another call: the last caller is next.
+  h.state.voipCalls.push({
+    id: crypto.randomUUID(),
+    requestId: 'busy-0001',
+    userId: 's',
+    phone: '905559990000',
+    status: 'answered',
+    createdAt: new Date().toISOString(),
+  });
+  assert.deepEqual(
+    await h.call(routeUrl(h)),
+    { transfer: { target: 'user/1001' } },
+    'last caller when the assignee is busy',
+  );
+
+  // A number on no file with no previous call: anyone reachable.
+  h.state.voipCalls = h.state.voipCalls.filter((c) => c.requestId !== 'busy-0001');
+  assert.deepEqual(await h.call(routeUrl(h, '05551112233')), { transfer: { target: 'user/1001' } });
+});
+
+test('VoIP settings: connection settings and "Dahililer ve yetkiler" are two tabs under Entegrasyonlar → VoIP', async () => {
+  const { JSDOM } = require('jsdom');
+  const src = await fs.readFile('outputs/icrapro/settings.js', 'utf8');
+  const tabs = src.slice(
+    src.indexOf('// Add-on modules this office was sold'),
+    src.indexOf('function bindSettingsSectionTabs'),
+  );
+  const render = (role, active, modules) => {
+    const dom = new JSDOM('', { runScripts: 'outside-only' });
+    const w = dom.window;
+    w.hanAuth = { role };
+    if (modules) w.hanModules = modules;
+    w.esc = (v) => String(v);
+    w.eval(tabs);
+    w.document.body.innerHTML = w.settingsSectionTabs(active);
+    const rows = [...w.document.querySelectorAll('.settings-tabs')].map((row) =>
+      [...row.querySelectorAll('button')].map(
+        (b) => (b.classList.contains('selected') ? '*' : '') + b.textContent,
+      ),
+    );
+    w.close();
+    return rows;
+  };
+  const ceo = render('ceo', 'permissions');
+  assert.ok(!ceo[0].some((t) => t.includes('Yetkilendirme')), 'no top-level Yetkilendirme tab');
+  assert.ok(ceo[0].includes('*Entegrasyonlar'));
+  assert.ok(ceo[1].includes('*VoIP / Telefon'));
+  assert.deepEqual(ceo[2], ['Bağlantı ayarları', '*Dahililer ve yetkiler']);
+  assert.deepEqual(render('ceo', 'voip')[2], ['*Bağlantı ayarları', 'Dahililer ve yetkiler']);
+  assert.equal(render('ceo', 'sms').length, 2, 'no VoIP row on other integrations');
+
+  const admin = render('admin', 'permissions');
+  assert.ok(admin[0].includes('*Entegrasyonlar'), 'admins keep access to extensions and recording rights');
+  assert.deepEqual(admin[1], ['*VoIP / Telefon']);
+  assert.deepEqual(
+    admin[2],
+    ['*Dahililer ve yetkiler'],
+    'admins do not see the CEO-only connection settings',
+  );
+
+  assert.ok(!render('staff', 'firm')[0].includes('Entegrasyonlar'));
+  // Without the phone module an admin has no integration page at all; the CEO keeps the others.
+  assert.ok(!render('admin', 'firm', { voip: false })[0].includes('Entegrasyonlar'));
+  assert.ok(!render('ceo', 'ai', { voip: false })[1].includes('VoIP / Telefon'));
 });

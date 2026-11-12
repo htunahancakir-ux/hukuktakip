@@ -22,6 +22,19 @@ function fixture() {
       'icrapro-personnel-v1': [{ id: 'staff' }],
       'icrapro-cases-v1': [{ id: 'case' }],
     },
+    messages: [
+      {
+        id: 'msg',
+        senderId: 'a',
+        senderName: 'Ayşe',
+        recipientIds: ['b'],
+        recipientNames: ['Banu'],
+        subject: 'Konu',
+        text: 'Metin',
+        createdAt: '2026-11-01T00:00:00.000Z',
+        readBy: {},
+      },
+    ],
   };
 }
 function context(state, user = owner) {
@@ -73,6 +86,7 @@ test('Nonowners cannot remove core records through bulk writes or hide financial
     (s) => (s.data['hanhukuk-accounting-v1'].accounts = []),
     (s) => (s.data['icrapro-personnel-v1'] = []),
     (s) => (s.data['icrapro-cases-v1'] = []),
+    (s) => (s.messages = []),
     (s) => (s.data['hanhukuk-accounting-v1'].excludedFinanceIds = ['payment']),
   ]) {
     const next = structuredClone(before);
@@ -107,6 +121,7 @@ test('Each supported record type is archived on explicit owner deletion without 
     'personnel',
     'cases',
     'conversations',
+    'messages',
   ]) {
     const state = fixture();
     if (type === 'clients') state.data['icrapro-v1'].docs = [];

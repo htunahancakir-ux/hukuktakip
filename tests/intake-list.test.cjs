@@ -5,7 +5,7 @@ const path = require('node:path');
 const { JSDOM } = require('jsdom');
 const { parsers } = require('prettier/plugins/babel');
 
-test('Personnel attachment tab sits beside payroll and uploads multiple files to the selected person', async (t) => {
+test('Personnel window uploads multiple files to its selected person and disables uploads without an owner', async (t) => {
   const dom = new JSDOM('<div id="content"></div>', {
     url: 'https://test.invalid',
     runScripts: 'dangerously',
@@ -75,15 +75,10 @@ test('Personnel attachment tab sits beside payroll and uploads multiple files to
             },
     };
   };
-  await w.personnelSettings();
-  const tab = w.document.querySelector('[data-staff-view=files]');
-  assert.equal(tab.textContent, 'Foto ve PDF Ekle');
-  assert.equal(tab.previousElementSibling.dataset.staffView, 'payroll');
+  const host = w.document.querySelector('#content');
+  await w.personnelAttachmentsPage(host, '');
   assert.equal(w.document.querySelector('#personnelFilePicker').disabled, true);
-  const select = w.document.querySelector('#personnelFileOwner');
-  select.value = 'person-two';
-  select.dispatchEvent(new w.Event('change'));
-  await tick();
+  await w.personnelAttachmentsPage(host, 'person-two');
   const input = w.document.querySelector('#personnelFilePicker');
   for (const file of [
     new w.File(['%PDF-1.4'], '<first>.pdf', { type: 'application/pdf' }),
@@ -94,7 +89,7 @@ test('Personnel attachment tab sits beside payroll and uploads multiple files to
   }
   await w.document.querySelector('#personnelFilesForm').onsubmit(new w.Event('submit', { cancelable: true }));
   assert.equal(stored.length, 2);
-  assert.equal(w.document.querySelector('#personnelFileOwner').value, 'person-two');
+  assert(stored.every((file) => file.ownerId === 'person-two'));
   assert.equal(w.document.querySelectorAll('[data-personnel-file-list] section').length, 2);
   assert.equal(w.document.querySelector('first'), null);
   await w.document.querySelector('[data-personnel-file-list] button').onclick();
@@ -265,6 +260,8 @@ test('Borrower TC is optional: blank saves with warning and filled values keep f
   };
   for (const [file, name] of [
     ['form-inputs.js', 'field'],
+    ['document-records.js', 'borrowerPartyFields'],
+    ['document-records.js', 'setupBorrowerPartyFields'],
     ['borrower-sheet.js', 'editBorrower'],
     ['borrower-sheet.js', 'bindBorrowerExtraPhones'],
   ]) {
@@ -316,7 +313,7 @@ const tick = async () => {
 
 test('Additional intake copies parent fields before required validation, including dependent districts', (t) => {
   const dom = new JSDOM(
-    '<form id="intakeForm"><input name="client" value="c80" disabled><input name="clientParty" value=""><input name="debtor" value="Parent borrower" disabled><input name="city" value="İstanbul" disabled><input name="district" value="Kadıköy" disabled></form><iframe></iframe>',
+    '<form id="intakeForm"><select name="client" disabled><option value="c80" selected>Selected client</option></select><input name="clientParty" value=""><input name="debtor" value="Parent borrower" disabled><input name="city" value="İstanbul" disabled><input name="district" value="Kadıköy" disabled></form><iframe></iframe>',
     { url: 'https://local-test.invalid', runScripts: 'dangerously' },
   );
   const w = dom.window.document.querySelector('iframe').contentWindow;
@@ -342,6 +339,11 @@ test('Additional intake copies parent fields before required validation, includi
     form.elements.district.disabled = !form.elements.city.value;
     form.elements.district.value = '';
   });
+  // The child lookup may still be loading or not contain a client outside its first page.
+  form.elements.client.replaceChildren(new w.Option('Müvekkil seçin', ''));
+  assert.equal(w.copySharedIntakeFields(form), true);
+  assert.equal(form.elements.client.value, 'c80');
+  assert.equal(form.elements.client.selectedOptions[0].textContent, 'Selected client');
   w.prepareEmbeddedIntake(form);
   assert.equal(w.validateRequiredForm(form), true);
   assert.equal(form.elements.debtor.value, 'Parent borrower');
@@ -422,13 +424,19 @@ test('Intake UI pages records, keeps totals complete and never saves search/rece
     }
     if (parsed.pathname === '/api/records/search') {
       const id = parsed.searchParams.get('id');
+      const start = Number(parsed.searchParams.get('after') || 0);
+      const end = Math.min(start + 50, 123);
       return {
         ok: true,
         json: async () => ({
-          more: !id,
+          more: !id && end < 123,
+          next: !id && end < 123 ? String(end) : null,
           items: id
             ? [{ id, name: 'Selected client', identity: '10000000080' }]
-            : Array.from({ length: 50 }, (_, i) => ({ id: 'c' + i, name: 'Client ' + i })),
+            : Array.from({ length: end - start }, (_, i) => ({
+                id: 'c' + (start + i),
+                name: start + i === 80 ? 'Selected client' : 'Client ' + (start + i),
+              })),
         }),
       };
     }
@@ -477,8 +485,9 @@ test('Intake UI pages records, keeps totals complete and never saves search/rece
   w.bindIntakeClientSelect(w.$('#clientSearch'), w.$('#pick'), 'Select', w.$('#hint'));
   await tick();
   assert.equal(w.$('#pick').value, 'c80', 'selection outside first 50 must survive lookup');
-  assert.equal(w.$('#pick').options.length, 52);
-  assert.match(w.$('#hint').textContent, /50/);
+  assert.equal(w.$('#pick').options.length, 124);
+  assert.equal(new Set(Array.from(w.$('#pick').options, (option) => option.value)).size, 124);
+  assert.match(w.$('#hint').textContent, /123/);
   assert.equal(w.db.clients.length, 0, 'search projections never contaminate editable records');
   assert.equal(w.db.docs.length, 0);
   w.selected = 'c80';

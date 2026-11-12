@@ -536,6 +536,7 @@ test('Active record storage preserves existing HTTP commands, audit, auth and sc
         documentId,
         accountId: 'cash',
         type: 'payment',
+        turnoverStaffId: 'turnover:bonus',
         date: require('../lib/business-time.cjs').businessDate(),
         amount,
       };
@@ -568,7 +569,13 @@ test('Active record storage preserves existing HTTP commands, audit, auth and sc
     assert.equal((await allowedCost.json()).accountBalances.cash, '2000');
     const tooMuchCost = await writeEvent({ ...cost, id: 'overdraft', amount: 3000 });
     assert.equal(tooMuchCost.status, 409);
-    const tooMuchPayment = await writeEvent({ ...cost, id: 'overpayment', type: 'payment', amount: 9500 });
+    const tooMuchPayment = await writeEvent({
+      ...cost,
+      id: 'overpayment',
+      type: 'payment',
+      amount: 9500,
+      turnoverStaffId: 'turnover:bonus',
+    });
     assert.equal(tooMuchPayment.status, 409);
     assert.equal((await store.readState()).data['hanhukuk-finance-v1'].length, 3);
     const stale = await fetch(server.url + '/api/data/patch?key=icrapro-v1', {

@@ -318,6 +318,7 @@ test('VoIP tables created after tenant isolation receive tenant keys and RLS', a
       [
         ['voip_calls', true, true],
         ['voip_config', true, true],
+        ['voip_presence', true, true],
         ['voip_recording_access', true, true],
       ],
     );

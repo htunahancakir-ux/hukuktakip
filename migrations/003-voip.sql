@@ -16,10 +16,23 @@ CREATE INDEX IF NOT EXISTS voip_history ON han_private.voip_calls(created_at DES
 CREATE INDEX IF NOT EXISTS voip_transcription_pending ON han_private.voip_calls(created_at,id) WHERE body->'transcription'->>'status' IN ('queued','processing');
 CREATE INDEX IF NOT EXISTS voip_status_history ON han_private.voip_calls(status,created_at DESC,id);
 CREATE INDEX IF NOT EXISTS voip_result_history ON han_private.voip_calls((body->>'result'),created_at DESC,id);
-CREATE UNIQUE INDEX IF NOT EXISTS voip_active_phone ON han_private.voip_calls(phone)
-  WHERE status IN ('starting','ringing','answered','unknown');
-CREATE UNIQUE INDEX IF NOT EXISTS voip_active_user ON han_private.voip_calls(user_id)
-  WHERE status IN ('starting','ringing','answered','unknown');
+-- One active call per number and per user applies to calls the office dials. Calls from outside
+-- (direction 'inbound') are recorded as they happen and never block or collide with dialing.
+DROP INDEX IF EXISTS han_private.voip_active_phone;
+DROP INDEX IF EXISTS han_private.voip_active_user;
+-- Within one office once tenant isolation has given the table its tenant key.
+DO $$
+DECLARE scope text := CASE WHEN EXISTS (
+  SELECT 1 FROM pg_attribute WHERE attrelid = 'han_private.voip_calls'::regclass
+    AND attname = 'tenant_id' AND NOT attisdropped) THEN 'tenant_id, ' ELSE '' END;
+BEGIN
+  EXECUTE format('CREATE UNIQUE INDEX IF NOT EXISTS voip_active_outbound_phone ON han_private.voip_calls(%sphone)
+    WHERE status IN (''starting'',''ringing'',''answered'',''unknown'') AND COALESCE(body->>''direction'','''')<>''inbound''', scope);
+  EXECUTE format('CREATE UNIQUE INDEX IF NOT EXISTS voip_active_outbound_user ON han_private.voip_calls(%suser_id)
+    WHERE status IN (''starting'',''ringing'',''answered'',''unknown'') AND COALESCE(body->>''direction'','''')<>''inbound''', scope);
+END $$;
+CREATE INDEX IF NOT EXISTS voip_inbound_history ON han_private.voip_calls(created_at DESC)
+  WHERE body->>'direction'='inbound';
 CREATE INDEX IF NOT EXISTS voip_provider_call ON han_private.voip_calls((body->>'providerId'));
 CREATE INDEX IF NOT EXISTS voip_archive_pending ON han_private.voip_calls(created_at)
   WHERE body->>'archivedAt' IS NULL AND body->>'recordingMissing' IS NULL AND (body->>'recordingPresent'='true' OR status='completed');
@@ -28,6 +41,12 @@ CREATE TABLE IF NOT EXISTS han_private.voip_recording_access (
   user_id text PRIMARY KEY, body jsonb NOT NULL
 );
 REVOKE ALL ON han_private.voip_recording_access FROM PUBLIC;
+-- Last check-in of each user's always-connected web phone; decides who can take a call now.
+CREATE TABLE IF NOT EXISTS han_private.voip_presence (
+  user_id text PRIMARY KEY, seen_at timestamptz NOT NULL
+);
+REVOKE ALL ON han_private.voip_presence FROM PUBLIC;
+ALTER TABLE han_private.voip_presence ENABLE ROW LEVEL SECURITY;
 ALTER TABLE han_private.voip_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE han_private.voip_calls ENABLE ROW LEVEL SECURITY;
 ALTER TABLE han_private.voip_recording_access ENABLE ROW LEVEL SECURITY;
