@@ -386,6 +386,7 @@ function clientModal(id, loadedRecord) {
   if (id && ['ceo', 'admin'].includes(window.hanAuth?.role))
     setupClientStatement($('#clientForm'), id, c.name || c.tradeName || c.fullName || '');
   setupExtraContacts($('#clientForm'), c);
+  setupClientBankAccounts($('#clientForm'), c);
   for (const selector of ['#clientPhotos', '#clientPowerOfAttorney']) bindMultipleFileInput($(selector));
   $('#modal').showModal();
   setupClientCity();
@@ -451,6 +452,11 @@ function clientModal(id, loadedRecord) {
       input.setCustomValidity('Geçerli bir Türkiye IBAN numarası girin.');
       input.reportValidity();
       return;
+    }
+    try {
+      v.additionalBankAccounts = e.target.readAdditionalBankAccounts();
+    } catch (error) {
+      return toast(error.message);
     }
     const button = e.target.querySelector('button.primary');
     if (button.disabled) return;
@@ -715,4 +721,87 @@ function readExtraContacts(form) {
       .filter(Boolean),
     additionalAddresses: values('address').filter((r) => r.address || r.city || r.district),
   };
+}
+
+function setupClientBankAccounts(form, record) {
+  const host = document.createElement('section');
+  host.className = 'full client-bank-accounts';
+  const primary = document.createElement('div');
+  primary.className = 'client-bank-account';
+  primary.innerHTML = '<h4>Banka Hesabı 1</h4><div class="grid"></div>';
+  const bankName = form.elements.bankName.closest('label');
+  bankName.before(host);
+  host.append(primary);
+  for (const name of HanClientBanks.fields)
+    primary.querySelector('.grid').append(form.elements[name].closest('label'));
+  const list = document.createElement('div');
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'secondary';
+  add.dataset.addClientBank = 'true';
+  add.textContent = '＋ Banka Ekle';
+  const status = document.createElement('small');
+  status.setAttribute('role', 'status');
+  host.append(list, add, status);
+  function refresh() {
+    const rows = [...list.children];
+    rows.forEach((row, index) => (row.querySelector('h4').textContent = 'Banka Hesabı ' + (index + 2)));
+    add.disabled = rows.length >= 2;
+    status.textContent =
+      rows.length + 1 + ' / 3 banka hesabı · Mevcut hesap dahil en fazla 3 hesap ekleyebilirsiniz.';
+  }
+  function row(account = {}) {
+    if (list.children.length >= 2) return;
+    const section = document.createElement('section');
+    section.className = 'client-bank-account';
+    section.dataset.clientBank = 'true';
+    section.innerHTML =
+      '<div class="toolbar"><h4></h4><button type="button" class="link" data-remove-client-bank>Hesabı Kaldır</button></div><div class="grid">' +
+      [
+        ['bankName', 'Banka Adı'],
+        ['bankBranch', 'Şube'],
+        ['accountHolder', 'Hesap Sahibi'],
+        ['iban', 'IBAN (isteğe bağlı)'],
+      ]
+        .map(
+          ([key, label]) =>
+            '<label class="field">' +
+            esc(label) +
+            '<input type="text" data-bank-field="' +
+            key +
+            '" data-optional="true" maxlength="' +
+            (key === 'iban' ? '32' : '200') +
+            '" value="' +
+            esc(key === 'iban' ? formatIbanNumber(account[key]) : account[key] || '') +
+            '"></label>',
+        )
+        .join('') +
+      '</div>';
+    section.querySelector('[data-bank-field="iban"]').addEventListener('input', (event) => {
+      event.target.value = formatIbanNumber(event.target.value);
+      event.target.setCustomValidity('');
+    });
+    section.querySelector('[data-remove-client-bank]').onclick = () => {
+      section.remove();
+      refresh();
+    };
+    list.append(section);
+    refresh();
+    return section;
+  }
+  for (const account of record.additionalBankAccounts || []) row(account);
+  add.onclick = () => row()?.querySelector('input').focus();
+  form.readAdditionalBankAccounts = () =>
+    HanClientBanks.additional({
+      iban: form.elements.iban.value,
+      additionalBankAccounts: [...list.children].map((section) =>
+        Object.fromEntries(
+          [...section.querySelectorAll('[data-bank-field]')].map((input) => [
+            input.dataset.bankField,
+            input.value,
+          ]),
+        ),
+      ),
+    });
+  refresh();
 }

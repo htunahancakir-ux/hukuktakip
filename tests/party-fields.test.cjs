@@ -49,6 +49,8 @@ test('Client company controls and borrower type controls stay optional across ty
       staffSelect: (label, name, value = '') =>
         `<label class="field">${label}<select name="${name}"><option value="">Seçin</option><option value="p" ${value === 'p' ? 'selected' : ''}>Personel</option></select></label>`,
     });
+    w.eval(fs.readFileSync('outputs/icrapro/phone-format.js', 'utf8'));
+    w.eval(fs.readFileSync('outputs/icrapro/client-bank-accounts.js', 'utf8'));
     load(w, 'form-inputs.js', ['field']);
     load(w, 'document-records.js', [
       'setupRecordFormTabs',
@@ -58,6 +60,7 @@ test('Client company controls and borrower type controls stay optional across ty
     ]);
     load(w, 'client-records.js', [
       'clientModal',
+      'setupClientBankAccounts',
       'clientCityField',
       'clientAttachmentFields',
       'syncClientCompanyFields',
@@ -91,6 +94,16 @@ test('Client company controls and borrower type controls stay optional across ty
       accountHolder: 'Örnek Firma',
     }))
       form.elements[name].value = value;
+    const addBank = form.querySelector('[data-add-client-bank]');
+    addBank.click();
+    addBank.click();
+    addBank.click();
+    assert.equal(form.querySelectorAll('[data-client-bank]').length, 2);
+    assert.equal(addBank.disabled, true);
+    const rows = [...form.querySelectorAll('[data-client-bank]')];
+    rows[0].querySelector('[data-bank-field="bankName"]').value = 'İkinci Banka';
+    rows[1].querySelector('[data-bank-field="bankName"]').value = 'Üçüncü Banka';
+    for (const input of form.querySelectorAll('[data-bank-field]')) assert.equal(input.required, false);
     await form.onsubmit({ preventDefault() {}, target: form });
     assert.equal(w.db.clients.length, 1, notices.join('; '));
     assert.equal(w.db.clients[0].taxOffice, '');
@@ -98,6 +111,10 @@ test('Client company controls and borrower type controls stay optional across ty
     const id = w.db.clients[0].id;
     w.clientModal(id);
     form = w.document.getElementById('clientForm');
+    assert.equal(form.querySelectorAll('[data-client-bank]').length, 2);
+    assert.equal(form.querySelector('[data-client-bank] [data-bank-field="bankName"]').value, 'İkinci Banka');
+    form.querySelector('[data-remove-client-bank]').click();
+    assert.equal(form.querySelector('[data-add-client-bank]').disabled, false);
     choose('Şahıs Şirketi');
     form.elements.taxOffice.value = ' Kadıköy ';
     form.elements.mersisNumber.value = ' 0012345678901234 ';
@@ -107,6 +124,8 @@ test('Client company controls and borrower type controls stay optional across ty
     assert.equal(form.elements.mersisNumber.value, ' 0012345678901234 ');
     await form.onsubmit({ preventDefault() {}, target: form });
     assert.equal(w.db.clients[0].type, 'Şahıs Şirketi');
+    assert.equal(w.db.clients[0].additionalBankAccounts.length, 1);
+    assert.equal(w.db.clients[0].additionalBankAccounts[0].bankName, 'Üçüncü Banka');
     assert.equal(w.db.clients[0].taxOffice, 'Kadıköy');
     assert.equal(w.db.clients[0].mersisNumber, '0012345678901234');
     w.clientModal(id);

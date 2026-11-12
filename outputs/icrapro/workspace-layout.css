@@ -1867,3 +1867,23 @@ dialog.modal-dragging .modal-drag-handle {
   color: var(--muted, #617586);
   overflow-wrap: anywhere;
 }
+
+.client-bank-accounts {
+  display: grid;
+  gap: 14px;
+}
+.client-bank-account {
+  border: 1px solid #dce5eb;
+  border-radius: 8px;
+  padding: 16px;
+  min-width: 0;
+}
+.client-bank-account h4 {
+  margin: 0 0 12px;
+}
+.client-bank-account .toolbar {
+  justify-content: space-between;
+}
+.client-bank-accounts > button {
+  justify-self: start;
+}

@@ -261,6 +261,42 @@ test('Client pages, selected attachments and isolated edits preserve totals, per
         .rows[0].n > 0,
     );
     assert.equal((await get('/api/records/clients')).summary.amountCents, '60000');
+    const bankBefore = (await get('/api/records/client?id=c0')).record;
+    const bankAfter = {
+      ...bankBefore,
+      additionalBankAccounts: [
+        {
+          bankName: 'İkinci Banka',
+          bankBranch: 'Şube 2',
+          accountHolder: 'Müvekkil',
+          iban: 'TR330006100519786457841326',
+        },
+        { bankName: 'Üçüncü Banka', bankBranch: '', accountHolder: '', iban: '' },
+      ],
+    };
+    assert.equal((await patch(bankBefore, bankAfter, allowed)).status, 200);
+    const reread = (await get('/api/records/client?id=c0')).record;
+    assert.deepEqual(reread.additionalBankAccounts, bankAfter.additionalBankAccounts);
+    assert.equal(reread.bankName, bankBefore.bankName, 'existing primary bank is preserved');
+    assert.equal(
+      (
+        await patch(
+          reread,
+          { ...reread, additionalBankAccounts: [...reread.additionalBankAccounts, { bankName: 'Dördüncü' }] },
+          allowed,
+        )
+      ).status,
+      400,
+    );
+    assert.deepEqual(
+      (await get('/api/records/client?id=c0')).record.additionalBankAccounts,
+      reread.additionalBankAccounts,
+    );
+    assert.equal(
+      (await patch(reread, { ...reread, additionalBankAccounts: [{ iban: 'TR123' }] }, allowed)).status,
+      400,
+    );
+    assert.equal((await patch(reread, { ...reread, additionalBankAccounts: [] }, denied)).status, 403);
   } finally {
     await server?.close();
     await pg.close();

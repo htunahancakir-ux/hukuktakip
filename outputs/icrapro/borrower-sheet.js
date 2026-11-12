@@ -849,6 +849,18 @@ function borrowerClientInfo(id) {
     item('Şube', c.bankBranch) +
     item('Hesap Sahibi', c.accountHolder) +
     item('IBAN', c.iban) +
+    (c.additionalBankAccounts || [])
+      .map(
+        (account, index) =>
+          '<h3 class="sectiontitle full">Banka Hesabı ' +
+          (index + 2) +
+          '</h3>' +
+          item('Banka', account.bankName) +
+          item('Şube', account.bankBranch) +
+          item('Hesap Sahibi', account.accountHolder) +
+          item('IBAN', account.iban),
+      )
+      .join('') +
     item('Notlar', c.notes) +
     '</div>' +
     clientAttachmentPreviews(c) +
