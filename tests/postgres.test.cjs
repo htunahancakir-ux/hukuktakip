@@ -1002,6 +1002,7 @@ test('WhatsApp recovery uses one-time links, registered contacts and private cre
   const messages = [],
     pending = [],
     uploads = [];
+  let rejectNext = false;
   const app = await serve(
     createApplication({
       store,
@@ -1015,6 +1016,13 @@ test('WhatsApp recovery uses one-time links, registered contacts and private cre
           return Response.json({ id: 'test-media' });
         }
         messages.push(JSON.parse(options.body));
+        if (rejectNext) {
+          rejectNext = false;
+          return Response.json(
+            { error: { message: 'Recipient phone number not in allowed list', code: 131030 } },
+            { status: 400 },
+          );
+        }
         return Response.json({ messages: [{ id: 'test-message' }] });
       },
     }),
@@ -1100,6 +1108,30 @@ test('WhatsApp recovery uses one-time links, registered contacts and private cre
       { cookie: ceo },
     );
     assert.equal((await both.json()).whatsapp.accepted, 1);
+    rejectNext = true;
+    const rejected = await send(
+      '/api/messages',
+      { recipientIds: ['wa-staff'], subject: 'Reddedilen', text: 'İç mesaj', whatsapp: true },
+      { cookie: ceo },
+    );
+    assert.equal((await rejected.json()).whatsapp.failed, 1);
+    // The sender sees each recipient's WhatsApp result on the message itself.
+    const sent = (
+      await (
+        await fetch(app.url + '/api/messages?box=sent', { headers: { 'X-Han-Request': '1', cookie: ceo } })
+      ).json()
+    ).messages;
+    const bySubject = (subject) => sent.filter((m) => m.subject === subject);
+    assert.equal(bySubject('Deneme').find((m) => !m.whatsapp)?.subject, 'Deneme');
+    assert.equal(bySubject('Deneme').find((m) => m.whatsapp).whatsapp['wa-staff'].status, 'accepted');
+    assert.deepEqual(
+      { ...bySubject('Reddedilen')[0].whatsapp['wa-staff'], at: undefined },
+      {
+        status: 'failed',
+        error: 'Hata 131030: Alıcı numarası Meta test listesinde değil',
+        at: undefined,
+      },
+    );
     const doc = {
       documentId: 'wa-doc',
       kind: 'receipt',

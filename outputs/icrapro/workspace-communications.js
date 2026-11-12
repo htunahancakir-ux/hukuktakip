@@ -7,6 +7,62 @@ function messageTimestamp(date) {
   }).format(d);
 }
 
+const messageWhatsAppReasons = {
+  off: 'WhatsApp kapalı veya mesaj şablonu ayarlı değil',
+  contact: 'kayıtlı WhatsApp numarası veya gönderim onayı yok',
+  limit: 'tek seferde en fazla 100 alıcıya gönderilebilir',
+};
+
+// One recipient's WhatsApp result, as stored on the message by the server.
+function messageWhatsAppStatus(row) {
+  if (!row) return { tone: 'muted', text: 'WhatsApp istenmedi' };
+  if (row.status === 'accepted') return { tone: 'ok', text: 'WhatsApp gönderildi (Meta kabul etti)' };
+  if (row.status === 'failed')
+    return { tone: 'bad', text: 'WhatsApp gönderilemedi' + (row.error ? ' — ' + row.error : '') };
+  if (row.status === 'skipped')
+    return {
+      tone: 'bad',
+      text: 'WhatsApp gönderilmedi — ' + (messageWhatsAppReasons[row.reason] || 'nedeni bilinmiyor'),
+    };
+  return Date.now() - Date.parse(row.at || 0) > 5 * 60000
+    ? { tone: 'bad', text: 'WhatsApp sonucu alınamadı' }
+    : { tone: 'muted', text: 'WhatsApp gönderiliyor' };
+}
+
+function messageWhatsAppSummary(message) {
+  const rows = Object.values(message.whatsapp || {});
+  if (!rows.length) return '';
+  const counts = {};
+  for (const row of rows) {
+    const key =
+      row.status === 'accepted'
+        ? 'gönderildi'
+        : row.status === 'sending' && messageWhatsAppStatus(row).tone === 'muted'
+          ? 'gönderiliyor'
+          : 'gönderilemedi';
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  const bad = counts['gönderilemedi'];
+  const text = Object.entries(counts)
+    .map(([label, count]) => (rows.length > 1 ? count + ' ' : '') + label)
+    .join(' · ');
+  return `<small class="message-whatsapp-summary ${bad ? 'is-bad' : ''}">WhatsApp: ${esc(text)}</small>`;
+}
+
+function messageWhatsAppDetail(message) {
+  if (!message.whatsapp) return '';
+  const items = message.recipientIds
+    .map((id, index) => [message.recipientNames[index] || '', message.whatsapp[id]])
+    .filter(([, row]) => row)
+    .map(([name, row]) => {
+      const status = messageWhatsAppStatus(row);
+      return `<li class="is-${status.tone}"><b>${esc(name)}</b> — ${esc(status.text)}</li>`;
+    });
+  return items.length
+    ? `<div class="message-whatsapp"><b>WhatsApp durumu</b><ul>${items.join('')}</ul></div>`
+    : '';
+}
+
 function messagesPage(remote) {
   if (communicationView === 'orders') return workOrdersPage();
   if (window.hanRecordsEnabled && !Array.isArray(remote?.messages)) return loadRecordActivity('messages');
@@ -21,7 +77,7 @@ function messagesPage(remote) {
   }
   $('#content').innerHTML =
     communicationTabsMarkup() +
-    `<div class="panel"><div class="panelhead"><div><h2>Mesajlar</h2><p>Programdaki mesajları yönetici de görebilir.</p></div><div class="toolbar"><button class="secondary" id="refreshMessages">Yenile</button><button class="primary" id="composeMessage">＋ Yeni Mesaj</button></div></div><div class="formbody"><div class="settings-tabs">${[['inbox', 'Gelen Mesajlar'], ['sent', 'Gönderilen Mesajlar'], ...(['ceo', 'admin'].includes(hanAuth.role) ? [['all', 'Tüm Mesajlar']] : [])].map(([key, label]) => `<button type="button" data-message-box="${key}" class="${messageBox === key ? 'selected' : ''}">${esc(label)}</button>`).join('')}</div><p>${esc(result.total)} mesaj · ${result.total ? messageOffset + 1 : 0}–${messageOffset + result.messages.length}</p></div><div class="overflow"><table><thead><tr><th>TARİH / SAAT</th><th>GÖNDEREN</th><th>ALICILAR</th><th>KONU</th><th>DURUM</th></tr></thead><tbody>${result.messages.map((m) => `<tr class="${m.isUnread ? 'message-unread' : ''}"><td>${messageTimestamp(m.createdAt)}</td><td>${esc(m.senderName)}</td><td>${esc(m.recipientNames.join(', '))}</td><td><button type="button" class="link" data-open-message="${esc(m.id)}">${esc(m.subject)}</button></td><td>${m.isUnread ? 'Yeni' : messageBox === 'inbox' ? 'Okundu' : m.readCount + '/' + m.recipientIds.length + ' okundu'}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">Bu kutuda henüz mesaj yok.</td></tr>'}</tbody></table></div><div class="actions"><button class="secondary" id="previousMessages" ${messageOffset === 0 ? 'disabled' : ''}>Önceki</button><button class="secondary" id="nextMessages" ${messageOffset + 50 >= result.total ? 'disabled' : ''}>Sonraki</button></div></div>`;
+    `<div class="panel"><div class="panelhead"><div><h2>Mesajlar</h2><p>Programdaki mesajları yönetici de görebilir.</p></div><div class="toolbar"><button class="secondary" id="refreshMessages">Yenile</button><button class="primary" id="composeMessage">＋ Yeni Mesaj</button></div></div><div class="formbody"><div class="settings-tabs">${[['inbox', 'Gelen Mesajlar'], ['sent', 'Gönderilen Mesajlar'], ...(['ceo', 'admin'].includes(hanAuth.role) ? [['all', 'Tüm Mesajlar']] : [])].map(([key, label]) => `<button type="button" data-message-box="${key}" class="${messageBox === key ? 'selected' : ''}">${esc(label)}</button>`).join('')}</div><p>${esc(result.total)} mesaj · ${result.total ? messageOffset + 1 : 0}–${messageOffset + result.messages.length}</p></div><div class="overflow"><table><thead><tr><th>TARİH / SAAT</th><th>GÖNDEREN</th><th>ALICILAR</th><th>KONU</th><th>DURUM</th></tr></thead><tbody>${result.messages.map((m) => `<tr class="${m.isUnread ? 'message-unread' : ''}"><td>${messageTimestamp(m.createdAt)}</td><td>${esc(m.senderName)}</td><td>${esc(m.recipientNames.join(', '))}</td><td><button type="button" class="link" data-open-message="${esc(m.id)}">${esc(m.subject)}</button></td><td>${m.isUnread ? 'Yeni' : messageBox === 'inbox' ? 'Okundu' : m.readCount + '/' + m.recipientIds.length + ' okundu'}${messageWhatsAppSummary(m)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">Bu kutuda henüz mesaj yok.</td></tr>'}</tbody></table></div><div class="actions"><button class="secondary" id="previousMessages" ${messageOffset === 0 ? 'disabled' : ''}>Önceki</button><button class="secondary" id="nextMessages" ${messageOffset + 50 >= result.total ? 'disabled' : ''}>Sonraki</button></div></div>`;
   bindCommunicationTabs();
   $('#composeMessage').onclick = () => composeMessage();
   $('#refreshMessages').onclick = () => {
@@ -159,7 +215,7 @@ function openMessage(message) {
     dialog.id = 'messageDetailDialog';
     document.body.append(dialog);
   }
-  dialog.innerHTML = `<div class="panelhead"><h2>${esc(message.subject)}</h2><button class="secondary" id="closeMessageDetail">Kapat</button></div><div class="formbody"><p><b>Gönderen:</b> ${esc(message.senderName)}</p><p><b>Alıcılar:</b> ${esc(message.recipientNames.join(', '))}</p><p><b>Tarih:</b> ${messageTimestamp(message.createdAt)}</p><div class="message-text">${esc(message.text)}</div></div><div class="actions">${message.senderId !== hanAuth.id ? '<button class="primary" id="replyMessage">Gönderene Yanıtla</button>' : ''}</div>`;
+  dialog.innerHTML = `<div class="panelhead"><h2>${esc(message.subject)}</h2><button class="secondary" id="closeMessageDetail">Kapat</button></div><div class="formbody"><p><b>Gönderen:</b> ${esc(message.senderName)}</p><p><b>Alıcılar:</b> ${esc(message.recipientNames.join(', '))}</p><p><b>Tarih:</b> ${messageTimestamp(message.createdAt)}</p><div class="message-text">${esc(message.text)}</div>${messageWhatsAppDetail(message)}</div><div class="actions">${message.senderId !== hanAuth.id ? '<button class="primary" id="replyMessage">Gönderene Yanıtla</button>' : ''}</div>`;
   $('#closeMessageDetail').onclick = () => dialog.close();
   if ($('#replyMessage'))
     $('#replyMessage').onclick = () => {

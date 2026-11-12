@@ -227,6 +227,7 @@ async function handleCommunicationRoutes(ctx) {
             !m.readBy?.[u.id] &&
             require('../../lib/daily-notifications.cjs').current(m, u),
           readCount: Object.keys(m.readBy || {}).length,
+          ...whatsappView(m, u),
         })),
       });
       return true;
@@ -254,23 +255,21 @@ async function handleCommunicationRoutes(ctx) {
       )
         throw fail(400, 'En az bir aktif alıcı seçin.');
       const next = structuredClone(ctx.state);
-      next.messages = [
-        ...(next.messages || []),
-        {
-          id: crypto.randomUUID(),
-          senderId: u.id,
-          senderName: u.name,
-          recipientIds: requested,
-          recipientNames: requested.map((id) => ctx.state.users.find((x) => x.id === id).name),
-          subject,
-          text: messageText,
-          createdAt: new Date().toISOString(),
-          readBy: {},
-        },
-      ];
-      persist(next);
-      if (v.whatsapp === true)
-        queueWhatsApp(
+      const message = {
+        id: crypto.randomUUID(),
+        senderId: u.id,
+        senderName: u.name,
+        recipientIds: requested,
+        recipientNames: requested.map((id) => ctx.state.users.find((x) => x.id === id).name),
+        subject,
+        text: messageText,
+        createdAt: new Date().toISOString(),
+        readBy: {},
+      };
+      next.messages = [...(next.messages || []), message];
+      if (v.whatsapp === true) {
+        // Each recipient's WhatsApp status lives on the message; the result is filled in after Meta answers.
+        const plan = queueWhatsApp(
           res,
           next,
           'messageTemplate',
@@ -282,7 +281,16 @@ async function handleCommunicationRoutes(ctx) {
               messageText.length > 850 ? messageText.slice(0, 850) + '…' : messageText,
             ],
           }),
+          { record: { collection: 'messages', id: message.id } },
         );
+        message.whatsapp = Object.fromEntries(
+          plan.map(({ id, status, reason }) => [
+            id,
+            { status, ...(reason && { reason }), at: message.createdAt },
+          ]),
+        );
+      }
+      persist(next);
       send(res, 201, { ok: true });
       return true;
     }
@@ -291,4 +299,12 @@ async function handleCommunicationRoutes(ctx) {
   return false;
 }
 
-module.exports = { handleCommunicationRoutes };
+// The sender and managers see each recipient's WhatsApp status; recipients see only their own.
+function whatsappView(message, user) {
+  if (!message.whatsapp) return {};
+  if (message.senderId === user.id || ['ceo', 'admin'].includes(user.role))
+    return { whatsapp: message.whatsapp };
+  return message.whatsapp[user.id] ? { whatsapp: { [user.id]: message.whatsapp[user.id] } } : {};
+}
+
+module.exports = { handleCommunicationRoutes, whatsappView };
