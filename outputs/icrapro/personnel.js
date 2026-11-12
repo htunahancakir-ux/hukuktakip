@@ -190,7 +190,11 @@ async function personnelSettings(editId) {
   const dailyPrimData = authApi('/api/daily-bonuses?month=' + businessDate().slice(0, 7));
   const dailyPrimTotal = (id) =>
     dailyPrimData.rows.filter((e) => e.staffId === id).reduce((sum, e) => sum + e.amount, 0);
-  const staffRows = personnel.filter(isRealPersonnelRecord);
+  const staffRows = personnel.filter(isRealPersonnelRecord).sort((a, b) =>
+    String(a.name || '')
+      .trim()
+      .localeCompare(String(b.name || '').trim(), 'tr-TR', { sensitivity: 'base' }),
+  );
   const isSettings = page === 'settings';
   $('#content').innerHTML =
     `${isSettings ? settingsSectionTabs('staff') : ''}<div class="settings-tabs" role="tablist" aria-label="Personel sekmeleri"><button role="tab" aria-selected="${personnelTab === 'records'}" data-staff-view="records" class="${personnelTab === 'records' ? 'selected' : ''}">Personel Kayıtları</button><button role="tab" aria-selected="${personnelTab === 'payroll'}" data-staff-view="payroll" class="${personnelTab === 'payroll' ? 'selected' : ''}">Maaş ve Prim</button></div><div id="personnelView"></div>`;
