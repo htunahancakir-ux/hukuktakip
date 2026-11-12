@@ -1,9 +1,21 @@
 let personnelPayrollTodayMonth = '';
+function isRealPersonnelRecord(record) {
+  const id = String(record?.id || record?.staffId || '');
+  if (['turnover:bonus', 'turnover:hukuk-reddiyat', 'turnover:temlik-reddiyat'].includes(id)) return false;
+  const name = String(record?.name || record?.staffName || '')
+    .normalize('NFKC')
+    .trim()
+    .toLocaleLowerCase('tr-TR')
+    .replaceAll('ı', 'i')
+    .replace(/[\s_-]+/g, '');
+  return !['bonus', 'hukukreddiyat', 'temlikreddiyat'].includes(name);
+}
 let calculatedBonus2 = new Map(),
   bonus2Month = '';
 function loadCalculatedBonus2(month) {
   bonus2Month = month || businessDate().slice(0, 7);
   const result = authApi('/api/bonus2?month=' + bonus2Month);
+  result.rows = result.rows.filter(isRealPersonnelRecord);
   calculatedBonus2 = new Map(result.rows.map((r) => [r.staffId, r]));
   return result;
 }
@@ -13,9 +25,10 @@ try {
   if (Array.isArray(data)) personnel = data;
 } catch {}
 function staffSelect(label, name, value = '') {
-  const active = personnel.filter((p) => p.active);
+  const active = personnel.filter((p) => p.active && isRealPersonnelRecord(p));
   const current = personnel.find((p) => p.id === value);
-  const unavailable = value && !active.some((p) => p.id === value);
+  const unavailable =
+    value && !active.some((p) => p.id === value) && isRealPersonnelRecord(current || { id: value });
   return `<label class="field">${esc(label)}<select name="${name}"><option value="">Personel seçin</option>${active.map((p) => `<option value="${esc(p.id)}" ${p.id === value ? 'selected' : ''}>${esc(p.name)}${p.title ? ' · ' + esc(p.title) : ''}</option>`).join('')}${unavailable ? `<option value="${esc(value)}" selected>${esc(current ? current.name + ' (pasif)' : value + ' (eski kayıt)')}</option>` : ''}</select><small>${active.length ? 'Kayıtlı aktif personelden seçin.' : 'Önce Ayarlar → Personel bölümünden personel ekleyin.'}</small>${unavailable ? '<small>Mevcut atama korunur; değiştirmek için aktif personel seçin.</small>' : ''}</label>`;
 }
 function validStaffSelection(value, previous) {
@@ -144,9 +157,9 @@ function staffMoney(p) {
   return { official, unofficial, bonus, salary: official + unofficial, total: official + unofficial + bonus };
 }
 function payrollRows() {
-  return personnel.filter(
-    (p) => payrollScope === 'all' || (payrollScope === 'active' ? p.active : !p.active),
-  );
+  return personnel
+    .filter(isRealPersonnelRecord)
+    .filter((p) => payrollScope === 'all' || (payrollScope === 'active' ? p.active : !p.active));
 }
 function payrollTotals(rows) {
   return rows.reduce(
@@ -177,6 +190,7 @@ async function personnelSettings(editId) {
   const dailyPrimData = authApi('/api/daily-bonuses?month=' + businessDate().slice(0, 7));
   const dailyPrimTotal = (id) =>
     dailyPrimData.rows.filter((e) => e.staffId === id).reduce((sum, e) => sum + e.amount, 0);
+  const staffRows = personnel.filter(isRealPersonnelRecord);
   const isSettings = page === 'settings';
   $('#content').innerHTML =
     `${isSettings ? settingsSectionTabs('staff') : ''}<div class="settings-tabs" role="tablist" aria-label="Personel sekmeleri"><button role="tab" aria-selected="${personnelTab === 'records'}" data-staff-view="records" class="${personnelTab === 'records' ? 'selected' : ''}">Personel Kayıtları</button><button role="tab" aria-selected="${personnelTab === 'payroll'}" data-staff-view="payroll" class="${personnelTab === 'payroll' ? 'selected' : ''}">Maaş ve Prim</button></div><div id="personnelView"></div>`;
@@ -197,7 +211,7 @@ async function personnelSettings(editId) {
   if (personnelTab === 'payroll') return personnelCompensationPage();
   if (personnelTab === 'ledger') return personnelLedgerPage($('#personnelView'));
   $('#personnelView').innerHTML =
-    `<div class="panel"><div class="panelhead"><div><h2>Personel Kayıtları</h2><p>Bilgileri görmek ve düzenlemek için personel adına tıklayın.</p></div><div class="toolbar"><span class="badge">${personnel.filter((p) => p.active).length} aktif / ${personnel.length} kayıt</span><button type="button" class="primary" id="newPersonnel">Yeni Personel</button></div></div><div class="overflow"><table><thead><tr><th>AD SOYAD</th><th>BİRİM / GÖREV</th><th>TELEFON</th><th>MAAŞ + PRİM 1</th><th>PRİM 2</th><th>G. PRİM</th><th>GENEL TOPLAM</th><th>DURUM</th><th>İŞLEM</th></tr></thead><tbody>${personnel.map((p) => `<tr><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">${esc(p.name)}</button></td><td>${esc(p.department || '—')}<small>${esc(p.title || '—')}</small></td><td>${esc(p.phone || '—')}</td><td>${money(staffMoney(p).salary / 100)}</td><td>${money(staffMoney(p).bonus / 100)}</td><td>${money(dailyPrimTotal(p.id) / 100)}</td><td>${money((staffMoney(p).total + dailyPrimTotal(p.id)) / 100)}</td><td>${p.active ? 'Aktif' : 'Pasif'}</td><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">Düzenle</button></td></tr>`).join('') || '<tr><td colspan="9" class="empty">Henüz personel yok. Yeni Personel butonuyla ekleyin.</td></tr>'}</tbody><tfoot><tr><td colspan="3"><strong>ALT TOPLAM</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + staffMoney(p).salary, 0) / 100)}</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + staffMoney(p).bonus, 0) / 100)}</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + dailyPrimTotal(p.id), 0) / 100)}</strong></td><td><strong>${money(personnel.reduce((sum, p) => sum + staffMoney(p).total + dailyPrimTotal(p.id), 0) / 100)}</strong></td><td colspan="2"></td></tr></tfoot></table></div></div>`;
+    `<div class="panel"><div class="panelhead"><div><h2>Personel Kayıtları</h2><p>Bilgileri görmek ve düzenlemek için personel adına tıklayın.</p></div><div class="toolbar"><span class="badge">${staffRows.filter((p) => p.active).length} aktif / ${staffRows.length} kayıt</span><button type="button" class="primary" id="newPersonnel">Yeni Personel</button></div></div><div class="overflow"><table><thead><tr><th>AD SOYAD</th><th>BİRİM / GÖREV</th><th>TELEFON</th><th>MAAŞ + PRİM 1</th><th>PRİM 2</th><th>G. PRİM</th><th>GENEL TOPLAM</th><th>DURUM</th><th>İŞLEM</th></tr></thead><tbody>${staffRows.map((p) => `<tr><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">${esc(p.name)}</button></td><td>${esc(p.department || '—')}<small>${esc(p.title || '—')}</small></td><td>${esc(p.phone || '—')}</td><td>${money(staffMoney(p).salary / 100)}</td><td>${money(staffMoney(p).bonus / 100)}</td><td>${money(dailyPrimTotal(p.id) / 100)}</td><td>${money((staffMoney(p).total + dailyPrimTotal(p.id)) / 100)}</td><td>${p.active ? 'Aktif' : 'Pasif'}</td><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">Düzenle</button></td></tr>`).join('') || '<tr><td colspan="9" class="empty">Henüz personel yok. Yeni Personel butonuyla ekleyin.</td></tr>'}</tbody><tfoot><tr><td colspan="3"><strong>ALT TOPLAM</strong></td><td><strong>${money(staffRows.reduce((sum, p) => sum + staffMoney(p).salary, 0) / 100)}</strong></td><td><strong>${money(staffRows.reduce((sum, p) => sum + staffMoney(p).bonus, 0) / 100)}</strong></td><td><strong>${money(staffRows.reduce((sum, p) => sum + dailyPrimTotal(p.id), 0) / 100)}</strong></td><td><strong>${money(staffRows.reduce((sum, p) => sum + staffMoney(p).total + dailyPrimTotal(p.id), 0) / 100)}</strong></td><td colspan="2"></td></tr></tfoot></table></div></div>`;
   $('#newPersonnel').onclick = () => openPersonnelRecord();
   $('#personnelView')
     .querySelectorAll('[data-personnel-edit]')
@@ -525,6 +539,7 @@ function dailyBonusForm(staffId, onSaved) {
   dialog.innerHTML =
     '<form><div class="panelhead"><h2>Günlük Prim Ekle</h2><button type="button" class="secondary close-align-right" data-close-bonus>Kapat</button></div><div class="formbody grid"><label class="field full">Personel<select name="staffId" required><option value="">Personel seçin</option>' +
     personnel
+      .filter(isRealPersonnelRecord)
       .map(
         (p) =>
           '<option value="' +
