@@ -63,7 +63,7 @@ function scheduledRemindersPage(remote) {
                 return `<li><div><strong>${termsDate(row.dueAt)}</strong> ·
           ${row.closedAt ? (row.closeReason === 'complete' ? 'Tamamlandı' : 'İptal edildi') : due ? 'Zamanı geldi' : 'Planlandı'}
           ${row.target ? `<p><strong>${esc(row.target.label)}</strong> ${esc(row.target.detail || '')}</p>` : ''}
-          <p class="scheduled-note">${esc(row.note)}</p><small>${esc(reminderDeliveryLabels[row.deliveryStatus])}${row.repeat && row.repeat !== 'none' ? ' · ' + esc(reminderRepeatLabels[row.repeat] || '') : ''}</small></div>
+          <p class="scheduled-note">${esc(row.note)}</p><small>${esc(reminderDeliveryLabels[row.deliveryStatus])}${row.deliveryStatus === 'failed' && row.deliveryError ? ' — ' + esc(row.deliveryError) : ''}${row.repeat && row.repeat !== 'none' ? ' · ' + esc(reminderRepeatLabels[row.repeat] || '') : ''}</small></div>
           ${
             row.closedAt
               ? ''
