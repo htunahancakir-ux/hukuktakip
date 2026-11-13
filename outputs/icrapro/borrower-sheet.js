@@ -693,6 +693,7 @@ function layoutBorrowerSheet(dialog, d, f, client) {
   meta.className = 'sheet-metadata';
   meta.innerHTML =
     field('Föy No', d.number, 'sheet-folio-number') +
+    field('İcramatik Föy No', d.icramatikFolioNumber) +
     field('Borçlu', d.debtor, 'sheet-debtor-name') +
     field('Takip Tarihi', displayDate(borrowerTrackingDate(d))) +
     field(

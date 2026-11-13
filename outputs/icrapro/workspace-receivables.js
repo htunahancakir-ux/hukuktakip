@@ -535,6 +535,7 @@ function setupIntakeBorrowerSheet(form, original) {
     return cell;
   }
   move('intakeFolioNumber', 'Föy No', 'sheet-folio-number');
+  move('icramatikFolioNumber', 'İcramatik Föy No (isteğe bağlı)');
   value('Borçlu', 'debtor', 'sheet-debtor-name');
   move('intakeTrackingDate', 'Takip Tarihi');
   const receiverCell = move('receivedBy', 'Evrakı Alan Personel');

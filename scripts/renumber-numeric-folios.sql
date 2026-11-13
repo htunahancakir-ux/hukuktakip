@@ -7,7 +7,7 @@ DECLARE
 BEGIN
   PERFORM id FROM han_data.control WHERE id=1 FOR UPDATE;
   PERFORM id FROM han_data.metadata WHERE id=1 FOR UPDATE;
-  IF (SELECT body->>'folioNumberingVersion' FROM han_data.metadata WHERE id=1) = '1' THEN
+  IF coalesce((SELECT (body->>'folioNumberingVersion')::int FROM han_data.metadata WHERE id=1),0) >= 1 THEN
     RETURN;
   END IF;
   LOCK TABLE han_data.document_sequences IN EXCLUSIVE MODE;

@@ -452,6 +452,7 @@ async function handleDataRoutes(ctx) {
         'issued',
         'serial',
         'deliveredBy',
+        'icramatikFolioNumber',
         'receivedBy',
         'receivedById',
         'recordedBy',

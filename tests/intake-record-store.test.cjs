@@ -267,10 +267,20 @@ test('Intake allocates server numbers, isolates edits, searches all clients and 
     });
     const attempts = await Promise.all([
       patch(null, create('new1', { identity: '' })),
-      patch(null, create('new2')),
+      patch(null, create('new2', { icramatikFolioNumber: '  İCRA-2026/15  ' })),
     ]);
     for (const result of attempts) assert.equal(result.status, 200, JSON.stringify(result.body));
-    assert.equal(attempts[0].body.records[0].value.imatikFolioNumber, undefined);
+    assert.equal(attempts[0].body.records[0].value.icramatikFolioNumber, undefined);
+    assert.equal(attempts[1].body.records[0].value.icramatikFolioNumber, 'İCRA-2026/15');
+    assert.equal(
+      (await patch(null, create('bad-reference', { icramatikFolioNumber: 'x'.repeat(101), identity: '' })))
+        .status,
+      400,
+    );
+    assert.equal(
+      (await patch(null, create('invalid-reference', { icramatikFolioNumber: 123, identity: '' }))).status,
+      400,
+    );
     assert.equal(attempts[1].body.records[0].value.imatikFolioNumber, undefined);
     assert.deepEqual(attempts.map((r) => r.body.records[0].value.number).sort(), ['201', '202']);
     for (const r of attempts) assert.notEqual(r.body.records[0].value.trackingDate, '1990-01-01');
@@ -292,10 +302,22 @@ test('Intake allocates server numbers, isolates edits, searches all clients and 
       denied = await login('denied');
     const officeDraft = (await store.readState()).data['icrapro-v1'].docs.find((d) => d.id === 'new1');
     assert.equal(
-      (await patch(officeDraft, { ...officeDraft, officeIdentity: '00123456789' }, staff)).status,
+      (
+        await patch(
+          officeDraft,
+          { ...officeDraft, officeIdentity: '00123456789', icramatikFolioNumber: 'MANUEL-9' },
+          staff,
+        )
+      ).status,
       200,
     );
     const officeSaved = (await store.readState()).data['icrapro-v1'].docs.find((d) => d.id === 'new1');
+    assert.equal(officeSaved.icramatikFolioNumber, 'MANUEL-9');
+    assert.equal((await patch(officeSaved, { ...officeSaved, icramatikFolioNumber: '' }, staff)).status, 200);
+    assert.equal(
+      (await store.readState()).data['icrapro-v1'].docs.find((d) => d.id === 'new1').icramatikFolioNumber,
+      '',
+    );
     const clearedOffice = await patch(officeSaved, { ...officeSaved, officeIdentity: '' }, staff);
     assert.equal(clearedOffice.status, 200, JSON.stringify(clearedOffice.body));
     assert.equal(

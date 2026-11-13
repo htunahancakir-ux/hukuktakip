@@ -74,6 +74,30 @@ test('Every active CEO has deletion capability; other roles remain blocked', () 
   ])
     assert(!canDelete(user));
 });
+
+test('Only active managers with an explicit server grant can delete until it is revoked', async () => {
+  const manager = { id: 'delegated', role: 'admin', active: true, deletionAccess: true };
+  assert(canDelete(manager));
+  for (const override of [
+    { deletionAccess: false },
+    { deletionAccess: 'true' },
+    { deletionAccess: undefined },
+    { active: false },
+    { role: 'staff' },
+    { readOnly: true },
+    { platformSupport: true },
+  ])
+    assert(!canDelete({ ...manager, ...override }));
+  const t = context(fixture(), manager),
+    { ctx } = t;
+  await handleDeletionRoutes(ctx);
+  ctx.req.method = 'POST';
+  ctx.input = { type: 'accounting', ...ctx.res.data.items[0] };
+  await handleDeletionRoutes(ctx);
+  assert.equal(t.saved.deletedOperations[0].deletedBy, manager.id);
+  manager.deletionAccess = false;
+  await assert.rejects(handleDeletionRoutes(ctx), { code: 403 });
+});
 test('Nonowners cannot remove core records through bulk writes or hide financial events', () => {
   const before = fixture(),
     admin = { id: 'admin', role: 'admin' };
@@ -168,6 +192,7 @@ test('Authenticated access exposes capability only to owner and enforces it on b
     owner,
     { ...owner, id: 'another-ceo' },
     { id: 'admin', role: 'admin', name: 'Admin', active: true },
+    { id: 'delegated', role: 'admin', name: 'Delegated', active: true, deletionAccess: true },
   ]) {
     let state = fixture();
     state.users = [user];
@@ -198,7 +223,7 @@ test('Authenticated access exposes capability only to owner and enforces it on b
       Buffer.alloc(0),
       options,
     );
-    assert.equal(JSON.parse(session.body).user.canDelete, user.role === 'ceo');
+    assert.equal(JSON.parse(session.body).user.canDelete, canDelete(user));
     const ledger = structuredClone(state.data['hanhukuk-accounting-v1']);
     ledger.entries = [];
     const tag =
@@ -212,7 +237,7 @@ test('Authenticated access exposes capability only to owner and enforces it on b
       Buffer.from(JSON.stringify({ value: ledger })),
       options,
     );
-    assert.equal(result.statusCode, user.role === 'ceo' ? 200 : 403, result.body);
-    assert.equal(state.data['hanhukuk-accounting-v1'].entries.length, user.role === 'ceo' ? 0 : 1);
+    assert.equal(result.statusCode, canDelete(user) ? 200 : 403, result.body);
+    assert.equal(state.data['hanhukuk-accounting-v1'].entries.length, canDelete(user) ? 0 : 1);
   }
 });
