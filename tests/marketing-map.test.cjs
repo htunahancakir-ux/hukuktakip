@@ -1301,3 +1301,107 @@ test('Rota Bulma page: a district name from the map service is shown as text in 
     w.close();
   }
 });
+
+test('search counter over HTTP and on the page: every search of the office is counted and shown', async (t) => {
+  await withEnvironment({ MAPS_ENCRYPTION_KEY: 'b'.repeat(64) }, async () => {
+    const counted = { google: 7, scraper: 2, platform: 0 };
+    const recorded = [];
+    const meter = {
+      month: async () => ({ ...counted }),
+      record: async (usage) => {
+        recorded.push(usage);
+        for (const key of Object.keys(counted)) counted[key] += usage[key] || 0;
+      },
+    };
+    const { pg, pool } = await database();
+    const state = fixture();
+    state.mapsConfig = maps.configure({}, { enabled: true, apiKey: OWN_KEY });
+    await importState(pool, state);
+    await importRecords(pool);
+    await activateRecords(pool);
+    const app = await serve(
+      createApplication({
+        store: createStore(pool, { records: true }),
+        mapsMeter: meter,
+        mapsFetch: async (url) =>
+          url.includes('status=400')
+            ? Response.json({ error: {} }, { status: 400 })
+            : Response.json({ places: [googlePlace('ChIJinside0001', 'Firma')] }),
+      }),
+    );
+    t.after(async () => {
+      await app.close();
+      await pg.close();
+    });
+    const token = crypto.randomBytes(32).toString('hex');
+    await pool.query(
+      "INSERT INTO han_private.han_sessions(token_hash,account_id,device_type,expires_at) VALUES($1,'test-ceo','desktop',$2)",
+      [crypto.createHash('sha256').update(token).digest('hex'), Date.now() + 600000],
+    );
+    const headers = {
+      cookie: 'han_session=' + token,
+      'X-Han-Request': '1',
+      'Content-Type': 'application/json',
+    };
+    const call = async (path, body) => {
+      const response = await fetch(app.url + path, {
+        method: body === undefined ? 'GET' : 'POST',
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      return { status: response.status, body: await response.json().catch(() => ({})) };
+    };
+    assert.deepEqual((await call('/api/marketing/overview')).body.usage, {
+      google: 7,
+      scraper: 2,
+      platform: 0,
+    });
+    const found = await call('/api/marketing/search', { city: 'Ankara' });
+    assert.deepEqual(
+      found.body.usage,
+      { google: 8, scraper: 2, platform: 0 },
+      'the reply already includes this search',
+    );
+    assert.deepEqual(recorded, [{ google: 1 }]);
+    // A refused search is not counted.
+    assert.equal((await call('/api/marketing/search', { sector: 'mobilya' })).status, 400);
+    assert.deepEqual(recorded, [{ google: 1 }]);
+    assert.deepEqual((await call('/api/marketing/overview')).body.usage, {
+      google: 8,
+      scraper: 2,
+      platform: 0,
+    });
+  });
+
+  // Without a counter (single-file installation) the page shows no count at all.
+  const plain = await routePage({ places: FOUND });
+  try {
+    assert.equal(plain.doc.getElementById('marketingUsageNote'), null);
+  } finally {
+    plain.w.close();
+  }
+  const page = await routePage({
+    places: FOUND,
+    overview: { usage: { google: 7, scraper: 2, platform: 0 } },
+  });
+  const { w, doc, settle, change, rows } = page;
+  try {
+    const note = () => doc.getElementById('marketingUsageNote').textContent;
+    assert.match(note(), /^Bu ay yapılan arama: Google Places API 7 · Harita tarama 2\./);
+    // The stand-in server replies with the new totals; the note follows them.
+    w.fetch = async () =>
+      Response.json({
+        places: FOUND,
+        outside: 0,
+        nextPageToken: '',
+        usage: { google: 8, scraper: 2, platform: 0 },
+      });
+    const form = doc.getElementById('marketingSearchForm');
+    change(form.elements.city, 'Ankara');
+    form.dispatchEvent(new w.Event('submit', { cancelable: true }));
+    await settle(() => rows().length === 3);
+    assert.match(note(), /Google Places API 8 · Harita tarama 2/);
+  } finally {
+    w.close();
+  }
+});

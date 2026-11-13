@@ -197,6 +197,32 @@ function marketingServiceNote() {
   ).toLocaleString('tr-TR')}. Her “Bul” ve “Daha fazla getir” bir arama sayılır.`;
 }
 
+// How many searches the office made this month, by source. Shown when the server counts them.
+function marketingUsageNote() {
+  const usage = marketingRouteState.overview.usage;
+  if (!usage) return '';
+  const count = (value) => Number(value || 0).toLocaleString('tr-TR');
+  const parts = [
+    usage.google || marketingSources().some((source) => source.id === 'google')
+      ? `Google Places API ${count(usage.google)}`
+      : '',
+    usage.scraper || marketingSources().some((source) => source.id === 'scraper')
+      ? `Harita tarama ${count(usage.scraper)}`
+      : '',
+    usage.platform || marketingRouteState.overview.service
+      ? `Hazır harita servisi ${count(usage.platform)}`
+      : '',
+  ].filter(Boolean);
+  return `Bu ay yapılan arama: ${parts.join(' · ') || '0'}. Her “Bul” ve “Daha fazla getir” bir arama sayılır.`;
+}
+
+function marketingShowUsage(usage) {
+  if (!usage) return;
+  marketingRouteState.overview.usage = usage;
+  const note = document.getElementById('marketingUsageNote');
+  if (note) note.textContent = marketingUsageNote();
+}
+
 function marketingFormSource() {
   const sources = marketingSources().map((source) => source.id);
   const wanted = marketingRouteState.form.source || marketingRouteState.overview.defaultSource;
@@ -212,6 +238,7 @@ function marketingSearchTab() {
   const text = (name, label, placeholder) =>
     `<label class="field">${label}<input name="${name}" maxlength="80" autocomplete="off" data-optional="true" value="${esc(form[name])}" placeholder="${esc(placeholder)}"></label>`;
   const serviceNote = marketingServiceNote();
+  const usageNote = marketingUsageNote();
   $('#marketingRouteBody').innerHTML =
     `${blocked ? `<div class="notice marketing-notice">${blocked}</div>` : ''}
     <div class="marketing-search-layout">
@@ -231,6 +258,10 @@ function marketingSearchTab() {
       ${text('neighborhood', 'Mahalle', 'ör. Kızılay')}${text('avenue', 'Cadde', 'ör. Atatürk Bulvarı')}${text('street', 'Sokak', 'ör. Sakarya Sokak')}
     </div><div class="actions"><button class="primary" type="submit" id="marketingSearchButton" ${blocked ? 'disabled' : ''}>Bul</button><span class="marketing-hint">Yalnızca il seçmek ya da haritada bölge çizmek yeterlidir; diğer alanlar aramayı daraltır.</span></div>${
       serviceNote ? `<p class="marketing-hint" id="marketingServiceNote">${esc(serviceNote)}</p>` : ''
+    }${
+      usageNote
+        ? `<p class="marketing-hint" id="marketingUsageNote" title="Google, Places API’de ayda 1.000 aramayı ücretsiz verir; sonrası ücretlidir.">${esc(usageNote)}</p>`
+        : ''
     }</form>
     <section class="marketing-map-panel" aria-label="Harita">
       <div class="marketing-map-tools">
@@ -493,6 +524,7 @@ async function marketingStartScrape(body, depth) {
   try {
     const result = await marketingRouteRequest('/api/marketing/scrape', { ...body, depth });
     state.job = { jobId: result.jobId, criteria: body, depth: result.depth || depth, startedAt: Date.now() };
+    marketingShowUsage(result.usage);
     state.criteria = body;
     state.source = 'scraper';
     state.places = [];
@@ -657,6 +689,7 @@ async function marketingSearch(body, more = false, source = 'google') {
       const note = document.getElementById('marketingServiceNote');
       if (note) note.textContent = marketingServiceNote();
     }
+    marketingShowUsage(result.usage);
     found = !more;
   } catch (error) {
     toast(error.message);

@@ -1619,7 +1619,8 @@ dialog.modal-dragging .modal-drag-handle {
 #marketingSearchForm .actions .marketing-hint {
   order: 1;
 }
-#marketingServiceNote {
+#marketingServiceNote,
+#marketingUsageNote {
   margin: 6px 0 0;
 }
 .marketing-section-head {

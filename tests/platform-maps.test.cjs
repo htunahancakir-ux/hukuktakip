@@ -365,3 +365,42 @@ test('console HTTP: map service settings need an operator session and never retu
   const audit = (await call('operators', { cookie })).json.audit.map((entry) => entry.action);
   assert.ok(audit.includes('settings.maps'));
 });
+
+test('search counter: an office’s own searches are counted by source and month, beside the service’s', async () => {
+  const { pg, pool } = await database();
+  try {
+    const op = (await createPlatformAdmin(pool, { username: 'root', name: 'Op', password: opPassword })).id;
+    const a = await openOffice(pool, op, 'sayac-a');
+    const b = await openOffice(pool, op, 'sayac-b');
+    const meter = platformMaps.createMapsMeter(pool, { tenantId: a.id });
+    assert.deepEqual(await meter.month(), { google: 0, scraper: 0, platform: 0 });
+    await meter.record({ google: 1 });
+    await meter.record({ google: 1, scraper: 1 });
+    await meter.record({ google: -2, scraper: 1.5, searches: 9 });
+    await meter.record({});
+    // Searches on the selling company's service are written by the service itself.
+    await platformMaps.createPlatformMaps(pool, { tenantId: a.id }).record({ searches: 4, details: 30 });
+    assert.deepEqual(await meter.month(), { google: 2, scraper: 1, platform: 4 });
+    assert.deepEqual(await platformMaps.createMapsMeter(pool, { tenantId: b.id }).month(), { google: 0, scraper: 0, platform: 0 });
+    // Last month is not this month.
+    await pool.query(
+      `UPDATE han_saas.usage_daily SET day = (date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Istanbul') - interval '1 day')::date
+       WHERE tenant_id = $1 AND metric = 'maps_own_searches'`,
+      [a.id],
+    );
+    assert.deepEqual(await meter.month(), { google: 0, scraper: 1, platform: 4 });
+    // An office's own searches cost the selling company nothing and use none of its allowance.
+    assert.equal((await platformMaps.getSettings(pool)).usage.monthSearches, 4);
+    const broken = platformMaps.createMapsMeter({ query: async () => Promise.reject(new Error('down')) }, { tenantId: a.id });
+    const logged = console.error;
+    console.error = () => {};
+    try {
+      assert.equal(await broken.month(), null);
+      await broken.record({ google: 1 });
+    } finally {
+      console.error = logged;
+    }
+  } finally {
+    await pg.close();
+  }
+});

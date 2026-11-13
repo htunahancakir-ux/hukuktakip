@@ -6,7 +6,7 @@ const { createOfficeCatalog } = require('../lib/saas/office-catalog.cjs');
 const { createUsageMeter } = require('../lib/saas/usage-meter.cjs');
 const { createSeatGate } = require('../lib/saas/seat-gate.cjs');
 const { createPlatformSms } = require('../lib/saas/platform-sms.cjs');
-const { createPlatformMaps } = require('../lib/saas/platform-maps.cjs');
+const { createPlatformMaps, createMapsMeter } = require('../lib/saas/platform-maps.cjs');
 const { createPool, createStore } = require('../lib/postgres-store.cjs');
 const { createTenantRouter } = require('../lib/saas/tenant-router.cjs');
 const { createModuleGate } = require('../lib/saas/module-gate.cjs');
@@ -48,6 +48,8 @@ function build() {
         platformSms: pool ? createPlatformSms(pool, { tenantId }) : undefined,
         // The selling company's map service, for offices subscribed to Rota Bulma as a service.
         platformMaps: pool ? createPlatformMaps(pool, { tenantId }) : undefined,
+        // How many map searches the office made this month, shown on the Rota Bulma screen.
+        mapsMeter: pool ? createMapsMeter(pool, { tenantId }) : undefined,
         // Each office only accepts requests from its own origin.
         ...(slug ? { appOrigin: `https://${slug}.${baseDomain}` } : {}),
       }),

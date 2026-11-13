@@ -38,6 +38,9 @@ async function handleMarketingRoutes(ctx) {
   // used or its allowance ran out: a service the selling company never switched on is not
   // mentioned, so such an office sees exactly what it saw before.
   const offered = !!service && (service.ready || service.reason === 'quota' || !own);
+  // This month's searches by source ({ google, scraper, platform }), when they are counted.
+  const usage = ctx.options.mapsUsage || null;
+  const usageAfter = (source) => (usage ? { usage: { ...usage, [source]: usage[source] + 1 } } : {});
   const method = (expected) => {
     if (req.method !== expected) throw ctx.fail(405, 'Yöntem desteklenmiyor.');
   };
@@ -104,6 +107,7 @@ async function handleMarketingRoutes(ctx) {
         map: maps.mapFor(browserKey),
       }),
       canConfigure: u.role === 'ceo' && own,
+      ...(usage ? { usage } : {}),
       ...(offered
         ? {
             service: {
@@ -142,11 +146,12 @@ async function handleMarketingRoutes(ctx) {
       fetcher,
     });
     // Counted after the response is sent (lib/application.cjs): one paid request.
-    if (input.source === 'platform') res.hanMapsUsage = { searches: 1 };
+    res.hanMapsUsage = input.source === 'platform' ? { searches: 1 } : { google: 1 };
     ctx.send(res, 200, {
       ...marketing.annotatePlaces(found.places, criteria, ctx.state, u),
       received: found.places.length,
       nextPageToken: found.nextPageToken,
+      ...usageAfter(input.source === 'platform' ? 'platform' : 'google'),
       ...(input.source === 'platform' && Number.isSafeInteger(service.searchesLeft)
         ? { searchesLeft: Math.max(0, service.searchesLeft - 1) }
         : {}),
@@ -170,7 +175,8 @@ async function handleMarketingRoutes(ctx) {
       geo: criteria.region ? marketing.regionGeo(criteria.region) : null,
       fetcher,
     });
-    ctx.send(res, 202, { jobId, depth });
+    res.hanMapsUsage = { scraper: 1 };
+    ctx.send(res, 202, { jobId, depth, ...usageAfter('scraper') });
     return true;
   }
 
