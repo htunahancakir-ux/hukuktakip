@@ -102,7 +102,7 @@ async function loadRecordReport() {
       reportFilters.type === 'excel'
         ? new Set(data.items.map((r) => r.documentId).filter(Boolean))
         : undefined;
-    result.innerHTML = `<div class="notice">${esc(data.count)} ${reportFilters.type === 'hanDocuments' ? 'evrak' : 'kayıt'} · Tarihsiz: ${esc(data.undated)}. Toplamlar filtreye uyan tüm kayıtları kapsar. CSV ve yazdırma tüm sonuçları içerir.</div><div class="panel"><div class="panelhead"><h2>${esc(def.label)}</h2></div>${reportTable(def, data.items, openable, data.totals)}<div class="tablefoot"><span>${first}–${last} / ${esc(data.count)} kayıt</span><div class="toolbar"><button class="secondary" id="previousReport" ${state.index ? '' : 'disabled'}>Önceki</button><button class="secondary" id="nextReport" ${data.next ? '' : 'disabled'}>Sonraki</button></div></div></div>`;
+    result.innerHTML = `<div class="notice">${esc(data.count)} ${reportFilters.type === 'hanDocuments' ? 'evrak' : 'kayıt'} · Tarihsiz: ${esc(data.undated)}. Toplamlar filtreye uyan tüm kayıtları kapsar. CSV ve yazdırma tüm sonuçları içerir.</div><div class="panel report-table-panel acc-ledger"><div class="panelhead"><h2>${esc(def.label)}</h2><span class="acc-chip-total">Kayıt <b>${esc(data.count)}</b></span></div>${reportTable(def, data.items, openable, data.totals)}<div class="tablefoot"><span>${first}–${last} / ${esc(data.count)} kayıt</span><div class="toolbar"><button class="secondary" id="previousReport" ${state.index ? '' : 'disabled'}>Önceki</button><button class="secondary" id="nextReport" ${data.next ? '' : 'disabled'}>Sonraki</button></div></div></div>`;
     $('#previousReport').onclick = () => {
       if (state.index) {
         state.index--;

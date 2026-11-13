@@ -370,7 +370,8 @@ function unitDocumentAmount(doc) {
 }
 function installCurrencyReportButton() {
   if (!['ceo', 'admin'].includes(hanAuth.role)) return;
-  const toolbar = document.querySelector('#content .panelhead .toolbar');
+  const toolbar =
+    document.getElementById('reportShortcuts') || document.querySelector('#content .panelhead .toolbar');
   if (!toolbar || toolbar.querySelector('[data-open-unit-report]')) return;
   const button = document.createElement('button');
   button.type = 'button';
