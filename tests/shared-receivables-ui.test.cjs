@@ -50,8 +50,10 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
   w.HTMLElement.prototype.scrollIntoView = function () {};
   for (const file of [
     'phone-format.js',
+    'borrower-addresses.js',
     'form-inputs.js',
     'parking-fees.js',
+    'receivable-units.js',
     'receivable-rules.js',
     'document-types.js',
     'workspace-receivables.js',
@@ -94,6 +96,13 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
   );
   assert.equal(form.elements.receivedBy.disabled, false);
   assert(
+    [...form.elements.receivedBy.options].some(
+      (option) => option.value === 'receiver:han' && option.textContent === 'HAN',
+    ),
+  );
+  assert(![...form.elements.recordedBy.options].some((option) => option.value === 'receiver:han'));
+  assert(![...form.elements.relatedStaff.options].some((option) => option.value === 'receiver:han'));
+  assert(
     form.elements.receivedBy.compareDocumentPosition(form.elements.recordedBy) &
       w.Node.DOCUMENT_POSITION_FOLLOWING,
   );
@@ -115,7 +124,7 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
     phone1: '05551234567',
     city: 'İstanbul',
     address: 'Address',
-    receivedBy: 'p',
+    receivedBy: 'receiver:han',
     recordedBy: 'p',
     deliveredBy: 'Sender',
   })) {
@@ -124,6 +133,14 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
   }
   form.elements.district.value = 'Kadıköy';
   form.elements.originalDocument.value = 'Alındı';
+  assert.equal(form.elements.officeAddress3, undefined);
+  assert.equal(form.elements.address2, undefined);
+  assert.equal(form.querySelectorAll('[data-borrower-address-row]').length, 0);
+  form.elements.addressSource.value = 'Kendisi';
+  form.querySelector('[data-add-borrower-address]').click();
+  const addedAddress = form.querySelector('[data-borrower-address-row]');
+  addedAddress.querySelector('[data-address-field="address"]').value = 'İkinci adres';
+  addedAddress.querySelector('[data-address-field="source"]').value = 'Muhtarlık';
   const sourceHeader = form.querySelector('[data-draft-meta="phoneSource"]');
   assert.equal(sourceHeader.value, '');
   assert.equal(sourceHeader.required, false);
@@ -151,11 +168,19 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
   await form.onsubmit({ preventDefault() {}, target: form });
   assert.equal(w.db.docs.length, 1, notices.join('; '));
   assert.equal(w.db.docs[0].amount, 3000);
+  assert.equal(w.db.docs[0].receivedById, 'receiver:han');
+  assert.equal(w.db.docs[0].receivedBy, 'HAN');
+  assert.equal(w.personnel.length, 1, 'HAN is not a personnel record');
+  assert.equal(w.db.docs[0].addressSource, 'Kendisi');
+  assert.equal(w.db.docs[0].additionalAddresses[0].source, 'Muhtarlık');
   assert.equal(w.db.docs[0].phoneSources['5551234567'], 'İş yeri / Ayşe');
   const id = w.db.docs[0].id,
     number = w.db.docs[0].number;
   form = w.$('#intakeForm');
   assert.equal(form.dataset.existingFolio, number);
+  assert.equal(form.elements.receivedBy.value, 'receiver:han');
+  assert.equal(form.elements.addressSource.value, 'Kendisi');
+  assert.equal(form.querySelector('[data-address-field="source"]').value, 'Muhtarlık');
   assert.equal(form.elements.phone1._phoneSourceInput.value, 'İş yeri / Ayşe');
   assert.equal(form.querySelector('[data-draft-meta="phoneSource"]').value, 'İş yeri / Ayşe');
   add('Fatura', '500', '2026-11-07');
@@ -173,6 +198,8 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
     ...w.db.docs[0],
     id: 'old',
     number: 'S-0042',
+    address2: 'Eski ikinci adres',
+    officeAddress3: 'Eski ofis adresi',
     docType: 'Senet',
     amount: 900,
     originalAmount: 1000,
@@ -192,14 +219,84 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
   assert.equal(w.db.docs.length, 2);
   assert.equal(converted.number, 'S-0042');
   assert.equal(converted.amount, 1400);
+  assert.equal(converted.officeAddress3, '');
+  assert.equal(converted.address2, '');
+  assert.deepEqual(
+    Array.from(converted.additionalAddresses, (a) => a.address),
+    ['Eski ikinci adres', 'Eski ofis adresi', 'İkinci adres'],
+  );
+  assert(!form.textContent.includes('Borçlu Adres (Ofis)'));
   assert.equal(converted.receivables.length, 2);
   assert.equal(converted.receivables[0].amount, 1000);
   assert.equal(converted.receivables[0].preTrackingPayment, 100);
   w.$('#newIntakeDocument').click();
   form = w.$('#intakeForm');
+  const newCurrency = form.querySelector('[data-new-claim-currency]');
+  assert(newCurrency, 'currency is selectable before the first claim is added');
+  assert.deepEqual(
+    Array.from(newCurrency.options, (option) => option.value),
+    ['TRY', 'EUR', 'USD', 'XAU'],
+  );
+  newCurrency.value = 'EUR';
+  add('Senet', '500', '2026-11-01');
+  assert.equal(form.querySelector('[data-claim-field="currency"]').value, 'EUR');
+  newCurrency.value = 'USD';
+  add('Fatura', '200', '2026-11-01');
+  assert.equal(
+    form.querySelectorAll('[data-claim-field="currency"]')[0].value,
+    'EUR',
+    'changing new-claim currency preserves previous claims',
+  );
+  assert.equal(form.querySelectorAll('[data-claim-field="currency"]')[1].value, 'USD');
+  while (form.querySelector('[data-remove-claim]')) form.querySelector('[data-remove-claim]').click();
+  newCurrency.value = 'TRY';
   assert.equal(form.hidden, false);
   assert.equal(form.elements.client.value, '');
   assert.equal(form.elements.debtor.value, '');
   assert.equal(form.querySelectorAll('[data-select-claim]').length, 0);
   assert.equal(w.db.docs.length, 2, 'opening a blank folio preserves saved records');
+  for (const [key, value] of Object.entries({
+    client: 'c',
+    debtor: 'Döviz ve Altın Borçlusu',
+    phone1: '05551234567',
+    city: 'İstanbul',
+    address: 'Adres',
+    receivedBy: 'p',
+    recordedBy: 'p',
+    deliveredBy: 'Teslim Eden',
+  })) {
+    form.elements[key].value = value;
+    form.elements[key].dispatchEvent(new w.Event('change'));
+  }
+  form.elements.district.value = 'Kadıköy';
+  form.elements.originalDocument.value = 'Alındı';
+  for (const [type, currency, amount] of [
+    ['Senet', 'TRY', '1000'],
+    ['Senet', 'EUR', '500'],
+    ['Cari Ekstre', 'USD', '200'],
+    ['Diğer', 'XAU', '2.125'],
+  ]) {
+    const row = add(type, amount, '2026-11-01'),
+      select = row.querySelector('[data-claim-field="currency"]');
+    select.value = currency;
+    select.dispatchEvent(new w.Event('change'));
+  }
+  const gold = form.querySelector('[data-receivable-rows]>section:last-child [data-claim-field="amount"]');
+  w.upgradeMoneyInputs();
+  assert.equal(gold.type, 'number');
+  assert.equal(gold.value, '2.125');
+  assert.equal(gold.step, '0.001');
+  assert.match(form.querySelector('[data-receivable-gross]').textContent, /500,00 Euro/);
+  assert.match(form.querySelector('[data-receivable-gross]').textContent, /2,125 Gram Altın/);
+  assert.equal(w.validateRequiredForm(form), true);
+  await form.onsubmit({ preventDefault() {}, target: form });
+  assert.equal(w.db.docs.length, 3, notices.join('; '));
+  const mixed = w.db.docs.at(-1);
+  assert.equal(mixed.amount, 1000);
+  assert.equal(mixed.receivables[3].amount, 2.125);
+  assert.equal(mixed.unitPrincipals.EUR.principal, 50000);
+  w.intake(mixed.id, true, true);
+  form = w.$('#intakeForm');
+  assert.equal(form.querySelectorAll('[data-claim-field="currency"]')[3].value, 'XAU');
+  assert.equal(form.querySelectorAll('[data-claim-field="amount"]')[3].value, '2.125');
 });

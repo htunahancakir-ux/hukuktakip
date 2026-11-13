@@ -1,4 +1,5 @@
 const { categories } = require('../../lib/turnover-categories.cjs');
+const { isHanReceiver } = require('../../lib/document-receivers.cjs');
 const normalized = (name) =>
   String(name || '')
     .trim()
@@ -45,6 +46,7 @@ function calculateOtherPersonnelBonus(state, month, today = month + '-31') {
     sums.set(e.documentId, total);
   }
   for (const d of docs) {
+    if (isHanReceiver(d)) continue;
     if (d.status !== 'İnfaz') continue;
     const payments = sums.get(d.id);
     if (!payments) continue;

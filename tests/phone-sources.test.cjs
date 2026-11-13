@@ -20,7 +20,13 @@ function browser(t, html) {
       .replaceAll('&', '&amp;')
       .replaceAll('<', '&lt;')
       .replaceAll('"', '&quot;');
-  for (const file of ['phone-format.js', 'form-inputs.js', 'client-records.js', 'borrower-sheet.js'])
+  for (const file of [
+    'phone-format.js',
+    'borrower-addresses.js',
+    'form-inputs.js',
+    'client-records.js',
+    'borrower-sheet.js',
+  ])
     w.eval(fs.readFileSync('outputs/icrapro/' + file, 'utf8'));
   return w;
 }
@@ -113,6 +119,8 @@ test('Borrower editor saves sources for primary, reference, office and newly add
     city: 'İstanbul',
     district: 'Kadıköy',
     address: 'Adres',
+    address2: 'Eski ikinci adres',
+    officeAddress3: 'Eski ofis adresi',
   };
   Object.assign(w, {
     $: (s) => w.document.querySelector(s),
@@ -146,8 +154,14 @@ test('Borrower editor saves sources for primary, reference, office and newly add
   w.HTMLDialogElement.prototype.close = function () {
     this.open = false;
   };
-  w.editBorrower('d');
+  w.editBorrower('d', true);
   let form = w.document.querySelector('form');
+  assert.equal(form.elements.officeAddress3, undefined);
+  assert.equal(form.querySelectorAll('[data-borrower-address-row]').length, 3);
+  form.elements.addressSource.value = 'Kendisi';
+  const newAddress = form.querySelector('[data-borrower-address-row]:last-child');
+  newAddress.querySelector('[data-address-field="address"]').value = 'Yeni adres';
+  newAddress.querySelector('[data-address-field="source"]').value = 'Muhtarlık';
   assert.equal(form.querySelectorAll('[data-phone-source]').length, 6);
   for (const name of ['phone1', 'referencePhone1', 'officePhone1'])
     form.elements[name]._phoneSourceInput.value = name + ' kaynağı';
@@ -156,6 +170,14 @@ test('Borrower editor saves sources for primary, reference, office and newly add
   extra.value = '05321234560';
   extra._phoneSourceInput.value = 'Kardeşi';
   form.onsubmit({ preventDefault() {} });
+  const savedAddress = JSON.parse(w.localStorage.getItem('saved'));
+  assert.equal(savedAddress.addressSource, 'Kendisi');
+  assert.equal(savedAddress.officeAddress3, '');
+  assert.deepEqual(
+    savedAddress.additionalAddresses.map((a) => a.address),
+    ['Eski ikinci adres', 'Eski ofis adresi', 'Yeni adres'],
+  );
+  assert.equal(savedAddress.additionalAddresses[2].source, 'Muhtarlık');
   assert.deepEqual(JSON.parse(w.localStorage.getItem('saved')).phoneSources, {
     5321234567: 'phone1 kaynağı',
     5321234569: 'referencePhone1 kaynağı',

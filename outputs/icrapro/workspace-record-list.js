@@ -237,6 +237,7 @@ async function loadRecordPage(direction = 0) {
       due: row.due,
       trackingDate: row.trackingDate,
       closedDate: row.closedDate,
+      unitPrincipals: row.unitPrincipals,
       _principalCents: row.principalCents,
       _targetCents: row.targetCents,
       _listFinance: {

@@ -1680,6 +1680,19 @@ dialog.modal-dragging .modal-drag-handle {
   color: #64748b;
   font-size: 12px;
 }
+.receivable-new-currency {
+  max-width: 460px;
+  margin: 8px 0 16px;
+  padding: 12px 14px;
+  border: 1px solid #b4ccda;
+  border-radius: 8px;
+  background: #edf5fa;
+  color: #163e50;
+  font-weight: 650;
+}
+.receivable-new-currency small {
+  font-weight: 400;
+}
 .receivable-workspace .document-types {
   display: flex;
   flex-wrap: wrap;
@@ -1736,16 +1749,16 @@ dialog.modal-dragging .modal-drag-handle {
   overflow-wrap: anywhere;
 }
 .receivable-table th:nth-child(1) {
-  width: 27%;
+  width: 25%;
 }
 .receivable-table th:nth-child(2) {
-  width: 26%;
+  width: 25%;
 }
 .receivable-table th:nth-child(3) {
-  width: 7%;
+  width: 15%;
 }
 .receivable-table th:nth-child(4) {
-  width: 32%;
+  width: 27%;
 }
 .receivable-table th:nth-child(5) {
   width: 8%;
@@ -3741,6 +3754,255 @@ button.pm-offer {
   font-size: 13px;
   font-weight: 600;
   box-shadow: 0 6px 18px rgb(16 24 40 / 18%);
+}
+
+.borrower-address-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 14px;
+  min-width: 0;
+  align-items: start;
+}
+.borrower-address-pair > .field {
+  grid-column: auto;
+  min-width: 0;
+}
+.borrower-extra-addresses,
+.borrower-address-list {
+  display: grid;
+  gap: 14px;
+}
+.borrower-extra-addresses > button {
+  justify-self: start;
+}
+.borrower-address-row {
+  border: 1px solid #dce5eb;
+  border-radius: 8px;
+  padding: 14px;
+  min-width: 0;
+}
+.borrower-address-row .toolbar {
+  justify-content: space-between;
+}
+.borrower-address-row h4 {
+  margin: 0 0 10px;
+}
+@media (max-width: 600px) {
+  .borrower-address-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.unit-finance-dialog {
+  width: min(1050px, calc(100vw - 32px));
+  max-width: 1050px;
+}
+.unit-finance-overview {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+.unit-finance-card {
+  border: 1px solid #cddde5;
+  border-radius: 8px;
+  background: #f5f9fb;
+  padding: 14px;
+}
+.unit-finance-card h4 {
+  margin: 0 0 12px;
+}
+.unit-finance-card dl {
+  margin: 0 0 12px;
+}
+.unit-finance-card dl > div,
+.unit-draft-totals p {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 0;
+}
+.unit-finance-card dd {
+  margin: 0;
+  text-align: right;
+  font-weight: 700;
+}
+.unit-conversion-preview {
+  font-weight: 700;
+  color: #174a5b;
+}
+.unit-collection-balance {
+  padding: 14px 0;
+  font-weight: 700;
+  line-height: 1.8;
+}
+.unit-draft-totals {
+  border-top: 2px solid #c5d8e4;
+  margin-top: 15px;
+  padding: 12px;
+}
+.unit-principal-supplement {
+  display: block;
+  color: #1a5b70;
+  font-weight: 700;
+}
+
+/* Reports share accounting's quick actions, compact controls and scrollable ledger. */
+.reports-workspace {
+  min-width: 0;
+}
+.reports-workspace [hidden] {
+  display: none !important;
+}
+.report-actions .acc-actions-main {
+  min-width: 0;
+}
+.report-actions .acc-action {
+  margin-left: 0;
+}
+.report-actions .acc-action[aria-pressed='true'] {
+  border-color: var(--acc-tone);
+  background: color-mix(in srgb, var(--acc-tone) 9%, #fff);
+  box-shadow: inset 0 -2px var(--acc-tone);
+}
+.report-controls > .panelhead,
+.report-table-panel > .panelhead {
+  gap: 12px;
+  padding: 12px 18px;
+}
+.report-export-actions button,
+.report-filters button {
+  padding: 7px 13px;
+  font-size: 12px;
+}
+.report-selection {
+  display: grid;
+  grid-template-columns: minmax(240px, 440px) minmax(0, 1fr);
+  align-items: end;
+  gap: 12px 22px;
+  padding: 14px 18px;
+}
+.report-selection .field {
+  margin: 0;
+}
+.report-selection p {
+  margin: 0 0 8px;
+  color: #7c8998;
+  font-size: 12px;
+}
+.report-selection select,
+.report-filters input,
+.report-filters select {
+  min-height: 36px;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+.report-filters {
+  margin: 0;
+  border-top: 1px solid #e2e7ec;
+}
+.report-filters > summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 18px;
+}
+#reportFilterSummary {
+  margin-left: auto;
+  color: #7c8998;
+  font-size: 11px;
+  font-weight: 500;
+}
+#reportFilterSummary.report-filter-active {
+  color: #1d4ed8;
+}
+.report-filters > .formbody {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px 16px;
+  padding: 14px 18px;
+}
+.report-result > .notice,
+.reports-workspace > .notice {
+  margin: 0 0 10px;
+  padding: 9px 13px;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.report-result .report-table-scroll {
+  max-height: max(300px, calc(100dvh - 410px));
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.report-result table {
+  width: 100%;
+  font-size: 12px;
+}
+.report-result th {
+  white-space: nowrap;
+}
+.report-result td {
+  min-width: 90px;
+  max-width: 280px;
+  overflow-wrap: anywhere;
+}
+.report-result .report-number {
+  text-align: right;
+  white-space: nowrap !important;
+  font-variant-numeric: tabular-nums;
+}
+.report-result .tablefoot {
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 11px 18px;
+  font-size: 12px;
+}
+.report-notes {
+  padding: 11px 18px;
+  border-top: 1px solid #e2e7ec;
+  color: #5d6b7a;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.report-notes summary {
+  cursor: pointer;
+}
+.report-notes p {
+  margin: 8px 0 0;
+}
+@media (max-width: 1000px) {
+  .report-filters > .formbody {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .report-actions {
+    position: static;
+  }
+  .report-actions .acc-actions-main {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+  .report-actions .acc-action {
+    min-width: 0;
+    white-space: normal;
+    text-align: left;
+    font-size: 11px;
+  }
+  .report-actions .acc-action-icon {
+    flex: 0 0 26px;
+  }
+  .report-selection,
+  .report-filters > .formbody {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .report-selection p {
+    margin: 0;
+  }
+  .report-controls > .panelhead,
+  .report-table-panel > .panelhead {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
 }
 
 /* Ayarlar → Firma Bilgileri: the login screen's picture and texts. */

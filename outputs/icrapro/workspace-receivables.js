@@ -30,6 +30,19 @@ function setupReceivables(form, original) {
     '<div class="receivable-heading"><div><h3>Alacak Evrakları</h3><p>Farklı cins evrakları aynı föye ekleyin. Ayrıntıları düzenlemek için bir satır seçin.</p></div><span class="badge">Tek Föy</span></div>' +
     '<div data-receivable-picker></div><div class="receivable-layout"><div class="receivable-ledger"><div class="receivable-table-scroll"><table class="receivable-table"><caption class="sr-only">Bu föyün alacak evrakları; tarih sütunu vade veya ibraz tarihini gösterir.</caption><thead><tr><th scope="col">Tarih</th><th scope="col">Tutar</th><th scope="col">PB</th><th scope="col">Tür</th><th scope="col"><span class="sr-only">Ayrıntı</span></th></tr></thead><tbody data-receivable-table></tbody><tfoot><tr><th scope="row">TOPLAM</th><td data-receivable-gross>0,00</td><td>TL</td><td colspan="2" data-receivable-count>0 evrak</td></tr></tfoot></table></div><p class="receivable-ledger-note">Tarih: vade / ibraz tarihi</p></div><div class="receivable-detail"><div class="receivable-detail-heading"><h4>Evrak Ayrıntısı</h4><span data-receivable-position></span></div><p class="receivable-empty" data-receivable-empty>Föye evrak eklemek için yukarıdan evrak cinsini seçin.</p><div data-receivable-rows></div></div></div><div class="receivable-footer" role="status" data-receivable-total></div>';
   form.querySelector('.formbody').after(host);
+  const newCurrencyLabel = document.createElement('label');
+  newCurrencyLabel.className = 'field receivable-new-currency';
+  newCurrencyLabel.textContent = 'Para Birimi · Yeni Evrak';
+  const newCurrency = document.createElement('select');
+  newCurrency.dataset.newClaimCurrency = 'true';
+  newCurrency.dataset.optional = 'true';
+  for (const [key, definition] of Object.entries(HanUnits.definitions))
+    newCurrency.add(new Option(definition.label, key));
+  newCurrencyLabel.append(newCurrency);
+  const currencyHint = document.createElement('small');
+  currencyHint.textContent = 'Yeni ekleyeceğiniz evrakın birimini seçin. Kayıtlı evraklar değişmez.';
+  newCurrencyLabel.append(currencyHint);
+  host.querySelector('.receivable-heading').after(newCurrencyLabel);
   const picker = form.querySelector('.document-types');
   host.querySelector('[data-receivable-picker]').append(picker);
   const select = form.elements.docType;
@@ -202,9 +215,48 @@ function setupReceivables(form, original) {
     const definition = documentTypes[type];
     const fields = row.querySelector('[data-claim-fields]');
     fields.replaceChildren();
+    const currencyLabel = document.createElement('label');
+    currencyLabel.className = 'field';
+    currencyLabel.textContent = 'Bu Evrağın Para Birimi';
+    const currencySelect = document.createElement('select');
+    currencySelect.dataset.claimField = 'currency';
+    currencySelect.required = true;
+    for (const [key, definition] of Object.entries(HanUnits.definitions))
+      currencySelect.add(new Option(definition.label, key));
+    currencySelect.value = item.currency || 'TRY';
+    currencyLabel.append(currencySelect);
+    fields.append(currencyLabel);
+    const annualLabel = document.createElement('label');
+    annualLabel.className = 'field';
+    annualLabel.textContent = 'Yıllık Faiz Oranı (%) · isteğe bağlı';
+    const annual = document.createElement('input');
+    annual.type = 'number';
+    annual.min = '0';
+    annual.max = '10000';
+    annual.step = '0.01';
+    annual.dataset.claimField = 'interestRate';
+    annual.dataset.optional = 'true';
+    annual.value = item.interestRate || '';
+    annualLabel.append(annual);
+    fields.append(annualLabel);
+    const updateUnit = () => {
+      const unit = HanUnits.currency(currencySelect.value);
+      annualLabel.hidden = unit === 'TRY';
+      annual.disabled = unit === 'TRY';
+      for (const control of fields.querySelectorAll(
+        '[data-claim-field="amount"],[data-claim-field="preTrackingPayment"]',
+      )) {
+        control.step = unit === 'XAU' ? '0.001' : '0.01';
+        control.min = control.dataset.claimField === 'amount' ? control.step : '0';
+      }
+    };
+    currencySelect.onchange = () => {
+      updateUnit();
+      updateTotal();
+    };
     const definitions = [
-      [definition.amount, 'amount', 'number'],
-      ['Takip Öncesi Ödeme (₺)', 'preTrackingPayment', 'number'],
+      [definition.amount.replace(/\s*\(₺\)/g, ''), 'amount', 'number'],
+      ['Takip Öncesi Ödeme', 'preTrackingPayment', 'number'],
       [definition.serial, 'serial', 'text'],
       [definition.due, 'due', 'date'],
       ['Düzenleme Tarihi', 'issued', 'date'],
@@ -236,19 +288,30 @@ function setupReceivables(form, original) {
       }
       fields.append(labelElement);
     }
+    updateUnit();
     fields.oninput = updateTotal;
     fields.onchange = updateTotal;
   }
   function updateTotal() {
     let gross = 0,
       paid = 0;
+    const unitsTotal = {};
     table.replaceChildren();
     for (const row of list.children) {
       const value = readRow(row);
       const amount = Math.round(Number(value.amount || 0) * 100);
       const payment = Math.round(Number(value.preTrackingPayment || 0) * 100);
-      gross += amount;
-      paid += payment;
+      const currency = HanUnits.currency(value.currency),
+        scale = HanUnits.definitions[currency].scale;
+      const unitAmount = Math.round(Number(value.amount || 0) * scale),
+        unitPayment = Math.round(Number(value.preTrackingPayment || 0) * scale);
+      const currencyTotal = (unitsTotal[currency] ||= { gross: 0, paid: 0 });
+      currencyTotal.gross += unitAmount;
+      currencyTotal.paid += unitPayment;
+      if (currency === 'TRY') {
+        gross += amount;
+        paid += payment;
+      }
       const entry = document.createElement('tr');
       entry.dataset.selectClaim = row.dataset.id;
       const date = value.due || value.parkingEntry || value.issued;
@@ -258,8 +321,10 @@ function setupReceivables(form, original) {
         '">' +
         esc(date ? displayDate(date) : 'Tarih girin') +
         '</button></td><td>' +
-        amountText(amount / 100) +
-        '</td><td>TL</td><td>' +
+        HanUnits.format(unitAmount / scale, currency, false) +
+        '</td><td>' +
+        esc(HanUnits.definitions[currency].label) +
+        '</td><td>' +
         esc(value.docType) +
         '</td><td><button type="button" class="receivable-info" aria-label="' +
         esc(value.docType + ' ayrıntısı') +
@@ -280,7 +345,10 @@ function setupReceivables(form, original) {
           ?.focus();
       };
       table.append(entry);
-      row.querySelector('[data-claim-principal]').textContent = amountText((amount - payment) / 100) + ' TL';
+      row.querySelector('[data-claim-principal]').textContent = HanUnits.format(
+        (unitAmount - unitPayment) / scale,
+        currency,
+      );
     }
     if (!list.children.length)
       table.innerHTML = '<tr><td colspan="5" class="receivable-table-empty">Henüz evrak eklenmedi.</td></tr>';
@@ -294,6 +362,27 @@ function setupReceivables(form, original) {
       ' TL</strong></span><span>Asıl Alacak <strong>' +
       amountText((gross - paid) / 100) +
       ' TL</strong></span>';
+    if (Object.keys(unitsTotal).some((key) => key !== 'TRY')) {
+      const text = Object.entries(unitsTotal)
+        .map(([unit, v]) => HanUnits.formatMinor(v.gross, unit))
+        .join(' · ');
+      host.querySelector('[data-receivable-gross]').textContent = text;
+      host.querySelector('[data-receivable-gross]').nextElementSibling.textContent = '';
+      total.innerHTML =
+        '<span>' +
+        list.children.length +
+        ' evrak · Birimler ayrı hesaplanır</span>' +
+        Object.entries(unitsTotal)
+          .map(
+            ([unit, v]) =>
+              '<span>' +
+              esc(HanUnits.definitions[unit].label) +
+              ' asıl alacak <strong>' +
+              esc(HanUnits.formatMinor(v.gross - v.paid, unit)) +
+              '</strong></span>',
+          )
+          .join('');
+    } else host.querySelector('[data-receivable-gross]').nextElementSibling.textContent = 'TL';
     selectRow(selectedRow?.isConnected ? selectedRow : list.firstElementChild);
     form.dispatchEvent(new CustomEvent('receivables-change'));
   }
@@ -330,7 +419,10 @@ function setupReceivables(form, original) {
     button.setAttribute('aria-pressed', 'false');
     button.disabled = false;
     button.onclick = () => {
-      add({ docType: button.dataset.docType });
+      add({
+        docType: button.dataset.docType,
+        currency: button.dataset.docType === 'Yediemin Park Ücreti' ? 'TRY' : newCurrency.value,
+      });
       form.querySelector('[data-intake-sheet-tab="claims"]')?.click();
       selectedRow?.querySelector('[data-claim-field="amount"]')?.focus();
     };
@@ -443,6 +535,7 @@ function setupIntakeBorrowerSheet(form, original) {
     return cell;
   }
   move('intakeFolioNumber', 'Föy No', 'sheet-folio-number');
+  move('icramatikFolioNumber', 'İcramatik Föy No (isteğe bağlı)');
   value('Borçlu', 'debtor', 'sheet-debtor-name');
   move('intakeTrackingDate', 'Takip Tarihi');
   const receiverCell = move('receivedBy', 'Evrakı Alan Personel');
@@ -613,13 +706,16 @@ function setupIntakeBorrowerSheet(form, original) {
     const inputs = form.elements;
     const items = [...form.querySelectorAll('[data-receivable-rows] > section')].map((row) => ({
       docType: row.querySelector('[data-claim-type]').value,
+      currency: row.querySelector('[data-claim-field="currency"]')?.value || 'TRY',
+      interestRate: Number(row.querySelector('[data-claim-field="interestRate"]')?.value || 0),
       amount: Number(row.querySelector('[data-claim-field="amount"]')?.value || 0),
       paid: Number(row.querySelector('[data-claim-field="preTrackingPayment"]')?.value || 0),
       due: row.querySelector('[data-claim-field="due"]')?.value || '',
+      parkingEntry: row.querySelector('[data-claim-field="parkingEntry"]')?.value || '',
     }));
     const today = businessDate(),
       dates = items
-        .map((item) => item.due)
+        .map((item) => (item.docType === 'Yediemin Park Ücreti' ? item.parkingEntry : item.due))
         .filter(Boolean)
         .sort();
     const values = {
@@ -639,19 +735,47 @@ function setupIntakeBorrowerSheet(form, original) {
       else node.textContent = text;
     });
     status.textContent = 'Dosya Durumu: ' + values.status;
-    const gross = items.reduce((sum, item) => sum + Math.round(item.amount * 100), 0),
-      paid = items.reduce((sum, item) => sum + Math.round(item.paid * 100), 0),
+    summary.querySelector('[data-draft-unit-totals]')?.remove();
+    const foreign = items.filter((item) => item.currency !== 'TRY');
+    if (foreign.length) {
+      const section = document.createElement('div');
+      section.dataset.draftUnitTotals = 'true';
+      section.className = 'unit-draft-totals';
+      const balances = HanUnits.principalTotals(
+        foreign.map((item) => ({ ...item, preTrackingPayment: item.paid })),
+      );
+      section.innerHTML =
+        '<h4>Diğer Birimlerde Alacaklar</h4>' +
+        Object.entries(balances)
+          .map(
+            ([unit, v]) =>
+              '<p><b>' +
+              esc(HanUnits.definitions[unit].label) +
+              '</b><strong>' +
+              esc(HanUnits.formatMinor(v.principal, unit)) +
+              '</strong></p>',
+          )
+          .join('');
+      summary.append(section);
+    }
+    const tlItems = items.filter((item) => item.currency === 'TRY');
+    const gross = tlItems.reduce((sum, item) => sum + Math.round(item.amount * 100), 0),
+      paid = tlItems.reduce((sum, item) => sum + Math.round(item.paid * 100), 0),
       principal = gross - paid;
     let interest = 0,
       fee = 0;
-    const standard = items.filter((item) => item.docType !== 'Yediemin Park Ücreti');
+    const standard = tlItems;
     try {
       if (typeof calculateLegalInterest === 'function')
         for (const item of standard)
-          if (item.amount > item.paid && item.due && item.due < today)
+          if (
+            item.amount > item.paid &&
+            (item.docType === 'Yediemin Park Ücreti' ? item.parkingEntry : item.due) &&
+            (item.docType === 'Yediemin Park Ücreti' ? item.parkingEntry : item.due) < today
+          )
             interest += calculateLegalInterest(
               Math.round((item.amount - item.paid) * 100),
-              item.due,
+              item.docType === 'Yediemin Park Ücreti' ? item.parkingEntry : item.due,
               today,
             ).amount;
       const standardPrincipal = standard.reduce(
@@ -728,11 +852,14 @@ function receivableSummary(doc) {
           '</td><td>' +
           esc(displayDate(item.due) || '—') +
           '</td><td>' +
-          money(item.amount) +
+          HanUnits.format(item.amount, item.currency || 'TRY') +
           '</td><td>' +
-          money(item.preTrackingPayment || 0) +
+          HanUnits.format(item.preTrackingPayment || 0, item.currency || 'TRY') +
           '</td><td>' +
-          money(Number(item.amount) - Number(item.preTrackingPayment || 0)) +
+          HanUnits.format(
+            Number(item.amount) - Number(item.preTrackingPayment || 0),
+            item.currency || 'TRY',
+          ) +
           '</td></tr>',
       )
       .join('') +

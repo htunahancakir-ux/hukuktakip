@@ -55,7 +55,7 @@ test('One file combines principals and calculates interest separately by each du
   assert.throws(() => rules.normalize([{ ...items()[0], amount: -1 }]), /pozitif/);
 });
 
-test('A mixed parking claim keeps daily pricing, excludes parking interest and retains office share', () => {
+test('A mixed parking claim keeps daily pricing, includes parking interest from entry and retains office share', () => {
   const doc = {
     id: 'case',
     docType: 'Diğer',
@@ -76,7 +76,11 @@ test('A mixed parking claim keeps daily pricing, excludes parking interest and r
   legal.applyAutomaticLegalCharges(doc, [], '2026-11-11');
   assert.equal(doc.amount, 1150);
   assert.equal(doc.mixedParkingCommissionCents, 5000);
-  assert.equal(doc.legalCalculation.interest.receivables.length, 1);
+  assert.equal(doc.legalCalculation.interest.receivables.length, 2);
+  assert.equal(
+    doc.legalCalculation.interest.receivables.find((item) => item.id === 'park').start,
+    '2026-11-10',
+  );
   const total = Math.round((doc.amount + doc.financeInterest + doc.financeFee) * 100);
   doc.status = 'İnfaz';
   const event = {
@@ -112,6 +116,7 @@ test('The intake editor keeps one borrower with multiple separately typed rows',
     for (const file of [
       'form-inputs.js',
       'parking-fees.js',
+      'receivable-units.js',
       'receivable-rules.js',
       'document-types.js',
       'workspace-receivables.js',
@@ -310,4 +315,3 @@ test('Intake persists mixed documents as one file with optional enforcement fiel
     await pg.close();
   }
 });
-

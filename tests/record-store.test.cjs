@@ -196,7 +196,7 @@ test('Pagination totals include all 75 records, remain stable on page two, and f
     await pg.close();
   }
 });
-test('Balance preserves parking treatment, discount, expenses and safe large aggregates', () => {
+test('Balance includes parking interest and fees, excludes parking expenses, and preserves discount and safe aggregates', () => {
   const doc = {
     id: 'd',
     amount: 1000,
@@ -210,7 +210,8 @@ test('Balance preserves parking treatment, discount, expenses and safe large agg
     { documentId: 'd', type: 'expense', amount: 1000 },
   ];
   assert.equal(balance(doc, events).remaining_cents, '106000');
-  assert.equal(balance({ ...doc, docType: 'Yediemin Park Ücreti' }, events).remaining_cents, '75000');
+  assert.equal(balance({ ...doc, docType: 'Yediemin Park Ücreti' }, events).remaining_cents, '105000');
+  assert.equal(balance({ ...doc, docType: 'Yediemin Park Ücreti' }, events).expenses_cents, '0');
   assert.equal(balance(doc, [{ documentId: 'd', type: 'payment', amount: 100000000 }]).remaining_cents, '0');
 });
 test('Dashboard includes prior partial collections in closing profit and retains closed document amount', async () => {

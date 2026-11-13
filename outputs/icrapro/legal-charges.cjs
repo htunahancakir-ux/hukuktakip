@@ -71,13 +71,22 @@ function applyAutomaticLegalCharges(d, events, today) {
   const receivables = Array.isArray(d.receivables)
     ? require('./receivable-rules.js').sync(d, today, require('./parking-fees.js').parkingFeeInfo)
     : null;
+  const parking = d.docType === 'Yediemin Park Ücreti';
+  if (parking && !receivables) require('./parking-fees.js').applyParkingFee(d, today);
+  const start = parking ? d.parkingEntry : d.due;
+  const hasParking = parking || receivables?.items.some((item) => item.docType === 'Yediemin Park Ücreti');
+  const missingParkingCharges =
+    hasParking &&
+    !d.legalCalculation?.parkingIncluded &&
+    (d.legalCalculation?.automatic === true ||
+      (!d.legalCalculation && !Number(d.financeInterest || 0) && !Number(d.financeFee || 0)));
   if (
     d.financeTermsManual === true ||
-    d.docType === 'Yediemin Park Ücreti' ||
     d.repaymentPlan ||
-    !d.due ||
+    !start ||
     ['İade', 'İnfaz'].includes(d.status) ||
-    events.some((e) => e.documentId === d.id && e.type === 'payment')
+    (events.some((e) => e.documentId === d.id && e.type === 'payment' && !e.unitAllocation) &&
+      !missingParkingCharges)
   )
     return false;
   try {
@@ -91,10 +100,16 @@ function applyAutomaticLegalCharges(d, events, today) {
           calculateEnforcementFee,
         )
       : null;
-    const interest = calculated?.interest || calculateLegalInterest(principal, d.due, today),
+    const interest = calculated?.interest || calculateLegalInterest(principal, start, today),
       base = calculated?.base ?? principal + interest.amount,
       fee = calculated?.fee || calculateEnforcementFee(base, principal, false),
-      key = JSON.stringify([today, d.due, principal, receivables?.items || null]);
+      key = JSON.stringify([
+        today,
+        start,
+        principal,
+        receivables?.items || null,
+        ...(hasParking ? ['parking-legal-v1'] : []),
+      ]);
     // Keep calculatedAt stable for identical calculations. Open scoped forms
     // compare their saved calculation against this record when they submit.
     if (
@@ -111,7 +126,7 @@ function applyAutomaticLegalCharges(d, events, today) {
     d.financeFee = fee.amount / 100;
     d.legalCalculation = {
       principal,
-      start: d.due,
+      start,
       end: today,
       interest,
       base,
@@ -121,6 +136,7 @@ function applyAutomaticLegalCharges(d, events, today) {
       verifiedThrough: legalRateVerifiedThrough,
       tariff: 'AAÜT 03.11.2026 — madde 11',
       automatic: true,
+      ...(hasParking ? { parkingIncluded: true } : {}),
       calculatedAt: new Date().toISOString(),
     };
     d.automaticLegalKey = key;

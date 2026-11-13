@@ -31,6 +31,26 @@ function reportRows(type) {
   function basic(d) {
     return { number: d.number, client: clientName(d.client), debtor: d.debtor };
   }
+  if (type === 'hanDocuments') {
+    for (const doc of db.docs) {
+      if (!isHanDocumentReceiver(doc.receivedById) && !isHanDocumentReceiver(doc.receivedBy)) continue;
+      const items = Array.isArray(doc.receivables) && doc.receivables.length ? doc.receivables : [doc];
+      items.forEach((item, index) =>
+        add(
+          item.registeredOn || doc.trackingDate || doc.created,
+          doc,
+          {
+            ...basic(doc),
+            type: item.docType || docType(doc),
+            receiver: 'HAN',
+            count: 1,
+            status: debtorStatus(doc),
+          },
+          { id: doc.id + ':' + (index + 1), documentId: doc.id },
+        ),
+      );
+    }
+  }
   if (type === 'excel') {
     const documents = new Map(db.docs.map((doc) => [doc.id, doc]));
     const clients = new Map(db.clients.map((client) => [client.id, client]));
@@ -352,11 +372,59 @@ function reportCellHtml(row, col) {
   return (kind && text !== '—' && window.hanPrivacy?.html(kind, text)) || esc(text);
 }
 
+function decorateReportActions() {
+  const styles = {
+    openExpenseReport: ['out', '↓', 'expenses'],
+    openMarketingReport: ['collection', '↗'],
+    openMonthlyPayrollReport: ['advance', '₺'],
+    openInsReport: ['pool', '▥'],
+    openClientListReport: ['transfer', '≡', 'clientList'],
+    openClientDebtorInfo: ['payout', '↔', 'clientDebtorInfo'],
+    openHanDocumentReport: ['in', '#', 'hanDocuments'],
+    staffBreaks: ['collection', '◷', 'staffBreaks'],
+    staffAttendance: ['pool', '◴', 'staffAttendance'],
+    units: ['advance', '₺'],
+  };
+  document.querySelectorAll('#reportShortcuts button').forEach((button) => {
+    const [tone, icon, type] = styles[
+      button.id || button.dataset.staffTimeReport || (button.dataset.openUnitReport && 'units')
+    ] || ['collection', '≡'];
+    const label = button.textContent;
+    button.type = 'button';
+    button.classList.remove(
+      'primary',
+      'secondary',
+      'monthly-payroll-report-button',
+      'ins-report-button',
+      'client-list-report-button',
+      'client-debtor-report-button',
+    );
+    button.classList.add('acc-action', 'acc-action--' + tone);
+    button.innerHTML =
+      '<span class="acc-action-icon" aria-hidden="true">' +
+      esc(icon) +
+      '</span><span class="acc-action-label">' +
+      esc(label) +
+      '</span>';
+    if (type) button.setAttribute('aria-pressed', String(reportFilters.type === type));
+  });
+}
+
+function updateReportFilterSummary() {
+  const summary = document.getElementById('reportFilterSummary');
+  if (!summary) return;
+  const count =
+    ['from', 'to', 'client', 'staff', 'status', 'account', 'query'].filter((key) =>
+      String(reportFilters[key] || '').trim(),
+    ).length + (reportFilters.undated ? 0 : 1);
+  summary.textContent = count ? count + ' filtre etkin' : 'Tüm kayıtlar';
+  summary.classList.toggle('report-filter-active', count > 0);
+}
+
 function renderReportsPage() {
-  const collapseFilters = true;
   const filtersOpen = document.getElementById('clientInfoReportFilters')?.open;
   $('#content').innerHTML =
-    `<div class="panel"><div class="panelhead"><div><h2>Rapor Merkezi</h2><p>Kayıtlı işlemleri süzün, yazdırın veya Excel için CSV indirin.</p></div><div class="toolbar"><button class="primary" id="openExpenseReport">Gider Raporu</button><button class="primary" id="openMarketingReport">Pazarlama Raporlama</button><button class="primary monthly-payroll-report-button" id="openMonthlyPayrollReport">Aylık Maaş ve Prim Raporu</button><button class="primary ins-report-button" id="openInsReport">İNS Raporu</button><button class="primary client-list-report-button" id="openClientListReport">Müvekkil Listesi</button><button class="primary client-debtor-report-button" id="openClientDebtorInfo">Müvekkil Borçlu Bilgi Raporu</button><button class="secondary" id="printReport">Yazdır / PDF</button><button class="primary" id="exportReport">CSV İndir</button></div></div>${collapseFilters ? `<details class="borrower-filter-section" id="clientInfoReportFilters"${filtersOpen ? ' open' : ''}><summary>Filtrele</summary>` : ''}<div class="formbody grid"><label class="field full">Rapor Türü<select id="reportType">${Object.entries(
+    `<div class="reports-workspace"><div class="acc-actions report-actions" role="toolbar" aria-label="Rapor kısayolları"><div class="acc-actions-main" id="reportShortcuts"><button class="primary" id="openExpenseReport">Gider Raporu</button><button class="primary" id="openMarketingReport">Pazarlama Raporlama</button><button class="primary monthly-payroll-report-button" id="openMonthlyPayrollReport">Aylık Maaş ve Prim Raporu</button><button class="primary ins-report-button" id="openInsReport">İNS Raporu</button><button class="primary client-list-report-button" id="openClientListReport">Müvekkil Listesi</button><button class="primary client-debtor-report-button" id="openClientDebtorInfo">Müvekkil Borçlu Bilgi Raporu</button></div></div><section class="panel report-controls acc-accounts"><div class="panelhead"><div><h2>Rapor Merkezi</h2><p>Rapor seçin, kayıtları filtreleyin ve çıktısını alın.</p></div><div class="acc-head-side report-export-actions"><button class="secondary" id="printReport">Yazdır / PDF</button><button class="primary" id="exportReport">CSV İndir</button></div></div><div class="report-selection"><label class="field">Rapor Türü<select id="reportType">${Object.entries(
       reportDefinitions,
     )
       .map(
@@ -365,7 +433,7 @@ function renderReportsPage() {
       )
       .join(
         '',
-      )}</select></label>${field('Başlangıç Tarihi', 'reportFrom', 'date', reportFilters.from)}${field('Bitiş Tarihi', 'reportTo', 'date', reportFilters.to)}<label class="field">Müvekkil<select id="reportClient"><option value="">Tümü</option>${(window.hanRecordsEnabled ? recordReportClients() : db.clients).map((c) => `<option value="${esc(c.id)}" ${reportFilters.client === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label class="field">Personel<select id="reportStaff"><option value="">Tümü</option>${personnel.map((p) => `<option value="${esc(p.id)}" ${reportFilters.staff === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label><label class="field">Durum<select id="reportStatus"><option value="">Tümü</option>${(reportFilters.type === 'personnel' ? ['Aktif', 'Pasif'] : reportFilters.type === 'installments' ? ['Ödendi', 'Kısmi Ödendi', 'Bekliyor', 'Gecikmiş'] : ['Derdest', 'İnfaz', 'Bekleme', 'İade', 'İcra']).map((s) => `<option ${reportFilters.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label><label class="field">Kasa / Banka<select id="reportAccount"><option value="">Tümü</option>${accounting.accounts.map((a) => `<option value="${esc(a.id)}" ${reportFilters.account === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></label><label class="field full">Raporda Ara<input type="search" id="reportQuery" value="${esc(reportFilters.query)}" placeholder="İsim, evrak no, açıklama…"></label><label class="settings-check full"><input type="checkbox" id="reportUndated" ${reportFilters.undated ? 'checked' : ''}> Kayıt tarihi bulunmayan eski kayıtları da göster</label><button class="secondary" id="clearReportFilters">Süzgeçleri Temizle</button></div>${collapseFilters ? '</details>' : ''} </div><div id="reportResult" style="margin-top:22px"></div>`;
+      )}</select></label><p>Seçili raporun kayıtları ve toplamları aşağıda gösterilir.</p></div><details class="borrower-filter-section report-filters" id="clientInfoReportFilters"${filtersOpen ? ' open' : ''}><summary>Filtre <span id="reportFilterSummary"></span></summary><div class="formbody grid">${field('Başlangıç Tarihi', 'reportFrom', 'date', reportFilters.from)}${field('Bitiş Tarihi', 'reportTo', 'date', reportFilters.to)}<label class="field">Müvekkil<select id="reportClient"><option value="">Tümü</option>${(window.hanRecordsEnabled ? recordReportClients() : db.clients).map((c) => `<option value="${esc(c.id)}" ${reportFilters.client === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label class="field">Personel<select id="reportStaff"><option value="">Tümü</option>${personnel.map((p) => `<option value="${esc(p.id)}" ${reportFilters.staff === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label><label class="field">Durum<select id="reportStatus"><option value="">Tümü</option>${(reportFilters.type === 'personnel' ? ['Aktif', 'Pasif'] : reportFilters.type === 'installments' ? ['Ödendi', 'Kısmi Ödendi', 'Bekliyor', 'Gecikmiş'] : ['Derdest', 'İnfaz', 'Bekleme', 'İade', 'İcra']).map((s) => `<option ${reportFilters.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label><label class="field">Kasa / Banka<select id="reportAccount"><option value="">Tümü</option>${accounting.accounts.map((a) => `<option value="${esc(a.id)}" ${reportFilters.account === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></label><label class="field full">Raporda Ara<input type="search" id="reportQuery" value="${esc(reportFilters.query)}" placeholder="İsim, evrak no, açıklama…"></label><label class="settings-check full"><input type="checkbox" id="reportUndated" ${reportFilters.undated ? 'checked' : ''}> Kayıt tarihi bulunmayan eski kayıtları da göster</label><button class="secondary" id="clearReportFilters">Süzgeçleri Temizle</button></div></details></section><div id="reportResult" class="report-result"></div></div>`;
   $('#openMarketingReport').hidden = !hanPageAllowed('marketing');
   const managerTimeReports = ['ceo', 'admin'].includes(hanAuth.role);
   for (const [type, label] of [
@@ -540,6 +608,20 @@ function renderReportsPage() {
   $('#openMonthlyPayrollReport').onclick = monthlyPayrollReportPage;
   $('#openInsReport').onclick = insReportPage;
   $('#openClientListReport').onclick = clientListReportPage;
+  if (typeof installCurrencyReportButton === 'function') installCurrencyReportButton();
+  const hanButton = document.createElement('button');
+  hanButton.type = 'button';
+  hanButton.className = 'primary';
+  hanButton.id = 'openHanDocumentReport';
+  hanButton.textContent = 'HAN Evrak Sayı Raporu';
+  hanButton.onclick = () => {
+    reportFilters.type = 'hanDocuments';
+    reportFilters.staff = '';
+    reportFilters.account = '';
+    reportsPage();
+  };
+  $('#openMarketingReport').after(hanButton);
+  decorateReportActions();
   $('#exportReport').onclick = exportReport;
   $('#printReport').onclick = printReport;
   renderReportResult();
@@ -555,6 +637,11 @@ function buildCurrentReport() {
 }
 
 function reportTable(def, rows, openableDocuments, totals) {
+  const columnClass = (column) => (['money', 'count'].includes(column[2]) ? ' class="report-number"' : '');
+  const countTotal = (key) =>
+    BigInt(
+      totals ? totals[key] || '0' : rows.reduce((sum, row) => sum + Number(row.cells[key] || 0), 0),
+    ).toLocaleString('tr-TR');
   const total = (key) =>
     totals
       ? recordMoney(totals[key] || '0')
@@ -574,8 +661,8 @@ function reportTable(def, rows, openableDocuments, totals) {
   };
   if (def.hideDate)
     return (
-      '<div class="overflow"><table><thead><tr>' +
-      def.columns.map((c) => '<th>' + esc(c[1]) + '</th>').join('') +
+      '<div class="overflow report-table-scroll" tabindex="0" role="region" aria-label="Rapor tablosu"><table><thead><tr>' +
+      def.columns.map((c) => '<th' + columnClass(c) + '>' + esc(c[1]) + '</th>').join('') +
       '</tr></thead><tbody>' +
       rows
         .map(
@@ -584,7 +671,9 @@ function reportTable(def, rows, openableDocuments, totals) {
             def.columns
               .map(
                 (c) =>
-                  '<td style="white-space:pre-line"' +
+                  '<td' +
+                  columnClass(c) +
+                  ' style="white-space:pre-line"' +
                   (c[0] === 'note' ? ' data-report-summary="' + esc(r.documentId) + '"' : '') +
                   '>' +
                   (c[0] === 'note' && r.cells.reportPending ? 'Özet hazırlanıyor…' : reportCellHtml(r, c)) +
@@ -596,21 +685,29 @@ function reportTable(def, rows, openableDocuments, totals) {
         .join('') +
       '</tbody><tfoot><tr>' +
       def.columns
-        .map((c, i) => '<td>' + (i === 0 ? 'TOPLAM' : c[2] === 'money' ? total(c[0]) : '') + '</td>')
+        .map(
+          (c, i) =>
+            '<td' +
+            columnClass(c) +
+            '>' +
+            (i === 0 ? 'TOPLAM' : c[2] === 'money' ? total(c[0]) : c[2] === 'count' ? countTotal(c[0]) : '') +
+            '</td>',
+        )
         .join('') +
       '</tr></tfoot></table></div>'
     );
-  return `<div class="overflow"><table><thead><tr><th>TARİH</th>${def.columns.map((c) => `<th>${esc(c[1])}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.date ? displayDate(r.date) : 'Tarih yok')}</td>${def.columns.map((c) => `<td>${renderCell(r, c)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${def.columns.length + 1}" class="empty">Bu seçimle eşleşen kayıt yok.</td></tr>`}</tbody><tfoot><tr><td><b>TOPLAM</b></td>${def.columns.map((c) => `<td>${c[2] === 'money' ? '<b>' + total(c[0]) + '</b>' : ''}</td>`).join('')}</tr></tfoot></table></div>`;
+  return `<div class="overflow report-table-scroll" tabindex="0" role="region" aria-label="Rapor tablosu"><table><thead><tr><th>TARİH</th>${def.columns.map((c) => `<th${columnClass(c)}>${esc(c[1])}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.date ? displayDate(r.date) : 'Tarih yok')}</td>${def.columns.map((c) => `<td${columnClass(c)}>${renderCell(r, c)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${def.columns.length + 1}" class="empty">Bu seçimle eşleşen kayıt yok.</td></tr>`}</tbody><tfoot><tr><td><b>TOPLAM</b></td>${def.columns.map((c) => `<td${columnClass(c)}>${c[2] === 'money' ? '<b>' + total(c[0]) + '</b>' : c[2] === 'count' ? '<b>' + countTotal(c[0]) + '</b>' : ''}</td>`).join('')}</tr></tfoot></table></div>`;
 }
 
 function renderReportResult() {
+  updateReportFilterSummary();
   if (window.hanRecordsEnabled) return loadRecordReport();
   try {
     const { definition, rows } = currentReport();
     const result = $('#reportResult');
     const openableDocuments =
       reportFilters.type === 'excel' ? new Set(db.docs.map((doc) => doc.id)) : undefined;
-    result.innerHTML = `<div class="notice">${rows.length} kayıt · Tarihsiz: ${rows.filter((r) => !r.date).length}. Finansal raporlar işlem tarihini, evrak raporu kayıt tarihini, taksit raporu vade tarihini esas alır. Transferler hesap hareketlerinde giriş ve çıkış olarak görünür; kâr raporunda yer almaz. Personel maaş raporu kayıtlı güncel tutarlardır, dönem bordrosu değildir.</div><div class="panel"><div class="panelhead"><h2>${definition.label}</h2></div>${reportTable(definition, rows, openableDocuments)}</div>`;
+    result.innerHTML = `<div class="notice">${rows.length} ${reportFilters.type === 'hanDocuments' ? 'evrak' : 'kayıt'} · Tarihsiz: ${rows.filter((r) => !r.date).length}. Toplamlar filtreye uyan kayıtları kapsar.</div><div class="panel report-table-panel acc-ledger"><div class="panelhead"><h2>${esc(definition.label)}</h2><span class="acc-chip-total">Kayıt <b>${rows.length}</b></span></div>${reportTable(definition, rows, openableDocuments)}<details class="report-notes"><summary>Rapor hakkında</summary><p>Finansal raporlar işlem tarihini, evrak raporu kayıt tarihini, taksit raporu vade tarihini esas alır. Transferler hesap hareketlerinde giriş ve çıkış olarak görünür; kâr raporunda yer almaz. Personel maaş raporu kayıtlı güncel tutarlardır, dönem bordrosu değildir.</p></details></div>`;
     result.querySelectorAll('[data-report-borrower]').forEach((button) => {
       button.onclick = () => borrowerDetail(button.dataset.reportBorrower);
     });

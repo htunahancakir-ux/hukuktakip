@@ -645,6 +645,7 @@ function clientDebtorIdentityConflict(kind, id, value, borrowerName) {
 function setupExtraContacts(form, record) {
   setupPhoneSources(form, record);
   for (const type of ['phone', 'address']) {
+    if (type === 'address' && form.id === 'intakeForm') continue;
     const anchor =
       form.elements[type === 'phone' ? (form.elements.phone ? 'phone' : 'phone1') : 'address']?.closest(
         'label',
@@ -705,6 +706,8 @@ function setupExtraContacts(form, record) {
       row(typeof value === 'string' ? { phone: value } : value);
     form.addEventListener('reset', () => list.replaceChildren());
   }
+  if (form.id === 'intakeForm')
+    HanBorrowerAddresses.setup(form, record, { cities: turkeyCities, districts: turkeyDistricts });
 }
 
 function readExtraContacts(form) {
@@ -720,6 +723,7 @@ function readExtraContacts(form) {
       .map((r) => r.phone)
       .filter(Boolean),
     additionalAddresses: values('address').filter((r) => r.address || r.city || r.district),
+    ...(form.id === 'intakeForm' ? HanBorrowerAddresses.read(form) : {}),
   };
 }
 

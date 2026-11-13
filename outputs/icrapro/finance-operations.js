@@ -32,6 +32,14 @@ function editDocumentPrincipal(id) {
   if (!d || isParkingDocument(d)) return;
   const expectedPrincipal = financeCents(d.amount);
   const items = Array.isArray(d.receivables) ? structuredClone(d.receivables) : null;
+  const principalInput = (item, index) => {
+    const unit = HanUnits.currency(item.currency),
+      definition = HanUnits.definitions[unit];
+    const value =
+      (HanUnits.minor(item.amount, unit) - HanUnits.minor(item.preTrackingPayment || 0, unit)) /
+      definition.scale;
+    return `<label class="field">${esc(item.docType)} · ${esc(item.serial || item.due || index + 1)} · Asıl Alacak (${esc(definition.label)})<input type="number" name="principal${index}" min="0" step="${unit === 'XAU' ? '0.001' : '0.01'}" required value="${value}" ${item.docType === 'Yediemin Park Ücreti' ? 'disabled' : ''}>${item.docType === 'Yediemin Park Ücreti' ? '<small>Günlük tarifeden hesaplanır.</small>' : ''}</label>`;
+  };
   let dialog = document.getElementById('principalDialog');
   if (!dialog) {
     dialog = document.createElement('dialog');
@@ -39,7 +47,7 @@ function editDocumentPrincipal(id) {
     document.body.append(dialog);
   }
   dialog.setAttribute('aria-labelledby', 'principalDialogTitle');
-  dialog.innerHTML = `<form><div class="panelhead"><div><h2 id="principalDialogTitle">Asıl Alacağı Düzenle</h2><p>${esc(d.number)} · ${esc(d.debtor)}</p></div><button type="button" class="secondary" data-close-principal>Kapat</button></div><div class="formbody"><p>Mevcut asıl alacak: <strong>${money(d.amount)}</strong></p><div class="grid">${items ? items.map((item, index) => `<label class="field">${esc(item.docType)} · ${esc(item.serial || item.due || index + 1)} · Asıl Alacak (₺)<input type="number" name="principal${index}" min="0" step="0.01" required value="${(financeCents(item.amount) - financeCents(item.preTrackingPayment)) / 100}" ${item.docType === 'Yediemin Park Ücreti' ? 'disabled' : ''}>${item.docType === 'Yediemin Park Ücreti' ? '<small>Günlük tarifeden hesaplanır.</small>' : ''}</label>`).join('') : field('Yeni Asıl Alacak (₺)', 'principal', 'number', d.amount, true)}</div><p>Takip öncesi ödemeler ve kayıtlı tahsilat tutarları korunur. Müvekkile ödenmiş tutarın altına inilemez. İnfaz dosyasında yeni toplam tahsilatı aşarsa dosya yeniden açılır.</p>${d.repaymentPlan ? '<p>Bu düzeltme mevcut taksit planını değiştirmez. Gerekirse Borcu Yapılandır bölümünden planı yeniden düzenleyin.</p>' : ''}<p role="status" data-principal-status></p></div><div class="actions"><button class="primary" type="submit">Asıl Alacağı Kaydet</button></div></form>`;
+  dialog.innerHTML = `<form><div class="panelhead"><div><h2 id="principalDialogTitle">Asıl Alacağı Düzenle</h2><p>${esc(d.number)} · ${esc(d.debtor)}</p></div><button type="button" class="secondary" data-close-principal>Kapat</button></div><div class="formbody"><p>Mevcut asıl alacak: <strong>${typeof unitDocumentAmount === 'function' ? esc(unitDocumentAmount(d)) : money(d.amount)}</strong></p><div class="grid">${items ? items.map(principalInput).join('') : field('Yeni Asıl Alacak (₺)', 'principal', 'number', d.amount, true)}</div><p>Takip öncesi ödemeler ve kayıtlı tahsilat tutarları korunur. Müvekkile ödenmiş tutarın altına inilemez. İnfaz dosyasında yeni toplam tahsilatı aşarsa dosya yeniden açılır.</p>${d.repaymentPlan ? '<p>Bu düzeltme mevcut taksit planını değiştirmez. Gerekirse Borcu Yapılandır bölümünden planı yeniden düzenleyin.</p>' : ''}<p role="status" data-principal-status></p></div><div class="actions"><button class="primary" type="submit">Asıl Alacağı Kaydet</button></div></form>`;
   dialog.querySelector('[data-close-principal]').onclick = () => dialog.close();
   const form = dialog.querySelector('form');
   form.onsubmit = (event) => {
@@ -52,8 +60,10 @@ function editDocumentPrincipal(id) {
       if (items)
         payload.items = items.map((item, index) => ({
           id: item.id,
-          amount: financeCents(form.elements['principal' + index].value),
-          expectedAmount: financeCents(item.amount) - financeCents(item.preTrackingPayment),
+          amount: HanUnits.minor(form.elements['principal' + index].value, item.currency),
+          expectedAmount:
+            HanUnits.minor(item.amount, item.currency) -
+            HanUnits.minor(item.preTrackingPayment || 0, item.currency),
         }));
       else payload.amount = financeCents(form.elements.principal.value);
       const result = authApi('/api/documents/principal', 'POST', payload);
@@ -88,6 +98,10 @@ function manuallyCloseDocument(id) {
   const f = docFinance(d);
   if (f.received < f.principal)
     return toast('Manuel infaz için tahsilat asıl alacağa eşit veya üzerinde olmalıdır.');
+  const native =
+    typeof HanUnits === 'undefined' ? [] : HanUnits.foreignBalances(d, businessDate(), financeEvents);
+  if (native.some((group) => group.received < group.principal))
+    return toast('Manuel infaz için her birimde asıl alacak tahsil edilmiş olmalıdır.');
   let dialog = document.getElementById('manualClosureDialog');
   if (!dialog) {
     dialog = document.createElement('dialog');
@@ -97,6 +111,22 @@ function manuallyCloseDocument(id) {
   dialog.setAttribute('aria-labelledby', 'manualClosureTitle');
   dialog.innerHTML = `<form><div class="panelhead"><h2 id="manualClosureTitle">Manuel İnfaz</h2><button type="button" class="secondary" data-close-manual>Kapat</button></div><div class="formbody"><p>${esc(d.number)} · ${esc(d.debtor)}</p><p>Asıl alacak: <b>${money(f.principal / 100)}</b><br>Tahsil edilen: <b>${money(f.received / 100)}</b><br>Manuel infazla kapatılacak kalan bakiye: <b>${money(f.remaining / 100)}</b></p><p>Bu işlem dosyayı infaza alır; kalan faiz, ücret ve masraf bakiyesi indirim olarak kapatılır. Yeni tahsilat veya kasa hareketi oluşturmaz.</p><p role="status" data-manual-status></p></div><div class="actions"><button type="submit" class="primary">Dosyayı Manuel İnfaza Al</button></div></form>`;
   dialog.querySelector('[data-close-manual]').onclick = () => dialog.close();
+  if (native.length) {
+    const balances = document.createElement('p');
+    balances.textContent = native
+      .map(
+        (group) =>
+          HanUnits.definitions[group.currency].label +
+          ' · Asıl alacak: ' +
+          HanUnits.formatMinor(group.principal, group.currency) +
+          ' · Ödenen: ' +
+          HanUnits.formatMinor(group.received, group.currency) +
+          ' · Kapatılacak bakiye: ' +
+          HanUnits.formatMinor(group.remaining, group.currency),
+      )
+      .join(' / ');
+    dialog.querySelector('[data-manual-status]').before(balances);
+  }
   const form = dialog.querySelector('form');
   form.onsubmit = (event) => {
     event.preventDefault();
@@ -202,13 +232,14 @@ function docFinance(d) {
   if (d._listFinance) return d._listFinance;
   automaticLegalCharges(d);
   const events = financeEvents.filter((e) => e.documentId === d.id),
-    received = events.filter((e) => e.type === 'payment').reduce((s, e) => s + e.amount, 0),
+    received = events
+      .filter((e) => e.type === 'payment' && !e.unitAllocation)
+      .reduce((s, e) => s + e.amount, 0),
     expenses = isParkingDocument(d)
       ? 0
       : events.filter((e) => e.type === 'expense').reduce((s, e) => s + e.amount, 0),
-    grossTarget = isParkingDocument(d)
-      ? financeCents(d.amount)
-      : financeCents(d.amount) + financeCents(d.financeInterest) + financeCents(d.financeFee) + expenses,
+    grossTarget =
+      financeCents(d.amount) + financeCents(d.financeInterest) + financeCents(d.financeFee) + expenses,
     discount = Number(d.debtDiscountCents || 0),
     target = Math.max(0, grossTarget - discount);
   return {
@@ -395,15 +426,23 @@ function dashboard(remoteBuckets) {
   loadPaymentPromisesHome();
 }
 
-function financialOperations(id, mode) {
+function financialOperations(id, mode, tlOnly = false) {
   if (mode) financeOperationTab = mode;
   const d = db.docs.find((x) => x.id === id);
   if (!d) return;
+  if (
+    !tlOnly &&
+    mode !== 'expense' &&
+    mode !== 'costOnly' &&
+    typeof HanUnits !== 'undefined' &&
+    HanUnits.hasForeign(d)
+  )
+    return openUnitFinance(id);
   const f = docFinance(d),
     locked = hanAuth.role !== 'ceo' && financeEvents.some((e) => e.documentId === id && e.type === 'payment'),
     termsLocked = hanAuth.role !== 'ceo' && d.status === 'İnfaz';
   $('#modal').innerHTML =
-    `<div class="panelhead"><div><h2>${esc(d.number)} · Finansal İşlemler</h2><p><span class="debtor-name-emphasis">${esc(d.debtor)}</span> · Kalan: ${money(f.remaining / 100)} · Masraf: ${money(f.expenses / 100)}</p></div><button class="link" id="closeFinance">Kapat</button></div><form id="financeTerms"><div class="formbody"><h3 class="sectiontitle">Alacak Bileşenleri</h3>${parkingCommissionMarkup(d, f)}<button type="button" class="secondary" id="openLegalCalculator" ${locked ? 'disabled' : ''}>Vade Tarihinden Yasal Faiz ve İcra Vekâlet Ücreti Hesapla</button><p>${isParkingDocument(d) ? 'Yediemin tahsilatı kalan alacak tutarıyla sınırlı değildir. Kâr ve müvekkil payı toplam tahsilattan hesaplanır.' : d.financeTermsManual === true ? 'Faiz ve ücret tutarları kullanıcı tarafından belirlendi; otomatik hesap uygulanmaz.' : d.legalCalculationError ? esc(d.legalCalculationError) : d.legalCalculation ? 'Yasal faiz ve icra vekâlet ücreti toplam borca dahildir. Hesap tarihi: ' + esc(displayDate(d.legalCalculation.end)) : ''}</p><p>Anapara: ${money(d.amount)} · Masraf: ${money(f.expenses / 100)} · Toplam Borç: ${money(f.target / 100)}</p><div class="grid">${field('Faiz Tutarı (₺)', 'interest', 'number', isParkingDocument(d) ? 0 : (d.financeInterest ?? 0), true)}${field('Avukatlık / Hizmet Ücreti (₺)', 'fee', 'number', isParkingDocument(d) ? 0 : (d.financeFee ?? 0), true)}</div><p>${termsLocked ? 'İnfaz edilmiş dosyada tutarlar kilitlidir.' : 'Faiz ve ücret tutarlarını kayıtlı evraka göre girin.'}</p></div><div class="actions"><button class="secondary" ${locked ? 'disabled' : ''}>Tutarları Kaydet</button></div></form><form id="financeEntry"><div class="formbody"><h3 class="sectiontitle">Tahsilat Kaydet</h3></div><input type="hidden" name="type" value="payment"><div class="formbody grid">${field('İşlem Tarihi', 'date', 'date', businessDate(), true, true)}${field('Tutar (₺)', 'amount', 'number', '', true)}${collectionAccountField()}${['ceo', 'admin'].includes(hanAuth.role) ? turnoverStaffField() : ''}${field('Açıklama / Dekont No', 'note', 'text', '', true)}</div><div class="actions"><button type="button" class="secondary" id="latestCollectionReceipt" ${financeEvents.some((e) => e.documentId === id && e.type === 'payment') ? '' : 'disabled'}>Tahsilat Makbuzu</button><button class="primary">İşlemi Kaydet</button></div></form><form id="expenseEntry"><div class="formbody"><h3 class="sectiontitle">Masraf Ekle</h3><p>Toplam kayıtlı masraf: <b>${money(f.expenses / 100)}</b></p><div class="notice">Borca Eklemeden Kaydet yalnızca masraf kaydı oluşturur. Masrafı Borca Ekle toplam ve kalan borcu artırır.</div><input type="hidden" name="type" value="expense"><div class="grid">${field('Masraf Tarihi', 'date', 'date', businessDate(), true, true)}${field('Masraf Tutarı (₺)', 'amount', 'number', '', true)}${collectionAccountField('out')}${field('Masraf Açıklaması', 'note', 'text', '', true, true)}</div></div><div class="actions"><button type="submit" class="secondary" name="saveMode" value="costOnly">Borca Eklemeden Kaydet</button><button type="submit" class="primary" name="saveMode" value="addToDebt">Masrafı Borca Ekle</button></div></form>${financeHistoryMarkup(id)}`;
+    `<div class="panelhead"><div><h2>${esc(d.number)} · Finansal İşlemler</h2><p><span class="debtor-name-emphasis">${esc(d.debtor)}</span> · Kalan: ${money(f.remaining / 100)} · Masraf: ${money(f.expenses / 100)}</p></div><button class="link" id="closeFinance">Kapat</button></div><form id="financeTerms"><div class="formbody"><h3 class="sectiontitle">Alacak Bileşenleri</h3>${parkingCommissionMarkup(d, f)}<button type="button" class="secondary" id="openLegalCalculator" ${locked ? 'disabled' : ''}>Vade Tarihinden Yasal Faiz ve İcra Vekâlet Ücreti Hesapla</button><p>${isParkingDocument(d) ? 'Yediemin tahsilatı kalan alacak tutarıyla sınırlı değildir. Kâr ve müvekkil payı toplam tahsilattan hesaplanır.' : d.financeTermsManual === true ? 'Faiz ve ücret tutarları kullanıcı tarafından belirlendi; otomatik hesap uygulanmaz.' : d.legalCalculationError ? esc(d.legalCalculationError) : d.legalCalculation ? 'Yasal faiz ve icra vekâlet ücreti toplam borca dahildir. Hesap tarihi: ' + esc(displayDate(d.legalCalculation.end)) : ''}</p><p>Anapara: ${money(d.amount)} · Masraf: ${money(f.expenses / 100)} · Toplam Borç: ${money(f.target / 100)}</p><div class="grid">${field('Faiz Tutarı (₺)', 'interest', 'number', d.financeInterest ?? 0, true)}${field('Avukatlık / Hizmet Ücreti (₺)', 'fee', 'number', d.financeFee ?? 0, true)}</div><p>${termsLocked ? 'İnfaz edilmiş dosyada tutarlar kilitlidir.' : 'Faiz ve ücret tutarlarını kayıtlı evraka göre girin.'}</p></div><div class="actions"><button class="secondary" ${locked ? 'disabled' : ''}>Tutarları Kaydet</button></div></form><form id="financeEntry"><div class="formbody"><h3 class="sectiontitle">Tahsilat Kaydet</h3></div><input type="hidden" name="type" value="payment"><div class="formbody grid">${field('İşlem Tarihi', 'date', 'date', businessDate(), true, true)}${field('Tutar (₺)', 'amount', 'number', '', true)}${collectionAccountField()}${['ceo', 'admin'].includes(hanAuth.role) ? turnoverStaffField() : ''}${field('Açıklama / Dekont No', 'note', 'text', '', true)}</div><div class="actions"><button type="button" class="secondary" id="latestCollectionReceipt" ${financeEvents.some((e) => e.documentId === id && e.type === 'payment') ? '' : 'disabled'}>Tahsilat Makbuzu</button><button class="primary">İşlemi Kaydet</button></div></form><form id="expenseEntry"><div class="formbody"><h3 class="sectiontitle">Masraf Ekle</h3><p>Toplam kayıtlı masraf: <b>${money(f.expenses / 100)}</b></p><div class="notice">Borca Eklemeden Kaydet yalnızca masraf kaydı oluşturur. Masrafı Borca Ekle toplam ve kalan borcu artırır.</div><input type="hidden" name="type" value="expense"><div class="grid">${field('Masraf Tarihi', 'date', 'date', businessDate(), true, true)}${field('Masraf Tutarı (₺)', 'amount', 'number', '', true)}${collectionAccountField('out')}${field('Masraf Açıklaması', 'note', 'text', '', true, true)}</div></div><div class="actions"><button type="submit" class="secondary" name="saveMode" value="costOnly">Borca Eklemeden Kaydet</button><button type="submit" class="primary" name="saveMode" value="addToDebt">Masrafı Borca Ekle</button></div></form>${financeHistoryMarkup(id)}`;
   setupFinanceOperationTabs();
   bindFinanceHistory();
   const expenseForm = document.getElementById('expenseEntry');
@@ -428,13 +467,27 @@ function financialOperations(id, mode) {
   $('#openLegalCalculator').disabled =
     !['ceo', 'admin'].includes(hanAuth.role) ||
     locked ||
-    isParkingDocument(d) ||
-    Array.isArray(d.receivables);
+    (Array.isArray(d.receivables) && !isParkingDocument(d));
   $('#openLegalCalculator').onclick = () => openLegalCalculator(id);
   if (isParkingDocument(d)) $('#expenseEntry').querySelector('[value="addToDebt"]').disabled = true;
   $('#closeFinance').onclick = () => $('#modal').close();
   if (!$('#modal').open) $('#modal').showModal();
   const terms = $('#financeTerms');
+  if (isParkingDocument(d)) {
+    const calculationInfo = document.createElement('p');
+    calculationInfo.dataset.parkingLegalSummary = 'true';
+    calculationInfo.textContent =
+      'Faiz başlangıcı (men / otopark girişi): ' +
+      displayDate(d.parkingEntry || '') +
+      (d.financeTermsManual
+        ? ' · Faiz ve ücretler elle belirlenmiştir.'
+        : d.legalCalculationError
+          ? ' · ' + d.legalCalculationError
+          : d.legalCalculation
+            ? ' · Hesap tarihi: ' + displayDate(d.legalCalculation.end)
+            : '');
+    terms.querySelector('#openLegalCalculator').after(calculationInfo);
+  }
   const canEditTerms = ['ceo', 'admin'].includes(hanAuth.role) && !termsLocked;
   if (['ceo', 'admin'].includes(hanAuth.role) && d.status !== 'İnfaz') {
     const manualClose = document.createElement('button');
@@ -461,35 +514,33 @@ function financialOperations(id, mode) {
     el.min = '0';
     el.step = '0.01';
     if (el.name === 'parkingCommissionRate') el.max = '100';
-    el.disabled = !canEditTerms || (isParkingDocument(d) && el.name !== 'parkingCommissionRate');
+    el.disabled = !canEditTerms;
   }
   terms.onsubmit = (e) => {
     e.preventDefault();
     if (!canEditTerms) return;
     const v = Object.fromEntries(new FormData(terms));
+    let parkingRate;
     if (isParkingDocument(d)) {
-      const rate = Number(v.parkingCommissionRate);
-      if (v.parkingCommissionRate === '' || !Number.isFinite(rate) || rate < 0 || rate > 100)
+      parkingRate = Number(v.parkingCommissionRate);
+      if (
+        v.parkingCommissionRate === '' ||
+        !Number.isFinite(parkingRate) ||
+        parkingRate < 0 ||
+        parkingRate > 100
+      )
         return toast('Anlaşma yüzdesi 0 ile 100 arasında olmalıdır.');
-      const previous = d.parkingCommissionRate;
-      d.parkingCommissionRate = rate;
-      try {
-        saveDocumentFinance(d);
-      } catch {
-        d.parkingCommissionRate = previous;
-        return toast('Oran kaydedilemedi.');
-      }
-      financialOperations(id);
-      return toast('Anlaşma yüzdesi kaydedildi.');
     }
     const a = financeCents(v.interest),
       b = financeCents(v.fee);
     if (!Number.isSafeInteger(a) || !Number.isSafeInteger(b) || a < 0 || b < 0)
       return toast('Geçerli tutarlar girin.');
     const previous = structuredClone(d);
+    const termsChanged = a !== financeCents(d.financeInterest) || b !== financeCents(d.financeFee);
+    if (isParkingDocument(d)) d.parkingCommissionRate = parkingRate;
     d.financeInterest = a / 100;
     d.financeFee = b / 100;
-    d.financeTermsManual = true;
+    if (!isParkingDocument(d) || termsChanged) d.financeTermsManual = true;
     delete d._listFinance;
     try {
       saveDocumentFinance(d);
@@ -590,6 +641,9 @@ function financialOperations(id, mode) {
         : 0;
     const closes =
       v.type === 'payment' &&
+      (typeof HanUnits === 'undefined' ||
+        !HanUnits.hasForeign(d) ||
+        HanUnits.foreignBalances(d, businessDate(), financeEvents).every((g) => g.remaining === 0)) &&
       (isParkingDocument(d) ? d.status !== 'İnfaz' && amount >= live.remaining : amount === live.remaining);
     const event = {
       id: crypto.randomUUID(),
@@ -738,17 +792,32 @@ function automaticLegalCharges(d) {
     : null;
   if (typeof applyParkingFee === 'function') applyParkingFee(d, businessDate());
   if (window.hanAuth && !['ceo', 'admin'].includes(hanAuth.role)) return;
-  if (d.financeTermsManual === true || d.repaymentPlan || isParkingDocument(d)) return;
+  if (d.financeTermsManual === true || d.repaymentPlan) return;
+  const start = isParkingDocument(d) ? d.parkingEntry : d.due;
+  const hasParking =
+    isParkingDocument(d) || receivables?.items.some((item) => item.docType === 'Yediemin Park Ücreti');
+  const missingParkingCharges =
+    hasParking &&
+    !d.legalCalculation?.parkingIncluded &&
+    (d.legalCalculation?.automatic === true ||
+      (!d.legalCalculation && !Number(d.financeInterest || 0) && !Number(d.financeFee || 0)));
   if (
-    !d.due ||
+    !start ||
     d.status === 'İade' ||
     d.status === 'İnfaz' ||
-    financeEvents.some((e) => e.documentId === d.id && e.type === 'payment')
+    (financeEvents.some((e) => e.documentId === d.id && e.type === 'payment' && !e.unitAllocation) &&
+      !missingParkingCharges)
   )
     return;
   const end = businessDate();
   const principal = financeCents(d.amount);
-  const key = JSON.stringify([end, d.due, principal, receivables?.items || null]);
+  const key = JSON.stringify([
+    end,
+    start,
+    principal,
+    receivables?.items || null,
+    ...(hasParking ? ['parking-legal-v1'] : []),
+  ]);
   if (d.automaticLegalKey === key) return;
   try {
     if (end < '2026-11-03' || end > legalCalculationSupportedThrough)
@@ -756,7 +825,7 @@ function automaticLegalCharges(d) {
     const calculated = receivables
       ? HanReceivables.charges(receivables, end, calculateLegalInterest, calculateEnforcementFee)
       : null;
-    const interest = calculated?.interest || calculateLegalInterest(principal, d.due, end);
+    const interest = calculated?.interest || calculateLegalInterest(principal, start, end);
     const base = calculated?.base ?? principal + interest.amount;
     const fee = calculated?.fee || calculateEnforcementFee(base, principal, false);
     const previous = {
@@ -769,7 +838,7 @@ function automaticLegalCharges(d) {
     d.financeFee = fee.amount / 100;
     d.legalCalculation = {
       principal,
-      start: d.due,
+      start,
       end,
       interest,
       base,
@@ -780,6 +849,7 @@ function automaticLegalCharges(d) {
       tariff: 'AAÜT 03.11.2026 — madde 11',
       assumption: 'Varsayımsal icra takibi; gerçek takip açılmadı',
       automatic: true,
+      ...(hasParking ? { parkingIncluded: true } : {}),
       calculatedAt: new Date().toISOString(),
     };
     d.automaticLegalKey = key;
@@ -855,7 +925,6 @@ function openLegalCalculator(id) {
     return toast('Faiz ve avukatlık ücretini yalnızca CEO ve yönetici değiştirebilir.');
   const d = db.docs.find((x) => x.id === id);
   if (!d) return;
-  if (isParkingDocument(d)) return toast('Yediemin dosyasında yalnızca anapara tahsil edilir.');
   if (hanAuth.role !== 'ceo' && financeEvents.some((e) => e.documentId === id && e.type === 'payment'))
     return toast('Tahsilat bulunan evrakta otomatik yeniden hesaplama yapılamaz.');
   let dialog = document.getElementById('legalCalculator');
@@ -864,7 +933,7 @@ function openLegalCalculator(id) {
     dialog.id = 'legalCalculator';
     document.body.append(dialog);
   }
-  dialog.innerHTML = `<form id="legalCalculatorForm"><div class="panelhead"><h2>Yasal Faiz ve İcra Vekâlet Ücreti</h2><button type="button" class="link" id="closeLegal">Kapat</button></div><div class="formbody"><div class="notice">Para alacağı için icra takibi açılmış varsayımıyla ön hesap. Gerçek takip açılmaz. Başlangıç vadedir; başlangıç dahil, hesap tarihi hariç; basit faiz ve 365 gün esası kullanılır. Özel faiz veya ilam hükmü varsa bu hesabı uygulamayın. Oran doğrulama sınırı: ${esc(displayDate(legalRateVerifiedThrough))}. Tarife: 03.11.2026 AAÜT, icra takibi.</div><div class="grid">${field('Vade / Faiz Başlangıcı', 'start', 'date', d.due || '', true)}${field('Varsayımsal Takip / Hesap Tarihi', 'end', 'date', businessDate(), true)}<label class="field">Vekâlet Ücreti Matrahı<select name="baseMode"><option value="principalInterest">Anapara + hesaplanan işlemiş faiz</option><option value="principal">Yalnız anapara</option></select></label><label class="field">Ödeme Aşaması<select name="early"><option value="no">Tam ücret — ödeme süresi indirimi yok</option><option value="yes">Ödeme süresinde ödeme — dörtte üç ücret</option></select></label></div><p>Anapara: <b>${money(d.amount)}</b> · Masraflar ve vekâlet ücreti faiz matrahına alınmaz.</p><button class="secondary" type="submit">Hesaplamayı Göster</button><div id="legalCalculationOutput" style="margin-top:20px"></div><p><a href="https://mevzuat.adalet.gov.tr/mevzuat/104794" target="_blank" rel="noopener">3095 sayılı Kanun</a> · <a href="https://www.barobirlik.org.tr/dosyalar/belgeler/AvUcretTarifesi/tbb2026.pdf" target="_blank" rel="noopener">AAÜT — madde 11 ve üçüncü kısım</a> · <a href="https://www.tcmb.gov.tr/wps/wcm/connect/TR/TCMB%2BTR/Main%2BMenu/Temel%2BFaaliyetler/Para%2BPolitikasi/Reeskont%2Bve%2BAvans%2BFaiz%2BOranlari?v=1.0.8" target="_blank" rel="noopener">TCMB</a></p></div></form>`;
+  dialog.innerHTML = `<form id="legalCalculatorForm"><div class="panelhead"><h2>Yasal Faiz ve İcra Vekâlet Ücreti</h2><button type="button" class="link" id="closeLegal">Kapat</button></div><div class="formbody"><div class="notice">Para alacağı için icra takibi açılmış varsayımıyla ön hesap. Gerçek takip açılmaz. Başlangıç vadedir; başlangıç dahil, hesap tarihi hariç; basit faiz ve 365 gün esası kullanılır. Özel faiz veya ilam hükmü varsa bu hesabı uygulamayın. Oran doğrulama sınırı: ${esc(displayDate(legalRateVerifiedThrough))}. Tarife: 03.11.2026 AAÜT, icra takibi.</div><div class="grid">${field('Vade / Faiz Başlangıcı', 'start', 'date', (isParkingDocument(d) ? d.parkingEntry : d.due) || '', true)}${field('Varsayımsal Takip / Hesap Tarihi', 'end', 'date', businessDate(), true)}<label class="field">Vekâlet Ücreti Matrahı<select name="baseMode"><option value="principalInterest">Anapara + hesaplanan işlemiş faiz</option><option value="principal">Yalnız anapara</option></select></label><label class="field">Ödeme Aşaması<select name="early"><option value="no">Tam ücret — ödeme süresi indirimi yok</option><option value="yes">Ödeme süresinde ödeme — dörtte üç ücret</option></select></label></div><p>Anapara: <b>${money(d.amount)}</b> · Masraflar ve vekâlet ücreti faiz matrahına alınmaz.</p><button class="secondary" type="submit">Hesaplamayı Göster</button><div id="legalCalculationOutput" style="margin-top:20px"></div><p><a href="https://mevzuat.adalet.gov.tr/mevzuat/104794" target="_blank" rel="noopener">3095 sayılı Kanun</a> · <a href="https://www.barobirlik.org.tr/dosyalar/belgeler/AvUcretTarifesi/tbb2026.pdf" target="_blank" rel="noopener">AAÜT — madde 11 ve üçüncü kısım</a> · <a href="https://www.tcmb.gov.tr/wps/wcm/connect/TR/TCMB%2BTR/Main%2BMenu/Temel%2BFaaliyetler/Para%2BPolitikasi/Reeskont%2Bve%2BAvans%2BFaiz%2BOranlari?v=1.0.8" target="_blank" rel="noopener">TCMB</a></p></div></form>`;
   $('#closeLegal').onclick = () => dialog.close();
   dialog.showModal();
   if (typeof bindFolioLock === 'function') bindFolioLock(dialog, id);
@@ -1140,7 +1209,8 @@ function clientPayoutTotals(d) {
     paid = financeCents(d.clientPaidAmount) + rows.reduce((s, e) => s + e.amount, 0),
     f = docFinance(d),
     eligible = d.status === 'İnfaz' && f.remaining === 0;
-  let entitlement = f.principal - Number(d.mixedParkingCommissionCents || 0);
+  let entitlement =
+    f.principal + Number(d.unitPrincipalCostTLMinor || 0) - Number(d.mixedParkingCommissionCents || 0);
   if (isParkingDocument(d))
     entitlement =
       d.status === 'İnfaz' && validParkingRate(d)

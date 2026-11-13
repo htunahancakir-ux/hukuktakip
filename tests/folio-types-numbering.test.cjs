@@ -72,8 +72,8 @@ test('Each selected document kind survives intake; numeric folios share one sequ
     assert.equal(stored[0].parkingCommissionRate, 40);
     assert.equal(stored[0].vehicleKind, 'Otomobil');
     assert.equal(stored[0].parkingEntry, '2026-11-10');
-    assert.equal(Number(stored[0].financeInterest || 0), 0);
-    assert.equal(Number(stored[0].financeFee || 0), 0);
+    assert.equal(Number(stored[0].financeInterest || 0), 0.64);
+    assert.equal(Number(stored[0].financeFee || 0), 375);
     const event = {
       id: 'collection',
       documentId: stored[0].id,

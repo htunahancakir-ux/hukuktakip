@@ -1,4 +1,16 @@
 const reportDefinitions = {
+  hanDocuments: {
+    label: 'HAN Evrak Sayı Raporu',
+    columns: [
+      ['number', 'Föy No'],
+      ['client', 'Müvekkil'],
+      ['debtor', 'Borçlu'],
+      ['type', 'Evrak Türü'],
+      ['receiver', 'Evrakı Alan'],
+      ['count', 'Evrak Adedi', 'count'],
+      ['status', 'Durum'],
+    ],
+  },
   staffBreaks: {
     label: 'Personel Mola ve Geç Dönüş Raporu',
     columns: [

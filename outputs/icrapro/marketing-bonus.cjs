@@ -1,4 +1,5 @@
 const { validDate } = require('../../lib/business-time.cjs');
+const { isHanReceiver } = require('../../lib/document-receivers.cjs');
 const isMarketing = (p) =>
   String(p.department || '')
     .trim()
@@ -55,6 +56,7 @@ function calculateMarketingBonus(state, month, today = month + '-31') {
   const documents = new Map(),
     firmCounts = new Map();
   for (const doc of docs) {
+    if (isHanReceiver(doc)) continue;
     const owner =
       doc.receivedById ||
       (byId.has(doc.receivedBy)
@@ -74,7 +76,7 @@ function calculateMarketingBonus(state, month, today = month + '-31') {
         if (row) row.documentCount++;
         firmCounts.set(doc.client, (firmCounts.get(doc.client) || 0) + 1);
       }
-      if (!row) continue;
+      if (!row || (item.currency && item.currency !== 'TRY')) continue;
       const amount = Math.max(0, cents(item.originalAmount ?? item.amount) - cents(item.preTrackingPayment));
       principal = integer(principal + amount);
       if (item.docType === 'Yediemin Park Ücreti') parking = integer(parking + amount);
@@ -93,6 +95,8 @@ function calculateMarketingBonus(state, month, today = month + '-31') {
     if (event.type !== 'payment' || !thisMonth(event.date) || event.amount <= 0) continue;
     integer(event.amount);
     officeCollected = integer(officeCollected + event.amount);
+    // A converted receipt belongs to its selected foreign claim, not a TL parking claim.
+    if (event.unitAllocation) continue;
     monthlyCollections.set(
       event.documentId,
       integer((monthlyCollections.get(event.documentId) || 0) + event.amount),
