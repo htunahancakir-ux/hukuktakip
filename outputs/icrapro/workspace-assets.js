@@ -10,6 +10,8 @@ const workspaceScripts = [
   'privacy-mask.js',
   'party-name.js',
   'workspace-conflicts.js',
+  'workspace-modal-stability.js',
+  'workspace-connectivity.js',
   'personnel.js',
   'workspace-personnel-ledger.js',
   'settings.js',

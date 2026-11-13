@@ -11,8 +11,18 @@
   const roles = { client: 'Müvekkil', debtor: 'Borçlu', guarantor: 'Kefil' };
   const timers = new WeakMap(),
     requests = new WeakMap();
-  const text = (value) =>
-    typeof escapeHtml === 'function' ? escapeHtml(value) : String(value ?? '').replace(/[&<>"']/g, '');
+  const text = escapeHtml; // html-safety.js
+  async function request(path, options, failure) {
+    const response = await fetch(path, {
+      cache: 'no-store',
+      credentials: 'same-origin',
+      ...options,
+      headers: { 'X-Han-Request': '1', ...options?.headers },
+    });
+    const data = await response.json();
+    if (!response.ok) throw Error(data.error || failure);
+    return data;
+  }
 
   function read(form) {
     const config = forms[form.id];
@@ -34,8 +44,8 @@
         )
       : '';
 
-  async function lookup(input, signal) {
-    const response = await fetch(
+  const lookup = (input, signal) =>
+    request(
       '/api/conflicts?' +
         new URLSearchParams({
           kind: input.kind,
@@ -43,12 +53,9 @@
           name2: input.name2,
           identity: input.identity,
         }),
-      { signal, cache: 'no-store', credentials: 'same-origin', headers: { 'X-Han-Request': '1' } },
+      { signal },
+      'Çakışma kontrolü yapılamadı.',
     );
-    const data = await response.json();
-    if (!response.ok) throw Error(data.error || 'Çakışma kontrolü yapılamadı.');
-    return data;
-  }
 
   function itemsMarkup(result) {
     const rows = result.items
@@ -60,6 +67,9 @@
     return (
       (rows
         ? `<div class="overflow"><table class="conflict-table"><thead><tr><th>ROL</th><th>KAYITLI AD</th><th>EŞLEŞME</th><th>DOSYA</th><th>DURUM</th><th>MÜVEKKİL</th></tr></thead><tbody>${rows}</tbody></table></div>`
+        : '') +
+      (result.truncated
+        ? '<p class="conflict-hidden">Bu adı içeren kayıt sayısı çok fazla; liste eksik olabilir. Adı tam yazarak veya TC / vergi numarası girerek daraltın.</p>'
         : '') +
       (result.hidden
         ? `<p class="conflict-hidden">${text(result.hidden)} eşleşme, görme yetkiniz olmayan veya arşivdeki kayıtlarda. Ayrıntı için yöneticinize danışın.</p>`
@@ -107,19 +117,20 @@
         if (button.disabled) return;
         button.disabled = true;
         try {
-          const response = await fetch('/api/conflicts/ack', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'X-Han-Request': '1', 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              kind: input.kind,
-              name: input.name || input.identity,
-              count: result.conflicts,
-              reason: form.elements.reason.value,
-            }),
-          });
-          const data = await response.json();
-          if (!response.ok) throw Error(data.error || 'Gerekçe kaydedilemedi.');
+          await request(
+            '/api/conflicts/ack',
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                kind: input.kind,
+                name: input.name || input.identity,
+                count: result.conflicts,
+                reason: form.elements.reason.value,
+              }),
+            },
+            'Gerekçe kaydedilemedi.',
+          );
           finish(true);
         } catch (error) {
           toast(error.message);

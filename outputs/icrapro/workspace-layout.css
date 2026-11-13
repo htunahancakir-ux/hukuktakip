@@ -3451,3 +3451,104 @@ button.pm-all[hidden] {
 #conflictDialog .field {
   margin-top: 14px;
 }
+
+/* Steady money forms: fields that appear for some choices keep their place when hidden. */
+.acc-entry .acc-reserve[hidden] {
+  display: flex !important;
+  visibility: hidden;
+}
+.acc-entry--out .payroll-cash-fields[hidden] {
+  display: grid !important;
+  visibility: hidden;
+}
+.acc-entry .payroll-cash-fields [data-payroll-cash-limit] {
+  min-height: 2.9em;
+  margin: 0;
+}
+/* Collection file picker: a list that is always there, at one size. */
+#modal:has(> #accDocumentPicker) {
+  width: 640px;
+  max-width: 96vw;
+}
+.acc-picker-result[aria-selected='true'] {
+  border-color: #0f766e;
+  background: #f0faf8;
+}
+.acc-picker-status {
+  margin: 8px 0 0;
+  min-height: 1.5em;
+  color: #7c8998;
+  font-size: 12px;
+}
+/* Client payouts: same compact table as the ledger. */
+.acc-payouts {
+  margin-bottom: 14px;
+}
+.acc-payouts > .panelhead {
+  padding: 12px 18px;
+}
+.acc-payouts > .panelhead p {
+  margin: 2px 0 0;
+}
+.acc-payouts .borrower-filter-section {
+  margin: 8px 18px;
+}
+.acc-payouts .borrower-filter-section > summary {
+  padding: 8px 14px;
+}
+.acc-payouts th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 9px 14px;
+}
+.acc-payouts td {
+  padding: 7px 14px;
+}
+.acc-payouts td .link {
+  padding: 2px 0;
+}
+.acc-payouts td small {
+  display: inline;
+  margin-left: 8px;
+}
+.acc-payouts-scroll {
+  max-height: max(300px, calc(100vh - 300px));
+  overflow-y: auto;
+}
+.acc-payouts tfoot td {
+  position: sticky;
+  bottom: 0;
+  background: #fafbfc;
+  border-top: 1px solid #e2e7ec;
+}
+
+button.pm-offer {
+  margin-left: 6px;
+  padding: 2px 9px;
+  border: 1px solid #d9b16e;
+  border-radius: 20px;
+  background: #fff6d6;
+  color: #6b4e16;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* No connection: a notice above everything until the connection is back. */
+#hanOfflineBanner {
+  position: fixed;
+  inset: 10px auto auto 50%;
+  translate: -50% 0;
+  z-index: 1000;
+  margin: 0;
+  padding: 8px 16px;
+  border: 1px solid #fdba74;
+  border-radius: 20px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 6px 18px rgb(16 24 40 / 18%);
+}

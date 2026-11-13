@@ -1,32 +1,25 @@
 const { collectionSummary } = require('../../lib/notification-summary.cjs');
 const { currentReport, generateReport, fingerprint } = require('../../lib/conversation-report.cjs');
 const voipConversations = require('../../lib/voip-conversations.cjs');
+const {
+  openFile,
+  receivedByDocument,
+  installmentStates,
+  promiseRemaining,
+} = require('../../lib/payment-schedule.cjs');
 async function handleWorkflowRoutes(ctx) {
   const { req, res, url, u, persist, allowed, fail, body, send, crypto, parkingToday, promiseOutstanding } =
     ctx;
   if (url.pathname === '/api/due-installments' && req.method === 'GET') {
     const today = parkingToday(),
       manager = ['ceo', 'admin'].includes(u.role),
+      received = receivedByDocument(ctx.state.data['hanhukuk-finance-v1']),
       rows = [];
     for (const d of ctx.state.data['icrapro-v1'].docs) {
-      if (
-        ['İnfaz', 'İade'].includes(d.status) ||
-        !d.repaymentPlan ||
-        (!manager && (!u.staffId || d.relatedStaff !== u.staffId))
-      )
+      if (!openFile(d) || !d.repaymentPlan || (!manager && (!u.staffId || d.relatedStaff !== u.staffId)))
         continue;
-      const plan = d.repaymentPlan;
-      let paid = Math.max(
-        0,
-        ctx.state.data['hanhukuk-finance-v1']
-          .filter((e) => e.documentId === d.id && e.type === 'payment')
-          .reduce((sum, e) => sum + e.amount, 0) - Number(plan.receivedAtCreation || 0),
-      );
-      for (const [i, r] of (plan.installments || []).entries()) {
-        const applied = Math.min(paid, r.amount);
-        paid -= applied;
-        const remaining = r.amount - applied;
-        if (r.due <= today && remaining > 0)
+      for (const r of installmentStates(d.repaymentPlan, received.get(d.id) || 0)) {
+        if (r.due <= today && r.remaining > 0)
           rows.push({
             documentId: d.id,
             number: d.number,
@@ -36,43 +29,16 @@ async function handleWorkflowRoutes(ctx) {
               ctx.state.data['icrapro-personnel-v1'].find((p) => p.id === d.relatedStaff)?.name ||
               d.relatedStaffName ||
               'Atanmadı',
-            sequence: i + 1,
+            sequence: r.sequence,
             due: r.due,
             amount: r.amount,
-            paid: applied,
-            remaining,
+            paid: r.paid,
+            remaining: r.remaining,
           });
       }
     }
     rows.sort((a, b) => a.due.localeCompare(b.due) || a.debtor.localeCompare(b.debtor, 'tr'));
     send(res, 200, { today, rows });
-    return true;
-  }
-  if (url.pathname === '/api/conflicts/ack' && req.method === 'POST') {
-    // The user saw the conflict warning and chose to continue; the reason is kept in the audit log.
-    res.hanConflictAudit = require('../../lib/conflict-check.cjs').acknowledgement(await body(req));
-    send(res, 200, { ok: true });
-    return true;
-  }
-  if (url.pathname === '/api/privacy/reveal' && req.method === 'POST') {
-    // Recorded when a user opens every masked personal value on a screen at once.
-    const input = await body(req),
-      area = typeof input?.area === 'string' ? input.area.trim().slice(0, 120) : '';
-    if (!area) throw fail(400, 'Geçersiz istek.');
-    res.hanPrivacyAudit = {
-      area,
-      count: Number.isSafeInteger(input.count) && input.count > 0 && input.count < 100000 ? input.count : 0,
-    };
-    send(res, 200, { ok: true });
-    return true;
-  }
-  if (url.pathname === '/api/accounting/alerts' && req.method === 'GET') {
-    // Unlike the two personal lists above, accounting sees every file's overdue payments.
-    if (
-      !require('../../lib/accounting-access.cjs').accountingAllowed(u, ctx.state.data['icrapro-personnel-v1'])
-    )
-      throw fail(403, 'Muhasebe yetkiniz yok.');
-    send(res, 200, require('../../lib/accounting-alerts.cjs').accountingAlerts(ctx.state, parkingToday()));
     return true;
   }
   if (url.pathname === '/api/call-reminders' && req.method === 'GET') {
@@ -328,19 +294,13 @@ async function handleWorkflowRoutes(ctx) {
       staffId = u.staffId || '',
       manager = ['ceo', 'admin'].includes(u.role),
       staffName = (id) => ctx.state.data['icrapro-personnel-v1'].find((p) => p.id === id)?.name || '',
+      received = receivedByDocument(ctx.state.data['hanhukuk-finance-v1']),
       rows = ctx.state.data['icrapro-v1'].docs
         .filter(
-          (d) =>
-            (manager || (staffId && d.relatedStaff === staffId)) &&
-            !['İnfaz', 'İade'].includes(d.status) &&
-            d.paymentPromise,
+          (d) => (manager || (staffId && d.relatedStaff === staffId)) && openFile(d) && d.paymentPromise,
         )
         .map((d) => {
-          const p = d.paymentPromise,
-            received = ctx.state.data['hanhukuk-finance-v1']
-              .filter((e) => e.documentId === d.id && e.type === 'payment')
-              .reduce((sum, e) => sum + e.amount, 0),
-            paid = Math.max(0, received - Number(p.receivedAtCreation || 0));
+          const p = d.paymentPromise;
           return {
             documentId: d.id,
             number: d.number,
@@ -348,7 +308,7 @@ async function handleWorkflowRoutes(ctx) {
             date: p.date,
             amount: p.amount,
             description: p.description,
-            remaining: Math.max(0, p.amount - paid),
+            remaining: promiseRemaining(p, received.get(d.id) || 0),
             upcoming: p.date > today,
             ...(manager ? { staffName: staffName(d.relatedStaff) } : {}),
           };

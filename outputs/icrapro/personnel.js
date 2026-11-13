@@ -215,8 +215,39 @@ async function personnelSettings(editId) {
   if (personnelTab === 'payroll') return personnelCompensationPage();
   if (personnelTab === 'ledger') return personnelLedgerPage($('#personnelView'));
   $('#personnelView').innerHTML =
-    `<div class="panel"><div class="panelhead"><div><h2>Personel Kayıtları</h2><p>Bilgileri görmek ve düzenlemek için personel adına tıklayın.</p></div><div class="toolbar"><span class="badge">${staffRows.filter((p) => p.active).length} aktif / ${staffRows.length} kayıt</span><button type="button" class="primary" id="newPersonnel">Yeni Personel</button></div></div><div class="overflow"><table><thead><tr><th>AD SOYAD</th><th>BİRİM / GÖREV</th><th>TELEFON</th><th>MAAŞ + PRİM 1</th><th>PRİM 2</th><th>G. PRİM</th><th>GENEL TOPLAM</th><th>DURUM</th><th>İŞLEM</th></tr></thead><tbody>${staffRows.map((p) => `<tr><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">${esc(p.name)}</button></td><td>${esc(p.department || '—')}<small>${esc(p.title || '—')}</small></td><td>${(window.hanPrivacy && hanPrivacy.html('phone', p.phone)) || esc(p.phone || '—')}</td><td>${privateMoney(money(staffMoney(p).salary / 100))}</td><td>${privateMoney(money(staffMoney(p).bonus / 100))}</td><td>${privateMoney(money(dailyPrimTotal(p.id) / 100))}</td><td>${privateMoney(money((staffMoney(p).total + dailyPrimTotal(p.id)) / 100))}</td><td>${p.active ? 'Aktif' : 'Pasif'}</td><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">Düzenle</button></td></tr>`).join('') || '<tr><td colspan="9" class="empty">Henüz personel yok. Yeni Personel butonuyla ekleyin.</td></tr>'}</tbody><tfoot><tr><td colspan="3"><strong>ALT TOPLAM</strong></td><td><strong>${privateMoney(money(staffRows.reduce((sum, p) => sum + staffMoney(p).salary, 0) / 100))}</strong></td><td><strong>${privateMoney(money(staffRows.reduce((sum, p) => sum + staffMoney(p).bonus, 0) / 100))}</strong></td><td><strong>${privateMoney(money(staffRows.reduce((sum, p) => sum + dailyPrimTotal(p.id), 0) / 100))}</strong></td><td><strong>${privateMoney(money(staffRows.reduce((sum, p) => sum + staffMoney(p).total + dailyPrimTotal(p.id), 0) / 100))}</strong></td><td colspan="2"></td></tr></tfoot></table></div></div>`;
+    `<div class="panel"><div class="panelhead"><div><h2>Personel Kayıtları</h2><p>Bilgileri görmek ve düzenlemek için personel adına tıklayın.</p></div><div class="toolbar"><span class="badge">${staffRows.filter((p) => p.active).length} aktif / ${staffRows.length} kayıt</span><button type="button" class="secondary" id="exportPersonnel">Excel'e Aktar</button><button type="button" class="primary" id="newPersonnel">Yeni Personel</button></div></div><div class="overflow"><table><thead><tr><th>AD SOYAD</th><th>BİRİM / GÖREV</th><th>TELEFON</th><th>MAAŞ + PRİM 1</th><th>PRİM 2</th><th>G. PRİM</th><th>GENEL TOPLAM</th><th>DURUM</th><th>İŞLEM</th></tr></thead><tbody>${staffRows.map((p) => `<tr><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">${esc(p.name)}</button></td><td>${esc(p.department || '—')}<small>${esc(p.title || '—')}</small></td><td>${(window.hanPrivacy && hanPrivacy.html('phone', p.phone)) || esc(p.phone || '—')}</td><td>${privateMoney(money(staffMoney(p).salary / 100))}</td><td>${privateMoney(money(staffMoney(p).bonus / 100))}</td><td>${privateMoney(money(dailyPrimTotal(p.id) / 100))}</td><td>${privateMoney(money((staffMoney(p).total + dailyPrimTotal(p.id)) / 100))}</td><td>${p.active ? 'Aktif' : 'Pasif'}</td><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">Düzenle</button></td></tr>`).join('') || '<tr><td colspan="9" class="empty">Henüz personel yok. Yeni Personel butonuyla ekleyin.</td></tr>'}</tbody><tfoot><tr><td colspan="3"><strong>ALT TOPLAM</strong></td><td><strong>${privateMoney(money(staffRows.reduce((sum, p) => sum + staffMoney(p).salary, 0) / 100))}</strong></td><td><strong>${privateMoney(money(staffRows.reduce((sum, p) => sum + staffMoney(p).bonus, 0) / 100))}</strong></td><td><strong>${privateMoney(money(staffRows.reduce((sum, p) => sum + dailyPrimTotal(p.id), 0) / 100))}</strong></td><td><strong>${privateMoney(money(staffRows.reduce((sum, p) => sum + staffMoney(p).total + dailyPrimTotal(p.id), 0) / 100))}</strong></td><td colspan="2"></td></tr></tfoot></table></div></div>`;
   $('#newPersonnel').onclick = () => openPersonnelRecord();
+  $('#exportPersonnel').onclick = () =>
+    exportPersonnelData('Personel Kayıtları', staffRows.length, () =>
+      downloadCsvFile('hanhukuk-personel-kayitlari-' + businessDate() + '.csv', [
+        [
+          'Ad Soyad',
+          'Birim',
+          'Görev',
+          'Telefon',
+          'Maaş + Prim 1',
+          'Prim 2',
+          'G. Prim',
+          'Genel Toplam',
+          'Durum',
+        ],
+        ...staffRows.map((p) => {
+          const pay = staffMoney(p),
+            daily = dailyPrimTotal(p.id);
+          return [
+            p.name,
+            p.department || '',
+            p.title || '',
+            p.phone || '',
+            csvMoney(pay.salary),
+            csvMoney(pay.bonus),
+            csvMoney(daily),
+            csvMoney(pay.total + daily),
+            p.active ? 'Aktif' : 'Pasif',
+          ];
+        }),
+      ]),
+    );
   $('#personnelView')
     .querySelectorAll('[data-personnel-edit]')
     .forEach((button) => (button.onclick = () => openPersonnelRecord(button.dataset.personnelEdit)));
@@ -387,6 +418,11 @@ function setupPersonnelSalaryRequirements(form, department) {
   form.elements.department?.addEventListener('change', update);
   update();
 }
+// A personnel export takes pay and contact data out of the screen, so it is recorded first.
+async function exportPersonnelData(area, count, run) {
+  if (window.hanPrivacy && !(await hanPrivacy.record(area + ' · Excel dökümü', count, 'export'))) return;
+  run();
+}
 // Pay amounts are personal data: drawn masked, opened by clicking.
 function privateMoney(text) {
   return window.hanPrivacy ? hanPrivacy.html('money', text) : text;
@@ -396,7 +432,7 @@ function payrollView() {
   const rows = payrollRows(),
     totals = payrollTotals(rows);
   $('#personnelView').innerHTML =
-    `<div class="panel"><div class="panelhead"><div><h2>Maaş ve Prim Toplamları</h2><p>Kayıtlı tutarların kişi bazında ve genel toplamı · ${rows.length} personel</p></div><label class="field">Personel Durumu<select id="payrollScope"><option value="active" ${payrollScope === 'active' ? 'selected' : ''}>Aktif Personel</option><option value="all" ${payrollScope === 'all' ? 'selected' : ''}>Tüm Personel</option><option value="inactive" ${payrollScope === 'inactive' ? 'selected' : ''}>Pasif Personel</option></select></label></div><div class="formbody"><div class="stats">${[
+    `<div class="panel"><div class="panelhead"><div><h2>Maaş ve Prim Toplamları</h2><p>Kayıtlı tutarların kişi bazında ve genel toplamı · ${rows.length} personel</p></div><button type="button" class="secondary" id="exportPayroll">Excel'e Aktar</button><label class="field">Personel Durumu<select id="payrollScope"><option value="active" ${payrollScope === 'active' ? 'selected' : ''}>Aktif Personel</option><option value="all" ${payrollScope === 'all' ? 'selected' : ''}>Tüm Personel</option><option value="inactive" ${payrollScope === 'inactive' ? 'selected' : ''}>Pasif Personel</option></select></label></div><div class="formbody"><div class="stats">${[
       ['Maaş', totals.official],
       ['Prim 1', totals.unofficial],
       ['Toplam Maaş', totals.salary],
@@ -417,6 +453,25 @@ function payrollView() {
         })
         .join('') || '<tr><td colspan="6" class="empty">Bu seçimde personel yok.</td></tr>'
     }</tbody><tfoot><tr><td><strong>GENEL TOPLAM</strong></td>${['official', 'unofficial', 'salary', 'bonus', 'total'].map((k) => `<td><strong>${privateMoney(money(totals[k] / 100))}</strong></td>`).join('')}</tr></tfoot></table></div></div>`;
+  $('#exportPayroll').onclick = () =>
+    exportPersonnelData('Maaş ve Prim', rows.length, () =>
+      downloadCsvFile('hanhukuk-maas-prim-' + businessDate() + '.csv', [
+        ['Personel', 'Birim', 'Maaş', 'Prim 1', 'Toplam Maaş', 'Prim 2', 'Genel Toplam'],
+        ...rows.map((p) => {
+          const pay = staffMoney(p);
+          return [
+            p.name,
+            p.department || '',
+            ...['official', 'unofficial', 'salary', 'bonus', 'total'].map((key) => csvMoney(pay[key])),
+          ];
+        }),
+        [
+          'GENEL TOPLAM',
+          '',
+          ...['official', 'unofficial', 'salary', 'bonus', 'total'].map((key) => csvMoney(totals[key])),
+        ],
+      ]),
+    );
   $('#payrollScope').onchange = (e) => {
     payrollScope = e.target.value;
     payrollView();

@@ -1,20 +1,20 @@
 // KVKK screen masking. Personal data is drawn masked for everyone, so a screenshot or a
 // glance over the shoulder shows nothing. A user who may see the record opens a value by
-// clicking it. This is a display layer only: stored records and form inputs keep real values.
+// clicking it, or opens everything with "Tümünü göster", which then stays on across screens
+// until the user masks again or stops using the application for a while.
+// This is a display layer only: stored records and form inputs keep real values.
 (() => {
-  const REVEAL_MS = 30000;
+  const REVEAL_MS = 30000,
+    IDLE_MS = 15 * 60000,
+    OFFER_MS = 8000;
   const values = new Map();
   const timers = new Map();
   let sequence = 0,
-    contentAll = false,
-    lastPage = '',
+    allMode = false,
+    idleTimer,
     scanQueued = false;
 
-  const escape = (value) =>
-    String(value ?? '').replace(
-      /[&<>"']/g,
-      (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char],
-    );
+  const escape = escapeHtml; // html-safety.js
   const dots = (count) => '•'.repeat(Math.max(1, count));
 
   function mask(kind, value) {
@@ -115,45 +115,76 @@
   }
 
   const scopeOf = (el) => el.closest('dialog') || document.getElementById('content');
-  const allOn = (scope) => (scope?.matches?.('dialog') ? scope.dataset.pmAll === '1' : contentAll);
   const fields = (scope) =>
     scope ? [...scope.querySelectorAll('.pm')].filter((el) => scopeOf(el) === scope) : [];
+  const everyField = () => [...document.querySelectorAll('.pm')];
 
-  function setAll(scope, on, report) {
-    if (!scope) return;
-    if (scope.matches('dialog')) on ? (scope.dataset.pmAll = '1') : delete scope.dataset.pmAll;
-    else contentAll = on;
-    const list = fields(scope);
-    for (const el of list) on ? show(el, true) : hide(el);
-    if (on && report && list.length && typeof fetch === 'function') {
-      const area = scope.matches('dialog')
-        ? scope.querySelector('h2')?.textContent
-        : document.getElementById('title')?.textContent;
-      // Opening everything at once is recorded; opening a single value is not.
-      fetch('/api/privacy/reveal', {
+  // Writes the audit entry; false (with a notice) when it could not be written.
+  async function record(area, count, kind) {
+    try {
+      const response = await fetch('/api/privacy/reveal', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'X-Han-Request': '1', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ area: String(area || 'Ekran').slice(0, 120), count: list.length }),
-      }).catch(() => {});
+        body: JSON.stringify({ area: String(area || 'Ekran').slice(0, 120), count, kind }),
+      });
+      if (!response.ok) throw Error();
+      return true;
+    } catch {
+      window.toast?.('İşlem kaydı yazılamadı; işlem yapılmadı. Yeniden deneyin.');
+      return false;
+    }
+  }
+
+  // Show all stays on from screen to screen. It ends when the user masks again, leaves the
+  // application, or does nothing for IDLE_MS.
+  const armIdle = () => {
+    clearTimeout(idleTimer);
+    if (allMode) idleTimer = setTimeout(() => setAll(false), IDLE_MS);
+  };
+  async function setAll(on, origin) {
+    if (on === allMode) return;
+    if (on) {
+      const dialog = origin?.closest?.('dialog'),
+        area =
+          (dialog ? dialog.querySelector('h2') : document.getElementById('title'))?.textContent || 'Ekran';
+      // Recorded first; without the record nothing is opened. Single values are not recorded.
+      if (!(await record(area.trim() + ' · tüm ekranlar', everyField().length))) return;
+    }
+    allMode = on;
+    armIdle();
+    document.querySelector('.pm-offer')?.remove();
+    for (const el of everyField()) {
+      delete el.dataset.pmHeld;
+      on ? show(el, true) : hide(el);
     }
     scan();
   }
 
   function hideEverything() {
-    contentAll = false;
-    for (const dialog of document.querySelectorAll('dialog[data-pm-all]')) delete dialog.dataset.pmAll;
+    allMode = false;
+    clearTimeout(idleTimer);
     for (const el of document.querySelectorAll('.pm.pm-open')) hide(el);
     scan();
+  }
+
+  // After two values are open side by side, opening a third offers to open everything.
+  function offer(el) {
+    document.querySelector('.pm-offer')?.remove();
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'pm-all pm-offer';
+    button.textContent = 'Tümünü göster';
+    el.after(button);
+    setTimeout(() => button.remove(), OFFER_MS);
   }
 
   function toggleButton(scope) {
     const dialog = scope.matches('dialog');
     let button = dialog
-      ? [...scope.querySelectorAll('.pm-all')].find((el) => el.closest('dialog') === scope)
+      ? [...scope.querySelectorAll('.pm-all:not(.pm-offer)')].find((el) => el.closest('dialog') === scope)
       : document.getElementById('pmAllContent');
-    const count = fields(scope).length;
-    if (count <= 2) {
+    if (!fields(scope).length && !(allMode && !dialog)) {
       if (dialog) button?.remove();
       else if (button) button.hidden = true;
       return;
@@ -169,35 +200,25 @@
       if (toolbar) toolbar.prepend(button);
       else (head.lastElementChild || head).before(button);
     }
-    const on = allOn(scope),
-      text = on ? 'Gizle' : 'Tümünü göster';
+    const text = allMode ? 'Gizle' : 'Tümünü göster';
     button.hidden = false;
-    if (button.textContent !== text) button.textContent = text;
-    button.setAttribute('aria-pressed', String(on));
-    button.title = on
-      ? 'Bu ekrandaki kişisel verileri yeniden maskele'
-      : 'Bu ekrandaki maskeli kişisel verilerin tümünü ekran değişene kadar göster';
+    if (button.textContent.trim() !== text) button.textContent = text;
+    button.setAttribute('aria-pressed', String(allMode));
+    button.title = allMode
+      ? 'Kişisel verileri yeniden maskele'
+      : 'Maskeli kişisel verilerin tümünü göster. Siz gizleyene kadar diğer ekranlarda da açık kalır.';
   }
 
   function scan() {
     scanQueued = false;
-    const current = typeof page === 'undefined' ? '' : page;
-    if (current !== lastPage) {
-      lastPage = current;
-      contentAll = false;
-    }
-    const scopes = [document.getElementById('content'), ...document.querySelectorAll('dialog')].filter(
+    const scopes = [document.getElementById('content'), ...document.querySelectorAll('dialog[open]')].filter(
       Boolean,
     );
     for (const scope of scopes) {
-      const dialog = scope.matches('dialog');
-      if (dialog && !scope.open) {
-        delete scope.dataset.pmAll;
-        continue;
-      }
-      // A redraw inside a screen that was opened in full keeps its new values open too.
-      if (allOn(scope))
-        for (const el of fields(scope)) if (!el.classList.contains('pm-pinned')) show(el, true);
+      // While Show all is on, values drawn later open too, except those the user closed by hand.
+      if (allMode)
+        for (const el of fields(scope))
+          if (!el.classList.contains('pm-open') && !el.dataset.pmHeld) show(el, true);
       toggleButton(scope);
     }
   }
@@ -213,16 +234,24 @@
     (event) => {
       const all = event.target.closest?.('.pm-all');
       if (all) {
-        const scope = all.id === 'pmAllContent' ? document.getElementById('content') : all.closest('dialog');
-        return setAll(scope, !allOn(scope), true);
+        event.preventDefault();
+        event.stopPropagation();
+        return setAll(all.classList.contains('pm-offer') ? true : !allMode, all);
       }
       const el = event.target.closest?.('.pm');
       if (!el) return;
       event.preventDefault();
       event.stopPropagation();
       // A second click keeps a timed value open; a click on a pinned one closes it.
-      if (el.classList.contains('pm-pinned')) hide(el);
-      else show(el, false);
+      if (el.classList.contains('pm-pinned')) {
+        if (allMode) el.dataset.pmHeld = '1';
+        return hide(el);
+      }
+      const others = fields(scopeOf(el)).filter(
+        (other) => other !== el && other.classList.contains('pm-open'),
+      );
+      show(el, false);
+      if (others.length >= 2) offer(el);
     },
     true,
   );
@@ -232,8 +261,12 @@
     event.preventDefault();
     show(el, true);
   });
+  for (const type of ['pointerdown', 'keydown']) document.addEventListener(type, armIdle, true);
   document.addEventListener('close', (event) => event.target.matches?.('dialog') && queueScan(), true);
-  document.addEventListener('visibilitychange', () => document.hidden && hideEverything());
+  // Values opened one by one are masked again when the window goes to the background.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && !allMode) hideEverything();
+  });
   window.addEventListener('pagehide', hideEverything);
   const start = () => {
     new MutationObserver(queueScan).observe(document.body, { childList: true, subtree: true });
@@ -242,5 +275,5 @@
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start);
 
-  window.hanPrivacy = { mask, kindForLabel, html, text, label, hideEverything, scan };
+  window.hanPrivacy = { mask, kindForLabel, html, text, label, record, hideEverything, scan };
 })();

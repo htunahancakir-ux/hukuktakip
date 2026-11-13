@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
+const fs = require('node:fs');
 const { database, fixture, serve } = require('./support/postgres.cjs');
 const { importState, createStore } = require('../lib/postgres-store.cjs');
 const { importRecords, activateRecords } = require('../lib/record-store/storage.cjs');
@@ -70,6 +71,26 @@ const ceo = { role: 'ceo', permissions: [] },
   owner = { role: 'staff', staffId: 'owner', permissions: [] },
   stranger = { role: 'staff', staffId: 'other', permissions: [] };
 
+test('Every form the conflict check hooks still exists under the same id', () => {
+  const read = (file) => fs.readFileSync('outputs/icrapro/' + file, 'utf8'),
+    hooks = read('workspace-conflicts.js');
+  for (const [form, file, fields] of [
+    ['clientForm', 'client-records.js', ['fullName', 'tradeName', 'identity']],
+    ['intakeForm', 'document-records.js', ['debtor', 'identity']],
+    ['editBorrowerForm', 'borrower-sheet.js', ['debtor', 'identity']],
+    ['guarantorForm', 'borrower-sheet.js', ['name', 'identity']],
+  ]) {
+    assert.ok(hooks.includes(form + ':'), form + ' is hooked');
+    const source = read(file);
+    assert.ok(source.includes('id="' + form + '"'), form + ' exists in ' + file);
+    for (const field of fields)
+      assert.ok(
+        source.includes("'" + field + "'") || source.includes('name="' + field + '"'),
+        form + ' has the field ' + field,
+      );
+  }
+});
+
 test('Party names match across case, Turkish letters, punctuation and company suffixes', () => {
   assert.equal(partyNamesMatch('YILDIZ İNŞAAT ANONİM ŞİRKETİ', 'Yıldız inşaat a.ş.'), 'exact');
   assert.equal(partyNamesMatch('Mehmet Yılmaz', 'mehmet ali yılmaz'), 'partial');
@@ -108,6 +129,12 @@ test('A client entered as debtor or guarantor is a conflict; the same side is on
   result = fromState(state, { kind: 'debtor', name: 'Mehmet Ali Yılmaz', identity: '22222222220' }, ceo);
   assert.equal(result.conflicts, 0);
   assert.equal(result.infos, 1);
+  // A longer entered name still finds the shorter stored one, whichever words it shares.
+  result = fromState(state, { kind: 'debtor', name: 'Abdurrahman Ahmet Kaya' }, ceo);
+  assert.deepEqual(
+    result.items.map((item) => [item.role, item.name, item.conflict, item.nameMatch]),
+    [['client', 'Ahmet Kaya', true, 'partial']],
+  );
   // Archived files are searched too.
   result = fromState(state, { kind: 'client', name: 'Silinmiş Borçlu' }, ceo);
   assert.deepEqual(
@@ -183,11 +210,41 @@ test('The record store finds the same conflicts per office and records the ackno
       'guarantor',
     );
     assert.equal((await ask(manager, { kind: 'client', name: 'Silinmiş Borçlu' })).items[0].archived, true);
+    // Same answer as the single-state mode when the entered name is the longer one.
+    assert.deepEqual(
+      (await ask(manager, { kind: 'debtor', name: 'Abdurrahman Ahmet Kaya' })).items.map((item) => [
+        item.role,
+        item.name,
+        item.nameMatch,
+      ]),
+      [['client', 'Ahmet Kaya', 'partial']],
+    );
+    assert.deepEqual(
+      (await ask(manager, { kind: 'client', name: 'Fatma Nur Demir' })).items.map((item) => [
+        item.role,
+        item.number,
+      ]),
+      [['guarantor', 'D-001']],
+    );
     result = await ask(staff, { kind: 'client', name: 'Mehmet Ali Yılmaz' });
     assert.deepEqual([result.conflicts, result.hidden, result.items.length], [1, 1, 0]);
     assert.deepEqual((await ask(manager, { kind: 'client', name: "' OR 1=1 --" })).items, []);
     assert.deepEqual((await ask(manager, { kind: 'client', name: '%_' })).items, []);
     await assert.rejects(ask({ headers: {} }, { kind: 'client', name: 'Mehmet Yılmaz' }), { status: 401 });
+
+    // The collection picker lists open files in order and narrows them as the user types.
+    const files = (q) => store.recordQueries.search(manager, { kind: 'document', q });
+    assert.deepEqual(
+      (await files('')).items.map((item) => [item.type, item.label]),
+      [['document', 'D-001 · Mehmet Ali Yılmaz']],
+      'closed and archived files are not offered',
+    );
+    assert.equal((await files('yilmaz')).items.length, 1);
+    assert.equal((await files('zeynep')).items.length, 0);
+    assert.ok(
+      (await store.recordQueries.search(manager, { q: 'zeynep' })).items.length,
+      'general search still finds closed files',
+    );
 
     server = await serve(createApplication({ store }));
     const headers = { ...manager.headers, 'X-Han-Request': '1', 'Content-Type': 'application/json' };

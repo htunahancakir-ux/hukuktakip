@@ -61,6 +61,15 @@ async function handleDataRoutes(ctx) {
     send(res, 200, expensePool.details(ctx.state));
     return true;
   }
+  if (url.pathname === '/api/accounting/alerts' && req.method === 'GET') {
+    // Unlike the personal reminder lists, accounting sees every file's overdue payments.
+    if (
+      !require('../../lib/accounting-access.cjs').accountingAllowed(u, ctx.state.data['icrapro-personnel-v1'])
+    )
+      throw fail(403, 'Muhasebe yetkiniz yok.');
+    send(res, 200, require('../../lib/accounting-alerts.cjs').accountingAlerts(ctx.state, parkingToday()));
+    return true;
+  }
   if (url.pathname === '/api/expense-pool/fund' && req.method === 'POST') {
     const result = expensePool.fund(ctx.state, await body(req), u, allowed, ledgerBalance);
     if (result.next) persist(result.next);

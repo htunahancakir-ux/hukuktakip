@@ -1,4 +1,5 @@
 ﻿const crypto = require('node:crypto');
+const { receivedByDocument, promiseRemaining } = require('../../lib/payment-schedule.cjs');
 const day = 86400000;
 function dateOf(value) {
   if (!value) return '';
@@ -11,9 +12,7 @@ function dateOf(value) {
 }
 function promiseOutstanding(doc, events) {
   const promise = doc.paymentPromise;
-  if (!promise) return false;
-  const received = events.filter(e => e.documentId === doc.id && e.type === 'payment').reduce((sum,e) => sum + e.amount, 0);
-  return Math.max(0, received - Number(promise.receivedAtCreation || 0)) < promise.amount;
+  return !!promise && promiseRemaining(promise, receivedByDocument(events).get(doc.id) || 0) > 0;
 }
 function revenueRanking(state, eligible, today) {
   const totals = new Map(eligible.map(p => [p.id, 0]));

@@ -10,14 +10,17 @@ function setup() {
     { url: 'https://test.invalid', runScripts: 'dangerously' },
   );
   const w = dom.window,
-    posts = [];
+    posts = [],
+    notices = [];
   w.fetch = async (url, options) => {
     posts.push({ url, body: JSON.parse(options.body) });
     return { ok: true, json: async () => ({ ok: true }) };
   };
   w.page = 'clients';
-  w.eval(fs.readFileSync('outputs/icrapro/privacy-mask.js', 'utf8'));
-  return { dom, w, posts };
+  w.toast = (message) => notices.push(message);
+  for (const file of ['html-safety.js', 'privacy-mask.js'])
+    w.eval(fs.readFileSync('outputs/icrapro/' + file, 'utf8'));
+  return { dom, w, posts, notices };
 }
 
 test('Personal values are masked by kind and the real value stays out of the page', () => {
@@ -61,18 +64,19 @@ test('Personal values are masked by kind and the real value stays out of the pag
   }
 });
 
-test('A click opens one value, a double click pins it, and Show all works per screen', async () => {
+test('A click opens one value, a double click pins it, and the third open offers Show all', async () => {
   const { dom, w, posts } = setup();
   try {
     const p = w.hanPrivacy,
       content = w.document.getElementById('content'),
       all = w.document.getElementById('pmAllContent');
     let rowClicks = 0;
-    content.innerHTML = `<div id="row">${p.html('id', '12345678901')}${p.html('phone', '05321234567')}</div>`;
+    content.innerHTML = `<div id="row">${p.html('id', '12345678901')}${p.html('phone', '05321234567')}${p.html('iban', 'TR330006100519786457841326')}</div>`;
     w.document.getElementById('row').onclick = () => rowClicks++;
     await tick();
-    assert.equal(all.hidden, true, 'two masked values do not offer Show all');
-    const [id, phone] = content.querySelectorAll('.pm');
+    assert.equal(all.hidden, false, 'the header button is offered as soon as something is masked');
+    assert.equal(all.textContent.trim(), 'Tümünü göster');
+    const [id, phone, iban] = content.querySelectorAll('.pm');
     id.click();
     assert.equal(id.textContent, '12345678901');
     assert.equal(id.getAttribute('aria-pressed'), 'true');
@@ -85,58 +89,84 @@ test('A click opens one value, a double click pins it, and Show all works per sc
     id.click();
     assert.equal(id.textContent, '123••••••01', 'clicking a pinned value masks it again');
 
-    content.insertAdjacentHTML('beforeend', p.html('iban', 'TR330006100519786457841326'));
+    id.click();
+    phone.click();
+    assert.equal(content.querySelector('.pm-offer'), null, 'two open values do not offer Show all yet');
+    iban.click();
+    const offer = content.querySelector('.pm-offer');
+    assert.ok(offer, 'the third open value offers Show all');
+    offer.click();
     await tick();
-    assert.equal(all.hidden, false);
-    assert.equal(all.textContent, 'Tümünü göster');
-    all.click();
-    assert.deepEqual(
-      [...content.querySelectorAll('.pm')].map((el) => el.textContent),
-      ['12345678901', '05321234567', 'TR330006100519786457841326'],
-    );
-    assert.deepEqual(posts, [{ url: '/api/privacy/reveal', body: { area: 'Müvekkiller', count: 3 } }]);
-    await tick();
-    assert.equal(all.textContent, 'Gizle');
-    // A redraw of the same screen keeps values open; leaving the screen masks again.
-    content.innerHTML =
-      p.html('id', '11111111111') + p.html('id', '22222222222') + p.html('id', '33333333333');
-    await tick();
-    assert.equal(content.querySelector('.pm').textContent, '11111111111');
-    w.page = 'home';
-    content.innerHTML =
-      p.html('id', '11111111111') + p.html('id', '22222222222') + p.html('id', '33333333333');
-    await tick();
-    assert.equal(content.querySelector('.pm').textContent, '111••••••11');
-    assert.equal(all.textContent, 'Tümünü göster');
+    assert.equal(content.querySelector('.pm-offer'), null);
     assert.equal(posts.length, 1);
-
-    content.querySelector('.pm').click();
+    assert.equal(posts[0].body.count, 3);
+    assert.equal(all.textContent.trim(), 'Gizle');
     p.hideEverything();
-    assert.equal(content.querySelector('.pm').textContent, '111••••••11');
+    await tick();
+    assert.equal(all.textContent.trim(), 'Tümünü göster');
+    assert.equal(content.querySelector('.pm.pm-open'), null);
   } finally {
     dom.window.close();
   }
 });
 
-test('A dialog gets its own Show all button', async () => {
-  const { dom, w } = setup();
+test('Show all is recorded first and stays on across screens until the user masks again', async () => {
+  const { dom, w, posts, notices } = setup();
   try {
     const p = w.hanPrivacy,
-      dialog = w.document.createElement('dialog');
+      content = w.document.getElementById('content'),
+      all = w.document.getElementById('pmAllContent'),
+      draw = () =>
+        (content.innerHTML =
+          p.html('id', '11111111111') + p.html('id', '22222222222') + p.html('phone', '05321234567'));
+    draw();
+    await tick();
+    // Without the audit entry nothing is opened.
+    const record = w.fetch;
+    w.fetch = async () => ({ ok: false });
+    all.click();
+    await tick();
+    assert.equal(content.querySelector('.pm.pm-open'), null);
+    assert.equal(notices.length, 1);
+    w.fetch = record;
+    all.click();
+    await tick();
+    assert.deepEqual(
+      [...content.querySelectorAll('.pm')].map((el) => el.textContent),
+      ['11111111111', '22222222222', '05321234567'],
+    );
+    assert.deepEqual(posts, [
+      { url: '/api/privacy/reveal', body: { area: 'Müvekkiller · tüm ekranlar', count: 3 } },
+    ]);
+    assert.equal(all.textContent.trim(), 'Gizle');
+
+    // Another screen, and a window opened on top of it, are drawn open as well.
+    w.page = 'documents';
+    draw();
+    const dialog = w.document.createElement('dialog');
     dialog.open = true;
-    dialog.innerHTML = `<div class="panelhead"><h2>Borçlu Detayı</h2><button>Kapat</button></div>${p.label('TC / Vergi No', '12345678901')}${p.label('Telefon', '05321234567')}${p.label('Adres', 'Bağdat Cad. 1')}`;
+    dialog.innerHTML = `<div class="panelhead"><h2>Borçlu Detayı</h2><button>Kapat</button></div>${p.label('TC / Vergi No', '12345678901')}`;
     w.document.body.append(dialog);
     await tick();
-    const button = dialog.querySelector('.pm-all');
-    assert.ok(button);
-    assert.equal(w.document.getElementById('pmAllContent').hidden, true);
-    button.click();
+    assert.equal(content.querySelector('.pm').textContent, '11111111111');
     assert.equal(dialog.querySelector('.pm').textContent, '12345678901');
-    assert.equal(dialog.dataset.pmAll, '1');
-    dialog.open = false;
-    dialog.dispatchEvent(new w.Event('close'));
+    assert.equal(dialog.querySelector('.pm-all').textContent, 'Gizle');
+    assert.equal(posts.length, 1, 'one switch, one audit entry');
+
+    // A value closed by hand stays closed through redraws of other values.
+    content.querySelector('.pm').click();
+    content.insertAdjacentHTML('beforeend', p.html('id', '33333333333'));
     await tick();
-    assert.equal(dialog.dataset.pmAll, undefined);
+    assert.equal(content.querySelector('.pm').textContent, '111••••••11');
+    assert.equal(content.querySelector('.pm:last-child').textContent, '33333333333');
+
+    dialog.querySelector('.pm-all').click();
+    await tick();
+    assert.equal(w.document.querySelector('.pm.pm-open'), null);
+    assert.equal(all.textContent.trim(), 'Tümünü göster');
+    draw();
+    await tick();
+    assert.equal(content.querySelector('.pm').textContent, '111••••••11');
   } finally {
     dom.window.close();
   }

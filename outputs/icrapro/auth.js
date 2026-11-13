@@ -88,6 +88,12 @@ async function preloadServerData({ complete = false } = {}) {
   }
   if (window.hanRecordsEnabled) window.hanWorkspaceComplete = true;
 }
+// The server could not be reached at all: no connection, or a blocked or reset request.
+function hanUnreachable() {
+  return Object.assign(Error('Sunucuya ulaşılamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.'), {
+    code: 'NETWORK',
+  });
+}
 function authApi(url, method = 'GET', data) {
   if (
     window.hanAuth?.readOnly &&
@@ -119,6 +125,8 @@ function authApi(url, method = 'GET', data) {
     )
       throw Error('Bu işlem için tam çalışma verisi gerekir. İlgili bölümü yeniden açın.');
   }
+  // Offline, the browser can only fail the request (and log it); say so without sending.
+  if (navigator.onLine === false) throw hanUnreachable();
   const request = new XMLHttpRequest();
   request.open(method, url, false);
   request.setRequestHeader('X-Han-Request', '1');
@@ -130,7 +138,11 @@ function authApi(url, method = 'GET', data) {
   if (method === 'PUT' && url.startsWith('/api/data?') && hanDataVersions.has(url))
     request.setRequestHeader('If-Match', hanDataVersions.get(url));
   if (data !== undefined) request.setRequestHeader('Content-Type', 'application/json');
-  request.send(data === undefined ? null : JSON.stringify(data));
+  try {
+    request.send(data === undefined ? null : JSON.stringify(data));
+  } catch {
+    throw hanUnreachable();
+  }
   let result;
   try {
     result = JSON.parse(request.responseText);
@@ -776,12 +788,20 @@ setInterval(() => {
   window.fetch = async (input, options = {}) => {
     const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url, location.href);
     const method = options.method || input.method || 'GET';
-    if (url.origin !== location.origin || !url.pathname.startsWith('/api/') || method.toUpperCase() !== 'GET')
-      return originalFetch(input, options);
+    const api = url.origin === location.origin && url.pathname.startsWith('/api/');
+    if (!api) return originalFetch(input, options);
+    // Offline, the browser can only fail the request (and log it); fail it here instead.
+    if (navigator.onLine === false) throw hanUnreachable();
+    // A request that never reached the server reads the same everywhere.
+    const send = (target, settings) =>
+      originalFetch(target, settings).catch((error) => {
+        throw error instanceof TypeError ? hanUnreachable() : error;
+      });
+    if (method.toUpperCase() !== 'GET') return send(input, options);
     const headers = new Headers(options.headers || input.headers);
     headers.set('X-Han-Chunk-Transport', '1');
     const settings = { ...options, headers };
-    let response = await originalFetch(input, settings);
+    let response = await send(input, settings);
     if (response.headers.get('X-Han-Chunked') !== '1') return response;
     const initial = response;
     let body = '',
@@ -814,7 +834,7 @@ setInterval(() => {
       }
       if (body.length > total) throw Error('Geçersiz dosya aktarımı.');
       url.searchParams.set('_hanChunk', String(body.length));
-      response = await originalFetch(url.href, settings);
+      response = await send(url.href, settings);
     }
     throw Error('Dosya aktarımı sınırı aşıldı.');
   };

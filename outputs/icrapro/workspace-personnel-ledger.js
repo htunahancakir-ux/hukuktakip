@@ -30,7 +30,7 @@ async function personnelLedgerPage(host, staffId = '') {
     const data = await readPersonnelLedger(staffId, request.signal);
     if (!host.isConnected || request.signal.aborted) return;
     host.innerHTML =
-      '<div class="panel personnel-ledger"><div class="panelhead"><div><h2>Personel Cari Hesabı</h2><p>Başlangıç: 1 Kasım 2026 · Maaş ve avans ödeme koşulları seçilen personelin carisinde gösterilir.</p></div></div><div class="formbody"><label class="field">Personel<select data-ledger-person><option value="">Personel seçin</option>' +
+      '<div class="panel personnel-ledger"><div class="panelhead"><div><h2>Personel Cari Hesabı</h2><p>Başlangıç: 1 Kasım 2026 · Maaş ve avans ödeme koşulları seçilen personelin carisinde gösterilir.</p></div><button type="button" class="secondary" data-ledger-export>Excel\'e Aktar</button></div><div class="formbody"><label class="field">Personel<select data-ledger-person><option value="">Personel seçin</option>' +
       data.people
         .map(
           (person) =>
@@ -46,6 +46,16 @@ async function personnelLedgerPage(host, staffId = '') {
     const personSelect = host.querySelector('[data-ledger-person]');
     personSelect.value = staffId;
     personSelect.onchange = () => personnelLedgerPage(host, personSelect.value);
+    host.querySelector('[data-ledger-export]').onclick = () => {
+      const person = data.people.find((row) => row.id === staffId);
+      if (!person) return toast('Önce personel seçin.');
+      exportPersonnelData('Personel Cari Hesabı · ' + person.name, 1, () =>
+        exportTablesCsv(
+          host.querySelector('[data-ledger-content]'),
+          'hanhukuk-personel-cari-' + businessDate() + '.csv',
+        ),
+      );
+    };
     if (!staffId) return;
     const content = host.querySelector('[data-ledger-content]');
     const summaries = [
@@ -240,7 +250,7 @@ async function personnelLedgerPage(host, staffId = '') {
 
 function setupPayrollCashFields(form) {
   const section = document.createElement('div');
-  section.className = 'full grid';
+  section.className = 'full grid payroll-cash-fields';
   section.hidden = true;
   section.innerHTML =
     '<label class="field">Ödeme Yapılacak Personel<select name="staffId" disabled required><option value="">Personel seçin</option>' +

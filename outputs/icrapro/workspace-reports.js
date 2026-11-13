@@ -631,6 +631,38 @@ function safeCsvCell(value) {
   return '"' + text.replace(/"/g, '""') + '"';
 }
 
+// Excel opens this file directly: UTF-8 with BOM, semicolon separated.
+function downloadCsvFile(name, lines) {
+  const blob = new Blob(['\uFEFF' + lines.map((line) => line.map(safeCsvCell).join(';')).join('\r\n')], {
+      type: 'text/csv;charset=utf-8;',
+    }),
+    url = URL.createObjectURL(blob),
+    link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Amount in kuruş as a plain number Excel reads as numeric (1234,56).
+function csvMoney(cents) {
+  const value = BigInt(cents || 0),
+    absolute = value < 0n ? -value : value;
+  return (value < 0n ? '-' : '') + absolute / 100n + ',' + String(absolute % 100n).padStart(2, '0');
+}
+
+// Every table inside a container, as shown on screen, one after another.
+function exportTablesCsv(container, name) {
+  const clean = (cell) => cell.textContent.replace(/\s+/g, ' ').trim(),
+    lines = [];
+  for (const table of container.querySelectorAll('table')) {
+    if (lines.length) lines.push([]);
+    for (const row of table.querySelectorAll('tr')) lines.push(Array.from(row.cells, clean));
+  }
+  if (!lines.length) return toast('Aktarılacak tablo yok.');
+  downloadCsvFile(name, lines);
+}
+
 async function exportReport() {
   if (window.hanRecordsEnabled) return exportRecordReport('csv');
   try {
@@ -653,16 +685,8 @@ async function exportReport() {
                 ),
               ]),
             ]),
-      ],
-      blob = new Blob(['\uFEFF' + lines.map((line) => line.map(safeCsvCell).join(';')).join('\r\n')], {
-        type: 'text/csv;charset=utf-8;',
-      }),
-      url = URL.createObjectURL(blob),
-      link = document.createElement('a');
-    link.href = url;
-    link.download = 'hanhukuk-' + reportFilters.type + '-' + businessDate() + '.csv';
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+      ];
+    downloadCsvFile('hanhukuk-' + reportFilters.type + '-' + businessDate() + '.csv', lines);
   } catch (error) {
     toast(error.message);
   }

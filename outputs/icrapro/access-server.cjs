@@ -27,6 +27,7 @@ const { hasMarketingAccess } = require('../../lib/marketing-routes.cjs');
 const { activeArchives } = require('../../lib/document-archive.cjs');
 const { prepareState } = require('../../lib/state-invariants.cjs');
 const { handleWorkflowRoutes } = require('./access-workflow.cjs');
+const { handleComplianceRoutes } = require('./access-compliance.cjs');
 const { handleDocumentRoutes } = require('./access-documents.cjs');
 const { handleCommunicationRoutes } = require('./access-communications.cjs');
 const { handlePersonnelRoutes } = require('./access-personnel.cjs');
@@ -408,14 +409,7 @@ function createAccess(stateFile, options = {}) {
         send(res, 200, { items: searchWorkspace(state, u, url.searchParams.get('q')) });
         return true;
       }
-      if (url.pathname === '/api/conflicts' && req.method === 'GET') {
-        send(
-          res,
-          200,
-          require('../../lib/conflict-check.cjs').fromState(state, Object.fromEntries(url.searchParams), u),
-        );
-        return true;
-      }
+      if (await handleComplianceRoutes(ctx)) return true;
       if (await handleWorkflowRoutes(ctx)) return true;
       if (await handleDeletionRoutes(ctx)) return true;
       if (await handleDocumentRoutes(ctx)) return true;

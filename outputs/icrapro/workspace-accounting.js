@@ -415,17 +415,24 @@ function renderAccountingAlerts() {
   if (overdueButton) overdueButton.onclick = accountingOverdueList;
 }
 
+async function accountingGetJson(path, signal, failure) {
+  const response = await fetch(path, {
+    signal,
+    credentials: 'same-origin',
+    cache: 'no-store',
+    headers: { 'X-Han-Request': '1' },
+  });
+  const data = await response.json();
+  if (!response.ok) throw Error(data.error || failure);
+  return data;
+}
+
 async function loadAccountingAlerts(force) {
   if (typeof fetch !== 'function' || (!force && Date.now() - accountingAlertsAt < 30000)) return;
   accountingAlertsAt = Date.now();
   try {
-    const response = await fetch('/api/accounting/alerts', {
-      credentials: 'same-origin',
-      cache: 'no-store',
-      headers: { 'X-Han-Request': '1' },
-    });
-    const data = await response.json();
-    if (!response.ok || !data?.pool || !data?.overdue) return;
+    const data = await accountingGetJson('/api/accounting/alerts');
+    if (!data?.pool || !data?.overdue) return;
     accountingAlertsCache = data;
     renderAccountingAlerts();
   } catch {}
@@ -454,7 +461,7 @@ function accountingOverdueList() {
 
 function accountingPoolThresholdForm() {
   const dialog = $('#modal'),
-    current = accountingAlertsCache?.pool?.threshold ?? 500000;
+    current = accountingAlertsCache.pool.threshold;
   dialog.innerHTML = `<form id="accPoolThresholdForm"><div class="panelhead"><div><h2>Masraf Avansı Uyarı Eşiği</h2><p>Havuzda kalan tutar bu eşiğe indiğinde muhasebe ekranında turuncu uyarı çıkar.</p></div><button type="button" class="link" id="closeAccThreshold">Kapat</button></div><div class="formbody grid">${field('Uyarı Eşiği (TL)', 'amount', 'number', current / 100, true, true)}</div><div class="actions"><button class="primary">Eşiği Kaydet</button></div></form>`;
   const form = document.getElementById('accPoolThresholdForm');
   document.getElementById('closeAccThreshold').onclick = () => dialog.close();
@@ -479,19 +486,124 @@ function accountingPoolThresholdForm() {
   };
 }
 
+// Every movement matching the current account and filters, not only the page on screen.
+async function exportAccountLedger() {
+  const button = $('#exportAccountLedger');
+  if (button.disabled) return;
+  button.disabled = true;
+  try {
+    let rows = [];
+    if (window.hanRecordsEnabled) {
+      let after = '';
+      do {
+        const data = await accountingGetJson(
+          '/api/records/accounting?' +
+            new URLSearchParams({ ...movementFilters, account: accountingFilter, limit: 100, after }),
+          undefined,
+          'Hareketler alınamadı.',
+        );
+        rows.push(...data.items);
+        after = data.next || '';
+      } while (after);
+    } else
+      rows = filterAccountMovements(accountLedgerRows(accountMovements()), accountingFilter, movementFilters);
+    const name = (id) => accounting.accounts.find((a) => a.id === id)?.name || '';
+    downloadCsvFile('hanhukuk-cari-hareketler-' + businessDate() + '.csv', [
+      ['Tarih', 'Hesap', 'İşlem', 'Gider Kalemi', 'İşlemi Yapan', 'Açıklama', 'Giren', 'Çıkan', 'Kalan'],
+      ...rows.map((e) => {
+        const signed = BigInt(e.signed || 0);
+        return [
+          displayDate(e.date),
+          name(e.accountId),
+          e.label,
+          e.type === 'out' ? e.expenseCategory || '' : '',
+          e.operatorName || '',
+          e.note || '',
+          signed > 0n ? csvMoney(signed) : '',
+          signed < 0n ? csvMoney(-signed) : '',
+          e.balance !== undefined ? csvMoney(e.balance) : '',
+        ];
+      }),
+    ]);
+    toast(rows.length + ' hareket Excel dosyasına aktarıldı.');
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 // Debtor collections belong to the file: pick the file here, then use its own collection form.
+// The list opens with the open files in order; typing narrows it.
 function accountingDebtorPayment() {
   const dialog = $('#modal');
-  dialog.innerHTML = `<form id="accDocumentPicker"><div class="panelhead"><div><h2>Borçlu Tahsilatı</h2><p>Tahsilatı işleyeceğiniz dosyayı seçin.</p></div><button type="button" class="link" id="closeAccPicker">Kapat</button></div><div class="formbody"><label class="field full">Dosya Ara<input type="search" name="q" data-optional="true" autocomplete="off" placeholder="Dosya no, borçlu adı veya TC / vergi no…"></label><div class="acc-picker-results" id="accPickerResults" aria-live="polite"><p class="empty">Aramak için en az 2 karakter yazın.</p></div></div></form>`;
+  dialog.innerHTML = `<form id="accDocumentPicker"><div class="panelhead"><div><h2>Borçlu Tahsilatı</h2><p>Tahsilatı işleyeceğiniz dosyayı listeden seçin veya yazarak bulun.</p></div><button type="button" class="link" id="closeAccPicker">Kapat</button></div><div class="formbody"><label class="field full">Dosya<input type="search" name="q" data-optional="true" autocomplete="off" role="combobox" aria-expanded="true" aria-controls="accPickerResults" aria-autocomplete="list" placeholder="Dosya no, borçlu adı veya TC / vergi no yazın…"></label><div class="acc-picker-results" id="accPickerResults" role="listbox" aria-label="Açık dosyalar"></div><p class="acc-picker-status" id="accPickerStatus" role="status"></p></div></form>`;
   const form = document.getElementById('accDocumentPicker'),
     input = form.elements.q,
-    results = document.getElementById('accPickerResults');
+    results = document.getElementById('accPickerResults'),
+    status = document.getElementById('accPickerStatus'),
+    LIMIT = 30;
   let timer,
     controller,
-    items = [];
-  const message = (text) => {
-    items = [];
-    results.innerHTML = `<p class="empty">${esc(text)}</p>`;
+    items = [],
+    active = -1;
+  const mark = (index) => {
+    active = items.length ? (index + items.length) % items.length : -1;
+    results.querySelectorAll('[data-pick]').forEach((option, i) => {
+      option.setAttribute('aria-selected', String(i === active));
+      if (i === active) option.scrollIntoView?.({ block: 'nearest' });
+    });
+  };
+  const show = (rows, note) => {
+    items = rows;
+    results.innerHTML = rows
+      .map(
+        (item) =>
+          `<button type="button" class="acc-picker-result" role="option" aria-selected="false" data-pick="${esc(item.id)}"><strong>${esc(item.label)}</strong>${item.detail ? `<small>${esc(item.detail)}</small>` : ''}</button>`,
+      )
+      .join('');
+    status.textContent =
+      note ||
+      (rows.length >= LIMIT
+        ? 'İlk ' + LIMIT + ' dosya gösteriliyor; daraltmak için yazın.'
+        : rows.length
+          ? rows.length + ' dosya'
+          : 'Eşleşen açık dosya bulunamadı.');
+    mark(rows.length ? 0 : -1);
+  };
+  const local = (query) => {
+    const words = normalizeSearch(query).split(/\s+/).filter(Boolean),
+      clientName = (doc) => db.clients.find((client) => client.id === doc.client)?.name || '';
+    return db.docs
+      .filter((doc) => !['İnfaz', 'İade'].includes(doc.status))
+      .filter((doc) => {
+        const text = normalizeSearch([doc.number, doc.debtor, doc.identity, clientName(doc)].join(' '));
+        return words.every((word) => text.includes(word));
+      })
+      .sort((a, b) => String(a.number || '').localeCompare(String(b.number || ''), 'tr', { numeric: true }))
+      .slice(0, LIMIT)
+      .map((doc) => ({
+        id: doc.id,
+        label: [doc.number, doc.debtor].filter(Boolean).join(' · '),
+        detail: clientName(doc),
+      }));
+  };
+  const load = async (query) => {
+    controller?.abort();
+    if (!window.hanRecordsEnabled) return show(local(query));
+    const request = new AbortController();
+    controller = request;
+    status.textContent = 'Dosyalar yükleniyor…';
+    try {
+      const data = await accountingGetJson(
+        '/api/records/search?' + new URLSearchParams({ kind: 'document', q: query }),
+        request.signal,
+        'Dosyalar alınamadı. Yeniden deneyin.',
+      );
+      if (!request.signal.aborted && input.value.trim() === query) show(data.items || []);
+    } catch (error) {
+      if (!request.signal.aborted) show([], error.message);
+    }
   };
   const pick = (id) => {
     const open = () => {
@@ -510,44 +622,15 @@ function accountingDebtorPayment() {
     };
     return window.hanRecordsEnabled ? recordAction(id, open) : open();
   };
-  const search = async (query) => {
-    controller?.abort();
-    const request = new AbortController();
-    controller = request;
-    message('Aranıyor…');
-    try {
-      const response = await fetch(
-        (window.hanRecordsEnabled ? '/api/records/search' : '/api/search') +
-          '?q=' +
-          encodeURIComponent(query),
-        {
-          signal: request.signal,
-          cache: 'no-store',
-          credentials: 'same-origin',
-          headers: { 'X-Han-Request': '1' },
-        },
-      );
-      const data = await response.json();
-      if (!response.ok) throw Error(data.error || 'Arama tamamlanamadı. Yeniden deneyin.');
-      if (request.signal.aborted || input.value.trim() !== query) return;
-      items = (data.items || []).filter((item) => item.type === 'document');
-      if (!items.length) return message('Eşleşen dosya bulunamadı.');
-      results.innerHTML = items
-        .map(
-          (item) =>
-            `<button type="button" class="acc-picker-result" data-pick="${esc(item.id)}"><strong>${esc(item.label)}</strong>${item.detail ? `<small>${esc(item.detail)}</small>` : ''}</button>`,
-        )
-        .join('');
-    } catch (error) {
-      if (!request.signal.aborted) message(error.message);
-    }
-  };
   input.oninput = () => {
     clearTimeout(timer);
-    controller?.abort();
     const query = input.value.trim();
-    if (query.length < 2) return message('Aramak için en az 2 karakter yazın.');
-    timer = setTimeout(() => search(query), 220);
+    timer = setTimeout(() => load(query), window.hanRecordsEnabled ? 200 : 0);
+  };
+  input.onkeydown = (event) => {
+    if (!['ArrowDown', 'ArrowUp'].includes(event.key) || !items.length) return;
+    event.preventDefault();
+    mark(active + (event.key === 'ArrowDown' ? 1 : -1));
   };
   results.onclick = (event) => {
     const button = event.target.closest('[data-pick]');
@@ -555,11 +638,12 @@ function accountingDebtorPayment() {
   };
   form.onsubmit = (event) => {
     event.preventDefault();
-    if (items.length) pick(items[0].id);
+    if (items[active]) pick(items[active].id);
   };
   document.getElementById('closeAccPicker').onclick = () => dialog.close();
   if (!dialog.open) dialog.showModal();
   input.focus();
+  load('');
 }
 
 function accountingPage(remote) {
@@ -613,7 +697,7 @@ function accountingPage(remote) {
     })
     .join('')}</tbody></table></div>`;
   $('#content').innerHTML =
-    `${actionBar}<div class="panel acc-accounts"><div class="panelhead"><div><h2>Kasa ve Banka Hesapları</h2><p>Hareketlerini görmek için hesabı seçin.</p></div><div class="acc-head-side"><span class="acc-total">Toplam bakiye <b class="${accountingTone(totalBalance)}">${amount(totalBalance)}</b></span><button type="button" class="link" data-account-ledger=""${accountingFilter ? '' : ' hidden'}>Tüm Hesaplar</button><button type="button" class="secondary acc-small" id="addAccount">＋ Banka / Kasa Ekle</button></div></div>${accountTable}</div><div class="panel acc-ledger"><div class="panelhead"><div><h2>${accountingFilter ? esc(name(accountingFilter)) + ' · Cari Hesap Hareketleri' : 'Cari Hesap Hareketleri'}</h2><p>${esc(totals.count)} hareket</p></div><div class="acc-head-side"><span class="acc-chip-total">Giren <b class="acc-pos">${amount(totals.incoming)}</b></span><span class="acc-chip-total">Çıkan <b class="acc-neg">${amount(totals.outgoing)}</b></span><span class="acc-chip-total">Net <b class="${accountingTone(totals.net)}">${amount(totals.net)}</b></span></div></div><details class="borrower-filter-section" id="accountingFilterSection"${document.getElementById('accountingFilterSection')?.open ? ' open' : ''}><summary>Filtre</summary><form id="movementFilterForm" class="formbody"><div class="grid"><label class="field">Hesap Adı<select id="accountingFilter" aria-label="Hesap adına göre filtrele"><option value="">Tüm Hesaplar</option>${accounting.accounts.map((a) => `<option value="${esc(a.id)}" ${accountingFilter === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></label><label class="field">Başlangıç Tarihi<input type="date" name="start" data-optional="true" value="${esc(movementFilters.start)}"></label><label class="field">Bitiş Tarihi<input type="date" name="end" data-optional="true" value="${esc(movementFilters.end)}"></label><label class="field">İşlem Türü<select name="type" data-optional="true">${[
+    `${actionBar}<div class="panel acc-accounts"><div class="panelhead"><div><h2>Kasa ve Banka Hesapları</h2><p>Hareketlerini görmek için hesabı seçin.</p></div><div class="acc-head-side"><span class="acc-total">Toplam bakiye <b class="${accountingTone(totalBalance)}">${amount(totalBalance)}</b></span><button type="button" class="link" data-account-ledger=""${accountingFilter ? '' : ' hidden'}>Tüm Hesaplar</button><button type="button" class="secondary acc-small" id="addAccount">＋ Banka / Kasa Ekle</button></div></div>${accountTable}</div><div class="panel acc-ledger"><div class="panelhead"><div><h2>${accountingFilter ? esc(name(accountingFilter)) + ' · Cari Hesap Hareketleri' : 'Cari Hesap Hareketleri'}</h2><p>${esc(totals.count)} hareket</p></div><div class="acc-head-side"><span class="acc-chip-total">Giren <b class="acc-pos">${amount(totals.incoming)}</b></span><span class="acc-chip-total">Çıkan <b class="acc-neg">${amount(totals.outgoing)}</b></span><span class="acc-chip-total">Net <b class="${accountingTone(totals.net)}">${amount(totals.net)}</b></span><button type="button" class="secondary acc-small" id="exportAccountLedger" data-tip="Filtreye uyan tüm hareketleri Excel'de açılan dosya olarak indirir.">Excel'e Aktar</button></div></div><details class="borrower-filter-section" id="accountingFilterSection"${document.getElementById('accountingFilterSection')?.open ? ' open' : ''}><summary>Filtre</summary><form id="movementFilterForm" class="formbody"><div class="grid"><label class="field">Hesap Adı<select id="accountingFilter" aria-label="Hesap adına göre filtrele"><option value="">Tüm Hesaplar</option>${accounting.accounts.map((a) => `<option value="${esc(a.id)}" ${accountingFilter === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></label><label class="field">Başlangıç Tarihi<input type="date" name="start" data-optional="true" value="${esc(movementFilters.start)}"></label><label class="field">Bitiş Tarihi<input type="date" name="end" data-optional="true" value="${esc(movementFilters.end)}"></label><label class="field">İşlem Türü<select name="type" data-optional="true">${[
       ['', 'Tüm İşlemler'],
       ['in', 'Para Girişi'],
       ['external', 'Haricen Para Girişi'],
@@ -666,6 +750,7 @@ function accountingPage(remote) {
     };
   });
   $('#addAccount').onclick = () => accountForm();
+  $('#exportAccountLedger').onclick = exportAccountLedger;
   $('#clientPayoutsTab').onclick = clientPayoutPage;
   $('#accountingFilter').onchange = (e) => {
     accountingFilter = e.target.value;
@@ -754,7 +839,7 @@ function cashEntryForm(kind) {
       ? `<fieldset class="full acc-chipset"><legend>Giriş Türü</legend><label class="acc-chip"><input type="radio" name="type" value="in" checked><span>Normal giriş</span></label><label class="acc-chip"><input type="radio" name="type" value="external"><span>Haricen giriş</span></label></fieldset>`
       : `<input type="hidden" name="type" value="${kind}">`;
   $('#modal').innerHTML =
-    `<form id="cashEntryForm" class="acc-entry acc-entry--${kind}"><div class="panelhead"><div><h2>${esc(title)}</h2><p>${esc(hint)} İşlemi yapan: ${esc(activeOperator()?.name || 'Seçilmedi — önce üst bölümden personel seçin')}</p></div><button type="button" class="link" id="closeCashEntry">Kapat</button></div><div class="formbody grid">${typeControl}<label class="field">${esc(accountLabel)} *<select name="accountId" required>${accountOptions(preset)}</select></label><label class="field" id="destinationField" hidden>Paranın Gireceği Hesap *<select name="destination" disabled>${accountOptions()}</select></label>${field('İşlem Tarihi', 'date', 'date', businessDate(), true)}${field('Tutar (TL)', 'amount', 'number', '', true)}<p class="${kind === 'transfer' ? 'full ' : ''}acc-balance-line" id="cashBalanceLine" role="status"></p><fieldset class="full acc-chipset" id="expenseCategoryField" hidden><legend>Gider Kalemi *</legend>${chips('expenseCategory', accountingExpenseCategories)}</fieldset><fieldset class="full acc-chipset" id="advanceTypeField" hidden><legend>Avans Türü *</legend>${chips('advanceType', ['T.Ç', 'S.S', 'Diğer'])}</fieldset><label class="field full" id="externalProfitField" hidden>Kâr Seçimi *<select name="profitChoice" disabled><option value="">Seçin</option><option value="yes">Kâra Ekle</option><option value="no">Kâra Ekleme</option></select></label>${field('Açıklama / Referans', 'note', 'text', '', true, true)}${kind === 'in' ? '<p class="full acc-form-hint">Borçlu tahsilatı buradan girilmez; Muhasebe ekranındaki Borçlu Tahsilatı düğmesini veya dosyanın Finansal İşlemler ekranını kullanın.</p>' : ''}</div><div class="actions"><button class="primary">${esc(title)} Kaydet</button></div></form>`;
+    `<form id="cashEntryForm" class="acc-entry acc-entry--${kind}"><div class="panelhead"><div><h2>${esc(title)}</h2><p>${esc(hint)} İşlemi yapan: ${esc(activeOperator()?.name || 'Seçilmedi — önce üst bölümden personel seçin')}</p></div><button type="button" class="link" id="closeCashEntry">Kapat</button></div><div class="formbody grid">${typeControl}<label class="field">${esc(accountLabel)} *<select name="accountId" required>${accountOptions(preset)}</select></label><label class="field" id="destinationField" hidden>Paranın Gireceği Hesap *<select name="destination" disabled>${accountOptions()}</select></label>${field('İşlem Tarihi', 'date', 'date', businessDate(), true)}${field('Tutar (TL)', 'amount', 'number', '', true)}<p class="${kind === 'transfer' ? 'full ' : ''}acc-balance-line" id="cashBalanceLine" role="status"></p><fieldset class="full acc-chipset" id="expenseCategoryField" hidden><legend>Gider Kalemi *</legend>${chips('expenseCategory', accountingExpenseCategories)}</fieldset><fieldset class="full acc-chipset" id="advanceTypeField" hidden><legend>Avans Türü *</legend>${chips('advanceType', ['T.Ç', 'S.S', 'Diğer'])}</fieldset><label class="field full${kind === 'in' ? ' acc-reserve' : ''}" id="externalProfitField" hidden>Kâr Seçimi *<select name="profitChoice" disabled><option value="">Seçin</option><option value="yes">Kâra Ekle</option><option value="no">Kâra Ekleme</option></select></label>${field('Açıklama / Referans', 'note', 'text', '', true, true)}${kind === 'in' ? '<p class="full acc-form-hint">Borçlu tahsilatı buradan girilmez; Muhasebe ekranındaki Borçlu Tahsilatı düğmesini veya dosyanın Finansal İşlemler ekranını kullanın.</p>' : ''}</div><div class="actions"><button class="primary">${esc(title)} Kaydet</button></div></form>`;
   const form = $('#cashEntryForm');
   const balanceLine = () => {
     const line = $('#cashBalanceLine'),
