@@ -1345,8 +1345,9 @@ dialog.modal-dragging .modal-drag-handle {
   max-width: calc(100% - 120px);
   vertical-align: top;
 }
+/* Name and address on one line; they wrap only when the line is too short. */
 .marketing-stops small {
-  display: block;
+  margin-left: 8px;
   color: #6b7785;
 }
 .marketing-stop-actions {
@@ -1408,18 +1409,18 @@ dialog.modal-dragging .modal-drag-handle {
   align-items: center;
 }
 .marketing-map-panel {
-  padding: 20px 20px 12px 0;
+  padding: 10px 20px 6px 0;
   min-width: 0;
 }
 .marketing-map-tools {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 6px;
+  margin-bottom: 4px;
 }
 .marketing-map-tools button {
-  padding: 8px 12px;
+  padding: 5px 10px;
   white-space: nowrap;
 }
 .marketing-map-tools button.selected {
@@ -1431,15 +1432,19 @@ dialog.modal-dragging .modal-drag-handle {
 #marketingDraw {
   min-width: 132px;
 }
-/* Room for two lines, so a longer message never pushes the map down. */
+/* One line that never grows, so a longer message never pushes the map down; the whole
+   text is in the tooltip. Phones wrap it into a reserved three lines instead. */
 .marketing-region-status {
-  min-height: 34px;
-  margin: 0 0 8px;
+  min-height: 17px;
+  margin: 0 0 4px;
+  overflow: hidden;
   line-height: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .marketing-map {
   position: relative;
-  height: 400px;
+  height: 330px;
   overflow: hidden;
   border: 1px solid #dce2e8;
   border-radius: 8px;
@@ -1521,8 +1526,8 @@ dialog.modal-dragging .modal-drag-handle {
   stroke-width: 4;
 }
 .marketing-map-note {
-  min-height: 34px;
-  margin: 8px 0 0;
+  min-height: 17px;
+  margin: 4px 0 0;
 }
 .marketing-legend .marketing-dot {
   display: inline-block;
@@ -1554,11 +1559,11 @@ dialog.modal-dragging .modal-drag-handle {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  padding: 0 20px 14px;
+  gap: 8px;
+  padding: 0 20px 8px;
 }
 .marketing-narrow button {
-  padding: 8px 12px;
+  padding: 5px 10px;
 }
 .marketing-results th.marketing-drop,
 .marketing-results td.marketing-drop {
@@ -1568,18 +1573,205 @@ dialog.modal-dragging .modal-drag-handle {
 .marketing-results tr.hover td {
   background: #fbf6ec;
 }
+/* Rota Bulma is a working screen: the search, the map, the filters and as many firms as
+   possible should fit without scrolling. Tighter spacing than the forms elsewhere. */
+.marketing-route > .panelhead {
+  padding: 10px 20px;
+}
+.marketing-route > .panelhead p {
+  margin: 2px 0 0;
+}
+.marketing-route > .formbody:has(> .settings-tabs) {
+  padding: 0 20px;
+}
+.marketing-route .settings-tabs {
+  margin: 0;
+}
+.marketing-route .settings-tabs button {
+  padding: 9px 16px;
+}
+.marketing-route .field {
+  gap: 3px;
+}
+.marketing-route .field input,
+.marketing-route .field select {
+  padding: 6px 8px;
+}
+#marketingSearchForm.formbody {
+  padding: 10px 20px 0;
+}
+#marketingSearchForm .grid {
+  gap: 8px 12px;
+}
+/* "Bul" on the right, its one-line explanation beside it instead of under it. */
+#marketingSearchForm .actions {
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+#marketingSearchForm .actions .primary {
+  order: 2;
+  padding: 8px 22px;
+}
+#marketingSearchForm .actions .marketing-hint {
+  order: 1;
+}
+#marketingServiceNote {
+  margin: 6px 0 0;
+}
+.marketing-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 8px 20px 0;
+}
+.marketing-section-head h3 {
+  margin: 0;
+}
+.marketing-filters {
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 6px 10px;
+  padding: 8px 20px;
+}
+.marketing-filters .settings-check {
+  gap: 6px;
+  min-height: 30px;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.2;
+}
+.marketing-filters .settings-check input {
+  flex: none;
+  width: 15px;
+  height: 15px;
+}
+.marketing-route table th {
+  padding: 6px 10px;
+}
+.marketing-route table td {
+  padding: 5px 10px;
+}
+.marketing-results td small,
+.marketing-route table td small {
+  margin-top: 1px;
+}
+.marketing-status {
+  padding: 2px 7px;
+}
+.marketing-results td.marketing-nowrap {
+  white-space: nowrap;
+}
+.marketing-tag {
+  color: #6b7785;
+  font-size: 11px;
+}
+.marketing-route .tablefoot {
+  padding: 6px 20px;
+}
+.marketing-route > #marketingRouteBody > #marketingResults > .actions,
+.marketing-plan .actions {
+  padding: 8px 20px;
+}
+.marketing-route .actions .primary,
+.marketing-route .actions .secondary {
+  padding-block: 8px;
+}
+.marketing-plan > .panelhead {
+  padding: 10px 20px;
+}
+.marketing-plan > .formbody {
+  padding: 10px 20px;
+}
+.marketing-plan .grid {
+  gap: 8px 12px;
+}
+.marketing-stops li {
+  padding: 3px 0;
+}
+/* The move and remove buttons float right: each stop holds its own. */
+.marketing-stops li::after {
+  display: block;
+  clear: both;
+  content: '';
+}
+.marketing-stop-actions .link {
+  padding: 0 6px;
+}
+.marketing-plan-fields {
+  grid-template-columns: 2fr 1fr 2fr;
+}
+/* One row for everything that acts on a route: its settings on the left, sharing on the
+   right. */
+.marketing-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 8px 20px;
+  border-top: 1px solid #edf0f3;
+  background: #fafbfc;
+}
+.marketing-action-row > .actions {
+  flex-wrap: wrap;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.marketing-inline-field {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.marketing-route .marketing-inline-field select {
+  width: auto;
+}
+.marketing-route p.formbody.marketing-hint {
+  margin: 0;
+  padding: 6px 20px;
+}
+.marketing-saved-head {
+  align-items: center;
+  padding: 8px 20px;
+}
+.marketing-saved-head .secondary {
+  padding: 6px 12px;
+  white-space: nowrap;
+}
+.marketing-saved-head p {
+  font-size: 12px;
+}
+/* Rotalarım: a route or a stop is one line, with its note beside it and its actions side by side. */
+.marketing-route table.marketing-saved-table td small {
+  display: inline;
+  margin: 0 0 0 6px;
+}
+.marketing-saved-table .link {
+  padding: 0;
+}
+.marketing-saved-table .link + .link {
+  margin-left: 12px;
+}
 @media (max-width: 900px) {
   .marketing-search-layout {
     grid-template-columns: 1fr;
   }
   .marketing-region-status {
     min-height: 51px;
+    white-space: normal;
+  }
+  .marketing-plan-fields {
+    grid-template-columns: 1fr;
   }
   .marketing-map-panel {
-    padding: 0 20px 12px;
+    padding: 8px 20px 6px;
   }
   .marketing-map {
-    height: 320px;
+    height: 300px;
   }
 }
 @media (max-width: 600px) {

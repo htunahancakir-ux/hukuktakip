@@ -222,7 +222,7 @@ function marketingSearchTab() {
       )
         .map((item) => `<option value="${esc(item.id)}">${esc(item.label)}</option>`)
         .join('')}</select></label>
-      <label class="field" id="marketingDepthField" ${source === 'scraper' ? '' : 'hidden'}>Tarama kapsamı<select name="depth" data-optional="true"><option value="quick">Hızlı (ilk sonuçlar)</option><option value="normal">Normal</option><option value="wide">Geniş (daha çok firma, daha uzun sürer)</option></select><small>Tarama birkaç dakika sürer; sonuçlar hazır olunca liste kendiliğinden gelir.</small></label>
+      <label class="field" id="marketingDepthField" title="Tarama birkaç dakika sürer; sonuçlar hazır olunca liste kendiliğinden gelir." ${source === 'scraper' ? '' : 'hidden'}>Tarama kapsamı<select name="depth" data-optional="true"><option value="quick">Hızlı (ilk sonuçlar)</option><option value="normal">Normal</option><option value="wide">Geniş (daha çok firma, daha uzun sürer)</option></select></label>
       <label class="field">Sektör<select name="sector" data-optional="true"><option value="">Tüm sektörler</option>${state.overview.sectors
         .map((sector) => `<option value="${esc(sector.id)}">${esc(sector.label)}</option>`)
         .join('')}<option value="custom">Diğer (elle yazın)</option></select></label>
@@ -344,7 +344,7 @@ function marketingRegionStatus(problem = '') {
   draw.classList.toggle('selected', drawing);
   draw.textContent = drawing ? '✎ Çizimi bırak' : state.region ? '✎ Yeniden çiz' : '✎ Bölge çiz';
   document.getElementById('marketingRegionClear').disabled = !state.region;
-  status.textContent =
+  status.textContent = status.title =
     problem ||
     (drawing
       ? 'Basılı tutup sürükleyerek bölgenin çevresini çizin; bırakınca bölge kapanır. Vazgeçmek için Esc.'
@@ -790,16 +790,17 @@ function marketingRenderResults() {
         ],
         filters.visit,
       )}</select></label>
-      <label class="field">Mesafe<select name="maxKm" ${point ? '' : 'disabled'}>${options(
+      <label class="field" ${point ? '' : 'title="Mesafe için başlangıç noktasında “Mevcut konumum”u seçin."'}>Mesafe<select name="maxKm" ${point ? '' : 'disabled'}>${options(
         [
-          [0, 'Tümü'],
+          // Without a location the closed box itself says what to do: no extra line of text.
+          [0, point ? 'Tümü' : 'Önce “Mevcut konumum”u seçin'],
           [1, '1 km içinde'],
           [3, '3 km içinde'],
           [5, '5 km içinde'],
           [10, '10 km içinde'],
         ],
         point ? filters.maxKm : 0,
-      )}</select>${point ? '' : '<small>Mesafe için başlangıçta “Mevcut konumum”u seçin.</small>'}</label>
+      )}</select></label>
       <label class="field">Google puanı<select name="minRating">${options(
         [
           [0, 'Tümü'],
@@ -952,23 +953,30 @@ function marketingRowHtml(place) {
   const website = marketingSafeUrl(place.website);
   const phone = place.phone
     ? `<a href="tel:${esc(route.phoneDigits(place.phone))}">${esc(place.phone)}</a>${
-        route.isMobilePhone(place.phone) ? '<small>Cep telefonu</small>' : ''
+        route.isMobilePhone(place.phone) ? ' <span class="marketing-tag" title="Cep telefonu">Cep</span>' : ''
       }`
     : '—';
   const rating = Number.isFinite(place.rating)
-    ? `${place.rating.toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ★<small>${Number(
+    ? `${place.rating.toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ★ <span class="marketing-tag" title="Yorum sayısı">${Number(
         place.ratingCount || 0,
-      ).toLocaleString('tr-TR')} yorum</small>`
+      ).toLocaleString('tr-TR')} yorum</span>`
     : '—';
   return `<tr class="${selected ? 'selected' : ''}" data-place="${esc(place.placeId)}"><td class="marketing-check"><input type="checkbox" data-place-check="${esc(
     place.placeId,
   )}" ${selected ? 'checked' : ''} aria-label="${esc(place.name)} seç"></td><td><a href="${esc(
     mapsUrl,
   )}" target="_blank" rel="noopener noreferrer">${esc(place.name)}</a>${
-    notes.length ? `<small>${esc(notes.join(' · '))}</small>` : ''
-  }${website ? `<small><a href="${esc(website)}" target="_blank" rel="noopener noreferrer nofollow">Web sitesi</a></small>` : ''}</td><td>${esc(
+    // One line under the name: what is known about the firm, then its web site.
+    notes.length || website
+      ? `<small>${esc(notes.join(' · '))}${notes.length && website ? ' · ' : ''}${
+          website
+            ? `<a href="${esc(website)}" target="_blank" rel="noopener noreferrer nofollow">Web sitesi</a>`
+            : ''
+        }</small>`
+      : ''
+  }</td><td>${esc(
     place.address,
-  )}</td><td>${phone}</td><td>${rating}</td><td>${place.distance === null ? '—' : marketingKm(place.distance)}</td><td>${marketingVisitBadge(
+  )}</td><td class="marketing-nowrap">${phone}</td><td class="marketing-nowrap">${rating}</td><td>${place.distance === null ? '—' : marketingKm(place.distance)}</td><td>${marketingVisitBadge(
     place.visit,
   )}</td><td class="marketing-drop"><button type="button" class="link" data-place-drop="${esc(
     place.placeId,
@@ -1193,12 +1201,12 @@ function marketingRenderPlan() {
     <div class="panelhead"><div><h2 id="marketingPlanTitle">Rota · ${plan.stops.length} durak</h2><p>${esc(
       marketingOriginLabel(),
     )}${plan.savedId ? ' · Kaydedildi' : ''}</p></div></div>
-    <div class="formbody grid">
+    <div class="formbody grid marketing-plan-fields">
       <label class="field">Rota adı<input id="marketingPlanName" maxlength="120" value="${esc(plan.name)}" placeholder="${esc(
         fallbackName,
       )}" ${plan.savedId ? 'disabled' : ''}></label>
       <label class="field">Ulaşım<select id="marketingTravelMode"><option value="driving">Araçla</option><option value="walking">Yürüyerek</option></select></label>
-      <label class="field">Bağlantı başına durak<select id="marketingPerLink"><option value="10">10 durak — bilgisayar ve Google Haritalar uygulaması</option><option value="4">4 durak — telefon tarayıcısı</option></select><small>Google tek bağlantıda en çok 10 durağa (telefon tarayıcısında 4) izin verir; uzun rotalar bölümlere ayrılır.</small></label>
+      <label class="field" title="Google tek bağlantıda en çok 10 durağa (telefon tarayıcısında 4) izin verir; uzun rotalar bölümlere ayrılır.">Bağlantı başına durak<select id="marketingPerLink"><option value="10">10 durak — bilgisayar ve Google Haritalar uygulaması</option><option value="4">4 durak — telefon tarayıcısı</option></select></label>
     </div>
     <ol class="marketing-stops">${plan.stops
       .map(
@@ -1214,10 +1222,9 @@ function marketingRenderPlan() {
           )} rotadan çıkar">✕</button></span></li>`,
       )
       .join('')}</ol>
-    ${marketingSharePanel(links, text, state.overview.selfPhone)}
-    <div class="actions"><button type="button" class="secondary" id="marketingReorder">Sırayı Yeniden Hesapla</button><button type="button" class="secondary" id="marketingSavePlan" ${
+    <div class="marketing-action-row"><div class="actions"><button type="button" class="secondary" id="marketingReorder">Sırayı Yeniden Hesapla</button><button type="button" class="secondary" id="marketingSavePlan" ${
       plan.savedId ? 'disabled' : ''
-    }>${plan.savedId ? 'Rota kaydedildi' : 'Rotayı Kaydet'}</button></div>
+    }>${plan.savedId ? 'Rota kaydedildi' : 'Rotayı Kaydet'}</button></div>${marketingSharePanel(links, text, state.overview.selfPhone)}</div>
     <p class="formbody marketing-hint">${
       state.overview.selfPhone
         ? 'WhatsApp mesajı kayıtlı numaranıza (+' +
@@ -1287,7 +1294,7 @@ function marketingSavedRoutes() {
     body = $('#marketingRouteBody');
   if (state.saved) return marketingSavedRouteDetail();
   const routes = state.overview.routes;
-  body.innerHTML = `<div class="overflow"><table><thead><tr><th>TARİH</th><th>ROTA</th><th>BÖLGE</th><th>DURAK</th><th>GİDİLEN</th><th>OLUŞTURAN</th><th>İŞLEM</th></tr></thead><tbody>${
+  body.innerHTML = `<div class="overflow"><table class="marketing-saved-table"><thead><tr><th>TARİH</th><th>ROTA</th><th>BÖLGE</th><th>DURAK</th><th>GİDİLEN</th><th>OLUŞTURAN</th><th>İŞLEM</th></tr></thead><tbody>${
     routes
       .map(
         (route) =>
@@ -1356,7 +1363,7 @@ function marketingSavedRouteDetail() {
         .filter(Boolean)
         .join(' · '),
     )}</p></div></div>
-    <div class="overflow"><table><thead><tr><th>#</th><th>FİRMA</th><th>ADRES</th><th>DURUM</th><th>İŞLEM</th></tr></thead><tbody>${places
+    <div class="overflow"><table class="marketing-saved-table"><thead><tr><th>#</th><th>FİRMA</th><th>ADRES</th><th>DURUM</th><th>İŞLEM</th></tr></thead><tbody>${places
       .map(
         (place, index) =>
           `<tr><td>${index + 1}</td><td>${
@@ -1375,8 +1382,9 @@ function marketingSavedRouteDetail() {
       )
       .join('')}</tbody></table></div>
     <div class="tablefoot marketing-foot"><span>${visited}/${places.length} durak ziyaret edildi</span><span class="marketing-attribution">Google Maps</span></div>
-    <div class="formbody grid"><label class="field">Bağlantı başına durak<select id="marketingSavedPerLink"><option value="10">10 durak — bilgisayar ve Google Haritalar uygulaması</option><option value="4">4 durak — telefon tarayıcısı</option></select></label></div>
-    ${links.length ? marketingSharePanel(links, text, state.overview.selfPhone) : ''}`;
+    <div class="marketing-action-row"><label class="field marketing-inline-field">Bağlantı başına durak<select id="marketingSavedPerLink"><option value="10">10 durak — bilgisayar ve Google Haritalar uygulaması</option><option value="4">4 durak — telefon tarayıcısı</option></select></label>${
+      links.length ? marketingSharePanel(links, text, state.overview.selfPhone) : ''
+    }</div>`;
   $('#marketingSavedBack').onclick = () => {
     state.saved = null;
     marketingRoutePage();
