@@ -4072,19 +4072,27 @@ button.pm-offer {
   }
 }
 
-/* The login texts editor: picture panel on the left, the selected text's settings on the right. */
+/* The login texts editor: picture panel on the left, the selected text's settings and the
+   buttons on the right. The picture is as tall as the window allows, up to its real size on a
+   1440 × 900 screen (806 × 900). */
 #loginTextsDialog {
-  width: min(960px, 96vw);
+  width: fit-content;
+  max-width: 98vw;
+  max-height: 96vh;
+}
+#loginTextsDialog .panelhead {
+  padding-block: 12px;
 }
 #loginTextsDialog .lte-body {
   display: grid;
-  grid-template-columns: auto minmax(240px, 1fr);
+  grid-template-columns: auto minmax(260px, 300px);
   gap: 18px;
-  align-items: start;
-  padding: 16px 20px;
+  align-items: stretch;
+  justify-content: center;
+  padding: 14px 20px 16px;
 }
 #loginTextsDialog .lte-stage {
-  height: min(62vh, 620px);
+  height: min(calc(96vh - 112px), 900px);
   border-radius: 10px;
   user-select: none;
   touch-action: none;
@@ -4116,14 +4124,24 @@ button.pm-offer {
   background: #e9bc73;
   cursor: nwse-resize;
 }
+/* The side column takes the picture's height: it adds nothing to the row, then fills it. On a
+   short screen only the settings scroll; the buttons stay in view. */
 #loginTextsDialog .lte-side {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  height: 0;
+  min-height: 100%;
+}
+#loginTextsDialog .lte-side > * {
+  flex: none;
 }
 #loginTextsDialog .lte-props {
   display: grid;
+  flex: 0 1 auto;
   gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
   margin: 0;
   padding: 12px;
   border: 1px solid #e2e7ec;
@@ -4169,8 +4187,13 @@ button.pm-offer {
   justify-self: start;
   color: #b42318;
 }
-#loginTextsDialog .actions .lte-default {
-  margin-right: auto;
+#loginTextsDialog .lte-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: auto;
+}
+#loginTextsDialog .lte-actions .lte-default {
+  justify-self: center;
 }
 @media (max-width: 760px) {
   #loginTextsDialog .lte-body {

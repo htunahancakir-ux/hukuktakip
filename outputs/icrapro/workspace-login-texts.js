@@ -1,5 +1,6 @@
 // Ayarlar → Firma Bilgileri → "Yazıları Düzenle": the texts on the login screen's picture.
-// The stage is a scaled copy of the login picture panel on a 1440 × 900 screen. Texts are
+// The stage is a scaled copy of the login picture panel on a 1440 × 900 screen, as tall as the
+// window allows (the buttons sit in the side column to leave it the height). Texts are
 // dragged into place, resized with the corner handle or the size slider, edited on the side and
 // saved together (PUT /api/login-texts). Drawing is shared with the login screen
 // (loginTextElement / placeLoginText in login-layout.js), so both show the same layout.
@@ -50,9 +51,9 @@ function openLoginTextsEditor({ saved, artVersion, onSaved }) {
           <label class="field">Boyut<span class="lte-size"><input type="range" min="${LOGIN_TEXT_LIMITS.min}" max="${LOGIN_TEXT_LIMITS.max}" step="0.05" data-lte="size"><output data-lte-size></output></span></label>
           <button type="button" class="link lte-delete" data-lte-delete>Yazıyı Sil</button>
         </fieldset>
+        <div class="lte-actions"><button type="button" class="primary" data-lte-save>Kaydet</button><button type="button" class="secondary">Vazgeç</button><button type="button" class="link lte-default" data-lte-default>Varsayılan Yazılara Dön</button></div>
       </div>
-    </div>
-    <div class="actions"><button type="button" class="link lte-default" data-lte-default>Varsayılan Yazılara Dön</button><button type="button" class="secondary">Vazgeç</button><button type="button" class="primary" data-lte-save>Kaydet</button></div>`;
+    </div>`;
   document.body.append(dialog);
   const $d = (selector) => dialog.querySelector(selector);
   const stage = $d('.lte-stage'),
@@ -247,7 +248,8 @@ function openLoginTextsEditor({ saved, artVersion, onSaved }) {
     if (!response.ok) throw Error(result.error || 'Giriş ekranı yazıları kaydedilemedi.');
     return result;
   };
-  const busy = (on) => dialog.querySelectorAll('.actions button').forEach((button) => (button.disabled = on));
+  const busy = (on) =>
+    dialog.querySelectorAll('.lte-actions button').forEach((button) => (button.disabled = on));
 
   $d('[data-lte-save]').addEventListener('click', async () => {
     const empty = items.find((item) => !item.text.trim());

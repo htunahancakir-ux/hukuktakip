@@ -16,6 +16,10 @@
 - **Rota Bulma harita servisi (aylık abonelik):** büro hiçbir anahtar girmez; aramalar platformun harita servisiyle yapılır ve büro başına aylık arama hakkıyla sınırlıdır.
 - Konsol → Yönetim'de yeni **Harita servisi** bölümü: platformun Google anahtarı, aylık sınırlar ve her büronun o ayki kullanımı. Kârlılık raporuna harita kullanımı ve birim maliyeti eklendi.
 
+### Giriş ekranı
+
+- "Yazıları Düzenle" penceresindeki önizleme büyütüldü: ekranın elverdiği kadar büyük gösterilir (1440 × 900 ekranda yaklaşık üçte bir daha büyük, geniş ekranlarda giriş ekranındaki gerçek boyutunda). Kaydet, Vazgeç ve Varsayılan Yazılara Dön düğmeleri sağ panele taşındı; küçük ekranlarda yalnızca ayar alanı kayar, düğmeler hep görünür.
+
 ### Teknik notlar
 
 - Yeni geçiş: `20261113130000_maps_service.sql` (katalogda yeni ürün, kullanım sayacı ölçüleri). Canlıda `npm run db:migrate` gerekir; yeni ürün taslak ve fiyatsız gelir, operatör fiyatlayıp satışa açar.
