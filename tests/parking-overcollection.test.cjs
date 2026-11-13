@@ -44,6 +44,7 @@ test('Browser accepts parking payments above remaining and additional payments a
         $: (q) => w.document.querySelector(q),
         esc: (v) => String(v ?? ''),
         money: String,
+        displayDate: String,
         financeCents: (v) => Math.round(Number(v) * 100),
         hanAuth: { role: 'staff' },
         db: { docs: [d], clients: [] },
@@ -122,6 +123,10 @@ test('API accepts uncapped parking collections, preserves first closure, pays ac
         parkingCommissionRate: 20,
         parkingEntry: '2026-01-01',
         status: 'Derdest',
+        // This settlement fixture has explicitly agreed principal-only terms.
+        financeTermsManual: true,
+        financeInterest: 0,
+        financeFee: 0,
       },
       {
         id: 's',

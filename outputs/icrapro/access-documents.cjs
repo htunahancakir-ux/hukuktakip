@@ -199,11 +199,9 @@ async function handleDocumentRoutes(ctx) {
       total = Math.max(
         0,
         principal +
-          (parking
-            ? 0
-            : Math.round(Number(current.financeInterest || 0) * 100) +
-              Math.round(Number(current.financeFee || 0) * 100) +
-              events.filter((e) => e.type === 'expense').reduce((sum, e) => sum + e.amount, 0)) -
+          Math.round(Number(current.financeInterest || 0) * 100) +
+          Math.round(Number(current.financeFee || 0) * 100) +
+          (parking ? 0 : events.filter((e) => e.type === 'expense').reduce((sum, e) => sum + e.amount, 0)) -
           Number(current.debtDiscountCents || 0),
       );
     const native = require('./receivable-units.js').foreignBalances(current, parkingToday(), events);

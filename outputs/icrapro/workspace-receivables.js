@@ -710,10 +710,11 @@ function setupIntakeBorrowerSheet(form, original) {
       amount: Number(row.querySelector('[data-claim-field="amount"]')?.value || 0),
       paid: Number(row.querySelector('[data-claim-field="preTrackingPayment"]')?.value || 0),
       due: row.querySelector('[data-claim-field="due"]')?.value || '',
+      parkingEntry: row.querySelector('[data-claim-field="parkingEntry"]')?.value || '',
     }));
     const today = businessDate(),
       dates = items
-        .map((item) => item.due)
+        .map((item) => (item.docType === 'Yediemin Park Ücreti' ? item.parkingEntry : item.due))
         .filter(Boolean)
         .sort();
     const values = {
@@ -762,14 +763,18 @@ function setupIntakeBorrowerSheet(form, original) {
       principal = gross - paid;
     let interest = 0,
       fee = 0;
-    const standard = tlItems.filter((item) => item.docType !== 'Yediemin Park Ücreti');
+    const standard = tlItems;
     try {
       if (typeof calculateLegalInterest === 'function')
         for (const item of standard)
-          if (item.amount > item.paid && item.due && item.due < today)
+          if (
+            item.amount > item.paid &&
+            (item.docType === 'Yediemin Park Ücreti' ? item.parkingEntry : item.due) &&
+            (item.docType === 'Yediemin Park Ücreti' ? item.parkingEntry : item.due) < today
+          )
             interest += calculateLegalInterest(
               Math.round((item.amount - item.paid) * 100),
-              item.due,
+              item.docType === 'Yediemin Park Ücreti' ? item.parkingEntry : item.due,
               today,
             ).amount;
       const standardPrincipal = standard.reduce(

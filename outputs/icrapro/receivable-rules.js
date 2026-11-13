@@ -159,9 +159,10 @@
     const dates = items
       .filter(
         (item) =>
-          units.currency(item.currency) === 'TRY' && item.docType !== 'Yediemin Park Ücreti' && item.due,
+          units.currency(item.currency) === 'TRY' &&
+          (item.docType === 'Yediemin Park Ücreti' ? item.parkingEntry : item.due),
       )
-      .map((item) => item.due)
+      .map((item) => (item.docType === 'Yediemin Park Ücreti' ? item.parkingEntry : item.due))
       .sort();
     return { items, principal, standardPrincipal, parkingCommission, due: dates[0] || '' };
   }
@@ -193,11 +194,12 @@
     const rows = [],
       receivables = [];
     for (const item of result.items) {
-      if (item.docType === 'Yediemin Park Ücreti' || units.currency(item.currency) !== 'TRY') continue;
+      if (units.currency(item.currency) !== 'TRY') continue;
       const principal = cents(item.amount) - cents(item.preTrackingPayment);
+      const start = item.docType === 'Yediemin Park Ücreti' ? item.parkingEntry : item.due;
       const interest =
-        principal > 0 && item.due && item.due < today
-          ? calculateInterest(principal, item.due, today)
+        principal > 0 && start && start < today
+          ? calculateInterest(principal, start, today)
           : { amount: 0, rows: [], days: 0 };
       amount += interest.amount;
       rows.push(
@@ -212,19 +214,19 @@
         id: item.id,
         docType: item.docType,
         serial: item.serial,
-        start: item.due,
+        start,
         principal,
         amount: interest.amount,
       });
     }
     const fee =
-      result.standardPrincipal > 0
-        ? calculateFee(result.standardPrincipal + amount, result.standardPrincipal, false)
+      result.principal > 0
+        ? calculateFee(result.principal + amount, result.principal, false)
         : { amount: 0, rows: [], early: false };
     return {
       interest: { amount, rows, days: rows.reduce((sum, row) => sum + row.days, 0), receivables },
       fee,
-      base: result.standardPrincipal + amount,
+      base: result.principal + amount,
     };
   }
   const api = { types, normalize, summarize, sync, charges, storageType, applyType };
