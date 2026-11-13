@@ -345,7 +345,10 @@ function render() {
     intake();
     window.scrollTo({ top: 0, behavior: 'instant' });
   } else if (page === 'marketing') {
-    const routesOff = globalThis.hanModules?.['marketing-routes'] === false;
+    // Rota Bulma is open with either product: the module (own map keys) or the map service.
+    const routesOff =
+      globalThis.hanModules?.['marketing-routes'] === false &&
+      globalThis.hanModules?.['marketing-routes-service'] !== true;
     if (typeof marketingView !== 'undefined' && marketingView === 'routes' && !routesOff)
       return marketingRoutePage();
     document.getElementById('content').innerHTML = `

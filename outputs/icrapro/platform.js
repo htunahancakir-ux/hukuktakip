@@ -208,6 +208,7 @@ function boot() {
     audit: null,
     setupRequired: false,
     sms: null,
+    maps: null,
     campaigns: null,
     announcements: null,
     prospects: null,
@@ -361,10 +362,15 @@ function boot() {
       } else if (state.tab === 'admin' && !state.account) {
         state.account = await api('account');
         if (!state.setupRequired) {
-          const [list, sms] = await Promise.all([api('operators'), api('settings/sms')]);
+          const [list, sms, maps] = await Promise.all([
+            api('operators'),
+            api('settings/sms'),
+            api('settings/maps'),
+          ]);
           state.operators = list.operators;
           state.audit = list.audit;
           state.sms = sms;
+          state.maps = maps;
         }
         renderApp();
       }
@@ -2796,6 +2802,8 @@ function boot() {
     ['aiOutputPerMillionKurus', 'Yapay zekâ: 1 milyon çıktı token (TL)'],
     ['smsSegmentKurus', 'SMS parçası (TL)'],
     ['voipMinuteKurus', 'Telefon dakikası (TL)'],
+    ['mapsSearchKurus', 'Harita servisi: bir arama (TL)'],
+    ['mapsDetailKurus', 'Harita servisi: rota yenilemede bir firma (TL)'],
   ];
   const reloadProfit = async () => {
     state.profit = null;
@@ -2970,7 +2978,7 @@ function boot() {
         kpi(
           'Tahmini kullanım maliyeti',
           formatTl(p.totals.usageCostKurus),
-          `yapay zekâ, SMS, telefon · platform SMS ${formatTl(p.totals.smsUsageCostKurus)}`,
+          `yapay zekâ, SMS, telefon, harita · platform SMS ${formatTl(p.totals.smsUsageCostKurus)}`,
         ),
         kpi(
           'Aylık yinelenen gelir',
@@ -3069,11 +3077,12 @@ function boot() {
                     'Yapay zekâ',
                     'SMS',
                     'Telefon',
+                    'Harita',
                     'Kullanım maliyeti (tahmini)',
                     'Kâr',
                     'Marj',
                   ],
-                  [2, 3, 4, 5, 6, 7, 8, 9],
+                  [2, 3, 4, 5, 6, 7, 8, 9, 10],
                 ),
                 h(
                   'tbody',
@@ -3115,10 +3124,20 @@ function boot() {
                       h(
                         'td',
                         { class: 'num' },
+                        `${(usage(o).mapsSearches || 0).toLocaleString('tr-TR')} arama`,
+                        usage(o).mapsDetails
+                          ? h('small', {
+                              text: `${usage(o).mapsDetails.toLocaleString('tr-TR')} firma yenileme`,
+                            })
+                          : null,
+                      ),
+                      h(
+                        'td',
+                        { class: 'num' },
                         formatTl(o.usageCostKurus),
                         o.usageCost
                           ? h('small', {
-                              text: `YZ ${formatTl(o.usageCost.ai)} · SMS ${formatTl(o.usageCost.sms)} · Tel ${formatTl(o.usageCost.voip)}`,
+                              text: `YZ ${formatTl(o.usageCost.ai)} · SMS ${formatTl(o.usageCost.sms)} · Tel ${formatTl(o.usageCost.voip)} · Harita ${formatTl(o.usageCost.maps || 0)}`,
                             })
                           : null,
                       ),
@@ -5406,6 +5425,8 @@ function boot() {
     'settings.sms': 'SMS ayarlarını kaydetti',
     'settings.sms_clear': 'SMS ayarlarını sildi',
     'settings.sms_test': 'Deneme SMS gönderdi',
+    'settings.maps': 'Harita servisi ayarlarını kaydetti',
+    'settings.maps_clear': 'Harita servisi ayarlarını sildi',
   };
   const SMS_PURPOSE = {
     password_recovery: 'Şifremi unuttum',
@@ -5552,6 +5573,147 @@ function boot() {
                     h('td', { text: SMS_PURPOSE[r.purpose] || r.purpose }),
                     h('td', { text: r.dest }),
                     h('td', { text: (SMS_STATUS[r.status] || r.status) + (r.error ? ' · ' + r.error : '') }),
+                  ),
+                ),
+              ),
+            ),
+          )
+        : null,
+    );
+  }
+  // The selling company's own Google Maps account: offices subscribed to "Rota Bulma harita
+  // servisi" search with it and need no key of their own.
+  function mapsPanel() {
+    const maps = state.maps;
+    if (!maps) return null;
+    const result = h('p', { class: 'muted', role: 'status' });
+    const form = h('form', { class: 'smsform mapsform', novalidate: true });
+    const apiKey = h('input', {
+      type: 'password',
+      maxlength: '39',
+      autocomplete: 'new-password',
+      placeholder: maps.configured ? 'Kayıtlı — değiştirmek için yazın' : 'AIza ile başlayan anahtar',
+    });
+    const browserKey = h('input', {
+      type: 'text',
+      maxlength: '39',
+      autocomplete: 'off',
+      placeholder: 'İsteğe bağlı — Google haritası için',
+    });
+    browserKey.value = maps.browserKey;
+    const searches = h('input', { type: 'number', min: '1', max: '1000000', step: '1' });
+    searches.value = String(maps.monthlySearches);
+    const details = h('input', { type: 'number', min: '1', max: '1000000', step: '1' });
+    details.value = String(maps.monthlyDetails);
+    const enabled = h('input', { type: 'checkbox' });
+    enabled.checked = maps.enabled;
+    const run = async (button, work) => {
+      button.disabled = true;
+      result.textContent = '';
+      try {
+        await work();
+      } catch (e) {
+        result.textContent = '✕ ' + e.message;
+      } finally {
+        button.disabled = false;
+      }
+    };
+    const testButton = h('button', { class: 'btn', type: 'button', text: 'Anahtarı test et' });
+    testButton.onclick = () =>
+      run(testButton, async () => {
+        await api('settings/maps/test', { method: 'POST', body: { apiKey: apiKey.value.trim() || undefined } });
+        result.textContent = '✓ Bağlandı. Google bu anahtarla aramayı kabul etti.';
+      });
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const save = form.querySelector('button[type=submit]');
+      run(save, async () => {
+        state.maps = {
+          ...state.maps,
+          ...(await api('settings/maps', {
+            method: 'POST',
+            body: {
+              apiKey: apiKey.value.trim() || undefined,
+              browserKey: browserKey.value.trim(),
+              monthlySearches: Number(searches.value),
+              monthlyDetails: Number(details.value),
+              enabled: enabled.checked,
+            },
+          })),
+        };
+        toast('Harita servisi ayarları kaydedildi.');
+        await reloadAdmin();
+      });
+    });
+    form.append(
+      h(
+        'div',
+        { class: 'smsgrid' },
+        h('label', { class: 'field' }, h('span', { text: 'Google Places API anahtarı (gizli)' }), apiKey),
+        h('label', { class: 'field' }, h('span', { text: 'Harita anahtarı (tarayıcı)' }), browserKey),
+        h('label', { class: 'field' }, h('span', { text: 'Büro başına aylık arama' }), searches),
+        h('label', { class: 'field' }, h('span', { text: 'Büro başına aylık rota yenileme (firma)' }), details),
+      ),
+      h('label', { class: 'check' }, enabled, 'Abone bürolar hazır harita servisini kullansın'),
+      h(
+        'p',
+        { class: 'muted' },
+        'Places anahtarı şifrelenerek saklanır ve hiçbir büroya gönderilmez; yalnızca Places API (New) ile sınırlayın. Harita anahtarı büroların tarayıcısına gönderilir: ayrı bir anahtar oluşturup yalnızca Maps JavaScript API’ye ve kendi alan adınıza (HTTP yönlendiren) sınırlayın. Harita anahtarı girilmezse ekranda OpenStreetMap haritası kullanılır. Her arama Google’a ücretli bir istektir; sınırlar büro başına aylıktır ve ay başında sıfırlanır.',
+      ),
+      result,
+      h(
+        'div',
+        { class: 'toolbar' },
+        testButton,
+        h('button', { class: 'btn primary', type: 'submit', text: 'Kaydet' }),
+      ),
+    );
+    const u = maps.usage;
+    return h(
+      'section',
+      { class: 'panel' },
+      h(
+        'div',
+        { class: 'panelhead' },
+        h('h3', { text: 'Harita servisi (Rota Bulma aboneliği) — platform hesabı' }),
+        badge(maps.enabled ? 'Açık' : maps.configured ? 'Kapalı' : 'Ayarlanmadı', maps.enabled ? 'ok' : 'warn'),
+      ),
+      h(
+        'div',
+        { class: 'accountbody' },
+        h('p', {
+          class: 'muted',
+          text: `Bu ay ${u.monthSearches.toLocaleString('tr-TR')} arama, ${u.monthDetails.toLocaleString('tr-TR')} firma yenileme. “Rota Bulma harita servisi” ürününü alan bürolar bu hesapla arar; “Pazarlama ve rota” modülünü alan bürolar kendi anahtarını girer.`,
+        }),
+        form,
+      ),
+      u.offices.length
+        ? h(
+            'div',
+            { class: 'overflow' },
+            h(
+              'table',
+              {},
+              h(
+                'thead',
+                {},
+                h(
+                  'tr',
+                  {},
+                  ['Büro', 'Bu ay arama', 'Kalan hak', 'Firma yenileme'].map((t) => h('th', { text: t })),
+                ),
+              ),
+              h(
+                'tbody',
+                {},
+                u.offices.map((o) =>
+                  h(
+                    'tr',
+                    {},
+                    h('td', { text: o.name }),
+                    h('td', { text: o.searches.toLocaleString('tr-TR') }),
+                    h('td', { text: Math.max(0, maps.monthlySearches - o.searches).toLocaleString('tr-TR') }),
+                    h('td', { text: o.details.toLocaleString('tr-TR') }),
                   ),
                 ),
               ),
@@ -5907,6 +6069,7 @@ function boot() {
       myAccount,
       operators,
       smsPanel(),
+      mapsPanel(),
       audit,
     );
   }

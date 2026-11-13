@@ -219,6 +219,10 @@ function setup({ session = { admin: { id: 'a', name: 'Operatör', username: 'roo
       return reply(200, { configured: true, enabled: true, username: '908501234567', header: 'HANHUKUK', usage: { monthSent: 4, monthSegments: 5, failed30: 1, blocked30: 0 }, recent: [{ id: '1', purpose: 'password_recovery', dest: '90532*****67', status: 'sent', error: null, createdAt: '2026-11-10T09:00:00Z', office: hostile }], dailyLimitPerOffice: 30 });
     if (route === 'settings/sms/test') return reply(200, { ok: true, balance: 1250, headers: ['HANHUKUK'] });
     if (route === 'settings/sms' && options.method === 'POST') return reply(200, { configured: true, enabled: false, username: '908501234567', header: 'HANHUKUK' });
+    if (route === 'settings/maps' && options.method !== 'POST')
+      return reply(200, { configured: true, enabled: true, browserKey: '', monthlySearches: 300, monthlyDetails: 3000, usage: { monthSearches: 12, monthDetails: 40, offices: [{ tenantId: 't1', name: hostile, searches: 12, details: 40 }] } });
+    if (route === 'settings/maps/test') return reply(200, { ok: true });
+    if (route === 'settings/maps' && options.method === 'POST') return reply(200, { configured: true, enabled: false, browserKey: '', monthlySearches: 250, monthlyDetails: 3000 });
     if (route === `offices/${office().id}` && options.method !== 'POST')
       return reply(200, { office: office(), modules: [{ code: 'whatsapp', name: 'WhatsApp', priceKurus: 3000, status: 'trial', addedAt: '2026-11-01T00:00:00Z', trialUntil: '2099-01-15T09:00:00Z' }], sales: [], events: [{ action: 'manager_password_reset', createdAt: '2026-11-10T09:00:00Z', admin: 'root', detail: { mode: 'sms' } }], costKurus: 0, payments: [] });
     if (route === `offices/${office().id}/managers`) return reply(200, { managers: [{ id: 'm1', name: hostile, username: 'ceo', role: 'ceo', phone: '90555*****33' }] });
@@ -487,6 +491,34 @@ test('Yönetim tab: platform SMS settings show usage as text, test the connectio
   await settle();
   const saved = requests.find((r) => r.route === 'settings/sms' && r.method === 'POST');
   assert.deepEqual(saved.body, { username: '908501234567', header: 'HANHUKUK', enabled: false }, 'blank password is not sent');
+});
+
+test('Yönetim tab: map service settings show each office’s searches as text and never resend a blank key', async () => {
+  const { w, requests } = setup();
+  await settle();
+  button(w, 'Yönetim').click();
+  await settle();
+  const text = w.document.body.textContent;
+  assert.match(text, /Harita servisi \(Rota Bulma aboneliği\) — platform hesabı/);
+  assert.match(text, /Bu ay 12 arama, 40 firma yenileme/);
+  assert.match(text, /Kötü Büro/);
+  assert.equal(w.document.querySelector('img'), null, 'office names stay text');
+  assert.equal(w.pwned, undefined);
+  const form = w.document.querySelector('form.mapsform');
+  assert.equal(form.querySelector('input[type=password]').value, '', 'the saved Places key is never shown');
+  // Remaining allowance: 300 a month, 12 used.
+  assert.match(form.closest('section').querySelector('tbody tr').textContent, /12.*288.*40/);
+  button(w, 'Anahtarı test et').click();
+  await settle();
+  assert.match(w.document.body.textContent, /Google bu anahtarla aramayı kabul etti/);
+  assert.deepEqual(requests.find((r) => r.route === 'settings/maps/test').body, {}, 'a blank field tests the saved key');
+  const [searches] = form.querySelectorAll('input[type=number]');
+  searches.value = '250';
+  form.querySelector('input[type=checkbox]').checked = false;
+  form.querySelector('button[type=submit]').click();
+  await settle();
+  const saved = requests.find((r) => r.route === 'settings/maps' && r.method === 'POST');
+  assert.deepEqual(saved.body, { browserKey: '', monthlySearches: 250, monthlyDetails: 3000, enabled: false });
 });
 
 // ---------- sales screens: products, trials, campaigns, announcements, pipeline, profit ----------
@@ -801,6 +833,8 @@ test('Kârlılık: product and office profit, the estimate note, recurring expen
   await settle();
   assert.deepEqual(posted(requests, 'settings/unit-costs')[0].body, {
     aiInputPerMillionKurus: 20000, aiOutputPerMillionKurus: 60000, smsSegmentKurus: 40, voipMinuteKurus: 50,
+    // The map service of the Rota Bulma subscription: per search and per refreshed firm.
+    mapsSearchKurus: 0, mapsDetailKurus: 0,
   });
   assert.ok(requests.filter((r) => r.route.startsWith('profit')).length >= 2, 'the report is reloaded with the new costs');
 

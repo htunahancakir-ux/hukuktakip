@@ -71,8 +71,8 @@ test('profit per office and per product adds up to the ledger; usage cost uses t
     const revenueA = 2 * 1000 * 12 + 50000 * 12 + 52000 + 100000;
     assert.equal(officeA.revenueKurus, revenueA);
     assert.equal(officeA.expenseKurus, 5000);
-    assert.deepEqual(officeA.usage, { aiRequests: 2, aiInputTokens: 500000, aiOutputTokens: 250000, smsSegments: 3, voipMinutes: 3 });
-    assert.deepEqual(officeA.usageCost, { ai: 1000, sms: 30, voip: 60 });
+    assert.deepEqual(officeA.usage, { aiRequests: 2, aiInputTokens: 500000, aiOutputTokens: 250000, smsSegments: 3, voipMinutes: 3, mapsSearches: 0, mapsDetails: 0 });
+    assert.deepEqual(officeA.usageCost, { ai: 1000, sms: 30, voip: 60, maps: 0 });
     assert.equal(officeA.profitKurus, revenueA - 5000 - 1090);
     assert.equal(officeB.revenueKurus, 0, 'pending sales are not revenue');
 

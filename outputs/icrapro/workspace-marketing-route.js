@@ -33,6 +33,154 @@
     return total;
   }
 
+  // A region drawn on the map: a closed polygon of [lat, lng] pairs (the last
+  // point joins the first). It limits a search and filters the firms found.
+  const MAX_REGION_POINTS = 60;
+  const MIN_REGION_METERS = 100;
+
+  function regionBounds(region) {
+    let south = 90,
+      north = -90,
+      west = 180,
+      east = -180;
+    for (const [lat, lng] of region) {
+      south = Math.min(south, lat);
+      north = Math.max(north, lat);
+      west = Math.min(west, lng);
+      east = Math.max(east, lng);
+    }
+    return { south, west, north, east };
+  }
+
+  function validRegion(region) {
+    if (!Array.isArray(region) || region.length < 3 || region.length > MAX_REGION_POINTS) return false;
+    if (
+      !region.every(
+        (pair) =>
+          Array.isArray(pair) &&
+          pair.length === 2 &&
+          Number.isFinite(pair[0]) &&
+          Number.isFinite(pair[1]) &&
+          Math.abs(pair[0]) <= 90 &&
+          Math.abs(pair[1]) <= 180,
+      )
+    )
+      return false;
+    const { south, west, north, east } = regionBounds(region);
+    // Both sides must have a size: a line or a dot is not an area.
+    return (
+      distanceMeters({ lat: south, lng: west }, { lat: north, lng: west }) >= MIN_REGION_METERS &&
+      distanceMeters({ lat: south, lng: west }, { lat: south, lng: east }) >= MIN_REGION_METERS
+    );
+  }
+
+  // Ray casting; a firm without coordinates is never inside.
+  function pointInRegion(point, region) {
+    if (!hasPoint(point)) return false;
+    let inside = false;
+    for (let i = 0, j = region.length - 1; i < region.length; j = i++) {
+      const [latA, lngA] = region[i],
+        [latB, lngB] = region[j];
+      if (
+        latA > point.lat !== latB > point.lat &&
+        point.lng < ((lngB - lngA) * (point.lat - latA)) / (latB - latA) + lngA
+      )
+        inside = !inside;
+    }
+    return inside;
+  }
+
+  // Centre and covering radius, for services that take a point and a distance.
+  function regionCircle(region) {
+    const { south, west, north, east } = regionBounds(region);
+    const center = { lat: (south + north) / 2, lng: (west + east) / 2 };
+    return {
+      ...center,
+      radius: Math.max(...region.map(([lat, lng]) => distanceMeters(center, { lat, lng }))),
+    };
+  }
+
+  // Area in km² (shoelace on a local flat projection): good enough to tell the
+  // person how large the region they drew is.
+  function regionAreaKm2(region) {
+    const { south, north } = regionBounds(region);
+    const scale = Math.cos((((south + north) / 2) * Math.PI) / 180);
+    let twice = 0;
+    for (let i = 0, j = region.length - 1; i < region.length; j = i++)
+      twice += region[j][1] * scale * region[i][0] - region[i][1] * scale * region[j][0];
+    return (Math.abs(twice) / 2) * 111.32 * 111.32;
+  }
+
+  // Douglas–Peucker on screen points ({ x, y }): a freehand stroke of hundreds of
+  // points becomes a polygon with a few corners.
+  function simplifyPath(points, tolerance) {
+    if (points.length < 3) return [...points];
+    const keep = new Array(points.length).fill(false);
+    keep[0] = keep[points.length - 1] = true;
+    const stack = [[0, points.length - 1]];
+    while (stack.length) {
+      const [first, last] = stack.pop();
+      const a = points[first],
+        b = points[last];
+      const dx = b.x - a.x,
+        dy = b.y - a.y,
+        length = Math.hypot(dx, dy);
+      let worst = 0,
+        index = -1;
+      for (let i = first + 1; i < last; i++) {
+        const p = points[i];
+        const distance = length
+          ? Math.abs(dy * p.x - dx * p.y + b.x * a.y - b.y * a.x) / length
+          : Math.hypot(p.x - a.x, p.y - a.y);
+        if (distance > worst) {
+          worst = distance;
+          index = i;
+        }
+      }
+      if (worst > tolerance) {
+        keep[index] = true;
+        stack.push([first, index], [index, last]);
+      }
+    }
+    return points.filter((_, i) => keep[i]);
+  }
+
+  // A stroke drawn on screen becomes a region of at most MAX_REGION_POINTS corners.
+  function strokeToRegion(points, toLatLng) {
+    let corners = points,
+      tolerance = 3;
+    do {
+      corners = simplifyPath(points, tolerance);
+      tolerance *= 1.6;
+    } while (corners.length > MAX_REGION_POINTS);
+    const region = corners.map((point) => {
+      const { lat, lng } = toLatLng(point);
+      return [Number(lat.toFixed(5)), Number(lng.toFixed(5))];
+    });
+    return validRegion(region) ? region : null;
+  }
+
+  // Turkish Google addresses end with "…, 06420 Çankaya/Ankara" (optionally ", Türkiye").
+  function areaFromAddress(address) {
+    const match = String(address || '').match(/([^,/]+)\/([^,/]+?)\s*(?:,\s*T[üu]rkiye)?\s*$/iu);
+    if (!match) return { city: '', district: '' };
+    return { district: match[1].replace(/^\s*\d{5}\s*/, '').trim(), city: match[2].trim() };
+  }
+
+  // Districts among the firms found, most firms first: the choices of the district filter.
+  function districtCounts(places) {
+    const counts = new Map();
+    for (const place of places) {
+      const name = String(place.district || '').trim();
+      if (!name) continue;
+      const key = fold(name);
+      const entry = counts.get(key) || { name, count: 0 };
+      entry.count++;
+      counts.set(key, entry);
+    }
+    return [...counts.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'tr'));
+  }
+
   function nearestNeighbour(start, stops) {
     const left = [...stops],
       route = [];
@@ -144,13 +292,26 @@
   }
   const isMobilePhone = (value) => /^05\d{9}$/.test(phoneDigits(value));
 
-  function filterPlaces(places, filters = {}, origin = null) {
+  // `region` (optional) keeps only the firms inside the area drawn on the map.
+  function filterPlaces(places, filters = {}, origin = null, region = null) {
     const query = fold(filters.query);
+    const district = fold(filters.district);
+    // "avm, şube": a firm whose name contains any of the words is left out.
+    const excluded = String(filters.exclude ?? '')
+      .split(/[,;\n]/)
+      .map(fold)
+      .filter(Boolean);
     const rows = places
       .map((place, rank) => ({ ...place, rank, distance: distanceMeters(origin, place) }))
       .filter((place) => {
         const status = place.visit?.status || 'new';
         const result = place.visit?.result || '';
+        if (region && !pointInRegion(place, region)) return false;
+        if (district && fold(place.district) !== district) return false;
+        if (excluded.length) {
+          const name = fold(place.name);
+          if (excluded.some((word) => name.includes(word))) return false;
+        }
         if (filters.phone === 'any' && !place.phone) return false;
         if (filters.phone === 'mobile' && !isMobilePhone(place.phone)) return false;
         if (filters.visit === 'notVisited' && status === 'visited') return false;
@@ -212,8 +373,18 @@
   const api = {
     VISIT_RESULTS,
     LINK_LIMIT,
+    MAX_REGION_POINTS,
     fold,
     distanceMeters,
+    regionBounds,
+    validRegion,
+    pointInRegion,
+    regionCircle,
+    regionAreaKm2,
+    simplifyPath,
+    strokeToRegion,
+    areaFromAddress,
+    districtCounts,
     orderStops,
     directionsUrl,
     directionsLinks,

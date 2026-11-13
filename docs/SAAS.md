@@ -96,7 +96,7 @@ ayrı origin kontrolü ve hız sınırı (IP başına ve hesap başına 15 dakik
   üretmez. Davet kabulündeki sınır bu değeri kullanır.
 - **Ek modüller:** katalog operatör tarafından yönetilir. **Hiçbir modül varsayılan olarak
   fiyatlı veya satışta değildir**; tohum kayıtları (`voip`, `whatsapp`, `ai-assistant`,
-  `marketing-routes`) kapalı ve fiyatsız gelir. Fiyat satış anında büroya kilitlenir;
+  `marketing-routes`, `marketing-routes-service`) kapalı ve fiyatsız gelir. Fiyat satış anında büroya kilitlenir;
   katalog fiyatı sonra değişse de mevcut bürolar anlaştıkları fiyatta kalır.
 - **Yenileme** (`renewOffice`), **tahsilat** (`markSalePaid`), **iptal** (`voidSale`, kayıt
   silinmez, gerekçe zorunlu), **iade** (`recordRefund`, büronun tahsil edilen toplamını
@@ -115,8 +115,8 @@ ayrı origin kontrolü ve hız sınırı (IP başına ve hesap başına 15 dakik
 - Sayfa `Content-Security-Policy` (inline script/stil yok) ve `X-Frame-Options: DENY` ile
   sunulur (`vercel.json`); arayüz yalnızca `textContent` ile çizer.
 
-Bilinen sınırlar: (1) Satış kataloğundaki dört modül (`voip`, `ai-assistant`, `whatsapp`,
-`marketing-routes`) özellik kapısına bağlıdır (aşağıya bakın); katalogda sonradan eklenen başka
+Bilinen sınırlar: (1) Satış kataloğundaki beş modül (`voip`, `ai-assistant`, `whatsapp`,
+`marketing-routes`, `marketing-routes-service`) özellik kapısına bağlıdır (aşağıya bakın); katalogda sonradan eklenen başka
 bir modül, kapıya bağlanana kadar yalnızca kayıt altına alınır ve konsolda "özellik kapısı yok"
 diye işaretlenir. (2) Satışı iptal etmek verilen hizmeti (kullanıcı, modül, süre) geri almaz.
 (3) Konsol yerel geliştirme sunucusunda (`npm start`) çalışmaz; `HAN_TENANT_BASE_DOMAIN` ve
@@ -149,6 +149,52 @@ Değişiklik en geç 15 sn içinde (`createModuleGate` önbelleği) uygulanır.
   zorlama sunucudadır.
 - `GATED_MODULES` listesi tek yerde (`module-gate.cjs`); yeni bir modülü kapıya bağlamak için
   oraya eklenir ve ilgili yol `lib/application.cjs` içindeki `moduleForPath`'e yazılır.
+- **Rota Bulma iki ürünle açılır:** `marketing-routes` (modül, büro kendi anahtarını girer)
+  veya `marketing-routes-service` (aylık abonelik, platformun harita servisi). `/api/marketing/*`
+  ikisinden biri satılmışsa açıktır; hangi kaynağın kullanılabileceği ürüne göre ayrıca
+  denetlenir (aşağıdaki "Harita servisi" bölümü).
+
+#### Harita servisi (Rota Bulma aboneliği)
+
+Migration: `20261113130000_maps_service.sql` (yeni tablo yok; katalog satırı ve `usage_daily`
+ölçüleri). Kod: `lib/saas/platform-maps.cjs`.
+
+Rota Bulma bürolara iki biçimde satılır:
+
+| Ürün | Katalog kodu | Büro tarafı | Maliyet |
+| --- | --- | --- | --- |
+| Modül | `marketing-routes` | Ayarlar'a **kendi** Google Places anahtarını / tarama sunucusunu girer | Google ücreti büroya aittir |
+| Aylık abonelik | `marketing-routes-service` | Kurulum yok; kaynak olarak "Hazır harita servisi" görünür | Her arama **platformun** Google hesabından ücretlenir |
+
+- **Konsol → Yönetim → Harita servisi:** Google Places API anahtarı (şifreli saklanır, hiçbir
+  büroya ve tarayıcıya gönderilmez), isteğe bağlı **harita anahtarı** (tarayıcı anahtarı; abone
+  büroların ekranında Google haritasını açar, Places anahtarının aynısı olamaz), aç/kapa ve iki
+  sınır: **büro başına aylık arama** (varsayılan 300) ve **büro başına aylık rota yenileme**
+  (firma sayısı, varsayılan 3000). "Anahtarı test et" ücretsiz bir kimlik aramasıdır. Şifreleme
+  `PLATFORM_ENCRYPTION_KEY` ile yapılır.
+- **Sayaç:** platform anahtarıyla yapılan her "Bul" ve "Daha fazla getir" bir aramadır;
+  kayıtlı bir rotayı açmak durak sayısı kadar "firma yenileme"dir. İstek başarıyla bittikten
+  sonra `han_saas.usage_daily` tablosuna (`maps_searches`, `maps_details`) büro ve gün bazında
+  yazılır. Hak, İstanbul saatine göre ay başında sıfırlanır.
+- **Hak dolunca** büro 429 ve "Bu ayki arama hakkınız doldu" mesajını alır; istek Google'a
+  gitmez. Servis kapalıysa ya da kontrol düzlemine sorulamıyorsa servis "hazır değil" sayılır;
+  hiçbir zaman denetimsiz istek atılmaz. Sayaç yazılamazsa arama yine tamamlanır (ölçüm
+  aramayı bozmaz), bu yüzden sınır eşzamanlı isteklerde birkaç arama aşılabilir.
+- **Yalnızca aboneliği olan büro** kendi anahtarını giremez ve kullanamaz (403); Ayarlar'daki
+  Google Haritalar sayfasında yalnızca sektör listesini düzenler. İki ürünü birden alan büroda
+  her iki kaynak da seçilebilir.
+- **Kârlılık:** birim maliyetlere "Harita servisi: bir arama" ve "rota yenilemede bir firma"
+  eklendi; tahmini maliyet büro satırında ve `marketing-routes-service` ürününde görünür.
+- **Mevcut büro** (kök alan adı) her iki ürüne de sahiptir; konsolda servis açılırsa orada da
+  "Hazır harita servisi" kaynağı görünür ve aynı sınır uygulanır.
+
+Bilinen sınırlar: (a) Servis yalnızca Google Places API ile çalışır; platform tarafında harita
+tarama (gosom) kaynağı yoktur. (b) Sınırlar tüm bürolar için ortaktır, büroya özel sınır yoktur.
+(c) Aylık hak paket satın alarak artırılamaz; sınır konsoldan yükseltilir. (d) Google haritası
+(harita anahtarı) gerçek bir Google anahtarıyla denenmedi; yalnızca taklit kütüphaneyle test
+edildi. (e) Google koşulları Places sonuçlarının Google dışı haritada gösterilmesini yasaklar:
+harita anahtarı girilmezse abone bürolar firmaları haritada nokta olarak göremez (bölge çizimi ve
+süzme çalışır). Ücretli hizmette harita anahtarının girilmesi önerilir.
 
 #### Satışlarda KDV
 
@@ -357,7 +403,8 @@ Hepsi yalnızca kontrol düzlemindedir (`han_saas`, RLS açık, çalışma rolü
 **Kullanım maliyeti ve kârlılık** (`lib/saas/usage-meter.cjs`, `lib/saas/profit.cjs`)
 - **Yapay zekâ kullanımı:** büro ve gün bazında `usage_daily` tablosuna yazılır. İstek veritabanına kaydedildikten sonra sayılır, böylece yeniden denenen bir istek iki kez sayılmaz.
 - **SMS ve telefon:** SMS `sms_log` tablosundan, telefon dakikası `han_private.voip_calls` tablosundan okunur.
-- **Birim maliyetler** konsolda girilir: 1 milyon girdi ve çıktı tokenı, SMS parçası, telefon dakikası.
+- **Harita servisi:** Rota Bulma aboneliğinin aramaları ve rota yenilemeleri `usage_daily` tablosundan okunur (`maps_searches`, `maps_details`).
+- **Birim maliyetler** konsolda girilir: 1 milyon girdi ve çıktı tokenı, SMS parçası, telefon dakikası, harita servisinde bir arama ve bir firma yenileme.
 - **Kullanım maliyeti bir tahmindir.** Yalnızca büro ve ürün kârını paylaştırmak için kullanılır. Aylık kâr/zarar yalnızca girilen gerçek giderlerle hesaplanır; böylece aynı maliyet iki kez sayılmaz.
 - **Ürün kârı:** ürünün satışları, yenilemelerdeki payı (`sales.breakdown`) ve kampanya indirimleri; eksi ürüne bağlı giderler ve tahmini kullanım maliyeti.
 - **Büro kârı:** tahsil edilen gelir − büroya bağlı giderler − tahmini kullanım maliyeti. Zarar edenler üstte listelenir.

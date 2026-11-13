@@ -928,6 +928,7 @@ test('Google Haritalar settings never show the key and keep sector IDs when sect
       scraperAuth: 'Basic c2VjcmV0',
       clearScraperAuth: false,
       defaultSource: 'scraper',
+      browserKey: '',
       sectors: [
         { id: 'mobilya', label: 'mobilya', query: 'mobilya' },
         { label: 'Perde', query: 'perde mağazası' },

@@ -9,8 +9,20 @@ const { LEGACY_TENANT_ID } = require('../lib/saas/tenant-pool.cjs');
 const platform = require('../lib/saas/platform.cjs');
 
 const secret = 'Synthetic-Module-Gate-Test!';
-const ALL_ON = { voip: true, 'ai-assistant': true, whatsapp: true, 'marketing-routes': true };
-const OFF = { voip: false, 'ai-assistant': false, whatsapp: false, 'marketing-routes': false };
+const ALL_ON = {
+  voip: true,
+  'ai-assistant': true,
+  whatsapp: true,
+  'marketing-routes': true,
+  'marketing-routes-service': true,
+};
+const OFF = {
+  voip: false,
+  'ai-assistant': false,
+  whatsapp: false,
+  'marketing-routes': false,
+  'marketing-routes-service': false,
+};
 
 test('add-on gate follows the sales console: off by default, on after a sale, off after removal', async () => {
   const { pg, pool } = await database();
@@ -98,7 +110,13 @@ test('add-on gate caches briefly and denies when the control plane cannot be ask
     () => gate.enabled('voip'),
     (error) => error.status === 503,
   );
-  assert.deepEqual(GATED_MODULES, ['voip', 'ai-assistant', 'whatsapp', 'marketing-routes']);
+  assert.deepEqual(GATED_MODULES, [
+    'voip',
+    'ai-assistant',
+    'whatsapp',
+    'marketing-routes',
+    'marketing-routes-service',
+  ]);
 });
 
 test('the application refuses phone and AI routes for an office without the module', async (t) => {
@@ -185,5 +203,6 @@ test('without a gate (single office / local) every feature stays on', async (t) 
   const res = await fetch(app.url + '/api/modules', {
     headers: { ...headers, cookie: login.headers.get('set-cookie').split(';')[0] },
   });
-  assert.deepEqual(await res.json(), ALL_ON);
+  // The map service is a subscription to the selling company's account: absent here.
+  assert.deepEqual(await res.json(), { ...ALL_ON, 'marketing-routes-service': false });
 });

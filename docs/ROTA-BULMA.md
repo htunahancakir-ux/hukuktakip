@@ -1,17 +1,39 @@
 # Pazarlama → Rota Bulma
 
-Pazarlama sayfasındaki **⌖ Rota Bulma** düğmesi, Google Haritalar'daki firmaları sektör ve
-adrese göre bulur, alt süzgeçlerle daraltır, seçilen firmalardan Google Haritalar rotası
-oluşturur ve rotayı WhatsApp'tan göndermeye hazırlar.
+Pazarlama sayfasındaki **⌖ Rota Bulma** düğmesi, Google Haritalar'daki firmaları bulur: ile,
+ilçeye, sektöre ya da **haritada çizilen bir bölgeye** göre. Bulunan firmalar alt süzgeçlerle
+ve haritada çizilen bölgeyle azaltılır, seçilenlerden Google Haritalar rotası oluşturulur ve
+rota WhatsApp'tan göndermeye hazırlanır.
 
 Erişim, Pazarlama sayfasıyla aynıdır: CEO, yönetici ve birimi "Pazarlama" olan aktif personel.
 Salt okunur hesaplar (CEO hariç) arama yapamaz.
 
-Firma listesi için iki kaynak vardır; CEO birini veya ikisini açar, kullanıcı aramada seçer:
+Firma listesi için üç kaynak vardır; kullanıcı aramada hazır olanlardan seçer:
 
-1. **Google Places API** — resmî ve en güvenilir kaynak, anında sonuç; Google Cloud hesabı ister.
+1. **Google Places API** — büronun kendi Google anahtarı. Resmî ve en güvenilir kaynak, anında
+   sonuç; Google Cloud hesabı ister.
 2. **Harita tarama (gosom)** — açık kaynak `gosom/google-maps-scraper` (MIT, ücretsiz) sizin
    bilgisayarınızda/sunucunuzda çalışır. Sonuçlar birkaç dakika sürer.
+3. **Hazır harita servisi (abonelik)** — platformun (satıcı firmanın) Google hesabı. Büro hiçbir
+   anahtar girmez; aramalar aylık bir hakla sınırlıdır.
+
+## İki satış biçimi
+
+Rota Bulma bürolara iki ayrı ürün olarak satılır; biri ya da ikisi birden alınabilir:
+
+| Ürün (katalog kodu) | Büro ne yapar | Arama hangi hesapla yapılır |
+| --- | --- | --- |
+| **Pazarlama ve rota** (`marketing-routes`) — modül | Ayarlar → Entegrasyonlar → Google Haritalar'a **kendi API anahtarını** (ve/veya tarama sunucusunu) girer | Büronun kendi Google hesabı; Google ücreti büroya aittir |
+| **Rota Bulma harita servisi** (`marketing-routes-service`) — aylık abonelik | Hiçbir kurulum yapmaz | **Platformun** Google hesabı; ücret platforma aittir, büro başına aylık arama hakkı vardır |
+
+- İkisinden biri satılmışsa Rota Bulma açılır; ikisi de satılmamışsa düğme görünmez ve
+  `/api/marketing/*` 403 döner.
+- Yalnızca aboneliği olan büro kendi anahtarını giremez ve kullanamaz (403); Ayarlar'daki
+  Google Haritalar sayfasında yalnızca **sektör listesini** düzenler.
+- İkisini birden alan büroda kaynak listesinde üçü de görünür; büronun Ayarlar'da seçtiği
+  varsayılan kaynak geçerlidir.
+- Fiyatları operatör konsolda belirler; kodda fiyat yoktur. Mevcut (kök alandaki) büro her
+  ikisine de sahiptir. Ayrıntı: `docs/SAAS.md` → "Harita servisi".
 
 ## Kurulum: Google Places API (CEO)
 
@@ -54,21 +76,52 @@ bir durumu sorar; sayfadan ayrılıp dönülürse bekleme kaldığı yerden sür
 rotalar, Google anahtarı olmadan açılabilmesi için firma adı/adres/telefon/konum kopyasıyla
 saklanır. Uygulama bu uç noktaları IP başına 15 dakikada 20 tarama ve 300 durum sorgusuyla sınırlar.
 
+## Kurulum: Harita görünümü (isteğe bağlı)
+
+Ekrandaki harita hiçbir kurulum olmadan **OpenStreetMap** ile çalışır. Google haritası için
+Ayarlar → Entegrasyonlar → Google Haritalar → "3. Harita görünümü" bölümüne bir **harita
+anahtarı** girilir:
+
+- Bu, Places API anahtarından **ayrı** bir anahtardır ve tarayıcıya gönderilir. Google Cloud'da
+  yalnızca **Maps JavaScript API** ile ve sitenizin adresiyle (HTTP yönlendiren) sınırlayın.
+  Places anahtarının aynısı kabul edilmez.
+- Google kullanım koşulları, Places API'den gelen firmaların Google dışı bir haritada
+  gösterilmesini yasaklar. Bu yüzden OpenStreetMap haritasında yalnızca **harita taramasıyla**
+  bulunan firmalar nokta olarak görünür; Google'dan gelen firmalar için harita anahtarı gerekir.
+  Bölge çizme, bölgeyle arama ve bölgeyle süzme her iki haritada da çalışır.
+- Google anahtarı reddederse ekran kendiliğinden OpenStreetMap'e döner.
+- Abone bürolarda harita anahtarı platformdan gelir (konsolda girilmişse).
+
 ## Kullanım
 
-1. Sektör, il ve ilçe seçin; isterseniz mahalle, cadde ve sokak yazın. **Bul** 20 firma getirir,
-   **Daha fazla getir** ile bir aramada en çok 60 firmaya çıkılır (Google sınırı).
-2. Alt süzgeçler ek ücret doğurmaz: telefon / cep telefonu, ziyaret durumu (daha önce
-   gidilmeyenler, planlananlar, gidilenler, tekrar gidilecekler), mevcut konuma uzaklık,
-   şu an açık, yalnızca seçilen ilçe, kapanmış işletmeler, Google puanı, yorum sayısı,
-   web sitesi, ad/adres araması ve sıralama.
-3. Satırları veya **görünenlerin tümünü** seçip **Rota Oluştur**'a basın. Sıra en kısa yola
+1. **Yer seçin.** Yalnızca **il** seçmek yeterlidir; isterseniz ilçe, mahalle, cadde, sokak
+   ekleyin. İl yerine **haritada bölge çizerek** de arayabilirsiniz. Sektör isteğe bağlıdır:
+   "Tüm sektörler" seçiliyken her tür firma aranır. Hiçbir alan tek başına zorunlu değildir;
+   gereken tek şey bir il ya da çizilmiş bir bölgedir.
+2. **Haritada bölge çizme.** **✎ Bölge çiz**'e basın, haritada basılı tutup aramak istediğiniz
+   alanın çevresini dolaşın; bırakınca bölge kapanır (telefonda parmakla). **▭ Görünen alanı
+   seç** ekrandaki harita alanını bölge yapar, **✕ Bölgeyi sil** kaldırır, Esc çizimden çıkar.
+   Bölge seçiliyken **Bul** yalnızca o bölgede arar.
+3. **Bul** 20 firma getirir, **Daha fazla getir** ile bir aramada en çok 60 firmaya çıkılır
+   (Google sınırı). Yalnızca il ile arandığında sonuçlar ilin tümünden gelir.
+4. **Bulunan firmaları azaltma.** Hiçbiri ek ücret doğurmaz:
+   - Süzgeçler: telefon / cep telefonu, ziyaret durumu (daha önce gidilmeyenler, planlananlar,
+     gidilenler, tekrar gidilecekler), mevcut konuma uzaklık, şu an açık, kapanmış işletmeler,
+     Google puanı, yorum sayısı, web sitesi, **ilçe** (bulunan firmaların ilçeleri, sayılarıyla),
+     ad/adres araması, **adında geçmesin** (ör. `avm, şube`) ve sıralama.
+   - **Haritada bölge:** arama sonrasında çizilen bölge listeyi o bölgedeki firmalara indirir.
+   - **Yalnızca görünenleri tut** süzgeçlere ve bölgeye uymayanları listeden kalıcı olarak
+     çıkarır; satırdaki **✕** tek bir firmayı çıkarır; **Süzgeçleri sıfırla** ilk hâle döner.
+   - Haritadaki noktaya tıklamak o firmayı seçer; satırın üzerine gelince noktası belirginleşir.
+     Nokta renkleri: mavi yeni, turuncu planlandı, yeşil gidildi, kırmızı ilgilenmiyor.
+5. Satırları veya **görünenlerin tümünü** seçip **Rota Oluştur**'a basın. Sıra en kısa yola
    göre hesaplanır, elle değiştirilebilir.
-4. **Google Haritalar'da Aç**, **WhatsApp'a Gönder** veya **Rotayı Kopyala**. WhatsApp mesajı
+6. **Google Haritalar'da Aç**, **WhatsApp'a Gönder** veya **Rotayı Kopyala**. WhatsApp mesajı
    kullanıcının kayıtlı WhatsApp/personel telefonuna hazırlanır; numara yoksa kişi seçilir.
-5. **Rotalarım** sekmesinde kayıtlı rota açılır; her durakta **Yol tarifi** ve
+7. **Rotalarım** sekmesinde kayıtlı rota açılır; her durakta **Yol tarifi** ve
    **Ziyareti Kaydet** bulunur. Ziyaret, Potansiyel Müvekkil kaydı olarak düşer
-   (Ziyaret Sonucu: Görüşüldü / Yetkili yoktu / İlgilenmiyor / Tekrar gidilecek).
+   (Ziyaret Sonucu: Görüşüldü / Yetkili yoktu / İlgilenmiyor / Tekrar gidilecek). İlçesiz ya da
+   yalnızca bölgeyle aranmış bir rotada il ve ilçe firmanın adresinden doldurulur, düzeltilebilir.
 
 Bir firma, Google yer kimliği, telefon numarası veya aynı ilçedeki firma adı bir Potansiyel
 Müvekkil kaydıyla eşleşirse "Gidildi" sayılır. Kayıtlı bir rotada olup ziyaret kaydı
@@ -90,7 +143,8 @@ adını görmez.
 
 Google Haritalar koşulları gereği firma adı, adresi ve koordinatı saklanmaz. Kayıtlı rotada
 yalnızca Google yer kimlikleri, arama ölçütleri, başlangıç türü (cihaz konumu saklanmaz) ve
-oluşturan kişi tutulur. Büro başına en yeni 300 rota saklanır; daha eski rotalar listeden
+oluşturan kişi tutulur. Haritada çizilen bölge (kullanıcının kendi çizimi) rotayla birlikte
+saklanır. Büro başına en yeni 300 rota saklanır; daha eski rotalar listeden
 düşer, bağlı ziyaret kayıtları korunur. Arama sonuçları yalnızca tarayıcı sayfasında kalır.
 Kullanıcının kaydettiği ziyaret, Potansiyel Müvekkil kaydı olarak saklanır.
 
@@ -99,6 +153,21 @@ Kullanıcının kaydettiği ziyaret, Potansiyel Müvekkil kaydı olarak saklanı
 - Arama, rota yenileme ve anahtar testi Google çağrısı sırasında veritabanı işlemi
   tutmaz: bulutta salt okunur istek yolundan geçer (`lib/application.cjs`).
 - Kod: `outputs/icrapro/access-marketing.cjs` (uç noktalar), `lib/marketing-routes.cjs`,
-  `lib/google-places.cjs`, `lib/maps-settings.cjs`, `outputs/icrapro/workspace-marketing.js`
-  (ekran), `outputs/icrapro/workspace-marketing-route.js` (sıra, bağlantı, süzgeç).
-- Testler: `tests/marketing-route.test.cjs`.
+  `lib/google-places.cjs`, `lib/maps-settings.cjs`, `lib/saas/platform-maps.cjs` (abonelik
+  servisi), `outputs/icrapro/workspace-marketing.js` (ekran),
+  `outputs/icrapro/workspace-marketing-map.js` (harita ve çizim katmanı),
+  `outputs/icrapro/workspace-marketing-route.js` (sıra, bağlantı, süzgeç, bölge hesabı).
+- **Bölge:** en çok 60 köşeli bir çokgendir (`[enlem, boylam]`, yaklaşık 1 m'ye yuvarlanır),
+  her kenarı en az 100 m olmalıdır. Serbest çizim ekranda sadeleştirilir. Google'a bölgenin
+  dikdörtgeni `locationRestriction` olarak, tarama sunucusuna merkez + yakınlaştırma + yarıçap
+  olarak gider; dikdörtgenin içinde ama çizimin dışında kalan firmalar sunucuda elenir.
+- **Harita:** Leaflet 1.9.4 (BSD-2-Clause) `outputs/icrapro/leaflet.js` olarak depoda durur ve
+  Rota Bulma açılınca yüklenir. Altlık OpenStreetMap karolarıdır (`tile.openstreetmap.org`,
+  anahtarsız; yoğun ticari kullanımda ücretli bir karo sağlayıcısına geçilmelidir). Çizim ve
+  nokta katmanı altlıktan bağımsız tek bir SVG'dir; Google altlığı yalnızca harita anahtarı
+  varken yüklenir.
+- **Zorunlu alanlar:** uygulama her formda `data-optional` taşımayan alanı zorunlu kılar
+  (`personnel.js`). Arama formundaki isteğe bağlı alanlar bu yüzden `data-optional="true"`
+  taşır; gizli "Aranacak sektör" kutusu seçilmediğinde devre dışıdır.
+- Testler: `tests/marketing-route.test.cjs`, `tests/marketing-scraper.test.cjs`,
+  `tests/marketing-map.test.cjs`, `tests/platform-maps.test.cjs`.

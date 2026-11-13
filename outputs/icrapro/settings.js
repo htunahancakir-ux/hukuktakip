@@ -377,11 +377,12 @@ const INTEGRATION_MODULE = {
   voip: 'voip',
   permissions: 'voip',
   whatsapp: 'whatsapp',
-  maps: 'marketing-routes',
+  // Either product opens Rota Bulma: the module (own map keys) or the map service subscription.
+  maps: ['marketing-routes', 'marketing-routes-service'],
 };
 function integrationAvailable(id) {
-  const code = INTEGRATION_MODULE[id];
-  return !code || globalThis.hanModules?.[code] !== false;
+  const codes = [INTEGRATION_MODULE[id]].flat().filter(Boolean);
+  return !codes.length || codes.some((code) => globalThis.hanModules?.[code] !== false);
 }
 function firstIntegrationTab() {
   if (hanAuth.role !== 'ceo') return integrationAvailable('permissions') ? 'permissions' : 'firm';

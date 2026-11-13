@@ -1393,9 +1393,199 @@ dialog.modal-dragging .modal-drag-handle {
 .marketing-route .muted {
   color: #8a96a3;
 }
+/* Rota Bulma: the search form beside the map the region is drawn on. The map keeps one
+   height, so nothing on the page moves when a region is drawn or firms arrive. */
+.marketing-search-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 5fr) 7fr;
+  align-items: start;
+}
+.marketing-search-layout .marketing-search-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.marketing-search-layout .actions {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.marketing-map-panel {
+  padding: 20px 20px 12px 0;
+  min-width: 0;
+}
+.marketing-map-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.marketing-map-tools button {
+  padding: 8px 12px;
+  white-space: nowrap;
+}
+.marketing-map-tools button.selected {
+  border-color: #183b4b;
+  background: #183b4b;
+  color: #fff;
+}
+/* The draw button's label changes; its width does not. */
+#marketingDraw {
+  min-width: 132px;
+}
+/* Room for two lines, so a longer message never pushes the map down. */
+.marketing-region-status {
+  min-height: 34px;
+  margin: 0 0 8px;
+  line-height: 17px;
+}
+.marketing-map {
+  position: relative;
+  height: 400px;
+  overflow: hidden;
+  border: 1px solid #dce2e8;
+  border-radius: 8px;
+  background: #eef2f5;
+}
+.marketing-map-wait {
+  margin: 0;
+  padding: 20px;
+  color: #6b7785;
+  font-size: 13px;
+}
+/* Its own stacking context: the map library's layers stay under the drawing layer. */
+.marketing-map-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+.marketing-map-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.marketing-map-capture {
+  display: none;
+  fill: transparent;
+}
+/* While drawing, a finger on the map draws: it neither scrolls the page nor moves the map. */
+.marketing-map-overlay.drawing {
+  touch-action: none;
+}
+.marketing-map-overlay.drawing .marketing-map-capture {
+  display: block;
+  pointer-events: all;
+  cursor: crosshair;
+  touch-action: none;
+}
+.marketing-map-region {
+  fill: rgba(24, 59, 75, 0.14);
+  stroke: #183b4b;
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  stroke-linejoin: round;
+}
+.marketing-map-stroke {
+  fill: none;
+  stroke: #b7945c;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.marketing-pin {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.marketing-pin circle {
+  fill: #2563eb;
+  stroke: #fff;
+  stroke-width: 2;
+}
+.marketing-pin.planned circle {
+  fill: #d97706;
+}
+.marketing-pin.visited circle {
+  fill: #15803d;
+}
+.marketing-pin.refused circle {
+  fill: #b91c1c;
+}
+.marketing-pin.selected circle {
+  stroke: #111827;
+  stroke-width: 3;
+}
+.marketing-pin.hover circle,
+.marketing-pin:hover circle {
+  stroke: #b7945c;
+  stroke-width: 4;
+}
+.marketing-map-note {
+  min-height: 34px;
+  margin: 8px 0 0;
+}
+.marketing-legend .marketing-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin: 0 4px 0 8px;
+  border-radius: 50%;
+  background: #2563eb;
+  vertical-align: -1px;
+}
+.marketing-legend .marketing-dot:first-child {
+  margin-left: 0;
+}
+.marketing-legend .marketing-dot.planned {
+  background: #d97706;
+}
+.marketing-legend .marketing-dot.visited {
+  background: #15803d;
+}
+.marketing-legend .marketing-dot.refused {
+  background: #b91c1c;
+}
+.marketing-legend .marketing-dot.selected {
+  box-sizing: border-box;
+  border: 3px solid #111827;
+  background: #fff;
+}
+.marketing-narrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 0 20px 14px;
+}
+.marketing-narrow button {
+  padding: 8px 12px;
+}
+.marketing-results th.marketing-drop,
+.marketing-results td.marketing-drop {
+  width: 36px;
+  text-align: center;
+}
+.marketing-results tr.hover td {
+  background: #fbf6ec;
+}
+@media (max-width: 900px) {
+  .marketing-search-layout {
+    grid-template-columns: 1fr;
+  }
+  .marketing-region-status {
+    min-height: 51px;
+  }
+  .marketing-map-panel {
+    padding: 0 20px 12px;
+  }
+  .marketing-map {
+    height: 320px;
+  }
+}
 @media (max-width: 600px) {
   .marketing-filters,
-  .marketing-search-grid {
+  .marketing-search-grid,
+  .marketing-search-layout .marketing-search-grid {
     grid-template-columns: 1fr;
   }
   .marketing-stops {

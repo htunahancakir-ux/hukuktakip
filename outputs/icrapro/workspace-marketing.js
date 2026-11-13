@@ -1,6 +1,23 @@
-// Pazarlama → Rota Bulma: Google Maps firm search, filters, route links, WhatsApp
-// hand-off and visit records. Pure route logic lives in workspace-marketing-route.js.
+// Pazarlama → Rota Bulma: Google Maps firm search, a map to draw the search region on,
+// filters, route links, WhatsApp hand-off and visit records. Pure route logic lives in
+// workspace-marketing-route.js, the map in workspace-marketing-map.js.
 let marketingView = 'prospects';
+const MARKETING_FILTER_DEFAULTS = Object.freeze({
+  phone: '',
+  visit: 'all',
+  hideRefused: true,
+  maxKm: 0,
+  openNow: false,
+  districtOnly: true,
+  hideClosed: true,
+  minRating: 0,
+  minReviews: 0,
+  website: '',
+  district: '',
+  exclude: '',
+  query: '',
+  sort: '',
+});
 const marketingRouteState = {
   tab: 'search',
   overview: null,
@@ -17,7 +34,15 @@ const marketingRouteState = {
     street: '',
   },
   criteria: null,
-  // Source of the current result list: 'google' or 'scraper'.
+  // The region drawn on the map, as [lat, lng] corners. It limits the next search and
+  // narrows the firms already found.
+  region: null,
+  // The map on screen (workspace-marketing-map.js) and where it was looking, so a redraw
+  // of the page returns to the same place.
+  map: null,
+  mapView: null,
+  mapMount: null,
+  // Source of the current result list: 'google', 'platform' (the subscription) or 'scraper'.
   source: 'google',
   // A running scrape: { jobId, criteria, depth, startedAt }. Polling resumes when the page reopens.
   job: null,
@@ -27,20 +52,7 @@ const marketingRouteState = {
   outside: 0,
   loading: false,
   selected: new Set(),
-  filters: {
-    phone: '',
-    visit: 'all',
-    hideRefused: true,
-    maxKm: 0,
-    openNow: false,
-    districtOnly: true,
-    hideClosed: true,
-    minRating: 0,
-    minReviews: 0,
-    website: '',
-    query: '',
-    sort: '',
-  },
+  filters: { ...MARKETING_FILTER_DEFAULTS },
   // Device coordinates stay in this page's memory; only the start's label is saved.
   origin: { mode: 'none', label: '', lat: null, lng: null },
   plan: null,
@@ -155,12 +167,34 @@ function marketingSources() {
 
 function marketingBlockedNotice() {
   const overview = marketingRouteState.overview;
-  if (!marketingSources().length)
+  if (!marketingSources().length) {
+    // A subscribed office has nothing to set up: its service is off or this month's
+    // searches are used up.
+    if (overview.service?.message) return esc(overview.service.message);
     return overview.canConfigure
       ? 'Firma arama kaynağı kurulmadı. Ayarlar → Entegrasyonlar → Google Haritalar bölümünden Google API anahtarını veya harita tarama sunucusunu girin. <button type="button" class="link" id="marketingOpenSettings">Ayarlara git</button>'
       : 'Firma arama kaynağı kurulmadı. CEO’nun Ayarlar → Entegrasyonlar → Google Haritalar bölümünden bir kaynak bağlaması gerekiyor.';
+  }
   if (marketingReadOnly()) return 'Bu hesap salt okunurdur. Harita araması yapılamaz.';
   return '';
+}
+
+const marketingSourceLabel = (source) =>
+  ({ scraper: 'Harita tarama (gosom)', platform: 'Hazır harita servisi' })[source] || 'Google Places API';
+
+// "Kızılay / Çankaya / Ankara", or the drawn region when the search named no place.
+function marketingAreaLabel(criteria) {
+  const named = [criteria.neighborhood, criteria.district, criteria.city].filter(Boolean).join(' / ');
+  if (!named) return 'Haritada çizilen bölge';
+  return named + (criteria.region || criteria.drawn ? ' · çizilen bölge' : '');
+}
+
+function marketingServiceNote() {
+  const service = marketingRouteState.overview.service;
+  if (!service || !Number.isFinite(service.searchesLeft)) return '';
+  return `Hazır harita servisi: bu ay kalan arama hakkı ${service.searchesLeft.toLocaleString('tr-TR')} / ${Number(
+    service.monthlySearches,
+  ).toLocaleString('tr-TR')}. Her “Bul” ve “Daha fazla getir” bir arama sayılır.`;
 }
 
 function marketingFormSource() {
@@ -176,9 +210,11 @@ function marketingSearchTab() {
     sources = marketingSources(),
     source = marketingFormSource();
   const text = (name, label, placeholder) =>
-    `<label class="field">${label}<input name="${name}" maxlength="80" autocomplete="off" value="${esc(form[name])}" placeholder="${esc(placeholder)}"></label>`;
+    `<label class="field">${label}<input name="${name}" maxlength="80" autocomplete="off" data-optional="true" value="${esc(form[name])}" placeholder="${esc(placeholder)}"></label>`;
+  const serviceNote = marketingServiceNote();
   $('#marketingRouteBody').innerHTML =
     `${blocked ? `<div class="notice marketing-notice">${blocked}</div>` : ''}
+    <div class="marketing-search-layout">
     <form id="marketingSearchForm" class="formbody"><div class="grid marketing-search-grid">
       <label class="field">Kaynak<select name="source" ${sources.length > 1 ? '' : 'disabled'}>${(sources.length
         ? sources
@@ -186,27 +222,81 @@ function marketingSearchTab() {
       )
         .map((item) => `<option value="${esc(item.id)}">${esc(item.label)}</option>`)
         .join('')}</select></label>
-      <label class="field" id="marketingDepthField" ${source === 'scraper' ? '' : 'hidden'}>Tarama kapsamı<select name="depth"><option value="quick">Hızlı (ilk sonuçlar)</option><option value="normal">Normal</option><option value="wide">Geniş (daha çok firma, daha uzun sürer)</option></select><small>Tarama birkaç dakika sürer; sonuçlar hazır olunca liste kendiliğinden gelir.</small></label>
-      <label class="field">Sektör *<select name="sector" required><option value="">Sektör seçin</option>${state.overview.sectors
+      <label class="field" id="marketingDepthField" ${source === 'scraper' ? '' : 'hidden'}>Tarama kapsamı<select name="depth" data-optional="true"><option value="quick">Hızlı (ilk sonuçlar)</option><option value="normal">Normal</option><option value="wide">Geniş (daha çok firma, daha uzun sürer)</option></select><small>Tarama birkaç dakika sürer; sonuçlar hazır olunca liste kendiliğinden gelir.</small></label>
+      <label class="field">Sektör<select name="sector" data-optional="true"><option value="">Tüm sektörler</option>${state.overview.sectors
         .map((sector) => `<option value="${esc(sector.id)}">${esc(sector.label)}</option>`)
         .join('')}<option value="custom">Diğer (elle yazın)</option></select></label>
-      <label class="field" id="marketingCustomSector" ${form.sector === 'custom' ? '' : 'hidden'}>Aranacak sektör *<input name="customQuery" maxlength="80" value="${esc(form.customQuery)}" placeholder="ör. elektrik malzemeleri"></label>
+      <label class="field" id="marketingCustomSector" ${form.sector === 'custom' ? '' : 'hidden'}>Aranacak sektör *<input name="customQuery" maxlength="80" ${form.sector === 'custom' ? '' : 'disabled'} value="${esc(form.customQuery)}" placeholder="ör. elektrik malzemeleri"></label>
       ${clientCityField({ city: form.city, district: form.district }, 'route')}
       ${text('neighborhood', 'Mahalle', 'ör. Kızılay')}${text('avenue', 'Cadde', 'ör. Atatürk Bulvarı')}${text('street', 'Sokak', 'ör. Sakarya Sokak')}
-    </div><div class="actions"><button class="primary" type="submit" id="marketingSearchButton" ${blocked ? 'disabled' : ''}>Bul</button></div></form>
+    </div><div class="actions"><button class="primary" type="submit" id="marketingSearchButton" ${blocked ? 'disabled' : ''}>Bul</button><span class="marketing-hint">Yalnızca il seçmek ya da haritada bölge çizmek yeterlidir; diğer alanlar aramayı daraltır.</span></div>${
+      serviceNote ? `<p class="marketing-hint" id="marketingServiceNote">${esc(serviceNote)}</p>` : ''
+    }</form>
+    <section class="marketing-map-panel" aria-label="Harita">
+      <div class="marketing-map-tools">
+        <button type="button" class="secondary" id="marketingDraw" aria-pressed="false" title="Haritada basılı tutup sürükleyerek aramak istediğiniz bölgenin çevresini çizin">✎ Bölge çiz</button>
+        <button type="button" class="secondary" id="marketingViewport" title="Haritada şu an görünen alanı bölge olarak seçer">▭ Görünen alanı seç</button>
+        <button type="button" class="secondary" id="marketingRegionClear" title="Çizilen bölgeyi kaldırır">✕ Bölgeyi sil</button>
+      </div>
+      <p class="marketing-hint marketing-region-status" id="marketingRegionStatus" role="status" aria-live="polite"></p>
+      <div id="marketingMap" class="marketing-map"><p class="marketing-map-wait">Harita yükleniyor…</p></div>
+      <p class="marketing-hint marketing-map-note" id="marketingMapNote"></p>
+    </section>
+    </div>
     <div id="marketingResults"></div>
     <div id="marketingPlan"></div>`;
   const searchForm = $('#marketingSearchForm');
   setupClientCity('route');
   setupClientDistrict('route');
+  // The application makes every form field mandatory unless it says data-optional
+  // (personnel.js). Here only a place is needed: the shared province and district fields
+  // are required in client forms, but a province alone or a drawn region alone is enough.
+  for (const [name, label] of [
+    ['city', 'İl'],
+    ['district', 'İlçe'],
+  ]) {
+    const input = searchForm.elements[name];
+    if (!input) continue;
+    input.required = false;
+    input.dataset.optional = 'true';
+    const caption = searchForm.querySelector(`label[for="${input.id}"]`);
+    if (caption) caption.textContent = label;
+  }
   searchForm.elements.sector.value = state.overview.sectors.some((sector) => sector.id === form.sector)
     ? form.sector
     : form.sector === 'custom'
       ? 'custom'
       : '';
+  // The typed sector is asked for only when "Diğer" is chosen; a hidden field stays out
+  // of the form's validation by being disabled.
   searchForm.elements.sector.onchange = () => {
-    $('#marketingCustomSector').hidden = searchForm.elements.sector.value !== 'custom';
+    const custom = searchForm.elements.sector.value === 'custom';
+    $('#marketingCustomSector').hidden = !custom;
+    searchForm.elements.customQuery.disabled = !custom;
   };
+  // Choosing a province turns the map to it.
+  searchForm.elements.city?.addEventListener('change', () => {
+    if (!state.region) state.map?.focusCity(searchForm.elements.city.value);
+  });
+  $('#marketingDraw').onclick = () => {
+    if (!state.map) return toast('Harita henüz yüklenmedi.');
+    if (state.map.drawing) state.map.stopDraw();
+    else state.map.startDraw();
+    marketingRegionStatus();
+  };
+  $('#marketingViewport').onclick = () => {
+    if (!state.map) return toast('Harita henüz yüklenmedi.');
+    const region = state.map.viewportRegion();
+    if (!region) return toast('Görünen alan bölge olarak seçilemedi. Haritayı biraz yaklaştırın.');
+    state.map.stopDraw();
+    marketingSetRegion(region);
+  };
+  $('#marketingRegionClear').onclick = () => {
+    state.map?.stopDraw();
+    marketingSetRegion(null);
+  };
+  marketingRegionStatus();
+  marketingMountMap();
   searchForm.elements.source.value = source;
   searchForm.elements.depth.value = form.depth;
   searchForm.elements.source.onchange = () => {
@@ -228,13 +318,165 @@ function marketingSearchTab() {
     form.source = searchForm.elements.source.value;
     form.depth = searchForm.elements.depth.value;
     if (form.source === 'scraper') marketingStartScrape(body, form.depth);
-    else marketingSearch(body);
+    else marketingSearch(body, false, form.source === 'platform' ? 'platform' : 'google');
   };
   if (state.job) {
     marketingRenderScrapeStatus();
     marketingScheduleScrapePoll(0);
   } else marketingRenderResults();
   marketingRenderPlan();
+}
+
+// --- Map and drawn region -------------------------------------------------------------
+
+const marketingKm2 = (value) =>
+  value < 1
+    ? Math.round(value * 100) + ' hektar'
+    : value.toLocaleString('tr-TR', { maximumFractionDigits: value < 10 ? 1 : 0 }) + ' km²';
+
+function marketingRegionStatus(problem = '') {
+  const state = marketingRouteState,
+    status = document.getElementById('marketingRegionStatus');
+  if (!status) return;
+  const drawing = !!state.map?.drawing;
+  const draw = document.getElementById('marketingDraw');
+  draw.setAttribute('aria-pressed', String(drawing));
+  draw.classList.toggle('selected', drawing);
+  draw.textContent = drawing ? '✎ Çizimi bırak' : state.region ? '✎ Yeniden çiz' : '✎ Bölge çiz';
+  document.getElementById('marketingRegionClear').disabled = !state.region;
+  status.textContent =
+    problem ||
+    (drawing
+      ? 'Basılı tutup sürükleyerek bölgenin çevresini çizin; bırakınca bölge kapanır. Vazgeçmek için Esc.'
+      : state.region
+        ? `Bölge seçili (yaklaşık ${marketingKm2(HanMarketingRoute.regionAreaKm2(state.region))}): “Bul” bu bölgede arar, bulunan firmalar bu bölgeyle süzülür.`
+        : 'Bölge seçilmedi. Haritada çizerek arama bölgesini belirleyebilirsiniz.');
+}
+
+// A new or cleared region re-filters the firms already found.
+function marketingSetRegion(region) {
+  const state = marketingRouteState;
+  state.region = region;
+  state.map?.setRegion(region);
+  marketingRegionStatus();
+  if (state.criteria && !state.job) marketingRenderRows();
+}
+
+function marketingMapView() {
+  const state = marketingRouteState;
+  if (state.mapView) return state.mapView;
+  const map = typeof HanMarketingMap === 'undefined' ? null : HanMarketingMap;
+  return map?.cityView(state.form.city) || map?.cityView(state.overview?.office?.city) || null;
+}
+
+// Google's terms allow Places results only on a Google map; scraped results carry no such rule.
+function marketingPinsAllowed() {
+  const state = marketingRouteState;
+  return !!state.map && (state.source === 'scraper' || state.map.provider === 'google');
+}
+
+function marketingMountMap() {
+  const state = marketingRouteState,
+    box = document.getElementById('marketingMap');
+  if (state.map) {
+    state.mapView = state.map.view() || state.mapView;
+    state.map.destroy();
+    state.map = null;
+  }
+  if (!box || typeof HanMarketingMap === 'undefined') return;
+  const mount = (state.mapMount = {});
+  HanMarketingMap.create(box, {
+    provider: state.overview.map,
+    view: marketingMapView(),
+    onRegion: (region) => marketingSetRegion(region),
+    onToggle: (placeId) => marketingToggleSelected(placeId),
+    onHover: (placeId) => {
+      for (const row of document.querySelectorAll('#marketingRows tr[data-place]'))
+        row.classList.toggle('hover', row.dataset.place === placeId);
+    },
+    onDrawProblem: (kind) =>
+      marketingRegionStatus(
+        kind === 'short'
+          ? 'Bölge çizilemedi: basılı tutup bölgenin çevresini dolaşacak şekilde sürükleyin.'
+          : kind === 'small'
+            ? 'Çizilen bölge çok küçük. Haritayı yaklaştırın ya da daha geniş bir alan çizin.'
+            : '',
+      ),
+    onFallback: () => {
+      toast('Google haritası açılamadı; OpenStreetMap haritası gösteriliyor.');
+      marketingSyncMap();
+    },
+  })
+    .then((map) => {
+      // The page may have been redrawn or left while the map was loading.
+      if (!map) return;
+      if (state.mapMount !== mount || !box.isConnected) return map.destroy();
+      state.map = map;
+      map.setRegion(state.region);
+      marketingRegionStatus();
+      marketingSyncMap();
+    })
+    .catch((error) => {
+      if (state.mapMount !== mount || !box.isConnected) return;
+      box.innerHTML = `<p class="marketing-map-wait">${esc(
+        error?.message || 'Harita yüklenemedi.',
+      )} İl ve ilçe seçerek aramaya devam edebilirsiniz.</p>`;
+    });
+}
+
+// Puts the firms on the list onto the map as dots.
+function marketingSyncMap(rows = null) {
+  const state = marketingRouteState,
+    note = document.getElementById('marketingMapNote');
+  if (!state.map) return;
+  const shown = rows || (state.criteria && !state.job ? marketingVisible() : []);
+  const allowed = marketingPinsAllowed();
+  state.map.setPins(
+    allowed
+      ? shown
+          .filter((place) => Number.isFinite(place.lat) && Number.isFinite(place.lng))
+          .map((place) => ({
+            placeId: place.placeId,
+            lat: place.lat,
+            lng: place.lng,
+            name: place.name,
+            status:
+              place.visit?.result === 'İlgilenmiyor'
+                ? 'refused'
+                : place.visit?.status === 'visited'
+                  ? 'visited'
+                  : place.visit?.status === 'planned'
+                    ? 'planned'
+                    : 'new',
+            selected: state.selected.has(place.placeId),
+          }))
+      : [],
+  );
+  if (!note) return;
+  note.innerHTML = !state.criteria
+    ? ''
+    : allowed
+      ? '<span class="marketing-legend"><span class="marketing-dot new"></span>Yeni <span class="marketing-dot planned"></span>Planlandı <span class="marketing-dot visited"></span>Gidildi <span class="marketing-dot refused"></span>İlgilenmiyor <span class="marketing-dot selected"></span>Seçili</span> · Noktaya tıklayarak firmayı seçin.'
+      : 'Google koşulları gereği Google’dan gelen firmalar yalnızca Google haritasında nokta olarak gösterilir. Çizdiğiniz bölge yine aramada ve süzmede kullanılır.' +
+        (state.overview.canConfigure
+          ? ' Noktaları görmek için Ayarlar → Entegrasyonlar → Google Haritalar bölümüne harita anahtarı girin.'
+          : '');
+}
+
+// After a search: look at the region searched, or at the firms found.
+function marketingFitMap() {
+  const state = marketingRouteState;
+  if (!state.map) return;
+  if (state.criteria?.region) return state.map.fitRegion(state.criteria.region);
+  if (marketingPinsAllowed() && state.places.length) return state.map.fitPoints(state.places);
+  state.map.focusCity(state.criteria?.city);
+}
+
+function marketingToggleSelected(placeId) {
+  const state = marketingRouteState;
+  if (state.selected.has(placeId)) state.selected.delete(placeId);
+  else state.selected.add(placeId);
+  marketingRenderRows();
 }
 
 const marketingPollDelay = () => Number(globalThis.hanMarketingPollMs) || 10000;
@@ -258,6 +500,8 @@ async function marketingStartScrape(body, depth) {
     state.plan = null;
     state.outside = 0;
     state.nextPageToken = '';
+    state.filters.district = '';
+    marketingSyncMap([]);
   } catch (error) {
     toast(error.message);
   } finally {
@@ -333,6 +577,7 @@ async function marketingPollScrape() {
     if (button) button.disabled = !!marketingBlockedNotice();
     marketingRenderResults();
     marketingRenderPlan();
+    marketingFitMap();
   }
 }
 
@@ -347,14 +592,19 @@ function marketingSearchInput(form) {
   const same = (a, b) => String(a).toLocaleLowerCase('tr') === String(b).trim().toLocaleLowerCase('tr');
   const sector = form.elements.sector.value;
   const customQuery = form.elements.customQuery.value.trim();
-  const city = Object.keys(turkeyDistricts).find((name) => same(name, form.elements.city.value));
-  const district = (turkeyDistricts[city] || []).find((name) => same(name, form.elements.district.value));
-  if (!sector) return fail(form.elements.sector, 'Bir sektör seçin.');
+  const typedCity = form.elements.city.value.trim(),
+    typedDistrict = form.elements.district.value.trim();
+  const city = Object.keys(turkeyDistricts).find((name) => same(name, typedCity)) || '';
+  const district = (turkeyDistricts[city] || []).find((name) => same(name, typedDistrict)) || '';
+  const region = marketingRouteState.region;
   if (sector === 'custom' && customQuery.length < 2)
     return fail(form.elements.customQuery, 'Aranacak sektörü yazın.');
-  if (!city) return fail(form.elements.city, 'Listeden bir il seçin.');
-  if (!district) return fail(form.elements.district, 'Listeden bir ilçe seçin.');
-  const body = {
+  // A place is all a search needs: a province, or a region drawn on the map.
+  if (typedCity && !city) return fail(form.elements.city, 'Listeden bir il seçin.');
+  if (!city && !region) return fail(form.elements.city, 'Bir il seçin veya haritada bir bölge çizin.');
+  if (typedDistrict && !district)
+    return fail(form.elements.district, 'Listeden bir ilçe seçin ya da ilçeyi boş bırakın.');
+  const fields = {
     sector,
     customQuery: sector === 'custom' ? customQuery : '',
     city,
@@ -363,13 +613,16 @@ function marketingSearchInput(form) {
     avenue: form.elements.avenue.value.trim(),
     street: form.elements.street.value.trim(),
   };
-  Object.assign(marketingRouteState.form, body);
-  return body;
+  Object.assign(marketingRouteState.form, fields);
+  return region ? { ...fields, region } : fields;
 }
 
-async function marketingSearch(body, more = false) {
+// `source` is 'google' (the office's own key) or 'platform' (the subscribed map service).
+async function marketingSearch(body, more = false, source = 'google') {
   const state = marketingRouteState;
   if (state.loading) return;
+  if (more) source = state.source;
+  const via = source === 'platform' ? { source: 'platform' } : {};
   state.loading = true;
   const button = document.getElementById(more ? 'marketingMore' : 'marketingSearchButton');
   if (button) {
@@ -379,23 +632,32 @@ async function marketingSearch(body, more = false) {
   if (!more)
     $('#marketingResults').innerHTML =
       '<p class="formbody" role="status" aria-live="polite">Google Haritalar’da aranıyor…</p>';
+  let found = false;
   try {
     const result = await marketingRouteRequest(
       '/api/marketing/search',
-      more ? { ...state.criteria, pageToken: state.nextPageToken } : body,
+      more ? { ...state.criteria, ...via, pageToken: state.nextPageToken } : { ...body, ...via },
     );
     if (!more) {
       state.criteria = body;
-      state.source = 'google';
+      state.source = source;
       state.places = [];
       state.selected = new Set();
       state.plan = null;
       state.outside = 0;
+      // A list from another search starts unfiltered by district.
+      state.filters.district = '';
     }
     const known = new Set(state.places.map((place) => place.placeId));
     state.places.push(...result.places.filter((place) => !known.has(place.placeId)));
     state.nextPageToken = result.nextPageToken || '';
     state.outside += result.outside || 0;
+    if (Number.isFinite(result.searchesLeft) && state.overview.service) {
+      state.overview.service.searchesLeft = result.searchesLeft;
+      const note = document.getElementById('marketingServiceNote');
+      if (note) note.textContent = marketingServiceNote();
+    }
+    found = !more;
   } catch (error) {
     toast(error.message);
   } finally {
@@ -408,6 +670,7 @@ async function marketingSearch(body, more = false) {
       }
       marketingRenderResults();
       marketingRenderPlan();
+      if (found) marketingFitMap();
     }
   }
 }
@@ -446,7 +709,7 @@ function marketingOriginLabel(
 
 function marketingVisible() {
   const state = marketingRouteState;
-  return HanMarketingRoute.filterPlaces(state.places, state.filters, marketingOriginPoint());
+  return HanMarketingRoute.filterPlaces(state.places, state.filters, marketingOriginPoint(), state.region);
 }
 
 function marketingVisitBadge(visit) {
@@ -477,23 +740,26 @@ function marketingRenderResults() {
   const sector =
     criteria.sector === 'custom'
       ? criteria.customQuery
-      : state.overview.sectors.find((item) => item.id === criteria.sector)?.label || '';
+      : state.overview.sectors.find((item) => item.id === criteria.sector)?.label || 'Tüm firmalar';
+  // The districts the firms are in: a province-wide search is narrowed with these.
+  const districts = HanMarketingRoute.districtCounts(state.places);
+  if (
+    !districts.some((item) => HanMarketingRoute.fold(item.name) === HanMarketingRoute.fold(filters.district))
+  )
+    filters.district = '';
   const options = (values, current) =>
     values
       .map(
         ([value, label, disabled]) =>
-          `<option value="${value}" ${String(current) === String(value) ? 'selected' : ''} ${disabled ? 'disabled' : ''}>${esc(label)}</option>`,
+          // District names come from the map service: escaped as a value too.
+          `<option value="${esc(value)}" ${String(current) === String(value) ? 'selected' : ''} ${disabled ? 'disabled' : ''}>${esc(label)}</option>`,
       )
       .join('');
   const check = (name, label) =>
     `<label class="settings-check"><input type="checkbox" name="${name}" ${filters[name] ? 'checked' : ''}> ${label}</label>`;
   box.innerHTML = `<div class="marketing-section-head"><h3>${esc(
-    [sector, [criteria.neighborhood, criteria.district, criteria.city].filter(Boolean).join(' / ')].join(
-      ' · ',
-    ),
-  )}</h3><small>Kaynak: ${esc(
-    state.source === 'scraper' ? 'Harita tarama (gosom)' : 'Google Places API',
-  )}</small></div>
+    [sector, marketingAreaLabel(criteria)].join(' · '),
+  )}</h3><small>Kaynak: ${esc(marketingSourceLabel(state.source))} · Bulunan firmaları aşağıdaki süzgeçlerle ve haritada bölge çizerek azaltabilirsiniz.</small></div>
     <div class="marketing-filters" id="marketingFilters">
       <label class="field">Başlangıç noktası<select name="originMode">${options(
         [
@@ -562,13 +828,19 @@ function marketingRenderResults() {
         ],
         filters.sort === 'distance' && !point ? '' : filters.sort,
       )}</select></label>
+      <label class="field">İlçe<select name="district" ${districts.length > 1 ? '' : 'disabled'}>${options(
+        [['', 'Tüm ilçeler'], ...districts.map((item) => [item.name, `${item.name} (${item.count})`])],
+        filters.district,
+      )}</select></label>
       <label class="field">Ara<input name="query" type="search" maxlength="80" value="${esc(filters.query)}" placeholder="Firma adı veya adres"></label>
-      ${check('districtOnly', 'Yalnızca seçilen ilçe')}${check('openNow', 'Şu an açık olanlar')}${check(
+      <label class="field">Adında geçmesin<input name="exclude" type="search" maxlength="120" value="${esc(filters.exclude)}" placeholder="ör. avm, şube"></label>
+      ${criteria.district ? check('districtOnly', 'Yalnızca seçilen ilçe') : ''}${check('openNow', 'Şu an açık olanlar')}${check(
         'hideClosed',
         'Kapanmış işletmeleri gizle',
       )}${check('hideRefused', '“İlgilenmiyor” diyenleri gizle')}
     </div>
-    <div class="overflow"><table class="marketing-results"><thead><tr><th class="marketing-check"><input type="checkbox" id="marketingSelectAll" aria-label="Görünen firmaların tümünü seç"></th><th>FİRMA</th><th>ADRES</th><th>TELEFON</th><th>PUAN</th><th>MESAFE</th><th>DURUM</th></tr></thead><tbody id="marketingRows"></tbody></table></div>
+    <div class="marketing-narrow"><button type="button" class="secondary" id="marketingKeepVisible" title="Süzgeçlere ve çizilen bölgeye uymayan firmaları listeden kalıcı olarak çıkarır">Yalnızca görünenleri tut</button><button type="button" class="secondary" id="marketingResetFilters" title="Tüm süzgeçleri ilk hâline döndürür">Süzgeçleri sıfırla</button><span class="marketing-hint">Tek bir firmayı çıkarmak için satırındaki ✕ düğmesini kullanın.</span></div>
+    <div class="overflow"><table class="marketing-results"><thead><tr><th class="marketing-check"><input type="checkbox" id="marketingSelectAll" aria-label="Görünen firmaların tümünü seç"></th><th>FİRMA</th><th>ADRES</th><th>TELEFON</th><th>PUAN</th><th>MESAFE</th><th>DURUM</th><th class="marketing-drop" aria-label="Listeden çıkar"></th></tr></thead><tbody id="marketingRows"></tbody></table></div>
     <div class="tablefoot marketing-foot"><span id="marketingResultSummary" role="status" aria-live="polite"></span><span class="marketing-foot-actions">${
       state.nextPageToken
         ? '<button type="button" class="secondary" id="marketingMore">Daha fazla getir (+20)</button>'
@@ -604,6 +876,20 @@ function marketingRenderResults() {
   $('#marketingClear').onclick = () => {
     state.selected.clear();
     marketingRenderRows();
+  };
+  // Narrowing for good: what the filters and the drawn region hide leaves the list.
+  $('#marketingKeepVisible').onclick = () => {
+    const keep = new Set(marketingVisible().map((place) => place.placeId));
+    const dropped = state.places.length - keep.size;
+    if (!dropped) return toast('Çıkarılacak firma yok: listedeki tüm firmalar görünüyor.');
+    state.places = state.places.filter((place) => keep.has(place.placeId));
+    for (const id of [...state.selected]) if (!keep.has(id)) state.selected.delete(id);
+    marketingRenderResults();
+    toast(`${dropped} firma listeden çıkarıldı. ${state.places.length} firma kaldı.`);
+  };
+  $('#marketingResetFilters').onclick = () => {
+    Object.assign(filters, MARKETING_FILTER_DEFAULTS);
+    marketingRenderResults();
   };
   marketingRenderRows();
 }
@@ -674,7 +960,7 @@ function marketingRowHtml(place) {
         place.ratingCount || 0,
       ).toLocaleString('tr-TR')} yorum</small>`
     : '—';
-  return `<tr class="${selected ? 'selected' : ''}"><td class="marketing-check"><input type="checkbox" data-place-check="${esc(
+  return `<tr class="${selected ? 'selected' : ''}" data-place="${esc(place.placeId)}"><td class="marketing-check"><input type="checkbox" data-place-check="${esc(
     place.placeId,
   )}" ${selected ? 'checked' : ''} aria-label="${esc(place.name)} seç"></td><td><a href="${esc(
     mapsUrl,
@@ -684,7 +970,9 @@ function marketingRowHtml(place) {
     place.address,
   )}</td><td>${phone}</td><td>${rating}</td><td>${place.distance === null ? '—' : marketingKm(place.distance)}</td><td>${marketingVisitBadge(
     place.visit,
-  )}</td></tr>`;
+  )}</td><td class="marketing-drop"><button type="button" class="link" data-place-drop="${esc(
+    place.placeId,
+  )}" title="Listeden çıkar" aria-label="${esc(place.name)} listeden çıkar">✕</button></td></tr>`;
 }
 
 function marketingRenderRows() {
@@ -692,12 +980,18 @@ function marketingRenderRows() {
     body = document.getElementById('marketingRows');
   if (!body) return;
   const rows = marketingVisible();
+  // Firms the drawn region alone hides: searching again inside it would find more there.
+  const outsideRegion = state.region
+    ? state.places.length - HanMarketingRoute.filterPlaces(state.places, {}, null, state.region).length
+    : 0;
   body.innerHTML =
     rows.map(marketingRowHtml).join('') ||
-    `<tr><td colspan="7" class="empty">${
-      state.places.length
-        ? 'Süzgeçlere uyan firma yok. Süzgeçleri gevşetin.'
-        : 'Bu aramada firma bulunamadı. Mahalle, cadde veya sokak alanlarını boşaltıp yeniden deneyin.'
+    `<tr><td colspan="8" class="empty">${
+      !state.places.length
+        ? 'Bu aramada firma bulunamadı. Sektörü, ilçeyi veya mahalle, cadde ve sokak alanlarını boşaltıp ya da daha geniş bir bölge çizip yeniden deneyin.'
+        : outsideRegion === state.places.length
+          ? 'Bulunan firmaların hiçbiri çizdiğiniz bölgede değil. Bu bölgede aramak için “Bul”a basın ya da bölgeyi silin.'
+          : 'Süzgeçlere uyan firma yok. Süzgeçleri gevşetin.'
     }</td></tr>`;
   body.querySelectorAll('[data-place-check]').forEach(
     (input) =>
@@ -706,12 +1000,28 @@ function marketingRenderRows() {
         else state.selected.delete(input.dataset.placeCheck);
         input.closest('tr').classList.toggle('selected', input.checked);
         marketingSyncSelection(rows);
+        marketingSyncMap(rows);
       }),
   );
-  marketingSyncSelection(rows);
+  body.querySelectorAll('[data-place-drop]').forEach(
+    (button) =>
+      (button.onclick = () => {
+        const id = button.dataset.placeDrop;
+        state.places = state.places.filter((place) => place.placeId !== id);
+        state.selected.delete(id);
+        marketingRenderRows();
+      }),
+  );
+  // Pointing at a row shows where that firm is on the map.
+  body.querySelectorAll('tr[data-place]').forEach((row) => {
+    row.onmouseenter = () => state.map?.highlight(row.dataset.place);
+    row.onmouseleave = () => state.map?.highlight(null);
+  });
+  marketingSyncSelection(rows, outsideRegion);
+  marketingSyncMap(rows);
 }
 
-function marketingSyncSelection(rows) {
+function marketingSyncSelection(rows, outsideRegion = 0) {
   const state = marketingRouteState,
     all = document.getElementById('marketingSelectAll');
   const shown = rows.filter((place) => state.selected.has(place.placeId)).length,
@@ -721,7 +1031,10 @@ function marketingSyncSelection(rows) {
   all.disabled = !rows.length;
   $('#marketingResultSummary').textContent =
     `${rows.length} firma gösteriliyor · toplam ${state.places.length}` +
-    (state.outside ? ` · ${state.outside} il dışı sonuç çıkarıldı` : '') +
+    (outsideRegion ? ` · ${outsideRegion} tanesi çizilen bölgenin dışında` : '') +
+    (state.outside
+      ? ` · ${state.outside} ${state.criteria?.region ? 'bölge' : 'il'} dışı sonuç çıkarıldı`
+      : '') +
     ` · ${state.selected.size} seçili` +
     (hidden > 0 ? ` (${hidden} tanesi süzgeç nedeniyle görünmüyor)` : '');
   const build = $('#marketingBuild');
@@ -746,14 +1059,14 @@ function marketingBuildPlan() {
   document.getElementById('marketingPlan')?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
 }
 
+// The district and province searched; a search by drawn region alone has neither.
+const marketingPlaceName = (criteria) =>
+  criteria
+    ? [criteria.district, criteria.city].filter(Boolean).join(' / ') || 'Çizilen bölge'
+    : 'Ziyaret rotası';
+
 function marketingPlanTitle(name, stops, criteria) {
-  return (
-    'Rota: ' +
-    (name || (criteria ? [criteria.district, criteria.city].filter(Boolean).join(' / ') : 'Ziyaret rotası')) +
-    ' (' +
-    stops.length +
-    ' durak)'
-  );
+  return 'Rota: ' + (name || marketingPlaceName(criteria)) + ' (' + stops.length + ' durak)';
 }
 
 // Share actions open real links. Saving happens in the same click so the
@@ -875,9 +1188,7 @@ function marketingRenderPlan() {
     stops: plan.stops,
     links,
   });
-  const fallbackName = state.criteria
-    ? [state.criteria.district, state.criteria.city].filter(Boolean).join(' / ')
-    : 'Ziyaret rotası';
+  const fallbackName = marketingPlaceName(state.criteria);
   box.innerHTML = `<section class="marketing-plan" aria-labelledby="marketingPlanTitle">
     <div class="panelhead"><div><h2 id="marketingPlanTitle">Rota · ${plan.stops.length} durak</h2><p>${esc(
       marketingOriginLabel(),
@@ -982,15 +1293,17 @@ function marketingSavedRoutes() {
         (route) =>
           `<tr><td>${esc(marketingDate(route.createdAt))}</td><td>${esc(route.name)}<small>${esc(
             route.sectorLabel,
-          )}</small></td><td>${esc(
-            [route.neighborhood, route.district, route.city].filter(Boolean).join(' / '),
-          )}</td><td>${route.stops.length}</td><td>${route.visitedCount}/${route.stops.length}</td><td>${esc(
+          )}</small></td><td>${esc(marketingAreaLabel(route))}</td><td>${route.stops.length}</td><td>${route.visitedCount}/${route.stops.length}</td><td>${esc(
             route.createdByName,
           )}</td><td><button type="button" class="link" data-open-route="${esc(route.id)}">Aç</button></td></tr>`,
       )
       .join('') ||
     '<tr><td colspan="7" class="empty">Henüz kayıtlı rota yok. “Firma Bul ve Rota Oluştur” sekmesinden rota oluşturun.</td></tr>'
-  }</tbody></table></div><p class="formbody marketing-hint">Kayıtlı rota açılırken firma adları ve adresleri Google Haritalar’dan yeniden alınır.</p>`;
+  }</tbody></table></div><p class="formbody marketing-hint">Kayıtlı rota açılırken firma adları ve adresleri Google Haritalar’dan yeniden alınır${
+    state.overview.service
+      ? '; hazır harita servisiyle bulunan rotalarda her firma aylık rota yenileme hakkından düşer'
+      : ''
+  }.</p>`;
   body
     .querySelectorAll('[data-open-route]')
     .forEach((button) => (button.onclick = () => marketingOpenRoute(button.dataset.openRoute, button)));
@@ -1036,7 +1349,7 @@ function marketingSavedRouteDetail() {
       [
         marketingDate(route.createdAt),
         route.sectorLabel,
-        [route.neighborhood, route.district, route.city].filter(Boolean).join(' / '),
+        marketingAreaLabel(route),
         route.createdByName,
         marketingOriginLabel(route.origin?.mode, route.origin?.label),
       ]
@@ -1093,6 +1406,11 @@ function marketingVisitDialog(place) {
   }
   const now = new Date();
   const today = typeof businessDate === 'function' ? businessDate() : now.toISOString().slice(0, 10);
+  // A route searched by province only, or by a drawn region, does not name the district:
+  // it is read from the firm's address and the person can correct it.
+  const fromAddress = HanMarketingRoute.areaFromAddress(place.address);
+  const where = { city: route.city || fromAddress.city, district: route.district || fromAddress.district };
+  const askPlace = !route.city || !route.district;
   dialog.innerHTML = `<form id="marketingVisitForm"><div class="panelhead"><h2>Ziyareti Kaydet</h2><button type="button" class="secondary" id="marketingVisitClose">Kapat</button></div>
     <div class="formbody grid">
       <label class="field">Ziyaret sonucu *<select name="visitResult" required><option value="">Sonuç seçin</option>${state.overview.visitResults
@@ -1107,6 +1425,11 @@ function marketingVisitDialog(place) {
       <label class="field">Firma adı *<input name="company" required maxlength="200" value="${esc(place.name)}"></label>
       <label class="field">Görüşülen kişi<input name="contact" maxlength="200"></label>
       <label class="field">Telefon<input name="phone" type="tel" maxlength="30" value="${esc(place.phone || '')}"></label>
+      ${
+        askPlace
+          ? `<label class="field">İl *<input name="city" required maxlength="100" value="${esc(where.city)}"></label><label class="field">İlçe *<input name="district" required maxlength="100" value="${esc(where.district)}"></label>`
+          : ''
+      }
       <label class="field full">Adres<textarea name="address" rows="2" maxlength="1000">${esc(place.address)}</textarea></label>
       <label class="field full">Açıklama<textarea name="notes" rows="3" maxlength="3000"></textarea></label>
     </div><div class="actions"><button class="primary" type="submit">Ziyareti Kaydet</button></div></form>`;
@@ -1116,8 +1439,8 @@ function marketingVisitDialog(place) {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(form));
     Object.assign(values, {
-      city: route.city,
-      district: route.district,
+      city: askPlace ? String(values.city || '').trim() : route.city,
+      district: askPlace ? String(values.district || '').trim() : route.district,
       placeId: place.placeId,
       routeId: route.id,
     });
@@ -1142,6 +1465,23 @@ function marketingVisitDialog(place) {
   dialog.showModal();
 }
 
+// "Görünen ad | aranacak ifade" lines; a known name keeps its sector ID.
+function marketingSectorLines(text, ids) {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [label, ...query] = line.split('|');
+      const name = label.trim();
+      return {
+        id: ids.get(name.toLocaleLowerCase('tr')),
+        label: name,
+        query: query.join('|').trim() || name,
+      };
+    });
+}
+
 // Ayarlar → Entegrasyonlar → Google Haritalar (CEO only).
 function mapsSettingsPage() {
   if (hanAuth?.role !== 'ceo') return toast('Google Haritalar ayarlarını yalnızca CEO yönetebilir.');
@@ -1154,12 +1494,55 @@ function mapsSettingsPage() {
   const sectors = config.sectors
     .map((sector) => (sector.query === sector.label ? sector.label : sector.label + ' | ' + sector.query))
     .join('\n');
-  const ready = (config.sources || []).filter((source) => source.ready).map((source) => source.label);
+  // Rota Bulma is sold two ways. `ownKeys` is false for an office that subscribed to the
+  // ready map service without buying the module: it has no keys to enter, only sectors.
+  const ownKeys = config.ownKeys !== false;
+  const ready = [
+    ...(config.service ? ['Hazır harita servisi'] : []),
+    ...(ownKeys ? (config.sources || []).filter((source) => source.ready).map((source) => source.label) : []),
+  ];
   const badge = ready.length ? ready.join(' + ') : 'Kaynak yok';
   const scraperExample = config.allowLocal ? 'http://127.0.0.1:8080' : 'https://tarama.ornek.com';
+  const serviceNotice = config.service
+    ? `<div class="notice full" id="mapsServiceNotice">Büronuz <b>hazır harita servisine</b> abonedir: firma araması ve harita platformun servisiyle çalışır, API anahtarı girmeniz gerekmez.${
+        ownKeys
+          ? ' İsterseniz aşağıdan kendi anahtarınızı da bağlayabilirsiniz; Rota Bulma’da kaynağı siz seçersiniz.'
+          : ''
+      }</div>`
+    : '';
+  const sectorsField = `<h3 class="full">Sektörler</h3>
+      <label class="field full">Sektör listesi<textarea name="sectors" rows="6" required>${esc(
+        sectors,
+      )}</textarea><small>Her satıra bir sektör yazın: <code>Görünen ad | aranacak ifade</code>. İfade yazılmazsa ad aranır. En fazla 30 sektör. ${
+        ownKeys ? 'Tüm kaynaklarda kullanılır.' : 'Rota Bulma’daki sektör seçeneklerini belirler.'
+      }</small></label>`;
+  if (!ownKeys) {
+    $('#content').innerHTML = `${settingsSectionTabs('maps')}<section class="panel">
+    <div class="panelhead"><div><h2>Google Haritalar</h2><p>Pazarlama → Rota Bulma’da firma araması.</p></div><span class="badge">${esc(badge)}</span></div>
+    <form id="mapsConfigForm"><div class="formbody grid">${serviceNotice}${sectorsField}
+    </div><div class="actions"><button class="primary" type="submit">Sektörleri Kaydet</button></div></form>
+  </section>`;
+    bindSettingsSectionTabs();
+    const form = $('#mapsConfigForm');
+    const ids = new Map(config.sectors.map((sector) => [sector.label.toLocaleLowerCase('tr'), sector.id]));
+    form.onsubmit = (event) => {
+      event.preventDefault();
+      try {
+        authApi('/api/marketing/config', 'PUT', {
+          sectors: marketingSectorLines(form.elements.sectors.value, ids),
+        });
+        window.modalFormSaved?.(form);
+        mapsSettingsPage();
+        toast('Sektörler kaydedildi.');
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+    return;
+  }
   $('#content').innerHTML = `${settingsSectionTabs('maps')}<section class="panel">
     <div class="panelhead"><div><h2>Google Haritalar</h2><p>Pazarlama → Rota Bulma’da firma araması için kaynaklar: Google Places API ve harita tarama (gosom).</p></div><span class="badge">${esc(badge)}</span></div>
-    <form id="mapsConfigForm"><div class="formbody grid">
+    <form id="mapsConfigForm"><div class="formbody grid">${serviceNotice}
       <label class="field full">Varsayılan kaynak<select name="defaultSource"><option value="google">Google Places API</option><option value="scraper">Harita tarama (gosom)</option></select><small>Rota Bulma’da kullanıcı hazır olan kaynaklar arasından seçebilir; bu, ilk seçili gelendir.</small></label>
       <h3 class="full">1. Google Places API</h3>
       <label class="settings-check full"><input type="checkbox" name="enabled" ${config.enabled && config.apiKeySaved ? 'checked' : ''}> Google Places API ile aramayı aç</label>
@@ -1197,10 +1580,11 @@ function mapsSettingsPage() {
         <li>Uygulama bu bilgisayarda çalışıyorsa adres olarak <code>http://127.0.0.1:8080</code> girin.</li>
         <li>Uygulama bulutta çalışıyorsa sunucuyu bir alan adıyla HTTPS ve parola koruması (ör. Caddy veya Nginx) arkasında yayınlayın; parolayı erişim anahtarı olarak girin (<code>Basic …</code>). Sunucuyu korumasız olarak internete açmayın.</li>
       </ol></details>
-      <h3 class="full">Sektörler</h3>
-      <label class="field full">Sektör listesi<textarea name="sectors" rows="6" required>${esc(
-        sectors,
-      )}</textarea><small>Her satıra bir sektör yazın: <code>Görünen ad | aranacak ifade</code>. İfade yazılmazsa ad aranır. En fazla 30 sektör. Her iki kaynakta da kullanılır.</small></label>
+      <h3 class="full">3. Harita görünümü</h3>
+      <label class="field full">Harita anahtarı (isteğe bağlı)<input name="browserKey" maxlength="39" autocomplete="off" data-optional="true" value="${esc(
+        config.browserKey || '',
+      )}" placeholder="Boş bırakılırsa OpenStreetMap haritası kullanılır"><small>Rota Bulma’da bölge çizdiğiniz haritayı Google haritası yapar ve Google’dan gelen firmaları haritada nokta olarak gösterir. Bu anahtar tarayıcıya gönderilir; Places API anahtarından <b>ayrı</b> bir anahtar oluşturun, yalnızca <b>Maps JavaScript API</b> ile ve sitenizin adresiyle (HTTP yönlendiren) sınırlayın. Anahtar girilmezse harita yine çalışır (OpenStreetMap); Google koşulları gereği o haritada yalnızca harita taramasıyla bulunan firmalar nokta olarak görünür.</small></label>
+      ${sectorsField}
     </div><div class="actions"><button class="primary" type="submit">Google Haritalar Ayarlarını Kaydet</button></div></form>
   </section>`;
   bindSettingsSectionTabs();
@@ -1223,19 +1607,8 @@ function mapsSettingsPage() {
     scraperAuth: form.elements.scraperAuth.value.trim(),
     clearScraperAuth: form.elements.clearScraperAuth.checked,
     defaultSource: form.elements.defaultSource.value,
-    sectors: form.elements.sectors.value
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const [label, ...query] = line.split('|');
-        const name = label.trim();
-        return {
-          id: ids.get(name.toLocaleLowerCase('tr')),
-          label: name,
-          query: query.join('|').trim() || name,
-        };
-      }),
+    browserKey: form.elements.browserKey.value.trim(),
+    sectors: marketingSectorLines(form.elements.sectors.value, ids),
   });
   $('#mapsTest').onclick = () => {
     const status = $('#mapsTestStatus');

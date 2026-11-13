@@ -1,5 +1,26 @@
 # Sürüm Notları
 
+## Sıradaki sürüm — henüz yayınlanmadı
+
+### Rota Bulma: harita, bölge çizimi ve esnek arama
+
+- **Harita:** Pazarlama → Rota Bulma'da arama formunun yanında harita açılır. **✎ Bölge çiz** ile haritada basılı tutup sürükleyerek aranacak bölgenin çevresi çizilir (telefonda parmakla); **▭ Görünen alanı seç** ekrandaki alanı bölge yapar. Bölge seçiliyken "Bul" yalnızca o bölgede arar.
+- **Zorunlu alanlar kalktı:** artık yalnızca **il** seçmek ya da haritada **bölge çizmek** yeterlidir. Sektör ("Tüm sektörler"), ilçe, mahalle, cadde ve sokak isteğe bağlıdır. Önceki sürümde bu alanların tümü, gizli "Aranacak sektör" kutusu dahil, zorunlu tutuluyordu; düzeltildi.
+- **Bulunan firmaları azaltma:** yeni **İlçe** süzgeci (bulunan firmaların ilçeleri, sayılarıyla), **Adında geçmesin** (ör. `avm, şube`), haritada çizilen bölgeyle süzme, **Yalnızca görünenleri tut** (uymayanları listeden çıkarır), satırdaki **✕** ile tek firmayı çıkarma ve **Süzgeçleri sıfırla**.
+- Firmalar haritada nokta olarak görünür (renk ziyaret durumunu gösterir); noktaya tıklamak firmayı seçer.
+- Harita kurulum gerektirmez (OpenStreetMap). Ayarlar → Entegrasyonlar → Google Haritalar → "Harita görünümü" bölümüne ayrı bir **harita anahtarı** girilirse Google haritası kullanılır. Google koşulları gereği Google'dan gelen firmalar yalnızca Google haritasında nokta olarak gösterilir.
+
+### Rota Bulma iki ürün olarak satılabilir
+
+- **Pazarlama ve rota (modül):** büro Ayarlar'a kendi API anahtarını girer.
+- **Rota Bulma harita servisi (aylık abonelik):** büro hiçbir anahtar girmez; aramalar platformun harita servisiyle yapılır ve büro başına aylık arama hakkıyla sınırlıdır.
+- Konsol → Yönetim'de yeni **Harita servisi** bölümü: platformun Google anahtarı, aylık sınırlar ve her büronun o ayki kullanımı. Kârlılık raporuna harita kullanımı ve birim maliyeti eklendi.
+
+### Teknik notlar
+
+- Yeni geçiş: `20261113130000_maps_service.sql` (katalogda yeni ürün, kullanım sayacı ölçüleri). Canlıda `npm run db:migrate` gerekir; yeni ürün taslak ve fiyatsız gelir, operatör fiyatlayıp satışa açar.
+- Harita kütüphanesi (Leaflet) depoya eklendi; harita karoları `tile.openstreetmap.org` adresinden gelir.
+
 ## 2.2.0 — 13 Kasım 2026
 
 ### Büroya özel giriş ekranı

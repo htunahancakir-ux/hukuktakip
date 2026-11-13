@@ -18,6 +18,7 @@ const campaigns = require('../lib/saas/campaigns.cjs');
 const announcements = require('../lib/saas/announcements.cjs');
 const pipeline = require('../lib/saas/pipeline.cjs');
 const profit = require('../lib/saas/profit.cjs');
+const platformMaps = require('../lib/saas/platform-maps.cjs');
 const { createOfficeCatalog } = require('../lib/saas/office-catalog.cjs');
 const { createUsageMeter } = require('../lib/saas/usage-meter.cjs');
 const { createOfficeSupport } = require('../lib/saas/office-support.cjs');
@@ -108,8 +109,14 @@ async function seed(pool, operatorId) {
   await pipeline.moveProspect(pool, operatorId, { id: demo.id, stage: 'demo' });
   const officeDesk = createOfficeCatalog(pool, { tenantId: idOf('ornek-hukuk') });
   await officeDesk.requestProduct({ name: 'Ayşe Hanım', role: 'ceo' }, { code: 'ai-assistant', note: 'Fiyat ve demo istiyoruz.' });
-  await profit.saveUnitCosts(pool, operatorId, { aiInputPerMillionKurus: 9000, aiOutputPerMillionKurus: 45000, smsSegmentKurus: 15, voipMinuteKurus: 40 });
+  await profit.saveUnitCosts(pool, operatorId, { aiInputPerMillionKurus: 9000, aiOutputPerMillionKurus: 45000, smsSegmentKurus: 15, voipMinuteKurus: 40, mapsSearchKurus: 150, mapsDetailKurus: 60 });
   await createUsageMeter(pool, { tenantId: idOf('deneme-avukatlik') }).recordAi({ inputTokens: 1_200_000, outputTokens: 300_000 });
+  // Rota Bulma as a subscription: the product on sale, one subscribed office and its searches
+  // this month. The key is made up (it only has Google's format); "Anahtarı test et" fails here.
+  await platform.upsertModule(pool, { code: 'marketing-routes-service', name: 'Rota Bulma harita servisi', description: 'Firma araması platformun harita servisiyle çalışır; büro anahtar girmez', features: ['Kurulum ve API anahtarı gerekmez', 'Haritada bölge çizerek firma arama'], monthlyPriceKurus: 90000, status: 'selling' }, operatorId);
+  await platform.addModule(pool, operatorId, { tenantId: idOf('ornek-hukuk'), moduleCode: 'marketing-routes-service', paid: true });
+  await platformMaps.saveSettings(pool, operatorId, { apiKey: 'AIza' + 'P'.repeat(35), monthlySearches: 300, monthlyDetails: 3000, enabled: true });
+  await platformMaps.createPlatformMaps(pool, { tenantId: idOf('ornek-hukuk') }).record({ searches: 42, details: 120 });
   // A ticket from an office with a 30-minute support access grant waiting for the team.
   const deskUser = { id: 'u-ceo', name: 'Mehmet Avukat', role: 'ceo' };
   const accessTicket = await createOfficeSupport(pool, { tenantId: idOf('deneme-avukatlik') }).open(deskUser, {

@@ -34,6 +34,7 @@ const workspaceScripts = [
   'document-types.js',
   'districts.js',
   'workspace-marketing-route.js',
+  'workspace-marketing-map.js',
   'workspace-marketing.js',
   'workspace-access.js',
   'workspace-notifications.js',
