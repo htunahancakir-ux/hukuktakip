@@ -134,3 +134,16 @@ test('the router builds one handler per office with a server-resolved tenant', a
   assert.equal((await call('evil.com')).statusCode, 404);
   assert.equal(created.length, 3);
 });
+
+test('scheduled jobs requested on the deployment address run for the existing office', async () => {
+  // The hosting platform calls vercel.json crons on its own *.vercel.app address.
+  const resolver = createTenantResolver({}, { baseDomain: BASE, cacheMs: 0 });
+  const onDeployment = (url) => resolver.resolve({ ...req('han-project-abc123.vercel.app'), url });
+  for (const path of ['/api/backups/cron', '/api/personnel-ledger/cron', '/api/backups/cron?x=1'])
+    assert.deepEqual(await onDeployment(path), { tenantId: LEGACY_TENANT_ID, slug: null }, path);
+  // Nothing else is served on that address: no pages, no sign-in, no other job.
+  for (const path of ['/', '/api/session', '/api/login', '/api/backups', '/api/backups/cron/x', '/api/voip/cron', undefined])
+    await assert.rejects(onDeployment(path), status(404), String(path));
+  // On the console's address the job path is still the console's, never an office's.
+  assert.deepEqual(await resolver.resolve({ ...req('admin.' + BASE), url: '/api/backups/cron' }), { platform: true });
+});

@@ -1,6 +1,7 @@
 const { createApplication } = require('../lib/application.cjs');
 const { createPlatformHandler } = require('../lib/platform-app.cjs');
 const { createOfficeSupport } = require('../lib/saas/office-support.cjs');
+const { createSupportAccess } = require('../lib/saas/support-access.cjs');
 const { createOfficeCatalog } = require('../lib/saas/office-catalog.cjs');
 const { createUsageMeter } = require('../lib/saas/usage-meter.cjs');
 const { createSeatGate } = require('../lib/saas/seat-gate.cjs');
@@ -35,6 +36,8 @@ function build() {
         // Paid add-ons (phone, AI) follow what the sales console recorded for this office.
         modules: pool ? createModuleGate(pool, { tenantId }) : undefined,
         officeSupport: pool ? createOfficeSupport(pool, { tenantId }) : undefined,
+        // Time-limited entry of the support team, granted by the office on a support ticket.
+        supportAccess: pool ? createSupportAccess(pool, { tenantId }) : undefined,
         // Announcements on the home page and the "Modüller" page (catalog, campaigns, requests).
         officeCatalog: pool ? createOfficeCatalog(pool, { tenantId }) : undefined,
         // AI tokens per office per day, priced in the console's profitability page.

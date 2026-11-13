@@ -123,6 +123,31 @@ diye işaretlenir. (2) Satışı iptal etmek verilen hizmeti (kullanıcı, modü
 `admin.` alt alanı gerekir. Yerelde görmek için `npm run platform:preview`. (4) Destek kaydı
 yalnızca bir operatöre "üstlen" ile atanır; başka operatöre atama yoktur.
 
+#### Konsolu canlıda açma (sırayla)
+
+Konsol, çok bürolu yönlendirme açılınca çalışır. Mevcut büro `www.<alan-adı>` ve kök alan
+adında değişmeden kalır.
+
+1. **Geçişler:** main klasöründe `npm run db:migrate` (bekleyen geçiş varsa uygular).
+2. **Operatör hesabı:** main klasöründe, şifre en az 12 karakter:
+   `$env:PLATFORM_ADMIN_PASSWORD='…'; npm run platform:admin -- create <kullanıcı> "<Ad Soyad>"`
+   (PowerShell). Şifre veritabanında yalnızca özet olarak durur; kimse geri okuyamaz.
+3. **Vercel → proje → Settings → Domains:** `admin.<alan-adı>` eklenir. DNS'te `*.<alan-adı>`
+   zaten Vercel'e bakıyorsa ek kayıt gerekmez. Her yeni büro için `<kod>.<alan-adı>` de buradan
+   eklenir (joker alan adı Vercel ad sunucuları ister).
+4. **Vercel → Settings → Environment Variables (Production):**
+   `HAN_TENANT_BASE_DOMAIN=<alan-adı>` (ör. `hanhukuktakip.com`, `www.` ve `https://` olmadan).
+   İsteğe bağlı: `PLATFORM_ENCRYPTION_KEY` (64 onaltılık karakter; yoksa `AI_ENCRYPTION_KEY` ya
+   da `BACKUP_ENCRYPTION_KEY` kullanılır). Değişkenler yeni yayında geçerli olur: **Redeploy**.
+5. **Doğrulama:** `https://admin.<alan-adı>` giriş ekranını açar; `https://www.<alan-adı>` eskisi
+   gibi çalışır; `https://admin.<alan-adı>/api/platform/session` 200 döner.
+
+Bu değişken açıldıktan sonra uygulama yalnızca `<alan-adı>`, `www.`, `admin.` ve kayıtlı büro
+adreslerinde yanıt verir; `*.vercel.app` adresleri 404 döner. Tek istisna Vercel'in kendi
+adresinden çağırdığı zamanlanmış işlerdir (`/api/backups/cron`, `/api/personnel-ledger/cron`):
+bunlar mevcut büro için çalışmaya devam eder (`lib/saas/tenant-resolver.cjs`). Geri almak için
+değişken silinip yeniden yayınlanır; veri değişmez.
+
 #### Modül kapıları (telefon, yapay zekâ, WhatsApp ve pazarlama ayrı satılır)
 
 Bir büro **modülsüz satılabilir**: `moduleCodes: []` ile açılan büroda telefon, yapay zekâ,
