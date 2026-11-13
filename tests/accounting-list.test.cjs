@@ -113,7 +113,7 @@ test('Accounting UI loads bounded pages, preserves totals and edit baselines and
   let scrolled = 0;
   w.HTMLElement.prototype.scrollIntoView = function () {
     scrolled++;
-    assert.ok(this.querySelector('.account-ledger'));
+    assert.ok(this.querySelector('.account-summary'));
   };
   w.document.querySelector('[data-account-name]').click();
   await tick();

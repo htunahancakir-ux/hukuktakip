@@ -408,6 +408,14 @@ function createAccess(stateFile, options = {}) {
         send(res, 200, { items: searchWorkspace(state, u, url.searchParams.get('q')) });
         return true;
       }
+      if (url.pathname === '/api/conflicts' && req.method === 'GET') {
+        send(
+          res,
+          200,
+          require('../../lib/conflict-check.cjs').fromState(state, Object.fromEntries(url.searchParams), u),
+        );
+        return true;
+      }
       if (await handleWorkflowRoutes(ctx)) return true;
       if (await handleDeletionRoutes(ctx)) return true;
       if (await handleDocumentRoutes(ctx)) return true;

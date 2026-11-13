@@ -33,7 +33,7 @@ async function userManagement(editId) {
       visibleUsers
         .map(
           (u) =>
-            `<tr><td>${esc(u.name)}${u.testAccount ? '<small class="test-record-badge">Test hesabı</small>' : ''}</td><td>${esc(u.username)}</td><td>${esc(u.email || '—')}</td><td>${esc(u.mobilePhone ? (typeof formatPhoneNumber === 'function' ? formatPhoneNumber(u.mobilePhone) : u.mobilePhone) : '—')}</td><td>${u.role === 'ceo' ? 'CEO' : u.role === 'admin' ? 'Yönetici' : 'Personel'}</td><td>${u.active ? 'Aktif' : 'Pasif'}</td><td>${u.role !== 'ceo' || hanAuth.role === 'ceo' ? `<button class="link" data-reset-password="${esc(u.id)}">Şifre Değiştir / Sıfırla</button>` : 'CEO tarafından yönetilir'}</td></tr>`,
+            `<tr><td>${esc(u.name)}${u.testAccount ? '<small class="test-record-badge">Test hesabı</small>' : ''}</td><td>${esc(u.username)}</td><td>${(window.hanPrivacy && hanPrivacy.html('email', u.email)) || esc(u.email || '—')}</td><td>${(window.hanPrivacy && hanPrivacy.html('phone', u.mobilePhone, typeof formatPhoneNumber === 'function' ? formatPhoneNumber(u.mobilePhone) : u.mobilePhone)) || esc(u.mobilePhone ? (typeof formatPhoneNumber === 'function' ? formatPhoneNumber(u.mobilePhone) : u.mobilePhone) : '—')}</td><td>${u.role === 'ceo' ? 'CEO' : u.role === 'admin' ? 'Yönetici' : 'Personel'}</td><td>${u.active ? 'Aktif' : 'Pasif'}</td><td>${u.role !== 'ceo' || hanAuth.role === 'ceo' ? `<button class="link" data-reset-password="${esc(u.id)}">Şifre Değiştir / Sıfırla</button>` : 'CEO tarafından yönetilir'}</td></tr>`,
         )
         .join('') || '<tr><td colspan="7" class="empty">Kullanıcı bulunamadı.</td></tr>';
     document.querySelectorAll('[data-reset-password]').forEach((b) => {
@@ -137,11 +137,13 @@ function staffBorrowerDetail(id, record) {
     '</h2><button class="secondary" id="closeStaffBorrower">Kapat</button></div><div class="formbody"><p>Evrak: ' +
     esc(d.number) +
     '</p><p>TC / Vergi No: ' +
-    esc(d.identity) +
+    ((window.hanPrivacy && hanPrivacy.html('id', d.identity)) || esc(d.identity)) +
     '</p><p>Telefon: ' +
-    esc(d.phone1) +
+    ((window.hanPrivacy && hanPrivacy.html('phone', d.phone1)) || esc(d.phone1)) +
     '</p><p>Adres: ' +
-    esc([d.address, d.district, d.city].filter(Boolean).join(' / ')) +
+    ((window.hanPrivacy &&
+      hanPrivacy.html('address', [d.address, d.district, d.city].filter(Boolean).join(' / '))) ||
+      esc([d.address, d.district, d.city].filter(Boolean).join(' / '))) +
     '</p><p>Dosya Sorumlusu: ' +
     esc(personnel.find((p) => p.id === d.relatedStaff)?.name || d.relatedStaffName || 'Atanmadı') +
     '</p>' +

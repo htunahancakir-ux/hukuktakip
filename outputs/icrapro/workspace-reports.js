@@ -343,6 +343,15 @@ function reportCell(row, col) {
   return col[2] === 'money' ? money(Number(value || 0) / 100) : String(value ?? '—');
 }
 
+// On-screen report cells: personal columns are masked; CSV and print keep real values.
+function reportCellHtml(row, col) {
+  const text = reportCell(row, col),
+    kind =
+      { identity: 'id', phone: 'phone', phone2: 'phone', address: 'address' }[col[0]] ||
+      (/Maaş/.test(col[1] || '') ? 'money' : null);
+  return (kind && text !== '—' && window.hanPrivacy?.html(kind, text)) || esc(text);
+}
+
 function renderReportsPage() {
   const collapseFilters = true;
   const filtersOpen = document.getElementById('clientInfoReportFilters')?.open;
@@ -551,7 +560,7 @@ function reportTable(def, rows, openableDocuments, totals) {
       ? recordMoney(totals[key] || '0')
       : money(rows.reduce((sum, r) => sum + Number(r.cells[key] || 0), 0) / 100);
   const renderCell = (row, column) => {
-    const value = esc(reportCell(row, column));
+    const value = reportCellHtml(row, column);
     if (column[0] === 'debtor' && openableDocuments?.has(row.documentId)) {
       return (
         '<button type="button" class="link" data-report-borrower="' +
@@ -578,7 +587,7 @@ function reportTable(def, rows, openableDocuments, totals) {
                   '<td style="white-space:pre-line"' +
                   (c[0] === 'note' ? ' data-report-summary="' + esc(r.documentId) + '"' : '') +
                   '>' +
-                  (c[0] === 'note' && r.cells.reportPending ? 'Özet hazırlanıyor…' : esc(reportCell(r, c))) +
+                  (c[0] === 'note' && r.cells.reportPending ? 'Özet hazırlanıyor…' : reportCellHtml(r, c)) +
                   '</td>',
               )
               .join('') +

@@ -737,7 +737,7 @@ function voipProviderLine(call) {
 }
 function voipCallMarkup(call, results) {
   return `<article class="voip-call-entry" data-call-state="${esc(call.status)}"><div class="voip-call-top"><strong>${esc(voipDate(call.createdAt))}</strong>${call.direction === 'inbound' ? '<span class="voip-direction-badge">Gelen</span>' : ''}<span class="voip-status-pill">${esc(call.statusLabel)}</span></div>
-    <div class="voip-history-meta"><strong>${esc(call.phone ? voipPhone(call.phone) : call.callerNumber || 'Gizli numara')}</strong><span>${esc(call.staffName || (call.direction === 'inbound' ? 'Cevaplanmadı' : ''))}</span>${window.testRecordBadge?.(call) || ''}<span>${esc(voipDuration(call.duration))}</span>${call.documentNumber ? '<span>Föy ' + esc(call.documentNumber) + '</span>' : ''}</div>
+    <div class="voip-history-meta"><strong>${(window.hanPrivacy && hanPrivacy.html('phone', call.phone || call.callerNumber, call.phone ? voipPhone(call.phone) : call.callerNumber)) || esc(call.phone ? voipPhone(call.phone) : call.callerNumber || 'Gizli numara')}</strong><span>${esc(call.staffName || (call.direction === 'inbound' ? 'Cevaplanmadı' : ''))}</span>${window.testRecordBadge?.(call) || ''}<span>${esc(voipDuration(call.duration))}</span>${call.documentNumber ? '<span>Föy ' + esc(call.documentNumber) + '</span>' : ''}</div>
     <p class="voip-history-result"><span>Görüşme sonucu</span><b>${esc(call.result || 'Henüz girilmedi')}</b></p>${voipProviderLine(call)}
     <div class="toolbar">${call.canListen ? `<button class="secondary" type="button" data-voip-listen="${esc(call.id)}">▶ Dinle</button>` : ''}${call.archivedAt && call.canListen && ['ceo', 'admin'].includes(hanAuth.role) ? `<a class="link" href="/api/voip/media?id=${encodeURIComponent(call.id)}&download=1">İndir</a>` : ''}${call.recordingPresent && !call.archivedAt && ['ceo', 'admin'].includes(hanAuth.role) ? `<button class="link" type="button" data-voip-archive="${esc(call.id)}">Arşivlemeyi yeniden dene</button>` : ''}${call.direction !== 'inbound' && voipActiveStatuses.has(call.status) && (call.userId === hanAuth.id || ['ceo', 'admin'].includes(hanAuth.role)) ? `<button class="link" type="button" data-voip-sync="${esc(call.id)}">Durumu doğrula</button>` : ''}</div>
     ${call.archiveError ? '<p class="voip-notice">' + esc(call.archiveError) + '</p>' : ''}
@@ -1151,7 +1151,8 @@ function setupBorrowerVoip(dialog, doc) {
               '"><div class="voip-phone-identity"><small>' +
               esc(p.label) +
               '</small><strong>' +
-              esc(voipPhone(p.phone)) +
+              ((window.hanPrivacy && hanPrivacy.html('phone', p.phone, voipPhone(p.phone))) ||
+                esc(voipPhone(p.phone))) +
               '</strong><span class="voip-phone-source">Kaynak / Kime Ait: ' +
               esc(p.source || '—') +
               '</span>' +
@@ -1632,7 +1633,7 @@ function showVoipActive(doc, call) {
     else host.show();
   }
   host.hidden = false;
-  host.innerHTML = `<div class="voip-workspace-heading"><div><span data-current-status></span><strong>${esc(voipPhone(call.phone))}</strong><small>${esc(call.documentNumber || doc.number || '')} · ${esc(call.debtorName || doc.debtor || '')}</small><time data-current-duration aria-label="Çağrı süresi">00:00</time></div><button type="button" class="link" data-current-minimize>Küçült</button></div>
+  host.innerHTML = `<div class="voip-workspace-heading"><div><span data-current-status></span><strong>${(window.hanPrivacy && hanPrivacy.html('phone', call.phone, voipPhone(call.phone))) || esc(voipPhone(call.phone))}</strong><small>${esc(call.documentNumber || doc.number || '')} · ${esc(call.debtorName || doc.debtor || '')}</small><time data-current-duration aria-label="Çağrı süresi">00:00</time></div><button type="button" class="link" data-current-minimize>Küçült</button></div>
     <div class="voip-workspace-feedback" data-current-feedback role="alert" hidden></div>
     <form data-current-form><div class="voip-workspace-actions"><button class="secondary" type="button" data-current-mute aria-pressed="false" title="Sessize al">🎙 Sessize al</button><button class="secondary" type="button" data-current-hold disabled title="Verimor’un harici bekletme kontrolü henüz doğrulanmadı.">Ⅱ Beklet</button><button class="link" type="button" data-current-sync hidden>Durumu doğrula</button><button class="secondary" type="button" data-current-transfer hidden title="Görüşmeyi başka personele aktar">⇄ Aktar</button><button class="voip-hangup" type="button" data-current-hangup title="Aramayı sonlandır">☎ Sonlandır</button><button class="primary" type="submit" data-current-save hidden>Tamam</button><span class="voip-outbound-line" data-outbound-line role="status"></span></div><label class="voip-live-note">Görüşme notu<textarea data-optional="true" name="note" maxlength="3000" rows="4" placeholder="Görüşme sürerken notunuzu yazabilirsiniz…"></textarea></label><span class="voip-draft-status" data-draft-status role="status"></span>
     <fieldset class="voip-outcomes" data-current-outcomes hidden><legend>Görüşme sonucu</legend><p data-current-suggestion hidden>Santral sonucu seçildi; gerekirse değiştirebilirsiniz.</p><div data-current-choices></div></fieldset>

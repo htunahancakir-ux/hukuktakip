@@ -78,7 +78,7 @@ function setupWorkspaceSearch() {
           (item, index) => `<div id="workspaceSearchOption-${index}" class="workspace-search-result"
         data-result="${index}" role="option" aria-selected="false">
         <span class="workspace-search-kind">${item.type === 'client' ? 'Müvekkil' : 'Evrak'}</span>
-        <span><strong>${esc(item.label)}</strong>${item.detail ? `<small>${esc(item.detail)}</small>` : ''}</span>
+        <span><strong>${esc(item.label)}</strong>${item.detail ? `<small>${item.type === 'client' && window.hanPrivacy && /^\d{10,11}$/.test(String(item.detail).replace(/\s/g, '')) ? hanPrivacy.text('id', item.detail) : esc(item.detail)}</small>` : ''}</span>
       </div>`,
         )
         .join('');

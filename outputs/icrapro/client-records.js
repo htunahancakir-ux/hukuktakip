@@ -156,7 +156,7 @@ function renderClientScope() {
     db.clients
       .map(
         (c) =>
-          `<option value="${esc(c.id)}" ${selected === c.id ? 'selected' : ''}>${esc(c.name)}${c.identity ? ' · ' + esc(c.identity) : ''}</option>`,
+          `<option value="${esc(c.id)}" ${selected === c.id ? 'selected' : ''}>${esc(c.name)}${c.identity ? ' · ' + (window.hanPrivacy ? hanPrivacy.text('id', c.identity) : esc(c.identity)) : ''}</option>`,
       )
       .join('');
   filter.onchange = (e) => {
@@ -178,7 +178,7 @@ function renderClientSuggestions(query, list) {
       ? list
           .map(
             (c) =>
-              `<button type="button" data-client-suggestion="${esc(c.id)}"><strong>${esc(c.name)}</strong><small>${esc(c.type)}${c.identity ? ' · ' + esc(c.identity) : ''}</small></button>`,
+              `<button type="button" data-client-suggestion="${esc(c.id)}"><strong>${esc(c.name)}</strong><small>${esc(c.type)}${c.identity ? ' · ' + (window.hanPrivacy ? hanPrivacy.text('id', c.identity) : esc(c.identity)) : ''}</small></button>`,
           )
           .join('')
       : '<p>Eşleşen müvekkil bulunamadı.</p>'
@@ -353,7 +353,7 @@ function paintClientRows(list, remote = false) {
     list
       .map(
         (c) =>
-          `<tr><td><div class="rowname"><span class="initial">${esc((c.name || '').slice(0, 2).toLocaleUpperCase('tr'))}</span><div><button type="button" class="link client-name-link" data-edit="${esc(c.id)}">${esc(c.name)}</button><small>${esc(c.identity || 'Kimlik bilgisi eklenmedi')}</small></div></div></td><td><span class="badge">${esc(c.type)}</span></td><td>${esc(c.phone || '—')}<small>${esc(c.email || c.address || '—')}</small></td><td>${esc(remote ? c.documentCount : db.docs.filter((d) => d.client === c.id).length)} evrak</td><td><button class="link" data-edit="${esc(c.id)}">Düzenle</button><button class="link" data-intake="${esc(c.id)}">＋ Evrak</button></td></tr>`,
+          `<tr><td><div class="rowname"><span class="initial">${esc((c.name || '').slice(0, 2).toLocaleUpperCase('tr'))}</span><div><button type="button" class="link client-name-link" data-edit="${esc(c.id)}">${esc(c.name)}</button><small>${(window.hanPrivacy && hanPrivacy.html('id', c.identity)) || esc(c.identity || 'Kimlik bilgisi eklenmedi')}</small></div></div></td><td><span class="badge">${esc(c.type)}</span></td><td>${(window.hanPrivacy && hanPrivacy.html('phone', c.phone)) || esc(c.phone || '—')}<small>${(window.hanPrivacy && hanPrivacy.html(c.email ? 'email' : 'address', c.email || c.address)) || esc(c.email || c.address || '—')}</small></td><td>${esc(remote ? c.documentCount : db.docs.filter((d) => d.client === c.id).length)} evrak</td><td><button class="link" data-edit="${esc(c.id)}">Düzenle</button><button class="link" data-intake="${esc(c.id)}">＋ Evrak</button></td></tr>`,
       )
       .join('') ||
     '<tr><td colspan="5" class="empty">Müvekkil bulunamadı. Yeni bir kayıt ekleyebilirsiniz.</td></tr>';

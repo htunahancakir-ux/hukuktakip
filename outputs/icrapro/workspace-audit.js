@@ -15,6 +15,8 @@ const auditActions = {
   accept: 'Sözleşmeyi kabul etti',
   publish: 'Sözleşmeyi yayınladı',
   resend: 'Sözleşmeyi tekrar gösterdi',
+  reveal: 'Maskeli verileri gösterdi',
+  conflict: 'Çakışma uyarısını onayladı',
   login: 'Giriş yaptı',
   logout: 'Çıkış yaptı',
   failed: 'Giriş başarısız',

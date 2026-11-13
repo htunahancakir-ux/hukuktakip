@@ -215,7 +215,7 @@ async function personnelSettings(editId) {
   if (personnelTab === 'payroll') return personnelCompensationPage();
   if (personnelTab === 'ledger') return personnelLedgerPage($('#personnelView'));
   $('#personnelView').innerHTML =
-    `<div class="panel"><div class="panelhead"><div><h2>Personel Kayıtları</h2><p>Bilgileri görmek ve düzenlemek için personel adına tıklayın.</p></div><div class="toolbar"><span class="badge">${staffRows.filter((p) => p.active).length} aktif / ${staffRows.length} kayıt</span><button type="button" class="primary" id="newPersonnel">Yeni Personel</button></div></div><div class="overflow"><table><thead><tr><th>AD SOYAD</th><th>BİRİM / GÖREV</th><th>TELEFON</th><th>MAAŞ + PRİM 1</th><th>PRİM 2</th><th>G. PRİM</th><th>GENEL TOPLAM</th><th>DURUM</th><th>İŞLEM</th></tr></thead><tbody>${staffRows.map((p) => `<tr><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">${esc(p.name)}</button></td><td>${esc(p.department || '—')}<small>${esc(p.title || '—')}</small></td><td>${esc(p.phone || '—')}</td><td>${money(staffMoney(p).salary / 100)}</td><td>${money(staffMoney(p).bonus / 100)}</td><td>${money(dailyPrimTotal(p.id) / 100)}</td><td>${money((staffMoney(p).total + dailyPrimTotal(p.id)) / 100)}</td><td>${p.active ? 'Aktif' : 'Pasif'}</td><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">Düzenle</button></td></tr>`).join('') || '<tr><td colspan="9" class="empty">Henüz personel yok. Yeni Personel butonuyla ekleyin.</td></tr>'}</tbody><tfoot><tr><td colspan="3"><strong>ALT TOPLAM</strong></td><td><strong>${money(staffRows.reduce((sum, p) => sum + staffMoney(p).salary, 0) / 100)}</strong></td><td><strong>${money(staffRows.reduce((sum, p) => sum + staffMoney(p).bonus, 0) / 100)}</strong></td><td><strong>${money(staffRows.reduce((sum, p) => sum + dailyPrimTotal(p.id), 0) / 100)}</strong></td><td><strong>${money(staffRows.reduce((sum, p) => sum + staffMoney(p).total + dailyPrimTotal(p.id), 0) / 100)}</strong></td><td colspan="2"></td></tr></tfoot></table></div></div>`;
+    `<div class="panel"><div class="panelhead"><div><h2>Personel Kayıtları</h2><p>Bilgileri görmek ve düzenlemek için personel adına tıklayın.</p></div><div class="toolbar"><span class="badge">${staffRows.filter((p) => p.active).length} aktif / ${staffRows.length} kayıt</span><button type="button" class="primary" id="newPersonnel">Yeni Personel</button></div></div><div class="overflow"><table><thead><tr><th>AD SOYAD</th><th>BİRİM / GÖREV</th><th>TELEFON</th><th>MAAŞ + PRİM 1</th><th>PRİM 2</th><th>G. PRİM</th><th>GENEL TOPLAM</th><th>DURUM</th><th>İŞLEM</th></tr></thead><tbody>${staffRows.map((p) => `<tr><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">${esc(p.name)}</button></td><td>${esc(p.department || '—')}<small>${esc(p.title || '—')}</small></td><td>${(window.hanPrivacy && hanPrivacy.html('phone', p.phone)) || esc(p.phone || '—')}</td><td>${privateMoney(money(staffMoney(p).salary / 100))}</td><td>${privateMoney(money(staffMoney(p).bonus / 100))}</td><td>${privateMoney(money(dailyPrimTotal(p.id) / 100))}</td><td>${privateMoney(money((staffMoney(p).total + dailyPrimTotal(p.id)) / 100))}</td><td>${p.active ? 'Aktif' : 'Pasif'}</td><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">Düzenle</button></td></tr>`).join('') || '<tr><td colspan="9" class="empty">Henüz personel yok. Yeni Personel butonuyla ekleyin.</td></tr>'}</tbody><tfoot><tr><td colspan="3"><strong>ALT TOPLAM</strong></td><td><strong>${privateMoney(money(staffRows.reduce((sum, p) => sum + staffMoney(p).salary, 0) / 100))}</strong></td><td><strong>${privateMoney(money(staffRows.reduce((sum, p) => sum + staffMoney(p).bonus, 0) / 100))}</strong></td><td><strong>${privateMoney(money(staffRows.reduce((sum, p) => sum + dailyPrimTotal(p.id), 0) / 100))}</strong></td><td><strong>${privateMoney(money(staffRows.reduce((sum, p) => sum + staffMoney(p).total + dailyPrimTotal(p.id), 0) / 100))}</strong></td><td colspan="2"></td></tr></tfoot></table></div></div>`;
   $('#newPersonnel').onclick = () => openPersonnelRecord();
   $('#personnelView')
     .querySelectorAll('[data-personnel-edit]')
@@ -387,6 +387,10 @@ function setupPersonnelSalaryRequirements(form, department) {
   form.elements.department?.addEventListener('change', update);
   update();
 }
+// Pay amounts are personal data: drawn masked, opened by clicking.
+function privateMoney(text) {
+  return window.hanPrivacy ? hanPrivacy.html('money', text) : text;
+}
 function payrollView() {
   loadCalculatedBonus2();
   const rows = payrollRows(),
@@ -401,7 +405,7 @@ function payrollView() {
     ]
       .map(
         ([label, n]) =>
-          `<div class="stat"><div><small>${esc(label)}</small><strong>${money(n / 100)}</strong></div></div>`,
+          `<div class="stat"><div><small>${esc(label)}</small><strong>${privateMoney(money(n / 100))}</strong></div></div>`,
       )
       .join(
         '',
@@ -409,10 +413,10 @@ function payrollView() {
       rows
         .map((p) => {
           const v = staffMoney(p);
-          return `<tr><td><strong>${esc(p.name)}</strong><small>${esc(p.department || '—')}</small></td>${['official', 'unofficial', 'salary', 'bonus', 'total'].map((k) => `<td>${money(v[k] / 100)}</td>`).join('')}<td><button type="button" class="secondary" data-edit-payroll="${esc(p.id)}">Maaş / Prim Düzenle</button></td></tr>`;
+          return `<tr><td><strong>${esc(p.name)}</strong><small>${esc(p.department || '—')}</small></td>${['official', 'unofficial', 'salary', 'bonus', 'total'].map((k) => `<td>${privateMoney(money(v[k] / 100))}</td>`).join('')}<td><button type="button" class="secondary" data-edit-payroll="${esc(p.id)}">Maaş / Prim Düzenle</button></td></tr>`;
         })
         .join('') || '<tr><td colspan="6" class="empty">Bu seçimde personel yok.</td></tr>'
-    }</tbody><tfoot><tr><td><strong>GENEL TOPLAM</strong></td>${['official', 'unofficial', 'salary', 'bonus', 'total'].map((k) => `<td><strong>${money(totals[k] / 100)}</strong></td>`).join('')}</tr></tfoot></table></div></div>`;
+    }</tbody><tfoot><tr><td><strong>GENEL TOPLAM</strong></td>${['official', 'unofficial', 'salary', 'bonus', 'total'].map((k) => `<td><strong>${privateMoney(money(totals[k] / 100))}</strong></td>`).join('')}</tr></tfoot></table></div></div>`;
   $('#payrollScope').onchange = (e) => {
     payrollScope = e.target.value;
     payrollView();
