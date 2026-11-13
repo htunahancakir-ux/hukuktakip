@@ -18,6 +18,19 @@
       "schedule": "0 21 * * *"
     }
   ],
+  "redirects": [
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "admin[.].*"
+        }
+      ],
+      "destination": "/platform.html",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/:path*",
