@@ -115,7 +115,7 @@ function intake(editId, showNew = true, recordReady = false) {
   const original = editId ? db.docs.find((d) => d.id === editId) : null;
   const receiptId = original?.id || intakeBatchIds().at(-1);
   $('#content').innerHTML =
-    `<div class="toolbar" style="margin-bottom:18px"><button type="button" class="primary new-document-button" id="newIntakeDocument" aria-controls="intakeForm" aria-expanded="${Boolean(original || showNew)}">＋ Yeni Evrak Ekle</button></div><form class="panel" id="intakeForm" ${original || showNew ? '' : 'hidden'}><div class="panelhead"><div><h2 id="intakeHeading">Evrak Kabul</h2><p>Müvekkil seçimi ve evrak bilgileri</p></div><span class="badge">Yeni kayıt</span></div><div class="formbody"><div class="notice">Evrak kaydı müvekkile bağlanır. Kaydettiğinizde evrak numarası atanır. Tek evrak tutanağını veya bu kabul grubunun toplu teslim tesellümünü ayrı düğmelerden oluşturabilirsiniz.</div><h3 class="sectiontitle">01 &nbsp; Müvekkil seçimi</h3><div class="grid"><label class="field full">Müvekkil *<select name="client" required><option value="">Müvekkil seçin</option>${(window.hanRecordsEnabled ? [intakeClient(selected)].filter(Boolean) : db.clients).map((c) => `<option value="${esc(c.id)}" ${selected === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label class="field full" data-record-group="document">Müvekkil Parti<input name="clientParty" type="text" data-optional="true" placeholder="Parti bilgisi (isteğe bağlı)"></label></div><h3 class="sectiontitle" style="margin-top:28px">02 &nbsp; Evrak türü ve borçlu bilgileri</h3>${documentTypePicker()}<div class="grid"><label class="field full">Föy Numarası<input id="intakeFolioNumber" type="text" readonly data-optional="true" value="${esc(original?.number || (window.hanRecordsEnabled ? 'Kaydedildiğinde atanır' : nextDocumentNumber('Senet', db.docs, db.archivedNumbers)))}" aria-label="Föy Numarası"><small>Otomatik atanır.</small></label><label class="field">İcra Müdürlüğü (isteğe bağlı)<input name="enforcementOffice" type="text" data-optional="true" maxlength="200" value="${esc(original?.enforcementOffice || '')}"></label><label class="field">İcra Dosya Numarası (isteğe bağlı)<input name="enforcementFileNumber" type="text" data-optional="true" maxlength="100" value="${esc(original?.enforcementFileNumber || '')}"></label><label class="field">Takip Tarihi<input id="intakeTrackingDate" type="text" readonly data-optional="true" value="${esc(displayDate(original ? borrowerTrackingDate(original) : businessDate()))}" aria-label="Takip Tarihi"><small>Kayıt sırasında otomatik atanır.</small></label>${field('Borçlu Ad Soyad / Unvan', 'debtor', 'text', '', true)}${borrowerPartyFields(original || {})}${field('Borçlu TC Kimlik / Vergi No', 'identity').replace('<input ', '<input data-optional="true" ')}${field('Ofis TC', 'officeIdentity').replace('<input ', '<input data-optional="true" ')}${field('Tel-1', 'phone1', 'tel')}${clientCityField({}, 'document')}<label class="field full">Borçlu Açık Adres<textarea name="address" rows="3" required></textarea></label><h3 class="sectiontitle full">Borçlu Adres-2</h3>${clientCityField({}, 'document2').replace('name="city"', 'name="address2City"').replace('name="district"', 'name="address2District"')}<label class="field full">Borçlu Adres-2 — Açık Adres<textarea name="address2" rows="3" required></textarea></label><h3 class="sectiontitle full">Borçlu Adres (Ofis)-3</h3>${clientCityField({}, 'document3').replace('name="city"', 'name="officeAddress3City"').replace('name="district"', 'name="officeAddress3District"')}<label class="field full">Borçlu Adres (Ofis)-3 — Açık Adres<textarea name="officeAddress3" rows="3" required></textarea></label>${field('Toplam Evrak Tutarı (₺)', 'amount', 'number', '', true)}<label class="field" data-pre-tracking-amount hidden>Takip Öncesi Ödeme (₺)<input name="preTrackingPayment" type="number" min="0" step="0.01" data-optional="true" disabled></label><label class="field" data-pre-tracking-amount hidden>Asıl Olacak (₺)<input id="intakePrincipal" type="text" readonly data-optional="true"></label>${field('Vade Tarihi', 'due', 'date', '', true)}${field('Düzenleme Tarihi', 'issued', 'date')}${field('Senet Numarası', 'serial')}${staffSelect('Teslim Alan', 'receivedBy')}${staffSelect('Evrak Kaydeden *', 'recordedBy').replace('<select ', '<select required ')}${field('Teslim Eden', 'deliveredBy', 'text', '', true)}${staffSelect('Dosya Sorumlusu', 'relatedStaff')}${propertyFields({}, 'intake')}<div class="full" id="intakeGuarantors"></div><fieldset class="field full original-document"><legend>Evrak Aslı *</legend><label><input type="radio" name="originalDocument" value="Alındı" required> Alındı</label><label><input type="radio" name="originalDocument" value="Firmada" required> Firmada</label></fieldset><label class="field">PDF Ekle (birden fazla seçebilirsiniz)<input id="attachment" data-optional="true" type="file" accept="application/pdf" multiple><small>PDF · Her dosya en fazla 10 MB</small></label><label class="field">Fotoğraf Ekle (birden fazla seçebilirsiniz)<input id="photoAttachment" data-optional="true" type="file" accept="image/png,image/jpeg,image/webp" multiple><small>PNG, JPEG veya WEBP · Her dosya en fazla 10 MB</small></label><label class="field full">Kabul notu<textarea name="notes" rows="3" placeholder="Evrakın durumu ve teslim notları…"></textarea></label></div></div><div class="formbody" ${original ? 'hidden' : ''}><label class="settings-check"><input type="checkbox" id="intakeAddAnother" data-optional="true"> Bu müvekkil için başka evrak var mı?</label></div><div class="actions"><button type="reset" class="secondary">Formu Temizle</button><button class="primary" id="accept">Evrakı Kaydet</button><button type="button" class="secondary" id="createIntakeReceipt" ${receiptId ? '' : 'disabled'}>Tutanak Oluştur</button></div></form>${embeddedIntake ? '' : intakeBatchToolbar() + intakeSearchMarkup()}`;
+    `<div class="toolbar" style="margin-bottom:18px"><button type="button" class="primary new-document-button" id="newIntakeDocument" aria-controls="intakeForm" aria-expanded="${Boolean(original || showNew)}">＋ Yeni Evrak Ekle</button></div><form class="panel" id="intakeForm" ${original || showNew ? '' : 'hidden'}><div class="panelhead"><div><h2 id="intakeHeading">Evrak Kabul</h2><p>Müvekkil seçimi ve evrak bilgileri</p></div><span class="badge">Yeni kayıt</span></div><div class="formbody"><div class="notice">Evrak kaydı müvekkile bağlanır. Kaydettiğinizde evrak numarası atanır. Tek evrak tutanağını veya bu kabul grubunun toplu teslim tesellümünü ayrı düğmelerden oluşturabilirsiniz.</div><h3 class="sectiontitle">01 &nbsp; Müvekkil seçimi</h3><div class="grid"><label class="field full">Müvekkil *<select name="client" required><option value="">Müvekkil seçin</option>${(window.hanRecordsEnabled ? [intakeClient(selected)].filter(Boolean) : db.clients).map((c) => `<option value="${esc(c.id)}" ${selected === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label class="field full" data-record-group="document">Müvekkil Parti<input name="clientParty" type="text" data-optional="true" placeholder="Parti bilgisi (isteğe bağlı)"></label></div><h3 class="sectiontitle" style="margin-top:28px">02 &nbsp; Evrak türü ve borçlu bilgileri</h3>${documentTypePicker()}<div class="grid"><label class="field full">Föy Numarası<input id="intakeFolioNumber" type="text" readonly data-optional="true" value="${esc(original?.number || (window.hanRecordsEnabled ? 'Kaydedildiğinde atanır' : nextDocumentNumber('Senet', db.docs, db.archivedNumbers)))}" aria-label="Föy Numarası"><small>Otomatik atanır.</small></label><label class="field">İcra Müdürlüğü (isteğe bağlı)<input name="enforcementOffice" type="text" data-optional="true" maxlength="200" value="${esc(original?.enforcementOffice || '')}"></label><label class="field">İcra Dosya Numarası (isteğe bağlı)<input name="enforcementFileNumber" type="text" data-optional="true" maxlength="100" value="${esc(original?.enforcementFileNumber || '')}"></label><label class="field">Takip Tarihi<input id="intakeTrackingDate" type="text" readonly data-optional="true" value="${esc(displayDate(original ? borrowerTrackingDate(original) : businessDate()))}" aria-label="Takip Tarihi"><small>Kayıt sırasında otomatik atanır.</small></label>${field('Borçlu Ad Soyad / Unvan', 'debtor', 'text', '', true)}${borrowerPartyFields(original || {})}${field('Borçlu TC Kimlik / Vergi No', 'identity').replace('<input ', '<input data-optional="true" ')}${field('Ofis TC', 'officeIdentity').replace('<input ', '<input data-optional="true" ')}${field('Tel-1', 'phone1', 'tel')}${clientCityField({}, 'document')}<label class="field full">Borçlu Açık Adres<textarea name="address" rows="3" required></textarea></label>${field('Toplam Evrak Tutarı (₺)', 'amount', 'number', '', true)}<label class="field" data-pre-tracking-amount hidden>Takip Öncesi Ödeme (₺)<input name="preTrackingPayment" type="number" min="0" step="0.01" data-optional="true" disabled></label><label class="field" data-pre-tracking-amount hidden>Asıl Olacak (₺)<input id="intakePrincipal" type="text" readonly data-optional="true"></label>${field('Vade Tarihi', 'due', 'date', '', true)}${field('Düzenleme Tarihi', 'issued', 'date')}${field('Senet Numarası', 'serial')}${staffSelect('Teslim Alan', 'receivedBy')}${staffSelect('Evrak Kaydeden *', 'recordedBy').replace('<select ', '<select required ')}${field('Teslim Eden', 'deliveredBy', 'text', '', true)}${staffSelect('Dosya Sorumlusu', 'relatedStaff')}${propertyFields({}, 'intake')}<div class="full" id="intakeGuarantors"></div><fieldset class="field full original-document"><legend>Evrak Aslı *</legend><label><input type="radio" name="originalDocument" value="Alındı" required> Alındı</label><label><input type="radio" name="originalDocument" value="Firmada" required> Firmada</label></fieldset><label class="field">PDF Ekle (birden fazla seçebilirsiniz)<input id="attachment" data-optional="true" type="file" accept="application/pdf" multiple><small>PDF · Her dosya en fazla 10 MB</small></label><label class="field">Fotoğraf Ekle (birden fazla seçebilirsiniz)<input id="photoAttachment" data-optional="true" type="file" accept="image/png,image/jpeg,image/webp" multiple><small>PNG, JPEG veya WEBP · Her dosya en fazla 10 MB</small></label><label class="field full">Kabul notu<textarea name="notes" rows="3" placeholder="Evrakın durumu ve teslim notları…"></textarea></label></div></div><div class="formbody" ${original ? 'hidden' : ''}><label class="settings-check"><input type="checkbox" id="intakeAddAnother" data-optional="true"> Bu müvekkil için başka evrak var mı?</label></div><div class="actions"><button type="reset" class="secondary">Formu Temizle</button><button class="primary" id="accept">Evrakı Kaydet</button><button type="button" class="secondary" id="createIntakeReceipt" ${receiptId ? '' : 'disabled'}>Tutanak Oluştur</button></div></form>${embeddedIntake ? '' : intakeBatchToolbar() + intakeSearchMarkup()}`;
   document.querySelector('.heading').append($('#newIntakeDocument'));
   $('#newIntakeDocument').textContent = '＋ Yeni Boş Föy';
   $('#newIntakeDocument').onclick = () => {
@@ -133,10 +133,7 @@ function intake(editId, showNew = true, recordReady = false) {
   setupDocumentTypes();
   setupClientCity('document');
   setupClientDistrict('document');
-  setupClientCity('document2');
-  setupClientDistrict('document2');
-  setupClientCity('document3');
-  setupClientDistrict('document3');
+
   setupOptionalDebtorFields();
   setupIntakeGuarantors();
   bindPropertyFields($('#intakeForm'));
@@ -322,38 +319,6 @@ function intake(editId, showNew = true, recordReady = false) {
     }
     d.city = docCity;
     d.district = docDistrict;
-    for (const [prefix, base] of [
-      ['document2', 'address2'],
-      ['document3', 'officeAddress3'],
-    ]) {
-      d[base] = String(d[base] || '').trim();
-      d[base + 'City'] = String(d[base + 'City'] || '').trim();
-      d[base + 'District'] = String(d[base + 'District'] || '').trim();
-      if (!d[base] && !d[base + 'City'] && !d[base + 'District']) continue;
-      if (!d[base]) {
-        const input = form.elements[base];
-        input.setCustomValidity('Ek adres giriyorsanız açık adresi de tamamlayın.');
-        input.reportValidity();
-        return;
-      }
-      const city = turkeyCities.find(
-        (city) => city.toLocaleLowerCase('tr') === d[base + 'City'].trim().toLocaleLowerCase('tr'),
-      );
-      const district =
-        city &&
-        (turkeyDistricts[city] || []).find(
-          (district) =>
-            district.toLocaleLowerCase('tr') === d[base + 'District'].trim().toLocaleLowerCase('tr'),
-        );
-      if (!city || !district) {
-        const input = document.getElementById(prefix + (!city ? 'City' : 'District'));
-        input.setCustomValidity('Geçerli bir il ve o ile bağlı ilçe seçin.');
-        input.reportValidity();
-        return;
-      }
-      d[base + 'City'] = city;
-      d[base + 'District'] = district;
-    }
     if (
       !d.recordedBy ||
       (d.recordedBy !== original?.recordedBy && !personnel.some((p) => p.id === d.recordedBy && p.active))
@@ -802,7 +767,21 @@ function receipt(id, recordReady = false) {
   let d = db.docs.find((x) => x.id === id),
     c = db.clients.find((x) => x.id === d.client);
   $('#modal').innerHTML =
-    `<div class="receipt"><p class="eyebrow">hanhukuk 1.1.1 · EVRAK KABUL</p>${firmReceipt()}<h2>${esc(docType(d))} Teslim Tutanağı</h2><p><b>Evrak No:</b> ${esc(d.number)}<br><b>Kabul Tarihi:</b> ${new Date(d.created).toLocaleDateString('tr-TR')}<br><b>Müvekkil:</b> ${esc(c?.name)}<br><b>Borçlu:</b> ${esc(d.debtor)}<br><b>Evrak Aslı:</b> ${esc(d.originalDocument || 'Belirtilmedi')}<br><b>Evrak No / Referans:</b> ${esc(d.serial || '—')}${documentExtraReceipt(d)}<br><b>Tutar:</b> ${money(d.amount)}<br><b>Vade:</b> ${esc(d.due ? displayDate(d.due) : '—')}</p><p><b>Tel-1 / Tel-2:</b> ${esc(d.phone1 || '—')} / ${esc(d.phone2 || '—')}<br><b>Ref. Tel-1 / Tel-2:</b> ${esc(d.referencePhone1 || '—')} / ${esc(d.referencePhone2 || '—')}<br><b>Ofis Tel-1 / Tel-2:</b> ${esc(d.officePhone1 || '—')} / ${esc(d.officePhone2 || '—')}<br><b>Adres:</b> ${esc([d.address, d.district, d.city].filter(Boolean).join(' / '))}<br><b>Borçlu Adres-2:</b> ${esc([d.address2, d.address2District, d.address2City].filter(Boolean).join(' / ') || '—')}<br><b>Borçlu Adres (Ofis)-3:</b> ${esc([d.officeAddress3, d.officeAddress3District, d.officeAddress3City].filter(Boolean).join(' / ') || '—')}</p><p><b>Dosya Sorumlusu:</b> ${esc(personnel.find((p) => p.id === d.relatedStaff)?.name || d.relatedStaffName || '—')}<br><b>Teslim Eden:</b> ${esc(d.deliveredBy)}<br><b>Teslim Alan:</b> ${esc(d.receivedBy)}</p><p><b>Kabul Notu:</b> ${esc(d.notes || '—')}</p>${d.fileData ? `<p>${attachmentDownloadLink(d.fileData, d.fileName, 'Ekli evrakı indir: ' + (d.fileName || 'Evrak'), 'pdf')}</p>` : ''}${d.photoData ? `<p>${attachmentDownloadLink(d.photoData, d.photoFileName || 'fotograf', 'Fotoğrafı indir: ' + (d.photoFileName || 'Fotoğraf'), 'photo')}</p>` : ''}${receivableSummary(d)}<div class="grid" style="margin-top:35px"><div>Teslim Eden İmza<br>________________</div><div>Teslim Alan İmza<br>________________</div></div><p style="font-size:11px;color:#8a95a2;margin-top:30px">Prototip çıktısıdır. Resmî işlem veya elektronik imza içermez.</p></div><div class="actions"><button class="secondary" id="closeReceipt">Kapat</button><button class="primary" id="print">Yazdır / PDF</button></div>`;
+    `<div class="receipt"><p class="eyebrow">hanhukuk 1.1.1 · EVRAK KABUL</p>${firmReceipt()}<h2>${esc(docType(d))} Teslim Tutanağı</h2><p><b>Evrak No:</b> ${esc(d.number)}<br><b>Kabul Tarihi:</b> ${new Date(d.created).toLocaleDateString('tr-TR')}<br><b>Müvekkil:</b> ${esc(c?.name)}<br><b>Borçlu:</b> ${esc(d.debtor)}<br><b>Evrak Aslı:</b> ${esc(d.originalDocument || 'Belirtilmedi')}<br><b>Evrak No / Referans:</b> ${esc(d.serial || '—')}${documentExtraReceipt(d)}<br><b>Tutar:</b> ${money(d.amount)}<br><b>Vade:</b> ${esc(d.due ? displayDate(d.due) : '—')}</p><p><b>Tel-1 / Tel-2:</b> ${esc(d.phone1 || '—')} / ${esc(d.phone2 || '—')}<br><b>Ref. Tel-1 / Tel-2:</b> ${esc(d.referencePhone1 || '—')} / ${esc(d.referencePhone2 || '—')}<br><b>Ofis Tel-1 / Tel-2:</b> ${esc(d.officePhone1 || '—')} / ${esc(d.officePhone2 || '—')}<br>${HanBorrowerAddresses.all(
+      d,
+    )
+      .map(
+        (a, i) =>
+          '<b>Adres ' +
+          (i + 1) +
+          ':</b> ' +
+          esc([a.address, a.district, a.city].filter(Boolean).join(' / ') || '—') +
+          ' · <b>Kaynak:</b> ' +
+          esc(a.source || '—'),
+      )
+      .join(
+        '<br>',
+      )}</p><p><b>Dosya Sorumlusu:</b> ${esc(personnel.find((p) => p.id === d.relatedStaff)?.name || d.relatedStaffName || '—')}<br><b>Teslim Eden:</b> ${esc(d.deliveredBy)}<br><b>Teslim Alan:</b> ${esc(d.receivedBy)}</p><p><b>Kabul Notu:</b> ${esc(d.notes || '—')}</p>${d.fileData ? `<p>${attachmentDownloadLink(d.fileData, d.fileName, 'Ekli evrakı indir: ' + (d.fileName || 'Evrak'), 'pdf')}</p>` : ''}${d.photoData ? `<p>${attachmentDownloadLink(d.photoData, d.photoFileName || 'fotograf', 'Fotoğrafı indir: ' + (d.photoFileName || 'Fotoğraf'), 'photo')}</p>` : ''}${receivableSummary(d)}<div class="grid" style="margin-top:35px"><div>Teslim Eden İmza<br>________________</div><div>Teslim Alan İmza<br>________________</div></div><p style="font-size:11px;color:#8a95a2;margin-top:30px">Prototip çıktısıdır. Resmî işlem veya elektronik imza içermez.</p></div><div class="actions"><button class="secondary" id="closeReceipt">Kapat</button><button class="primary" id="print">Yazdır / PDF</button></div>`;
   $('#modal').showModal();
   $('#closeReceipt').onclick = () => $('#modal').close();
   $('#print').onclick = () => window.print();
@@ -958,11 +937,7 @@ function populateIntakeEdit(d) {
       for (const radio of control) radio.checked = radio.value === String(value);
     } else if (control.type !== 'file') control.value = String(value ?? '');
   }
-  for (const [prefix, key] of [
-    ['document', 'city'],
-    ['document2', 'address2City'],
-    ['document3', 'officeAddress3City'],
-  ]) {
+  for (const [prefix, key] of [['document', 'city']]) {
     const city = document.getElementById(prefix + 'City'),
       district = document.getElementById(prefix + 'District');
     city.value = d[key] || '';

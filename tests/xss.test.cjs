@@ -47,6 +47,7 @@ function browser(t) {
   t.after(() => dom.window.close());
   const w = dom.window;
   w.eval(fs.readFileSync(path.join(root, 'html-safety.js'), 'utf8'));
+  w.eval(fs.readFileSync(path.join(root, 'borrower-addresses.js'), 'utf8'));
   w.eval(renderers);
   Object.assign(w, {
     $: (selector) => w.document.querySelector(selector),

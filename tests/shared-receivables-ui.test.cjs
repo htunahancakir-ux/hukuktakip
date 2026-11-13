@@ -50,6 +50,7 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
   w.HTMLElement.prototype.scrollIntoView = function () {};
   for (const file of [
     'phone-format.js',
+    'borrower-addresses.js',
     'form-inputs.js',
     'parking-fees.js',
     'receivable-rules.js',
@@ -124,6 +125,14 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
   }
   form.elements.district.value = 'Kadıköy';
   form.elements.originalDocument.value = 'Alındı';
+  assert.equal(form.elements.officeAddress3, undefined);
+  assert.equal(form.elements.address2, undefined);
+  assert.equal(form.querySelectorAll('[data-borrower-address-row]').length, 0);
+  form.elements.addressSource.value = 'Kendisi';
+  form.querySelector('[data-add-borrower-address]').click();
+  const addedAddress = form.querySelector('[data-borrower-address-row]');
+  addedAddress.querySelector('[data-address-field="address"]').value = 'İkinci adres';
+  addedAddress.querySelector('[data-address-field="source"]').value = 'Muhtarlık';
   const sourceHeader = form.querySelector('[data-draft-meta="phoneSource"]');
   assert.equal(sourceHeader.value, '');
   assert.equal(sourceHeader.required, false);
@@ -151,11 +160,15 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
   await form.onsubmit({ preventDefault() {}, target: form });
   assert.equal(w.db.docs.length, 1, notices.join('; '));
   assert.equal(w.db.docs[0].amount, 3000);
+  assert.equal(w.db.docs[0].addressSource, 'Kendisi');
+  assert.equal(w.db.docs[0].additionalAddresses[0].source, 'Muhtarlık');
   assert.equal(w.db.docs[0].phoneSources['5551234567'], 'İş yeri / Ayşe');
   const id = w.db.docs[0].id,
     number = w.db.docs[0].number;
   form = w.$('#intakeForm');
   assert.equal(form.dataset.existingFolio, number);
+  assert.equal(form.elements.addressSource.value, 'Kendisi');
+  assert.equal(form.querySelector('[data-address-field="source"]').value, 'Muhtarlık');
   assert.equal(form.elements.phone1._phoneSourceInput.value, 'İş yeri / Ayşe');
   assert.equal(form.querySelector('[data-draft-meta="phoneSource"]').value, 'İş yeri / Ayşe');
   add('Fatura', '500', '2026-11-07');
@@ -173,6 +186,8 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
     ...w.db.docs[0],
     id: 'old',
     number: 'S-0042',
+    address2: 'Eski ikinci adres',
+    officeAddress3: 'Eski ofis adresi',
     docType: 'Senet',
     amount: 900,
     originalAmount: 1000,
@@ -192,6 +207,13 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
   assert.equal(w.db.docs.length, 2);
   assert.equal(converted.number, 'S-0042');
   assert.equal(converted.amount, 1400);
+  assert.equal(converted.officeAddress3, '');
+  assert.equal(converted.address2, '');
+  assert.deepEqual(
+    Array.from(converted.additionalAddresses, (a) => a.address),
+    ['Eski ikinci adres', 'Eski ofis adresi', 'İkinci adres'],
+  );
+  assert(!form.textContent.includes('Borçlu Adres (Ofis)'));
   assert.equal(converted.receivables.length, 2);
   assert.equal(converted.receivables[0].amount, 1000);
   assert.equal(converted.receivables[0].preTrackingPayment, 100);

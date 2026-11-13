@@ -3552,3 +3552,40 @@ button.pm-offer {
   font-weight: 600;
   box-shadow: 0 6px 18px rgb(16 24 40 / 18%);
 }
+
+.borrower-address-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 14px;
+  min-width: 0;
+  align-items: start;
+}
+.borrower-address-pair > .field {
+  grid-column: auto;
+  min-width: 0;
+}
+.borrower-extra-addresses,
+.borrower-address-list {
+  display: grid;
+  gap: 14px;
+}
+.borrower-extra-addresses > button {
+  justify-self: start;
+}
+.borrower-address-row {
+  border: 1px solid #dce5eb;
+  border-radius: 8px;
+  padding: 14px;
+  min-width: 0;
+}
+.borrower-address-row .toolbar {
+  justify-content: space-between;
+}
+.borrower-address-row h4 {
+  margin: 0 0 10px;
+}
+@media (max-width: 600px) {
+  .borrower-address-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

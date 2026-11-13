@@ -7,6 +7,7 @@ const workspaceScripts = [
   'accounting-rules.js',
   'profit-rules.js',
   'phone-format.js',
+  'borrower-addresses.js',
   'privacy-mask.js',
   'party-name.js',
   'workspace-conflicts.js',

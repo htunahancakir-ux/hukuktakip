@@ -210,6 +210,10 @@ test('Intake allocates server numbers, isolates edits, searches all clients and 
       officeIdentity: '00123456789',
       phone1: '05321234567',
       phoneSources: { 5321234567: 'Eşi Ayşe' },
+      addressSource: 'Muhtarlık',
+      additionalAddresses: [
+        { address: 'Yeni adres', city: 'İstanbul', district: 'Kadıköy', source: 'Borçlu beyanı' },
+      ],
     });
     pool.connect = connect;
     assert.equal(saved.status, 200, JSON.stringify(saved.body));
@@ -228,6 +232,8 @@ test('Intake allocates server numbers, isolates edits, searches all clients and 
     assert.equal(edited.futureField.retained, true);
     assert.equal(edited.officeIdentity, '00123456789');
     assert.deepEqual(edited.phoneSources, { 5321234567: 'Eşi Ayşe' });
+    assert.equal(edited.addressSource, 'Muhtarlık');
+    assert.equal(edited.additionalAddresses[0].source, 'Borçlu beyanı');
     assert.equal(edited.fileData, old.fileData);
     assert.deepEqual(edited.conversations, old.conversations);
     assert.deepEqual(editedState.deletedDocuments, pristine.deletedDocuments);

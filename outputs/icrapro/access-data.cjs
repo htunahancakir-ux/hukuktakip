@@ -411,6 +411,7 @@ async function handleDataRoutes(ctx) {
         'attachments',
         'additionalPhones',
         'additionalAddresses',
+        'addressSource',
         'phone1',
         'phone2',
         'referencePhone1',

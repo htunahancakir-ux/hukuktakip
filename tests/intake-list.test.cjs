@@ -218,6 +218,7 @@ test('Borrower TC is optional: blank saves with warning and filled values keep f
   let saves = 0;
   w.eval(fs.readFileSync('outputs/icrapro/html-safety.js', 'utf8'));
   w.eval(fs.readFileSync('outputs/icrapro/phone-format.js', 'utf8'));
+  w.eval(fs.readFileSync('outputs/icrapro/borrower-addresses.js', 'utf8'));
   Object.assign(w, {
     esc: w.escapeHtml,
     structuredClone,
