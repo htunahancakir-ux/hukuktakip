@@ -53,6 +53,7 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
     'borrower-addresses.js',
     'form-inputs.js',
     'parking-fees.js',
+    'receivable-units.js',
     'receivable-rules.js',
     'document-types.js',
     'workspace-receivables.js',
@@ -219,9 +220,72 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
   assert.equal(converted.receivables[0].preTrackingPayment, 100);
   w.$('#newIntakeDocument').click();
   form = w.$('#intakeForm');
+  const newCurrency = form.querySelector('[data-new-claim-currency]');
+  assert(newCurrency, 'currency is selectable before the first claim is added');
+  assert.deepEqual(
+    Array.from(newCurrency.options, (option) => option.value),
+    ['TRY', 'EUR', 'USD', 'XAU'],
+  );
+  newCurrency.value = 'EUR';
+  add('Senet', '500', '2026-11-01');
+  assert.equal(form.querySelector('[data-claim-field="currency"]').value, 'EUR');
+  newCurrency.value = 'USD';
+  add('Fatura', '200', '2026-11-01');
+  assert.equal(
+    form.querySelectorAll('[data-claim-field="currency"]')[0].value,
+    'EUR',
+    'changing new-claim currency preserves previous claims',
+  );
+  assert.equal(form.querySelectorAll('[data-claim-field="currency"]')[1].value, 'USD');
+  while (form.querySelector('[data-remove-claim]')) form.querySelector('[data-remove-claim]').click();
+  newCurrency.value = 'TRY';
   assert.equal(form.hidden, false);
   assert.equal(form.elements.client.value, '');
   assert.equal(form.elements.debtor.value, '');
   assert.equal(form.querySelectorAll('[data-select-claim]').length, 0);
   assert.equal(w.db.docs.length, 2, 'opening a blank folio preserves saved records');
+  for (const [key, value] of Object.entries({
+    client: 'c',
+    debtor: 'Döviz ve Altın Borçlusu',
+    phone1: '05551234567',
+    city: 'İstanbul',
+    address: 'Adres',
+    receivedBy: 'p',
+    recordedBy: 'p',
+    deliveredBy: 'Teslim Eden',
+  })) {
+    form.elements[key].value = value;
+    form.elements[key].dispatchEvent(new w.Event('change'));
+  }
+  form.elements.district.value = 'Kadıköy';
+  form.elements.originalDocument.value = 'Alındı';
+  for (const [type, currency, amount] of [
+    ['Senet', 'TRY', '1000'],
+    ['Senet', 'EUR', '500'],
+    ['Cari Ekstre', 'USD', '200'],
+    ['Diğer', 'XAU', '2.125'],
+  ]) {
+    const row = add(type, amount, '2026-11-01'),
+      select = row.querySelector('[data-claim-field="currency"]');
+    select.value = currency;
+    select.dispatchEvent(new w.Event('change'));
+  }
+  const gold = form.querySelector('[data-receivable-rows]>section:last-child [data-claim-field="amount"]');
+  w.upgradeMoneyInputs();
+  assert.equal(gold.type, 'number');
+  assert.equal(gold.value, '2.125');
+  assert.equal(gold.step, '0.001');
+  assert.match(form.querySelector('[data-receivable-gross]').textContent, /500,00 Euro/);
+  assert.match(form.querySelector('[data-receivable-gross]').textContent, /2,125 Gram Altın/);
+  assert.equal(w.validateRequiredForm(form), true);
+  await form.onsubmit({ preventDefault() {}, target: form });
+  assert.equal(w.db.docs.length, 3, notices.join('; '));
+  const mixed = w.db.docs.at(-1);
+  assert.equal(mixed.amount, 1000);
+  assert.equal(mixed.receivables[3].amount, 2.125);
+  assert.equal(mixed.unitPrincipals.EUR.principal, 50000);
+  w.intake(mixed.id, true, true);
+  form = w.$('#intakeForm');
+  assert.equal(form.querySelectorAll('[data-claim-field="currency"]')[3].value, 'XAU');
+  assert.equal(form.querySelectorAll('[data-claim-field="amount"]')[3].value, '2.125');
 });

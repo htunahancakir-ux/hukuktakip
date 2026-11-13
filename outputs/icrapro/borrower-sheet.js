@@ -51,6 +51,7 @@ function borrowerDetail(id, savedForm) {
       '',
     )}</div><button class="primary" id="borrowerFinancial">Tahsilat</button><button class="secondary" id="borrowerExpense">Masraf</button>${repaymentSection(d)}</section><section role="tabpanel" id="borrower-panel-document" aria-labelledby="borrower-tab-document" data-borrower-panel="document" hidden><h3 class="sectiontitle" style="margin-top:30px">${esc(type)} Bilgileri</h3><div class="grid">${value('Evrak Türü', type)}${isParkingDocument(d) ? value('Anlaşılan Ofis Payı (%)', validParkingRate(d) ? String(d.parkingCommissionRate) : 'Belirtilmedi') : ''}${value('Evrak Aslı', d.originalDocument || 'Belirtilmedi')}${value(definition.serial, d.serial)}${value(definition.due, d.due)}${value('Düzenleme Tarihi', d.issued)}${definition.extras.map(([label, key]) => value(label, d[key])).join('')}${value('Teslim Eden', d.deliveredBy)}${value('Teslim Alan', d.receivedBy)}${value('Kabul Notu', d.notes)}</div>${borrowerAttachmentPreviews(d)}</section></div>`;
   layoutBorrowerSheet(dialog, d, f, client);
+  if (typeof installUnitFinanceSummary === 'function') installUnitFinanceSummary(dialog, d);
   dialog.querySelector('[data-add-borrower-address-detail]').onclick = () => {
     editBorrower(id, true);
   };
@@ -1610,6 +1611,15 @@ function collectionReceiptContent(event, d, client) {
     item('TC / Vergi No', d.identity) +
     item('Alacaklı', client?.tradeName || client?.name) +
     item('Tahsil Edilen Tutar', money(event.amount / 100)) +
+    (event.unitAllocation
+      ? item(
+          'Borçtan Düşülen',
+          HanUnits.formatMinor(event.unitAllocation.quantityMinor, event.unitAllocation.currency),
+        ) +
+        item('Uygulanan Kur (TL)', event.unitAllocation.rateMicros / 1000000) +
+        item('Kur Tarihi', displayDate(event.unitAllocation.rateDate)) +
+        item('Kur Kaynağı', event.unitAllocation.source)
+      : '') +
     item(
       'Kasa / Banka',
       event.accountName || accounting.accounts.find((a) => a.id === event.accountId)?.name,

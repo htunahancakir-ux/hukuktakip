@@ -2,6 +2,7 @@ const { activeArchives } = require('../../lib/document-archive.cjs');
 const { canDelete, denied } = require('../../lib/deletion-policy.cjs');
 
 async function handleDocumentRoutes(ctx) {
+  if (await require('./access-currency-collections.cjs').handleCurrencyCollections(ctx)) return true;
   const { req, res, url, u, persist, current, allowed, fail, body, send, parkingToday, applyParkingFee } =
     ctx;
   if (url.pathname === '/api/documents/manual-close' && req.method === 'POST') {
@@ -12,7 +13,7 @@ async function handleDocumentRoutes(ctx) {
     const doc = next.data['icrapro-v1'].docs.find((d) => d.id === input.documentId);
     if (!doc) throw fail(404, 'Dosya bulunamadı.');
     const received = next.data['hanhukuk-finance-v1']
-      .filter((e) => e.documentId === doc.id && e.type === 'payment')
+      .filter((e) => e.documentId === doc.id && e.type === 'payment' && !e.unitAllocation)
       .reduce((sum, e) => sum + e.amount, 0);
     if (
       input.expectedPrincipal !== Math.round(Number(doc.amount || 0) * 100) ||
@@ -29,7 +30,15 @@ async function handleDocumentRoutes(ctx) {
       persist(next);
     }
     const saved = ctx.state.data['icrapro-v1'].docs.find((d) => d.id === doc.id);
-    const fields = ['status', 'closedDate', 'debtDiscountCents', 'discountHistory', 'manualClosure'];
+    const fields = [
+      'status',
+      'closedDate',
+      'debtDiscountCents',
+      'discountHistory',
+      'manualClosure',
+      'unitTerms',
+      'unitPrincipalCostTLMinor',
+    ];
     send(res, 200, {
       ok: true,
       record: {
@@ -68,6 +77,9 @@ async function handleDocumentRoutes(ctx) {
       'mixedParkingCommissionCents',
       'principalAdjustment',
       'principalAdjustmentHistory',
+      'unitTerms',
+      'unitPrincipals',
+      'unitPrincipalCostTLMinor',
     ];
     send(res, 200, {
       ok: true,
@@ -177,7 +189,9 @@ async function handleDocumentRoutes(ctx) {
     if (doc.status && !['Derdest', 'İcra'].includes(doc.status))
       throw fail(400, 'Yalnızca derdest dosya icraya taşınabilir.');
     const events = ctx.state.data['hanhukuk-finance-v1'].filter((e) => e.documentId === doc.id),
-      received = events.filter((e) => e.type === 'payment').reduce((sum, e) => sum + e.amount, 0);
+      received = events
+        .filter((e) => e.type === 'payment' && !e.unitAllocation)
+        .reduce((sum, e) => sum + e.amount, 0);
     const current = structuredClone(doc);
     applyParkingFee(current, parkingToday());
     const principal = Math.round(Number(current.amount || 0) * 100),
@@ -192,7 +206,13 @@ async function handleDocumentRoutes(ctx) {
               events.filter((e) => e.type === 'expense').reduce((sum, e) => sum + e.amount, 0)) -
           Number(current.debtDiscountCents || 0),
       );
-    if (received > 0 && received >= total) throw fail(400, 'Tamamı tahsil edilmiş dosya icraya taşınamaz.');
+    const native = require('./receivable-units.js').foreignBalances(current, parkingToday(), events);
+    if (
+      (received > 0 || native.some((group) => group.received > 0)) &&
+      received >= total &&
+      native.every((group) => group.remaining === 0)
+    )
+      throw fail(400, 'Tamamı tahsil edilmiş dosya icraya taşınamaz.');
     const next = structuredClone(ctx.state),
       record = next.data['icrapro-v1'].docs.find((d) => d.id === doc.id);
     if (v.enforcementDetails) {

@@ -77,7 +77,7 @@ function applyAutomaticLegalCharges(d, events, today) {
     d.repaymentPlan ||
     !d.due ||
     ['İade', 'İnfaz'].includes(d.status) ||
-    events.some((e) => e.documentId === d.id && e.type === 'payment')
+    events.some((e) => e.documentId === d.id && e.type === 'payment' && !e.unitAllocation)
   )
     return false;
   try {

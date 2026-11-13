@@ -112,6 +112,7 @@ test('The intake editor keeps one borrower with multiple separately typed rows',
     for (const file of [
       'form-inputs.js',
       'parking-fees.js',
+      'receivable-units.js',
       'receivable-rules.js',
       'document-types.js',
       'workspace-receivables.js',
@@ -310,4 +311,3 @@ test('Intake persists mixed documents as one file with optional enforcement fiel
     await pg.close();
   }
 });
-

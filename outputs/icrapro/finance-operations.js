@@ -32,6 +32,14 @@ function editDocumentPrincipal(id) {
   if (!d || isParkingDocument(d)) return;
   const expectedPrincipal = financeCents(d.amount);
   const items = Array.isArray(d.receivables) ? structuredClone(d.receivables) : null;
+  const principalInput = (item, index) => {
+    const unit = HanUnits.currency(item.currency),
+      definition = HanUnits.definitions[unit];
+    const value =
+      (HanUnits.minor(item.amount, unit) - HanUnits.minor(item.preTrackingPayment || 0, unit)) /
+      definition.scale;
+    return `<label class="field">${esc(item.docType)} · ${esc(item.serial || item.due || index + 1)} · Asıl Alacak (${esc(definition.label)})<input type="number" name="principal${index}" min="0" step="${unit === 'XAU' ? '0.001' : '0.01'}" required value="${value}" ${item.docType === 'Yediemin Park Ücreti' ? 'disabled' : ''}>${item.docType === 'Yediemin Park Ücreti' ? '<small>Günlük tarifeden hesaplanır.</small>' : ''}</label>`;
+  };
   let dialog = document.getElementById('principalDialog');
   if (!dialog) {
     dialog = document.createElement('dialog');
@@ -39,7 +47,7 @@ function editDocumentPrincipal(id) {
     document.body.append(dialog);
   }
   dialog.setAttribute('aria-labelledby', 'principalDialogTitle');
-  dialog.innerHTML = `<form><div class="panelhead"><div><h2 id="principalDialogTitle">Asıl Alacağı Düzenle</h2><p>${esc(d.number)} · ${esc(d.debtor)}</p></div><button type="button" class="secondary" data-close-principal>Kapat</button></div><div class="formbody"><p>Mevcut asıl alacak: <strong>${money(d.amount)}</strong></p><div class="grid">${items ? items.map((item, index) => `<label class="field">${esc(item.docType)} · ${esc(item.serial || item.due || index + 1)} · Asıl Alacak (₺)<input type="number" name="principal${index}" min="0" step="0.01" required value="${(financeCents(item.amount) - financeCents(item.preTrackingPayment)) / 100}" ${item.docType === 'Yediemin Park Ücreti' ? 'disabled' : ''}>${item.docType === 'Yediemin Park Ücreti' ? '<small>Günlük tarifeden hesaplanır.</small>' : ''}</label>`).join('') : field('Yeni Asıl Alacak (₺)', 'principal', 'number', d.amount, true)}</div><p>Takip öncesi ödemeler ve kayıtlı tahsilat tutarları korunur. Müvekkile ödenmiş tutarın altına inilemez. İnfaz dosyasında yeni toplam tahsilatı aşarsa dosya yeniden açılır.</p>${d.repaymentPlan ? '<p>Bu düzeltme mevcut taksit planını değiştirmez. Gerekirse Borcu Yapılandır bölümünden planı yeniden düzenleyin.</p>' : ''}<p role="status" data-principal-status></p></div><div class="actions"><button class="primary" type="submit">Asıl Alacağı Kaydet</button></div></form>`;
+  dialog.innerHTML = `<form><div class="panelhead"><div><h2 id="principalDialogTitle">Asıl Alacağı Düzenle</h2><p>${esc(d.number)} · ${esc(d.debtor)}</p></div><button type="button" class="secondary" data-close-principal>Kapat</button></div><div class="formbody"><p>Mevcut asıl alacak: <strong>${typeof unitDocumentAmount === 'function' ? esc(unitDocumentAmount(d)) : money(d.amount)}</strong></p><div class="grid">${items ? items.map(principalInput).join('') : field('Yeni Asıl Alacak (₺)', 'principal', 'number', d.amount, true)}</div><p>Takip öncesi ödemeler ve kayıtlı tahsilat tutarları korunur. Müvekkile ödenmiş tutarın altına inilemez. İnfaz dosyasında yeni toplam tahsilatı aşarsa dosya yeniden açılır.</p>${d.repaymentPlan ? '<p>Bu düzeltme mevcut taksit planını değiştirmez. Gerekirse Borcu Yapılandır bölümünden planı yeniden düzenleyin.</p>' : ''}<p role="status" data-principal-status></p></div><div class="actions"><button class="primary" type="submit">Asıl Alacağı Kaydet</button></div></form>`;
   dialog.querySelector('[data-close-principal]').onclick = () => dialog.close();
   const form = dialog.querySelector('form');
   form.onsubmit = (event) => {
@@ -52,8 +60,10 @@ function editDocumentPrincipal(id) {
       if (items)
         payload.items = items.map((item, index) => ({
           id: item.id,
-          amount: financeCents(form.elements['principal' + index].value),
-          expectedAmount: financeCents(item.amount) - financeCents(item.preTrackingPayment),
+          amount: HanUnits.minor(form.elements['principal' + index].value, item.currency),
+          expectedAmount:
+            HanUnits.minor(item.amount, item.currency) -
+            HanUnits.minor(item.preTrackingPayment || 0, item.currency),
         }));
       else payload.amount = financeCents(form.elements.principal.value);
       const result = authApi('/api/documents/principal', 'POST', payload);
@@ -88,6 +98,10 @@ function manuallyCloseDocument(id) {
   const f = docFinance(d);
   if (f.received < f.principal)
     return toast('Manuel infaz için tahsilat asıl alacağa eşit veya üzerinde olmalıdır.');
+  const native =
+    typeof HanUnits === 'undefined' ? [] : HanUnits.foreignBalances(d, businessDate(), financeEvents);
+  if (native.some((group) => group.received < group.principal))
+    return toast('Manuel infaz için her birimde asıl alacak tahsil edilmiş olmalıdır.');
   let dialog = document.getElementById('manualClosureDialog');
   if (!dialog) {
     dialog = document.createElement('dialog');
@@ -97,6 +111,22 @@ function manuallyCloseDocument(id) {
   dialog.setAttribute('aria-labelledby', 'manualClosureTitle');
   dialog.innerHTML = `<form><div class="panelhead"><h2 id="manualClosureTitle">Manuel İnfaz</h2><button type="button" class="secondary" data-close-manual>Kapat</button></div><div class="formbody"><p>${esc(d.number)} · ${esc(d.debtor)}</p><p>Asıl alacak: <b>${money(f.principal / 100)}</b><br>Tahsil edilen: <b>${money(f.received / 100)}</b><br>Manuel infazla kapatılacak kalan bakiye: <b>${money(f.remaining / 100)}</b></p><p>Bu işlem dosyayı infaza alır; kalan faiz, ücret ve masraf bakiyesi indirim olarak kapatılır. Yeni tahsilat veya kasa hareketi oluşturmaz.</p><p role="status" data-manual-status></p></div><div class="actions"><button type="submit" class="primary">Dosyayı Manuel İnfaza Al</button></div></form>`;
   dialog.querySelector('[data-close-manual]').onclick = () => dialog.close();
+  if (native.length) {
+    const balances = document.createElement('p');
+    balances.textContent = native
+      .map(
+        (group) =>
+          HanUnits.definitions[group.currency].label +
+          ' · Asıl alacak: ' +
+          HanUnits.formatMinor(group.principal, group.currency) +
+          ' · Ödenen: ' +
+          HanUnits.formatMinor(group.received, group.currency) +
+          ' · Kapatılacak bakiye: ' +
+          HanUnits.formatMinor(group.remaining, group.currency),
+      )
+      .join(' / ');
+    dialog.querySelector('[data-manual-status]').before(balances);
+  }
   const form = dialog.querySelector('form');
   form.onsubmit = (event) => {
     event.preventDefault();
@@ -202,7 +232,9 @@ function docFinance(d) {
   if (d._listFinance) return d._listFinance;
   automaticLegalCharges(d);
   const events = financeEvents.filter((e) => e.documentId === d.id),
-    received = events.filter((e) => e.type === 'payment').reduce((s, e) => s + e.amount, 0),
+    received = events
+      .filter((e) => e.type === 'payment' && !e.unitAllocation)
+      .reduce((s, e) => s + e.amount, 0),
     expenses = isParkingDocument(d)
       ? 0
       : events.filter((e) => e.type === 'expense').reduce((s, e) => s + e.amount, 0),
@@ -395,10 +427,18 @@ function dashboard(remoteBuckets) {
   loadPaymentPromisesHome();
 }
 
-function financialOperations(id, mode) {
+function financialOperations(id, mode, tlOnly = false) {
   if (mode) financeOperationTab = mode;
   const d = db.docs.find((x) => x.id === id);
   if (!d) return;
+  if (
+    !tlOnly &&
+    mode !== 'expense' &&
+    mode !== 'costOnly' &&
+    typeof HanUnits !== 'undefined' &&
+    HanUnits.hasForeign(d)
+  )
+    return openUnitFinance(id);
   const f = docFinance(d),
     locked = hanAuth.role !== 'ceo' && financeEvents.some((e) => e.documentId === id && e.type === 'payment'),
     termsLocked = hanAuth.role !== 'ceo' && d.status === 'İnfaz';
@@ -590,6 +630,9 @@ function financialOperations(id, mode) {
         : 0;
     const closes =
       v.type === 'payment' &&
+      (typeof HanUnits === 'undefined' ||
+        !HanUnits.hasForeign(d) ||
+        HanUnits.foreignBalances(d, businessDate(), financeEvents).every((g) => g.remaining === 0)) &&
       (isParkingDocument(d) ? d.status !== 'İnfaz' && amount >= live.remaining : amount === live.remaining);
     const event = {
       id: crypto.randomUUID(),
@@ -1140,7 +1183,8 @@ function clientPayoutTotals(d) {
     paid = financeCents(d.clientPaidAmount) + rows.reduce((s, e) => s + e.amount, 0),
     f = docFinance(d),
     eligible = d.status === 'İnfaz' && f.remaining === 0;
-  let entitlement = f.principal - Number(d.mixedParkingCommissionCents || 0);
+  let entitlement =
+    f.principal + Number(d.unitPrincipalCostTLMinor || 0) - Number(d.mixedParkingCommissionCents || 0);
   if (isParkingDocument(d))
     entitlement =
       d.status === 'İnfaz' && validParkingRate(d)

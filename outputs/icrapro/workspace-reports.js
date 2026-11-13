@@ -540,6 +540,7 @@ function renderReportsPage() {
   $('#openMonthlyPayrollReport').onclick = monthlyPayrollReportPage;
   $('#openInsReport').onclick = insReportPage;
   $('#openClientListReport').onclick = clientListReportPage;
+  if (typeof installCurrencyReportButton === 'function') installCurrencyReportButton();
   $('#exportReport').onclick = exportReport;
   $('#printReport').onclick = printReport;
   renderReportResult();

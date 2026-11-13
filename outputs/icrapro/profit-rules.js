@@ -19,9 +19,11 @@
       return Math.round(
         (received * Number(event.parkingCommissionRate ?? doc?.parkingCommissionRate ?? 0)) / 100,
       );
-    const principal = doc?.principalAdjustment
-      ? Math.round(Number(doc.amount || 0) * 100)
-      : (event.principalAtCollection ?? (doc ? Math.round(Number(doc.amount || 0) * 100) : null));
+    const principal = doc?.hasForeignReceivables
+      ? Math.round(Number(doc.amount || 0) * 100) + Number(doc.unitPrincipalCostTLMinor || 0)
+      : doc?.principalAdjustment
+        ? Math.round(Number(doc.amount || 0) * 100)
+        : (event.principalAtCollection ?? (doc ? Math.round(Number(doc.amount || 0) * 100) : null));
     return principal === null
       ? payments.reduce((sum, e) => sum + Number(e.revenuePart || 0), 0)
       : Math.max(0, received - Number(principal)) + Number(doc?.mixedParkingCommissionCents || 0);

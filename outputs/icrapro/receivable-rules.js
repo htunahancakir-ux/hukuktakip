@@ -1,4 +1,6 @@
 (function (root) {
+  const units =
+    typeof module !== 'undefined' && module.exports ? require('./receivable-units.js') : root.HanUnits;
   const types = [
     'Senet',
     'Çek',
@@ -67,8 +69,11 @@
       )
         throw Error('Geçerli ve farklı evrak kayıtları ekleyin.');
       ids.add(item.id);
-      const total = cents(item.amount),
-        paid = cents(item.preTrackingPayment);
+      const unit = units.currency(item.currency);
+      if (unit !== 'TRY' && item.docType === 'Yediemin Park Ücreti')
+        throw Error('Yediemin park tarifesi TL olarak hesaplanır.');
+      const total = units.minor(item.amount, unit),
+        paid = units.minor(item.preTrackingPayment || 0, unit);
       if (![total, paid].every(Number.isSafeInteger) || total <= 0 || paid < 0 || paid > total)
         throw Error('Evrak tutarı pozitif, takip öncesi ödeme tutardan küçük veya eşit olmalıdır.');
       if (['Senet', 'Çek', 'Cari Ekstre', 'Fatura', 'Diğer'].includes(item.docType) && !date(item.due))
@@ -91,9 +96,11 @@
       const clean = {
         id: item.id,
         docType: item.docType,
-        amount: total / 100,
-        preTrackingPayment: paid / 100,
+        amount: total / units.definitions[unit].scale,
+        preTrackingPayment: paid / units.definitions[unit].scale,
+        ...(unit !== 'TRY' ? { currency: unit, interestRate: Number(item.interestRate || 0) } : {}),
       };
+      if (unit !== 'TRY') units.interestFor(clean, clean.due || '2000-01-01');
       if (item.registeredOn && date(item.registeredOn)) clean.registeredOn = item.registeredOn;
       for (const key of [
         'due',
@@ -121,6 +128,7 @@
       }
       if (item.docType === 'Yediemin Park Ücreti')
         clean.parkingCommissionRate = Number(item.parkingCommissionRate);
+      if (unit !== 'TRY') units.interestFor(clean, clean.due || '2000-01-01');
       return clean;
     });
   }
@@ -139,6 +147,7 @@
           throw Error('Yediemin evrakına plaka veya şase numarası ya da borçluya TC/vergi numarası girin.');
         item.amount = info.amount / 100;
       }
+      if (units.currency(item.currency) !== 'TRY') continue;
       const amount = cents(item.amount) - cents(item.preTrackingPayment);
       principal += amount;
       if (item.docType === 'Yediemin Park Ücreti')
@@ -148,7 +157,10 @@
     if (!Number.isSafeInteger(principal) || !Number.isSafeInteger(parkingCommission))
       throw Error('Toplam alacak tutarı güvenli sınırı aşıyor.');
     const dates = items
-      .filter((item) => item.docType !== 'Yediemin Park Ücreti' && item.due)
+      .filter(
+        (item) =>
+          units.currency(item.currency) === 'TRY' && item.docType !== 'Yediemin Park Ücreti' && item.due,
+      )
       .map((item) => item.due)
       .sort();
     return { items, principal, standardPrincipal, parkingCommission, due: dates[0] || '' };
@@ -158,9 +170,20 @@
     const result = summarize(doc, today, parkingFeeInfo);
     doc.receivables = result.items;
     doc.amount = result.principal / 100;
-    doc.originalAmount = result.items.reduce((sum, item) => sum + cents(item.amount), 0) / 100;
-    doc.preTrackingPayment =
-      result.items.reduce((sum, item) => sum + cents(item.preTrackingPayment), 0) / 100;
+    const tl = result.items.filter((item) => units.currency(item.currency) === 'TRY');
+    doc.originalAmount = tl.reduce((sum, item) => sum + cents(item.amount), 0) / 100;
+    doc.preTrackingPayment = tl.reduce((sum, item) => sum + cents(item.preTrackingPayment), 0) / 100;
+    if (units.hasForeign(doc)) {
+      doc.hasForeignReceivables = true;
+      doc.unitPrincipals = units.principalTotals(result.items);
+    } else {
+      delete doc.hasForeignReceivables;
+      delete doc.unitPrincipals;
+    }
+    if (!tl.length && doc.financeTermsManual !== true) {
+      doc.financeInterest = 0;
+      doc.financeFee = 0;
+    }
     doc.due = result.due;
     doc.mixedParkingCommissionCents = result.parkingCommission;
     return result;
@@ -170,7 +193,7 @@
     const rows = [],
       receivables = [];
     for (const item of result.items) {
-      if (item.docType === 'Yediemin Park Ücreti') continue;
+      if (item.docType === 'Yediemin Park Ücreti' || units.currency(item.currency) !== 'TRY') continue;
       const principal = cents(item.amount) - cents(item.preTrackingPayment);
       const interest =
         principal > 0 && item.due && item.due < today
