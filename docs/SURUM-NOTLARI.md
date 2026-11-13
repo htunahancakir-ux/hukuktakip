@@ -1,5 +1,40 @@
 # Sürüm Notları
 
+## 2.1.0 — 13 Kasım 2026
+
+### Yenilikler
+
+- **İnternet bağlantısı uyarısı:** bilgisayarın bağlantısı kesilince ekranın üstünde "İnternet bağlantısı yok" uyarısı çıkar. Bağlantı gelene kadar kayıt yapılamaz; arka plandaki yenilemeler bekler, bağlantı gelince kendiliğinden devam eder. Sunucuya ulaşılamayan her durumda aynı, anlaşılır mesaj gösterilir.
+- **Sabit pencereler:** bir seçim yeni alanlar açıp kapatsa da pencere yerinde ve aynı boyutta kalır, zıplamaz. Daha fazla yer gereken pencere bir kez aşağı doğru büyür, sonra o boyutta kalır.
+- **Excel'e aktarma:** yeni "Excel'e Aktar" düğmeleri:
+  - Personel Kayıtları ile Maaş ve Prim Toplamları;
+  - Personel Cari Hesabı;
+  - Kasa ve Banka hareketleri: ekrandaki sayfa değil, seçili hesap ve süzgeçlere uyan tüm hareketler aktarılır.
+
+  Dosya Excel'de doğrudan açılır; Türkçe karakterler ve tutarlar düzgün görünür.
+
+### KVKK
+
+- **Tümünü göster:** yan yana iki maskeli değer açıldıktan sonra üçüncüsünde "Tümünü göster" önerilir.
+  - Bu seçim ekrandan ekrana açık kalır.
+  - "Gizle" denince, uygulamadan çıkınca ya da 15 dakika işlem yapılmayınca veriler yeniden maskelenir.
+- "Tümünü göster" ve personel/maaş Excel dökümü, veri açılmadan önce işlem kayıtlarına yazılır. Kayıt yazılamazsa veri açılmaz. Tek bir değeri tıklayıp 30 saniyeliğine açmak kayda yazılmaz.
+
+### Muhasebe
+
+- **Gecikmiş ödeme uyarıları** artık kullanıcının kendi dosyalarıyla sınırlı değil, büronun tüm dosyalarını kapsar (muhasebe yetkisi olanlar için).
+- Borçlu tahsilatında dosya seçim listesi açık dosyalarla dolu açılır; yazdıkça daralır.
+- Kasa/banka giriş-çıkış formlarında seçime göre açılan alanlar diğer alanları kaydırmaz.
+- Taksit ve ödeme sözü hesabı hatırlatmalarda, otomatik iş akışında ve muhasebe uyarılarında artık tek ve aynı kurala göre yapılır.
+
+### Çıkar çatışması
+
+- İsim eşleştirmesi genişletildi: çok kelimeli isimlerde iki kelimesi tutan kayıtlar da aday sayılır; silinmiş (arşivdeki) dosya ve müvekkiller de taranır. Aday sayısı çok fazlaysa ekran listenin eksik olabileceğini söyler.
+
+### Düzeltmeler
+
+- Hiç arama yapılmamış bir büroda borçlu föyü açılınca görülen "Sunucu hazır değil" hatası giderildi; görüşme geçmişi boş liste olarak gelir.
+
 ## 2.0.0 — 13 Kasım 2026
 
 Bu sürümle uygulama tek büroluk bir programdan **Hukuk Takip Platformu**'na dönüştü. Han Hukuk için adres, kullanıcılar, şifreler ve tüm kayıtlar aynı kaldı; aşağıdaki yenilikler 1.3.0'dan bu yana eklenenlerdir.
@@ -14,7 +49,7 @@ Bu sürümle uygulama tek büroluk bir programdan **Hukuk Takip Platformu**'na d
 
 ### Güvenlik ve KVKK
 
-- **Ekran maskeleme:** TC/vergi numarası, telefon, IBAN, e-posta ve adres ekranda maskeli gösterilir. Kaydı görme yetkisi olan kullanıcı değere tıklayarak açar; açılan veri işlem kayıtlarına yazılır. Kayıtlı veriler ve formlar değişmez.
+- **Ekran maskeleme:** TC/vergi numarası, telefon, IBAN, e-posta ve adres ekranda maskeli gösterilir. Kaydı görme yetkisi olan kullanıcı değere tıklayarak 30 saniyeliğine açar. Ekrandaki verilerin tümünü birden açmak işlem kayıtlarına yazılır. Kayıtlı veriler ve formlar değişmez.
 - **Çıkar çatışması kontrolü:** yeni bir müvekkil, borçlu veya kefil yazılırken başka bir dosyada geçip geçmediği gösterilir. Karşı tarafta eşleşme varsa (örneğin müvekkil başka dosyada borçluysa) kayıt, yazılı gerekçe girilmeden tamamlanmaz; gerekçe işlem kayıtlarına yazılır.
 - **Silme yetkisi:** kayıt silme yalnızca CEO'dadır (teknik destek hesabı da CEO rolündedir). Silinen kayıtların kopyası arşivde korunur.
   - Personel mesajları mesaj ayrıntısından veya İşlem Silme'den silinebilir.
