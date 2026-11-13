@@ -96,6 +96,13 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
   );
   assert.equal(form.elements.receivedBy.disabled, false);
   assert(
+    [...form.elements.receivedBy.options].some(
+      (option) => option.value === 'receiver:han' && option.textContent === 'HAN',
+    ),
+  );
+  assert(![...form.elements.recordedBy.options].some((option) => option.value === 'receiver:han'));
+  assert(![...form.elements.relatedStaff.options].some((option) => option.value === 'receiver:han'));
+  assert(
     form.elements.receivedBy.compareDocumentPosition(form.elements.recordedBy) &
       w.Node.DOCUMENT_POSITION_FOLLOWING,
   );
@@ -117,7 +124,7 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
     phone1: '05551234567',
     city: 'İstanbul',
     address: 'Address',
-    receivedBy: 'p',
+    receivedBy: 'receiver:han',
     recordedBy: 'p',
     deliveredBy: 'Sender',
   })) {
@@ -161,6 +168,9 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
   await form.onsubmit({ preventDefault() {}, target: form });
   assert.equal(w.db.docs.length, 1, notices.join('; '));
   assert.equal(w.db.docs[0].amount, 3000);
+  assert.equal(w.db.docs[0].receivedById, 'receiver:han');
+  assert.equal(w.db.docs[0].receivedBy, 'HAN');
+  assert.equal(w.personnel.length, 1, 'HAN is not a personnel record');
   assert.equal(w.db.docs[0].addressSource, 'Kendisi');
   assert.equal(w.db.docs[0].additionalAddresses[0].source, 'Muhtarlık');
   assert.equal(w.db.docs[0].phoneSources['5551234567'], 'İş yeri / Ayşe');
@@ -168,6 +178,7 @@ test('Full intake saves Senet and Ekstre then appends Fatura to the same folio; 
     number = w.db.docs[0].number;
   form = w.$('#intakeForm');
   assert.equal(form.dataset.existingFolio, number);
+  assert.equal(form.elements.receivedBy.value, 'receiver:han');
   assert.equal(form.elements.addressSource.value, 'Kendisi');
   assert.equal(form.querySelector('[data-address-field="source"]').value, 'Muhtarlık');
   assert.equal(form.elements.phone1._phoneSourceInput.value, 'İş yeri / Ayşe');

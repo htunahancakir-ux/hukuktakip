@@ -1,4 +1,5 @@
 const { validDate } = require('../../lib/business-time.cjs');
+const { isHanReceiver } = require('../../lib/document-receivers.cjs');
 const isMarketing = (p) =>
   String(p.department || '')
     .trim()
@@ -55,6 +56,7 @@ function calculateMarketingBonus(state, month, today = month + '-31') {
   const documents = new Map(),
     firmCounts = new Map();
   for (const doc of docs) {
+    if (isHanReceiver(doc)) continue;
     const owner =
       doc.receivedById ||
       (byId.has(doc.receivedBy)

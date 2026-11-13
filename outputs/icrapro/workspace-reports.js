@@ -31,6 +31,26 @@ function reportRows(type) {
   function basic(d) {
     return { number: d.number, client: clientName(d.client), debtor: d.debtor };
   }
+  if (type === 'hanDocuments') {
+    for (const doc of db.docs) {
+      if (!isHanDocumentReceiver(doc.receivedById) && !isHanDocumentReceiver(doc.receivedBy)) continue;
+      const items = Array.isArray(doc.receivables) && doc.receivables.length ? doc.receivables : [doc];
+      items.forEach((item, index) =>
+        add(
+          item.registeredOn || doc.trackingDate || doc.created,
+          doc,
+          {
+            ...basic(doc),
+            type: item.docType || docType(doc),
+            receiver: 'HAN',
+            count: 1,
+            status: debtorStatus(doc),
+          },
+          { id: doc.id + ':' + (index + 1), documentId: doc.id },
+        ),
+      );
+    }
+  }
   if (type === 'excel') {
     const documents = new Map(db.docs.map((doc) => [doc.id, doc]));
     const clients = new Map(db.clients.map((client) => [client.id, client]));
@@ -541,6 +561,18 @@ function renderReportsPage() {
   $('#openInsReport').onclick = insReportPage;
   $('#openClientListReport').onclick = clientListReportPage;
   if (typeof installCurrencyReportButton === 'function') installCurrencyReportButton();
+  const hanButton = document.createElement('button');
+  hanButton.type = 'button';
+  hanButton.className = 'primary';
+  hanButton.id = 'openHanDocumentReport';
+  hanButton.textContent = 'HAN Evrak Sayı Raporu';
+  hanButton.onclick = () => {
+    reportFilters.type = 'hanDocuments';
+    reportFilters.staff = '';
+    reportFilters.account = '';
+    reportsPage();
+  };
+  $('#openMarketingReport').after(hanButton);
   $('#exportReport').onclick = exportReport;
   $('#printReport').onclick = printReport;
   renderReportResult();
@@ -556,6 +588,10 @@ function buildCurrentReport() {
 }
 
 function reportTable(def, rows, openableDocuments, totals) {
+  const countTotal = (key) =>
+    BigInt(
+      totals ? totals[key] || '0' : rows.reduce((sum, row) => sum + Number(row.cells[key] || 0), 0),
+    ).toLocaleString('tr-TR');
   const total = (key) =>
     totals
       ? recordMoney(totals[key] || '0')
@@ -597,11 +633,16 @@ function reportTable(def, rows, openableDocuments, totals) {
         .join('') +
       '</tbody><tfoot><tr>' +
       def.columns
-        .map((c, i) => '<td>' + (i === 0 ? 'TOPLAM' : c[2] === 'money' ? total(c[0]) : '') + '</td>')
+        .map(
+          (c, i) =>
+            '<td>' +
+            (i === 0 ? 'TOPLAM' : c[2] === 'money' ? total(c[0]) : c[2] === 'count' ? countTotal(c[0]) : '') +
+            '</td>',
+        )
         .join('') +
       '</tr></tfoot></table></div>'
     );
-  return `<div class="overflow"><table><thead><tr><th>TARİH</th>${def.columns.map((c) => `<th>${esc(c[1])}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.date ? displayDate(r.date) : 'Tarih yok')}</td>${def.columns.map((c) => `<td>${renderCell(r, c)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${def.columns.length + 1}" class="empty">Bu seçimle eşleşen kayıt yok.</td></tr>`}</tbody><tfoot><tr><td><b>TOPLAM</b></td>${def.columns.map((c) => `<td>${c[2] === 'money' ? '<b>' + total(c[0]) + '</b>' : ''}</td>`).join('')}</tr></tfoot></table></div>`;
+  return `<div class="overflow"><table><thead><tr><th>TARİH</th>${def.columns.map((c) => `<th>${esc(c[1])}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.date ? displayDate(r.date) : 'Tarih yok')}</td>${def.columns.map((c) => `<td>${renderCell(r, c)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${def.columns.length + 1}" class="empty">Bu seçimle eşleşen kayıt yok.</td></tr>`}</tbody><tfoot><tr><td><b>TOPLAM</b></td>${def.columns.map((c) => `<td>${c[2] === 'money' ? '<b>' + total(c[0]) + '</b>' : c[2] === 'count' ? '<b>' + countTotal(c[0]) + '</b>' : ''}</td>`).join('')}</tr></tfoot></table></div>`;
 }
 
 function renderReportResult() {
@@ -611,7 +652,7 @@ function renderReportResult() {
     const result = $('#reportResult');
     const openableDocuments =
       reportFilters.type === 'excel' ? new Set(db.docs.map((doc) => doc.id)) : undefined;
-    result.innerHTML = `<div class="notice">${rows.length} kayıt · Tarihsiz: ${rows.filter((r) => !r.date).length}. Finansal raporlar işlem tarihini, evrak raporu kayıt tarihini, taksit raporu vade tarihini esas alır. Transferler hesap hareketlerinde giriş ve çıkış olarak görünür; kâr raporunda yer almaz. Personel maaş raporu kayıtlı güncel tutarlardır, dönem bordrosu değildir.</div><div class="panel"><div class="panelhead"><h2>${definition.label}</h2></div>${reportTable(definition, rows, openableDocuments)}</div>`;
+    result.innerHTML = `<div class="notice">${rows.length} ${reportFilters.type === 'hanDocuments' ? 'evrak' : 'kayıt'} · Tarihsiz: ${rows.filter((r) => !r.date).length}. Finansal raporlar işlem tarihini, evrak raporu kayıt tarihini, taksit raporu vade tarihini esas alır. Transferler hesap hareketlerinde giriş ve çıkış olarak görünür; kâr raporunda yer almaz. Personel maaş raporu kayıtlı güncel tutarlardır, dönem bordrosu değildir.</div><div class="panel"><div class="panelhead"><h2>${definition.label}</h2></div>${reportTable(definition, rows, openableDocuments)}</div>`;
     result.querySelectorAll('[data-report-borrower]').forEach((button) => {
       button.onclick = () => borrowerDetail(button.dataset.reportBorrower);
     });
