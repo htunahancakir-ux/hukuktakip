@@ -15,6 +15,7 @@ const workspaceScripts = [
   'workspace-connectivity.js',
   'personnel.js',
   'workspace-personnel-ledger.js',
+  'workspace-login-texts.js',
   'settings.js',
   'workspace-audit.js',
   'workspace-search.js',

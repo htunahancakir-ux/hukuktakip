@@ -70,7 +70,7 @@ function settings() {
   const v = settingsDraft[settingsTab];
   let fields = '';
   if (settingsTab === 'firm')
-    fields = `${field('Firma / Büro Adı', 'name', 'text', v.name, true, true)}${field('Ticari Unvan', 'legalName', 'text', v.legalName, false, true)}${field('Vergi Dairesi', 'taxOffice', 'text', v.taxOffice)}<label class="field">Vergi / TC Kimlik Numarası<input name="taxNumber" value="${esc(v.taxNumber)}" inputmode="numeric" pattern="[0-9]{10,11}" title="10 veya 11 rakam girin"></label>${field('Sicil / Baro Numarası', 'registration', 'text', v.registration)}${field('Firma Yetkilisi', 'authorized', 'text', v.authorized)}`;
+    fields = `${field('Firma / Büro Adı', 'name', 'text', v.name, true, true)}${field('Ticari Unvan', 'legalName', 'text', v.legalName, false, true)}${field('Vergi Dairesi', 'taxOffice', 'text', v.taxOffice)}<label class="field">Vergi / TC Kimlik Numarası<input name="taxNumber" value="${esc(v.taxNumber)}" inputmode="numeric" pattern="[0-9]{10,11}" title="10 veya 11 rakam girin"></label>${field('Sicil / Baro Numarası', 'registration', 'text', v.registration)}${field('Firma Yetkilisi', 'authorized', 'text', v.authorized)}${loginArtSetting()}`;
   else if (settingsTab === 'contact')
     fields = `${field('Telefon', 'phone', 'tel', v.phone)}${field('E-posta', 'email', 'email', v.email)}${field('Web Sitesi', 'website', 'url', v.website, false, true)}${field('İl', 'city', 'text', v.city)}${field('İlçe', 'district', 'text', v.district)}<label class="field full">Açık Adres<textarea name="address" rows="4">${esc(v.address)}</textarea></label>`;
   else
@@ -78,6 +78,7 @@ function settings() {
   $('#content').innerHTML =
     `${settingsSectionTabs(settingsTab)}<form class="panel" id="settingsForm"><section role="tabpanel" id="settingsPanel" aria-labelledby="tab-${settingsTab}"><div class="panelhead"><div><h2>${tabs[settingsTab][0]}</h2><p>${tabs[settingsTab][1]}</p></div><span class="badge" id="saveState">Kaydedildi</span></div><div class="formbody"><div class="notice">Firma adı menüde ve teslim tutanaklarında kullanılır. Ayarlar bu tarayıcıda saklanır.</div><div class="grid">${fields}</div></div></section><div class="actions"><button type="button" class="secondary" id="discardSettings">Değişiklikleri Geri Al</button><button type="submit" class="primary">Ayarları Kaydet</button></div></form>`;
   const form = $('#settingsForm');
+  bindLoginArtSetting();
   function capture() {
     const data = Object.fromEntries(new FormData(form));
     if (settingsTab === 'preferences') data.showContact = form.elements.showContact.checked;
@@ -126,6 +127,147 @@ function settings() {
     applySettings();
     settings();
     toast('Tüm ayarlar kaydedildi.');
+  };
+}
+
+// The login screen's picture (lib/office-images.cjs). It is saved on its own, not with the
+// settings form, and the file input has no name so the form never picks it up.
+function loginArtSetting() {
+  if (!['ceo', 'admin'].includes(hanAuth.role) || (hanAuth.role !== 'ceo' && hanAuth.readOnly)) return '';
+  return `<div class="full login-art-setting"><div class="login-art-mini" aria-hidden="true"><img id="loginArtPreview" alt=""><div class="lte-shade"></div><div class="login-art-mini-texts"></div></div><div><b>Giriş Ekranı</b><p>Giriş sayfasının sol tarafındaki görsel ve üzerindeki yazılar. Görsel JPG, PNG veya WebP olabilir; yatay ya da kare, en az 1200 piksel genişliğinde bir görsel önerilir ve yüklenince kendiliğinden küçültülür. Yazıları düzenleyicide tutup taşıyabilir, büyütüp küçültebilir, yeni yazı ekleyebilirsiniz.</p><div class="login-art-actions"><input type="file" id="loginArtFile" accept="image/jpeg,image/png,image/webp" hidden><button type="button" class="secondary" id="loginArtChoose">Görsel Seç</button><button type="button" class="secondary" id="loginTextsEdit" disabled>Yazıları Düzenle</button><button type="button" class="link" id="loginArtReset" hidden>Varsayılan Görsele Dön</button></div><small id="loginArtState" role="status"></small><small id="loginTextsState"></small></div></div>`;
+}
+
+// Longest side 1800 px, WebP (JPEG where the browser cannot write WebP).
+async function shrinkLoginArt(file) {
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw Error('Görsel açılamadı. JPG, PNG veya WebP biçiminde başka bir görsel seçin.');
+  }
+  try {
+    if (bitmap.width < 800 || bitmap.height < 500)
+      throw Error('Görsel çok küçük. En az 800 × 500 piksel bir görsel seçin.');
+    const scale = Math.min(1, 1800 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const encode = (type) => new Promise((resolve) => canvas.toBlob(resolve, type, 0.86));
+    let blob = await encode('image/webp');
+    if (!blob || blob.type !== 'image/webp') blob = await encode('image/jpeg');
+    if (!blob) throw Error('Görsel hazırlanamadı. Başka bir görsel seçin.');
+    return blob;
+  } finally {
+    bitmap.close();
+  }
+}
+
+function bindLoginArtSetting() {
+  const box = document.querySelector('.login-art-setting');
+  if (!box) return;
+  const preview = box.querySelector('#loginArtPreview'),
+    file = box.querySelector('#loginArtFile'),
+    choose = box.querySelector('#loginArtChoose'),
+    reset = box.querySelector('#loginArtReset'),
+    state = box.querySelector('#loginArtState'),
+    edit = box.querySelector('#loginTextsEdit'),
+    textsState = box.querySelector('#loginTextsState'),
+    miniTexts = box.querySelector('.login-art-mini-texts');
+  let artDigest = null,
+    texts = null;
+  // The small preview shows the picture with the texts as the login screen places them.
+  const drawTexts = () => {
+    loginTextLayer(texts || LOGIN_TEXT_DEFAULTS, miniTexts);
+    textsState.textContent = texts
+      ? `Büroya özel yazılar (${texts.length} yazı).`
+      : 'Varsayılan yazılar kullanılıyor.';
+  };
+  fetch('/api/login-texts', { cache: 'no-store' })
+    .then((response) => (response.ok ? response.json() : Promise.reject()))
+    .then((data) => {
+      texts = Array.isArray(data.texts) ? data.texts : null;
+      drawTexts();
+      edit.disabled = false;
+    })
+    .catch(() => {
+      drawTexts();
+      textsState.textContent = 'Yazılar alınamadı. Sayfayı yenileyip tekrar deneyin.';
+    });
+  edit.onclick = () =>
+    openLoginTextsEditor({
+      saved: texts,
+      artVersion: artDigest,
+      onSaved: (next) => {
+        texts = next;
+        drawTexts();
+      },
+    });
+  const show = (status) => {
+    artDigest = status.digest || null;
+    preview.src = '/api/login-art?v=' + encodeURIComponent(status.digest || 'varsayilan');
+    reset.hidden = !status.custom;
+    state.textContent = status.custom
+      ? `Büroya özel görsel${status.updatedBy ? ' · ' + status.updatedBy : ''}${status.updatedAt ? ' · ' + displayDate(status.updatedAt.slice(0, 10)) : ''}`
+      : 'Varsayılan terazi görseli kullanılıyor.';
+  };
+  const request = async (method, body) => {
+    const response = await fetch(method === 'GET' ? '/api/login-art/status' : '/api/login-art', {
+      method,
+      headers: method === 'GET' ? {} : { 'Content-Type': 'application/json', 'X-Han-Request': '1' },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+      cache: 'no-store',
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw Error(result.error || 'Giriş ekranı görseli kaydedilemedi.');
+    return result;
+  };
+  const busy = (on, text) => {
+    choose.disabled = reset.disabled = on;
+    if (text) state.textContent = text;
+  };
+  request('GET')
+    .then(show)
+    .catch(() => show({ custom: false }));
+  choose.onclick = () => file.click();
+  file.onchange = async () => {
+    const picked = file.files[0];
+    file.value = '';
+    if (!picked) return;
+    busy(true, 'Görsel hazırlanıyor…');
+    try {
+      const blob = await shrinkLoginArt(picked);
+      const data = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).slice(String(reader.result).indexOf(',') + 1));
+        reader.onerror = () => reject(Error('Görsel okunamadı. Başka bir dosya deneyin.'));
+        reader.readAsDataURL(blob);
+      });
+      busy(true, 'Yükleniyor…');
+      await request('PUT', { data });
+      show(await request('GET'));
+      toast('Giriş ekranı görseli güncellendi.');
+    } catch (error) {
+      toast(error.message || 'Giriş ekranı görseli kaydedilemedi.');
+      request('GET')
+        .then(show)
+        .catch(() => {});
+    } finally {
+      busy(false);
+    }
+  };
+  reset.onclick = async () => {
+    if (!confirm('Giriş ekranında varsayılan terazi görseli kullanılsın mı?')) return;
+    busy(true, 'Varsayılana dönülüyor…');
+    try {
+      await request('DELETE');
+      show({ custom: false });
+      toast('Büroya özel görsel kaldırıldı; giriş ekranında varsayılan görsel kullanılacak.');
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      busy(false);
+    }
   };
 }
 
