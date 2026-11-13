@@ -1,6 +1,6 @@
 # Sürüm Notları
 
-## Sıradaki sürüm — henüz yayınlanmadı
+## 2.3.0 — 13 Kasım 2026
 
 ### Rota Bulma: harita, bölge çizimi ve esnek arama
 
