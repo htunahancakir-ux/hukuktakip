@@ -529,3 +529,74 @@ body:has(#authGate) {
   color: inherit;
   text-decoration: none;
 }
+
+/* Texts an office placed on its login picture (Ayarlar → Firma Bilgileri → Yazıları Düzenle).
+   Sizes are in cqw (percent of the panel's width), so the settings preview and the login
+   screen show the same layout at any width. Not scoped to #authGate: the editor uses them. */
+.login-texts {
+  position: absolute;
+  inset: 0;
+  container-type: inline-size;
+  pointer-events: none;
+}
+.login-text {
+  position: absolute;
+  margin: 0;
+  line-height: 1.2;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  font-family:
+    'Segoe UI',
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+  font-weight: 400;
+}
+.login-text--brand {
+  display: flex;
+  align-items: center;
+  gap: 0.33em;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+}
+.login-text--brand .login-text-mark {
+  flex: none;
+  width: 1.3em;
+  height: 1.3em;
+  object-fit: contain;
+}
+.login-text--brand strong {
+  font-weight: inherit;
+}
+.login-text--brand span {
+  color: #d9b77b;
+}
+.login-text--heading {
+  font-family: 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+  line-height: 1.12;
+  letter-spacing: -0.013em;
+}
+.login-text--text {
+  line-height: 1.6;
+}
+.login-text--label {
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-weight: 500;
+}
+.login-text--white {
+  color: #f6f3ec;
+}
+.login-text--gold {
+  color: #d4c08f;
+}
+.login-text--soft {
+  color: #b9c3cd;
+}
+.login-text--bold {
+  font-weight: 650;
+}
+#authGate .login-story--pending :is(.login-brand, .login-story-copy, .login-story-domain),
+#authGate .login-story--custom :is(.login-brand, .login-story-copy, .login-story-domain) {
+  visibility: hidden;
+}
