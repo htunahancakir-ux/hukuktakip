@@ -12,6 +12,8 @@ const status = (code) => (error) => error.status === code;
 
 test('host parsing accepts only the bare domain or one valid label', () => {
   assert.deepEqual(parseHost(req(BASE), BASE), { legacy: true });
+  assert.deepEqual(parseHost(req('WWW.' + BASE), BASE), { legacy: true });
+  assert.deepEqual(parseHost(req('admin.' + BASE), BASE), { platform: true });
   assert.deepEqual(parseHost(req('Office-One.HAN.example.com:443'), BASE), { slug: 'office-one' });
   for (const host of [
     'evil.com',
