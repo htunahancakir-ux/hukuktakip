@@ -1,5 +1,25 @@
 # Sürüm Notları
 
+## 2.2.0 — 13 Kasım 2026
+
+### Büroya özel giriş ekranı
+
+Ayarlar → Firma Bilgileri'nin altındaki **Giriş Ekranı** kutusundan giriş sayfasının sol tarafı büroya göre düzenlenir. Kutudaki küçük önizleme, görseli yazılarıyla birlikte gösterir.
+
+- **Görsel:** "Görsel Seç" ile JPG, PNG veya WebP bir görsel yüklenir. Büyük fotoğraflar yüklenirken kendiliğinden küçültülür. "Varsayılan Görsele Dön" terazi görselini geri getirir.
+- **Yazılar:** "Yazıları Düzenle" giriş ekranının ölçekli bir kopyasını açar.
+  - Yazı tutup sürüklenerek taşınır; seçili yazı ok tuşlarıyla da kayar.
+  - Köşedeki tutamaçla, "Boyut" çubuğuyla ya da + / − tuşlarıyla büyütülüp küçültülür.
+  - Metin, biçim (Marka (logolu), Başlık, Metin, Etiket), renk (Beyaz, Altın, Gri) ve kalınlık yan panelden değiştirilir.
+  - En fazla 12 yazı eklenebilir; "Yazıyı Sil" ya da Delete tuşu yazıyı kaldırır.
+  - Değişiklikler "Kaydet" ile giriş ekranına geçer. Pencere kaydedilmeden kapanırsa değişiklikler kaybolmaz, yeniden açınca geri gelir. "Varsayılan Yazılara Dön" bugünkü yazıları geri getirir.
+- Yalnızca CEO ve yöneticiler değiştirebilir; her değişiklik işlem kayıtlarına yazılır. Her büronun görseli ve yazıları ayrıdır.
+- Telefonda giriş ekranının sol tarafı gösterilmediği için bu yazılar bilgisayar ekranında görünür. Sağdaki form başlığı ve alttaki büro adı değişmez.
+
+### Teknik notlar
+
+- Görsel ve yazılar yeni `han_private.office_branding` tablosunda, büro anahtarı (`tenant_id`) ve erişim kuralı (RLS) ile tutulur. Canlıda `npm run db:migrate` gerekir. Geçiş uygulanmadan önce giriş ekranı varsayılan görsel ve yazılarla çalışır.
+
 ## 2.1.0 — 13 Kasım 2026
 
 ### Yenilikler
