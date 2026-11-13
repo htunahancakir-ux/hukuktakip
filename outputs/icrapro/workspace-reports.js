@@ -877,9 +877,9 @@ function insPersonnelRows(events, staff, docs, period, date, endDate) {
 function renderInsReportPage(remoteRows) {
   insDate = insDate || businessDate();
   insEndDate = insEndDate || insDate;
-  const rows = (
-      remoteRows || insPersonnelRows(financeEvents, personnel, db.docs, insPeriod, insDate, insEndDate)
-    ).sort(
+  const rows = [
+      ...(remoteRows || insPersonnelRows(financeEvents, personnel, db.docs, insPeriod, insDate, insEndDate)),
+    ].sort(
       (a, b) => b[insSort] - a[insSort] || b.collected - a.collected || a.name.localeCompare(b.name, 'tr'),
     ),
     total = rows.reduce(
@@ -891,12 +891,15 @@ function renderInsReportPage(remoteRows) {
       { collected: 0, closedCount: 0, closedAmount: 0 },
     );
   const chart = (key, title, format) => {
-    const max = Math.max(1, ...rows.map((r) => r[key]));
+    const ranked = [...rows].sort(
+      (a, b) => b[key] - a[key] || b.collected - a.collected || a.name.localeCompare(b.name, 'tr'),
+    );
+    const max = Math.max(1, ...ranked.map((r) => r[key]));
     return (
       '<section class="ins-chart"><h3>' +
       title +
       '</h3>' +
-      rows
+      ranked
         .map(
           (r) =>
             '<div class="ins-chart-row"><span>' +
