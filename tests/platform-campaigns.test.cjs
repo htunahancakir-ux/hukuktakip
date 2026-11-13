@@ -598,7 +598,7 @@ test('campaigns and coupons: discounts, limits, audiences, reporting and trials'
       const row = (await pool.query("SELECT status, trial_until, price_kurus::int p FROM han_saas.tenant_modules WHERE tenant_id = $1 AND module_code = 'voip'", [o.id])).rows[0];
       assert.deepEqual([row.status, row.p], ['trial', 5000]);
       assert.equal(await gate.enabled('voip'), true, 'a running trial switches the feature on');
-      assert.deepEqual(await gate.all(), { voip: true, 'ai-assistant': false, whatsapp: false, 'marketing-routes': false });
+      assert.deepEqual(await gate.all(), { voip: true, 'ai-assistant': false, whatsapp: false, 'marketing-routes': false, 'marketing-routes-service': false });
       assert.equal((await pool.query("SELECT count(*)::int n FROM han_saas.tenant_events WHERE tenant_id = $1 AND action = 'trial_started'", [o.id])).rows[0].n, 1);
       // no sale is booked for a free trial, and the product does not count it as a subscribed office
       assert.equal((await rows(o.id)).length, 1, 'only the opening sale');
@@ -637,7 +637,7 @@ test('campaigns and coupons: discounts, limits, audiences, reporting and trials'
       assert.equal(await gate.enabled('voip'), true);
       await pool.query("UPDATE han_saas.tenant_modules SET trial_until = now() - interval '1 minute' WHERE tenant_id = $1", [o.id]);
       assert.equal(await gate.enabled('voip'), false, 'an expired trial is off, with no sweeper needed');
-      assert.deepEqual(Object.values(await gate.all()), [false, false, false, false]);
+      assert.deepEqual(Object.values(await gate.all()), [false, false, false, false, false]);
       await assert.rejects(platform.startTrial(pool, op, { tenantId: o.id, moduleCode: 'voip' }), status(409));
       // an expired trial can still be bought
       const added = await platform.addModule(pool, op, { tenantId: o.id, moduleCode: 'voip', paid: true });
