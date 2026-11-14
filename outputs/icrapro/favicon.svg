@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>HAN Hukuk</title>
+  <rect width="64" height="64" rx="14" fill="#142c3d"/>
+  <g fill="#e8c885">
+    <path d="M7 19h4v10h7V19h4v26h-4V33h-7v12H7z"/>
+    <path fill-rule="evenodd" d="m24 45 6-26h5l7 26h-4l-1.4-6h-8.2L28 45zm5.3-10h6.4l-3.2-12z"/>
+    <path d="M44 45V19h4l6 16V19h4v26h-4l-6-16v16z"/>
+  </g>
+</svg>
