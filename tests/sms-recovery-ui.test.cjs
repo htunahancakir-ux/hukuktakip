@@ -49,11 +49,19 @@ test('email recovery requests a code and submits it to the email channel before 
   });
   try {
     w.passwordRecoveryGate();
+    assert.equal(w.document.querySelector('[data-have-email-code]'), null);
+    assert.doesNotMatch(w.document.body.textContent, /SMS|WhatsApp|Kodum var/);
+    assert.equal(
+      w.document.querySelector('#emailRecoveryForm [type="submit"]').textContent,
+      'Şifre sıfırlama e-postası gönder',
+    );
     w.document.getElementById('emailRecoveryForm').elements.account.value = 'owner@example.test';
     submit(w, 'emailRecoveryForm');
     await settle();
     const form = w.document.getElementById('smsRecoveryForm');
     assert.match(form.textContent, /E-posta ile/);
+    assert.match(form.textContent, /E-postadaki 8 haneli kod/);
+    assert.doesNotMatch(form.textContent, /SMS|WhatsApp/);
     assert.equal(form.elements.account.value, 'owner@example.test');
     form.elements.code.value = '12345678';
     form.elements.password.value = 'Synthetic-New-Email-Password';
@@ -128,8 +136,7 @@ test('Şifremi unuttum with platform SMS: request, enter the temporary password,
         ? [200, { ok: true, username: 'mehmet' }]
         : [200, { ok: false, error: 'Geçici şifre hatalı veya süresi dolmuş. Yeni şifre isteyin.' }],
   });
-  w.passwordRecoveryGate();
-  w.document.querySelector('[data-email-back]').click();
+  w.passwordRecoveryGate(undefined, 'phone');
   assert.match(w.document.body.textContent, /SMS ile tek kullanımlık geçici şifre/);
   w.document.getElementById('recovery-account').value = '0532 123 45 67';
   submit(w, 'recoveryForm');
@@ -172,8 +179,7 @@ test('Şifremi unuttum with platform SMS: request, enter the temporary password,
 
 test('WhatsApp channel keeps the link message; "SMS ile geçici şifre aldım" opens the code step directly', async () => {
   const { w } = setup({ '/api/password-reset/request': () => [200, { ok: true, channel: 'whatsapp' }] });
-  w.passwordRecoveryGate();
-  w.document.querySelector('[data-email-back]').click();
+  w.passwordRecoveryGate(undefined, 'phone');
   w.document.getElementById('recovery-account').value = 'mehmet';
   submit(w, 'recoveryForm');
   await settle();

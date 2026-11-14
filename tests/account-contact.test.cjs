@@ -15,10 +15,15 @@ test('Hesabım shows recovery enrollment for an available sender and sends only 
     calls = [];
   w.esc = String;
   w.hanAuth = { id: 'test' };
+  let verified = false;
   w.authApi = (path, method, input) => {
-    if (path === '/api/account/contact') return { id: 'test', email: 'test@example.test' };
-    if (!method) return { available: true, verified: false };
+    if (path === '/api/account/contact') {
+      if (method === 'PUT' && input.email !== 'test@example.test') verified = false;
+      return { id: 'test', email: input?.email || 'test@example.test' };
+    }
+    if (!method) return { available: true, verified };
     calls.push({ path, input });
+    if (input.code) verified = true;
     return { ok: true };
   };
   try {
@@ -34,6 +39,19 @@ test('Hesabım shows recovery enrollment for an available sender and sends only 
     w.document.querySelector('[data-email-confirm]').click();
     assert.deepEqual(Object.keys(calls[1].input), ['code']);
     assert.match(w.document.querySelector('[data-email-status]').textContent, /doğrulandı/);
+    assert.ok(w.document.querySelector('.recovery-email-verified'));
+    assert.equal(w.document.querySelector('[data-email-enroll]'), null);
+    assert.equal(w.document.querySelector('[data-recovery-password]'), null);
+    w.document.getElementById('root').innerHTML = '<div class="account-settings-form"></div>';
+    w.setupAccountContact(w.document.getElementById('root'));
+    assert.equal(w.document.querySelector('[data-email-enroll]'), null, 'verified state survives reopening');
+    w.document.querySelector('[name="contactEmail"]').value = 'changed@example.test';
+    w.document.querySelector('[data-save-contact]').click();
+    assert.ok(
+      w.document.querySelector('[data-email-enroll]'),
+      'changing the saved address requires verification again',
+    );
+    assert.equal(w.document.querySelector('.recovery-email-verified'), null);
   } finally {
     w.close();
   }

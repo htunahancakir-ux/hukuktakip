@@ -43,7 +43,7 @@ function smsRecoveryGate(account = '', channel = 'sms') {
     input.maxLength = 254;
     input.placeholder = 'E-posta veya kullanıcı adınız';
     input.parentElement.firstChild.textContent = 'E-posta veya kullanıcı adı';
-    form.elements.code.parentElement.firstChild.textContent = 'E-postadaki kod';
+    form.elements.code.parentElement.firstChild.textContent = 'E-postadaki 8 haneli kod';
   }
   form.elements.account.value = account;
   installPasswordVisibility(form);
@@ -145,12 +145,10 @@ function passwordRecoveryGate(token, channel = 'email') {
 
 function emailRecoveryGate() {
   loginFrame(
-    `<form id="emailRecoveryForm" class="panel"><div class="login-heading"><h1>E-posta ile şifre sıfırlama.</h1><p>Hesabım bölümünde önceden doğruladığınız kurtarma e-postasını veya kullanıcı adınızı girin. Adresinizi henüz doğrulamadıysanız WhatsApp / SMS seçeneğini kullanın.</p></div><div class="login-fields"><label class="field">E-posta veya kullanıcı adı<input name="account" required maxlength="254" autocomplete="username"></label></div><p role="status" class="login-status"></p><div class="login-actions"><button type="submit" class="login-submit">Kod gönder</button><button type="button" class="login-link" data-have-email-code>Kodum var</button><button type="button" class="login-link" data-email-back>WhatsApp / SMS ile devam et</button><button type="button" class="login-link" data-email-login>Girişe dön</button></div></form>`,
+    `<form id="emailRecoveryForm" class="panel"><div class="login-heading"><h1>E-posta ile şifre sıfırlama.</h1><p>Hesabım bölümünde önceden doğruladığınız kurtarma e-postasını veya kullanıcı adınızı girin. Şifre sıfırlama kodu bu e-posta adresine gönderilir. E-postanızı daha önce doğrulamadıysanız büro yöneticinizle iletişime geçin.</p></div><div class="login-fields"><label class="field">E-posta veya kullanıcı adı<input name="account" required maxlength="254" autocomplete="username"></label></div><p role="status" class="login-status"></p><div class="login-actions"><button type="submit" class="login-submit">Şifre sıfırlama e-postası gönder</button><button type="button" class="login-link" data-email-login>Girişe dön</button></div></form>`,
   );
   const form = document.getElementById('emailRecoveryForm');
-  form.querySelector('[data-have-email-code]').onclick = () =>
-    smsRecoveryGate(form.elements.account.value.trim(), 'email');
-  form.querySelector('[data-email-back]').onclick = () => passwordRecoveryGate(undefined, 'phone');
+  // SMS/WhatsApp stay out of the public recovery UI until approved and live-tested.
   form.querySelector('[data-email-login]').onclick = () => authGate(false);
   form.onsubmit = async (event) => {
     event.preventDefault();

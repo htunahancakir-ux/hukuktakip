@@ -38,38 +38,47 @@ function setupAccountContact(form) {
   host.id = 'accountContactForm';
   form.querySelector('.account-settings-form').prepend(host);
   try {
-    bindContactEditor(host, authApi('/api/account/contact'), '/api/account/contact');
-    const recovery = authApi('/api/account/recovery-email');
-    if (recovery.available) {
-      const section = document.createElement('div');
-      section.innerHTML = `<h3>Şifre kurtarma e-postası</h3><p data-email-status>${recovery.verified ? 'E-postanız şifre kurtarma için doğrulandı.' : 'Kayıtlı e-postanızı şifre kurtarma için doğrulayın. Önce iletişim bilgilerinizi kaydedin.'}</p><label class="field">Mevcut şifreniz<input type="password" data-recovery-password autocomplete="current-password" data-optional="true"></label><button type="button" class="secondary" data-email-enroll>Doğrulama kodu gönder</button><label class="field">E-postadaki 8 haneli kod<input data-recovery-code inputmode="numeric" maxlength="8" autocomplete="one-time-code" data-optional="true"></label><button type="button" class="secondary" data-email-confirm>E-postamı doğrula</button>`;
-      host.append(section);
-      const act = (confirm) => {
-        const status = section.querySelector('[data-email-status]');
-        try {
-          const result = authApi(
-            '/api/account/recovery-email',
-            'POST',
-            confirm
-              ? { code: section.querySelector('[data-recovery-code]').value.trim() }
-              : { password: section.querySelector('[data-recovery-password]').value },
-          );
-          if (!result.ok) throw Error(result.error);
-          section.querySelector('[data-recovery-password]').value = '';
-          section.querySelector('[data-recovery-code]').value = '';
-          status.textContent = confirm
-            ? 'E-postanız şifre kurtarma için doğrulandı.'
-            : 'Doğrulama kodu kayıtlı e-postanıza gönderildi.';
-        } catch (error) {
-          status.textContent = error.message;
-        }
-      };
-      section.querySelector('[data-email-enroll]').onclick = () => act(false);
-      section.querySelector('[data-email-confirm]').onclick = () => act(true);
-    }
+    bindContactEditor(host, authApi('/api/account/contact'), '/api/account/contact', () =>
+      renderAccountRecovery(host),
+    );
+    renderAccountRecovery(host);
   } catch (error) {
     host.textContent = error.message;
   }
+}
+function renderAccountRecovery(host) {
+  const recovery = authApi('/api/account/recovery-email');
+  host.querySelector('[data-recovery-section]')?.remove();
+  if (!recovery.available) return;
+  const section = document.createElement('div');
+  section.dataset.recoverySection = '';
+  host.append(section);
+  if (recovery.verified) {
+    section.innerHTML = `<h3>Şifre kurtarma e-postası</h3><p class="recovery-email-verified" role="status" data-email-status><span aria-hidden="true">✓</span> E-posta doğrulandı</p><p>Bu adresi şifrenizi sıfırlamak için kullanabilirsiniz.</p>`;
+    return;
+  }
+  section.innerHTML = `<h3>Şifre kurtarma e-postası</h3><p data-email-status>Kayıtlı e-postanızı şifre kurtarma için doğrulayın. Önce iletişim bilgilerinizi kaydedin.</p><label class="field">Mevcut şifreniz<input type="password" data-recovery-password autocomplete="current-password" data-optional="true"></label><button type="button" class="secondary" data-email-enroll>Doğrulama kodu gönder</button><label class="field">E-postadaki 8 haneli kod<input data-recovery-code inputmode="numeric" maxlength="8" autocomplete="one-time-code" data-optional="true"></label><button type="button" class="secondary" data-email-confirm>E-postamı doğrula</button>`;
+  const act = (confirm) => {
+    const status = section.querySelector('[data-email-status]');
+    try {
+      const result = authApi(
+        '/api/account/recovery-email',
+        'POST',
+        confirm
+          ? { code: section.querySelector('[data-recovery-code]').value.trim() }
+          : { password: section.querySelector('[data-recovery-password]').value },
+      );
+      if (!result.ok) throw Error(result.error);
+      section.querySelector('[data-recovery-password]').value = '';
+      section.querySelector('[data-recovery-code]').value = '';
+      if (confirm) renderAccountRecovery(host);
+      else status.textContent = 'Doğrulama kodu kayıtlı e-postanıza gönderildi.';
+    } catch (error) {
+      status.textContent = error.message;
+    }
+  };
+  section.querySelector('[data-email-enroll]').onclick = () => act(false);
+  section.querySelector('[data-email-confirm]').onclick = () => act(true);
 }
 function showUserContact(account, onSaved) {
   let dialog = document.getElementById('userContactDialog');
