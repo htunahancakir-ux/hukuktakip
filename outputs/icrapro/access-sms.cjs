@@ -41,6 +41,15 @@ async function smsRoutes(ctx) {
     send(res, 200, { ok: true, balance, headers });
     return true;
   }
+  if (url.pathname === '/api/sms/marketing' && req.method === 'POST') {
+    const config = ctx.state.smsConfig;
+    if (!smsSettings.publicConfig(config).configured || !config.header)
+      throw fail(412, 'Önce Verimor hesabını ve onaylı SMS başlığını ayarlara kaydedin.');
+    const input = require('../../lib/verimor-sms.cjs').marketingInput(await body(req));
+    res.hanSms = { config, marketing: input, silent: false };
+    send(res, 200, { ok: true });
+    return true;
+  }
   if (url.pathname === '/api/sms/send-test' && req.method === 'POST') {
     const input = await body(req);
     if (!smsSettings.publicConfig(ctx.state.smsConfig).configured)

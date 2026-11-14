@@ -21,6 +21,7 @@ function smsSettingsPage() {
       <div class="full"><button class="secondary" type="button" id="smsTestConnection">Bağlantıyı test et</button>
         <small id="smsTestStatus" role="status" aria-live="polite">Test, yazdığınız bilgilerle bakiye ve başlık listesini sorgular; kaydetmez. Şifre alanı boşsa kayıtlı şifre kullanılır.</small></div>
     </div><div class="actions"><button class="primary" type="submit">Kaydet</button></div></form>
+    <div class="formbody"><button type="button" class="secondary" id="openMarketingSms">Pazarlama SMS’i</button></div>
     ${
       config.configured
         ? `<form id="smsSendTestForm"><div class="formbody grid">
@@ -32,6 +33,7 @@ function smsSettingsPage() {
     }
   </section>`;
   bindSettingsSectionTabs();
+  $('#openMarketingSms').onclick = marketingSmsPage;
   const form = $('#smsConfigForm');
   const typed = () => ({
     username: form.elements.username.value.trim(),
@@ -100,4 +102,75 @@ function smsSettingsPage() {
         button.disabled = false;
       }
     };
+}
+
+function marketingSmsPage() {
+  if (hanAuth?.role !== 'ceo') return toast('Pazarlama SMS’ini yalnızca CEO gönderebilir.');
+  let config;
+  try {
+    config = authApi('/api/sms/config');
+  } catch (error) {
+    return toast(error.message);
+  }
+  $('#content').innerHTML = `<section class="panel">
+    <div class="panelhead"><div><h2 id="marketingSmsTitle" tabindex="-1">Pazarlama SMS’i</h2>
+      <p>Tek bir alıcıya, Verimor’un İYS kontrolü ve otomatik ret bilgisiyle gönderin.</p></div>
+      <button type="button" class="secondary" id="marketingSmsBack">← Geri</button></div>
+    ${
+      config.configured && config.header
+        ? `<form id="marketingSmsForm" method="post" action="/api/sms/marketing" aria-labelledby="marketingSmsTitle">
+      <div class="formbody">
+        <p>Gönderici: <strong>${esc(config.header)}</strong>. Ret bağlantısı veya çıkış talimatı Verimor tarafından mesajın sonuna eklenir ve SMS uzunluğuna dahil edilir.</p>
+        <div class="field"><label for="marketingSmsPhone">Alıcı cep telefonu (zorunlu)</label>
+          <input id="marketingSmsPhone" name="phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" required aria-describedby="marketingSmsPhoneHelp">
+          <small id="marketingSmsPhoneHelp">Türkiye cep telefonu: 05xx xxx xx xx.</small></div>
+        <fieldset><legend>İYS alıcı türü (zorunlu)</legend>
+          <input id="marketingSmsIndividual" type="radio" name="recipientType" value="BIREYSEL" required><label for="marketingSmsIndividual">Bireysel</label>
+          <input id="marketingSmsMerchant" type="radio" name="recipientType" value="TACIR" required><label for="marketingSmsMerchant">Tacir</label>
+        </fieldset>
+        <div class="field"><label for="marketingSmsText">Mesaj (zorunlu, en fazla 900 karakter)</label>
+          <textarea id="marketingSmsText" name="text" rows="5" maxlength="900" required aria-describedby="marketingSmsHelp"></textarea></div>
+        <p id="marketingSmsHelp">Gönderim ticari ileti olarak yapılır. İYS izin kontrolü ve ret bilgisi zorunludur. Verimor’un isteği kabul etmesi teslim edildiği anlamına gelmez; alıcı izinleri teslimat sırasında da kontrol edilir.</p>
+        <p id="marketingSmsStatus" role="status" aria-live="polite"></p>
+      </div><div class="actions"><button type="submit" class="primary">Pazarlama SMS’ini gönder</button></div>
+    </form>`
+        : '<div class="formbody"><p>Önce Ayarlar → Entegrasyonlar → SMS bölümünde Verimor hesabını ve onaylı SMS başlığını kaydedin.</p></div>'
+    }
+  </section>`;
+  $('#marketingSmsBack').onclick = () => render();
+  $('#marketingSmsTitle').focus();
+  const form = $('#marketingSmsForm');
+  if (!form) return;
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    const button = form.querySelector('[type="submit"]');
+    if (button.disabled || !form.reportValidity()) return;
+    button.disabled = true;
+    const status = $('#marketingSmsStatus');
+    status.textContent = 'Gönderim Verimor’a iletiliyor…';
+    try {
+      const response = await fetch('/api/sms/marketing', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-Han-Request': '1' },
+        body: JSON.stringify({
+          phone: form.elements.phone.value,
+          text: form.elements.text.value,
+          recipientType: form.elements.recipientType.value,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.sms?.accepted) {
+        status.textContent = result.error || result.sms?.error || 'Verimor gönderimi kabul etmedi.';
+        return;
+      }
+      form.reset();
+      status.textContent = `Verimor isteği kabul etti. Kampanya: ${result.sms.campaignId}. Teslim ve İYS sonuçlarını Verimor Gönderim Takibi ekranından kontrol edin.`;
+    } catch {
+      status.textContent =
+        'Gönderim sonucu alınamadı. Yeniden göndermeden önce Verimor Gönderim Takibi ekranını kontrol edin.';
+    } finally {
+      button.disabled = false;
+    }
+  };
 }
