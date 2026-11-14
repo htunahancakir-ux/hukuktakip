@@ -1,6 +1,6 @@
 const reportDefinitions = {
   hanDocuments: {
-    label: 'HAN Evrak Sayı Raporu',
+    label: 'Evrak Raporu',
     columns: [
       ['number', 'Föy No'],
       ['client', 'Müvekkil'],

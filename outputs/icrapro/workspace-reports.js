@@ -33,7 +33,15 @@ function reportRows(type) {
   }
   if (type === 'hanDocuments') {
     for (const doc of db.docs) {
-      if (!isHanDocumentReceiver(doc.receivedById) && !isHanDocumentReceiver(doc.receivedBy)) continue;
+      const han = isHanDocumentReceiver(doc.receivedById) || isHanDocumentReceiver(doc.receivedBy);
+      const receiverId = han
+        ? 'receiver:han'
+        : doc.receivedById ||
+          personnel.find(
+            (p) => p.id === doc.receivedBy || normalizeSearch(p.name) === normalizeSearch(doc.receivedBy),
+          )?.id ||
+          doc.receivedBy ||
+          '';
       const items = Array.isArray(doc.receivables) && doc.receivables.length ? doc.receivables : [doc];
       items.forEach((item, index) =>
         add(
@@ -42,7 +50,8 @@ function reportRows(type) {
           {
             ...basic(doc),
             type: item.docType || docType(doc),
-            receiver: 'HAN',
+            receiver: han ? 'HAN' : doc.receivedBy || staffName(doc.receivedById),
+            receiverId,
             count: 1,
             status: debtorStatus(doc),
           },
@@ -353,6 +362,8 @@ function filterReportRows(rows, f) {
       (!f.staff || r.staffId === f.staff) &&
       (!f.status || r.status === f.status) &&
       (!f.account || r.accountId === f.account) &&
+      (!f.receiver || r.cells.receiverId === f.receiver) &&
+      (!f.documentType || r.cells.type === f.documentType) &&
       normalizeSearch(Object.values(r.cells).join(' ')).includes(normalizeSearch(f.query)),
   );
 }
@@ -414,15 +425,20 @@ function updateReportFilterSummary() {
   const summary = document.getElementById('reportFilterSummary');
   if (!summary) return;
   const count =
-    ['from', 'to', 'client', 'staff', 'status', 'account', 'query'].filter((key) =>
-      String(reportFilters[key] || '').trim(),
+    ['from', 'to', 'client', 'staff', 'status', 'account', 'query', 'receiver', 'documentType'].filter(
+      (key) => String(reportFilters[key] || '').trim(),
     ).length + (reportFilters.undated ? 0 : 1);
   summary.textContent = count ? count + ' filtre etkin' : 'Tüm kayıtlar';
   summary.classList.toggle('report-filter-active', count > 0);
 }
 
 function renderReportsPage() {
-  const filtersOpen = document.getElementById('clientInfoReportFilters')?.open;
+  if (reportFilters.type !== 'hanDocuments') {
+    reportFilters.receiver = '';
+    reportFilters.documentType = '';
+  }
+  const filtersOpen =
+    reportFilters.type === 'hanDocuments' || document.getElementById('clientInfoReportFilters')?.open;
   $('#content').innerHTML =
     `<div class="reports-workspace"><div class="acc-actions report-actions" role="toolbar" aria-label="Rapor kısayolları"><div class="acc-actions-main" id="reportShortcuts"><button class="primary" id="openExpenseReport">Gider Raporu</button><button class="primary" id="openMarketingReport">Pazarlama Raporlama</button><button class="primary monthly-payroll-report-button" id="openMonthlyPayrollReport">Aylık Maaş ve Prim Raporu</button><button class="primary ins-report-button" id="openInsReport">İNS Raporu</button><button class="primary client-list-report-button" id="openClientListReport">Müvekkil Listesi</button><button class="primary client-debtor-report-button" id="openClientDebtorInfo">Müvekkil Borçlu Bilgi Raporu</button></div></div><section class="panel report-controls acc-accounts"><div class="panelhead"><div><h2>Rapor Merkezi</h2><p>Rapor seçin, kayıtları filtreleyin ve çıktısını alın.</p></div><div class="acc-head-side report-export-actions"><button class="secondary" id="printReport">Yazdır / PDF</button><button class="primary" id="exportReport">Excel İndir</button></div></div><div class="report-selection"><label class="field">Rapor Türü<select id="reportType">${Object.entries(
       reportDefinitions,
@@ -435,6 +451,25 @@ function renderReportsPage() {
         '',
       )}</select></label><p>Seçili raporun kayıtları ve toplamları aşağıda gösterilir.</p></div><details class="borrower-filter-section report-filters" id="clientInfoReportFilters"${filtersOpen ? ' open' : ''}><summary>Filtre <span id="reportFilterSummary"></span></summary><div class="formbody grid">${field('Başlangıç Tarihi', 'reportFrom', 'date', reportFilters.from)}${field('Bitiş Tarihi', 'reportTo', 'date', reportFilters.to)}<label class="field">Müvekkil<select id="reportClient"><option value="">Tümü</option>${(window.hanRecordsEnabled ? recordReportClients() : db.clients).map((c) => `<option value="${esc(c.id)}" ${reportFilters.client === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label class="field">Personel<select id="reportStaff"><option value="">Tümü</option>${personnel.map((p) => `<option value="${esc(p.id)}" ${reportFilters.staff === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label><label class="field">Durum<select id="reportStatus"><option value="">Tümü</option>${(reportFilters.type === 'personnel' ? ['Aktif', 'Pasif'] : reportFilters.type === 'installments' ? ['Ödendi', 'Kısmi Ödendi', 'Bekliyor', 'Gecikmiş'] : ['Derdest', 'İnfaz', 'Bekleme', 'İade', 'İcra']).map((s) => `<option ${reportFilters.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label><label class="field">Kasa / Banka<select id="reportAccount"><option value="">Tümü</option>${accounting.accounts.map((a) => `<option value="${esc(a.id)}" ${reportFilters.account === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></label><label class="field full">Raporda Ara<input type="search" id="reportQuery" value="${esc(reportFilters.query)}" placeholder="İsim, evrak no, açıklama…"></label><label class="settings-check full"><input type="checkbox" id="reportUndated" ${reportFilters.undated ? 'checked' : ''}> Kayıt tarihi bulunmayan eski kayıtları da göster</label><button class="secondary" id="clearReportFilters">Süzgeçleri Temizle</button></div></details></section><div id="reportResult" class="report-result"></div></div>`;
   $('#openMarketingReport').hidden = !hanPageAllowed('marketing');
+  if (reportFilters.type === 'hanDocuments') {
+    const staffLabel = $('#reportStaff').closest('label');
+    staffLabel.firstChild.textContent = 'Dosya Sorumlusu';
+    staffLabel.insertAdjacentHTML(
+      'beforebegin',
+      `<label class="field">Evrakı Alan Personel<select id="reportReceiver"><option value="">Tümü</option><option value="receiver:han" ${reportFilters.receiver === 'receiver:han' ? 'selected' : ''}>HAN</option>${personnel
+        .filter((p) => !isHanDocumentReceiver(p.id) && !isHanDocumentReceiver(p.name))
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+        .map(
+          (p) =>
+            `<option value="${esc(p.id)}" ${reportFilters.receiver === p.id ? 'selected' : ''}>${esc(p.name)}${p.active === false ? ' (Pasif)' : ''}</option>`,
+        )
+        .join(
+          '',
+        )}</select></label><label class="field">Evrak Türü<select id="reportDocumentType"><option value="">Tümü</option>${(window.HanReceivables?.types || []).map((type) => `<option value="${esc(type)}" ${reportFilters.documentType === type ? 'selected' : ''}>${esc(type)}</option>`).join('')}</select></label>`,
+    );
+    $('#reportAccount').closest('label').hidden = true;
+  }
   const managerTimeReports = ['ceo', 'admin'].includes(hanAuth.role);
   for (const [type, label] of [
     ['staffBreaks', 'Personel Mola Raporu'],
@@ -499,6 +534,8 @@ function renderReportsPage() {
       account: $('#reportAccount').value,
       query: $('#reportQuery').value,
       undated: $('#reportUndated').checked,
+      receiver: $('#reportReceiver')?.value || '',
+      documentType: $('#reportDocumentType')?.value || '',
     };
     renderReportResult();
   }
@@ -512,6 +549,8 @@ function renderReportsPage() {
   };
   for (const id of ['reportClient', 'reportStaff', 'reportStatus', 'reportAccount', 'reportUndated'])
     $('#' + id).onchange = refresh;
+  if ($('#reportReceiver')) $('#reportReceiver').onchange = refresh;
+  if ($('#reportDocumentType')) $('#reportDocumentType').onchange = refresh;
   document.querySelector('[name="reportFrom"]').onchange = refresh;
   document.querySelector('[name="reportTo"]').onchange = refresh;
   $('#reportQuery').oninput = refresh;
@@ -526,6 +565,8 @@ function renderReportsPage() {
       account: '',
       query: '',
       undated: true,
+      receiver: '',
+      documentType: '',
     };
     reportsPage();
   };
@@ -613,11 +654,18 @@ function renderReportsPage() {
   hanButton.type = 'button';
   hanButton.className = 'primary';
   hanButton.id = 'openHanDocumentReport';
-  hanButton.textContent = 'HAN Evrak Sayı Raporu';
+  hanButton.textContent = 'Evrak Raporu';
   hanButton.onclick = () => {
-    reportFilters.type = 'hanDocuments';
-    reportFilters.staff = '';
-    reportFilters.account = '';
+    reportFilters = {
+      ...reportFilters,
+      type: 'hanDocuments',
+      staff: '',
+      account: '',
+      status: '',
+      query: '',
+      receiver: '',
+      documentType: '',
+    };
     reportsPage();
   };
   $('#openMarketingReport').after(hanButton);
@@ -1177,6 +1225,12 @@ async function monthlyPayrollReportPage() {
     if (error.name === 'AbortError') return;
     return toast(error.message);
   }
+  renderMonthlyPayrollReport(data);
+}
+
+let monthlyPayrollReportFilters = { staff: '', department: '', active: '', query: '' };
+
+function renderMonthlyPayrollReport(data) {
   const columns = [
       ['name', 'Personel'],
       ['department', 'Birim'],
@@ -1186,32 +1240,37 @@ async function monthlyPayrollReportPage() {
       ['dailyBonus', 'Günlük Prim'],
       ['total', 'Genel Toplam'],
     ],
-    totals = data.rows.reduce(
-      (s, r) => {
-        for (const key of ['salary', 'bonus1', 'bonus2', 'dailyBonus', 'total']) s[key] += r[key];
-        return s;
-      },
-      { salary: 0, bonus1: 0, bonus2: 0, dailyBonus: 0, total: 0 },
-    ),
-    table =
-      '<table><thead><tr>' +
-      columns.map(([, label]) => '<th>' + label + '</th>').join('') +
-      '</tr></thead><tbody>' +
-      data.rows
-        .map(
-          (r) =>
-            '<tr>' +
-            columns
-              .map(([key], i) => '<td>' + esc(i < 2 ? r[key] || '—' : money(r[key] / 100)) + '</td>')
-              .join('') +
-            '</tr>',
-        )
-        .join('') +
-      '</tbody><tfoot><tr><th colspan="2">ALT TOPLAM</th>' +
-      ['salary', 'bonus1', 'bonus2', 'dailyBonus', 'total']
-        .map((key) => '<th>' + money(totals[key] / 100) + '</th>')
-        .join('') +
-      '</tr></tfoot></table>';
+    amountKeys = ['salary', 'bonus1', 'bonus2', 'dailyBonus', 'total'];
+  let rows, totals, table;
+  const options = (values, selected) =>
+    values
+      .map(
+        ([value, label]) =>
+          '<option value="' +
+          esc(value) +
+          '"' +
+          (selected === value ? ' selected' : '') +
+          '>' +
+          esc(label) +
+          '</option>',
+      )
+      .join('');
+  const staffOptions = data.rows
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+    .map((r) => [r.staffId, r.name]);
+  if (
+    monthlyPayrollReportFilters.staff &&
+    !staffOptions.some(([id]) => id === monthlyPayrollReportFilters.staff)
+  )
+    staffOptions.push([
+      monthlyPayrollReportFilters.staff,
+      personnel.find((p) => p.id === monthlyPayrollReportFilters.staff)?.name ||
+        'Seçilen personel (bu ay kayıt yok)',
+    ]);
+  const departments = [...new Set(data.rows.map((r) => r.department).filter(Boolean))];
+  if (monthlyPayrollReportFilters.department && !departments.includes(monthlyPayrollReportFilters.department))
+    departments.push(monthlyPayrollReportFilters.department);
   $('#content').innerHTML =
     '<div class="panel"><div class="panelhead"><div><h2>Aylık Maaş ve Prim Raporu</h2><p>' +
     esc(data.month) +
@@ -1223,9 +1282,102 @@ async function monthlyPayrollReportPage() {
     (data.missing
       ? '<div class="formbody notice">Bu ay için kayıtlı maaş ve prim dönemi bulunmuyor.</div>'
       : '') +
-    '<div class="overflow">' +
-    table +
-    '</div><div class="formbody"><p>Prim 2 ve günlük primler yalnızca seçilen aya aittir. Geçmiş dönem maaş ve primleri dönem kaydından gösterilir.</p></div></div>';
+    '<details class="report-filters" open><summary>Filtreler</summary><form id="payrollReportFilters" class="formbody grid">' +
+    '<label class="field">Personel<select name="staff" data-optional="true">' +
+    options([['', 'Tümü'], ...staffOptions], monthlyPayrollReportFilters.staff) +
+    '</select></label>' +
+    '<label class="field">Birim<select name="department" data-optional="true">' +
+    options(
+      [['', 'Tümü'], ...departments.sort((a, b) => a.localeCompare(b, 'tr')).map((v) => [v, v])],
+      monthlyPayrollReportFilters.department,
+    ) +
+    '</select></label>' +
+    '<label class="field">Durum<select name="active" data-optional="true">' +
+    options(
+      [
+        ['', 'Tümü'],
+        ['active', 'Aktif'],
+        ['inactive', 'Pasif'],
+      ],
+      monthlyPayrollReportFilters.active,
+    ) +
+    '</select></label>' +
+    '<label class="field">Personel Ara<input name="query" data-optional="true" placeholder="Personel adı veya birim" value="' +
+    esc(monthlyPayrollReportFilters.query) +
+    '"></label>' +
+    '<div class="toolbar full"><button type="button" class="secondary" data-payroll-report-clear>Filtreleri Temizle</button></div></form></details>' +
+    '<div id="payrollReportResult"></div><div class="formbody"><p>Prim 2 ve günlük primler yalnızca seçilen aya aittir. Geçmiş dönem maaş ve primleri dönem kaydından gösterilir.</p></div></div>';
+  const form = $('#payrollReportFilters');
+  function filterSummary() {
+    return (
+      ['staff', 'department', 'active']
+        .map((key) => {
+          const input = form.elements[key];
+          return input.value ? input.selectedOptions[0].textContent : '';
+        })
+        .concat(form.elements.query.value)
+        .filter(Boolean)
+        .join(' · ') || 'Tüm personeller'
+    );
+  }
+  function refresh() {
+    monthlyPayrollReportFilters = Object.fromEntries(
+      ['staff', 'department', 'active', 'query'].map((key) => [key, form.elements[key].value]),
+    );
+    const f = monthlyPayrollReportFilters,
+      query = normalizeSearch(f.query);
+    rows = data.rows.filter(
+      (r) =>
+        (!f.staff || r.staffId === f.staff) &&
+        (!f.department || r.department === f.department) &&
+        (!f.active || (r.active === false ? 'inactive' : 'active') === f.active) &&
+        (!query || normalizeSearch([r.name, r.department].join(' ')).includes(query)),
+    );
+    totals = rows.reduce(
+      (s, r) => {
+        for (const key of amountKeys) s[key] += r[key] || 0;
+        return s;
+      },
+      { salary: 0, bonus1: 0, bonus2: 0, dailyBonus: 0, total: 0 },
+    );
+    table =
+      '<table><thead><tr>' +
+      columns.map(([, label]) => '<th>' + label + '</th>').join('') +
+      '</tr></thead><tbody>' +
+      (rows
+        .map(
+          (r) =>
+            '<tr>' +
+            columns
+              .map(([key], i) => '<td>' + esc(i < 2 ? r[key] || '—' : money(r[key] / 100)) + '</td>')
+              .join('') +
+            '</tr>',
+        )
+        .join('') || '<tr><td colspan="7" class="empty">Filtrelere uygun personel bulunamadı.</td></tr>') +
+      '</tbody><tfoot><tr><th colspan="2">ALT TOPLAM</th>' +
+      ['salary', 'bonus1', 'bonus2', 'dailyBonus', 'total']
+        .map((key) => '<th>' + money(totals[key] / 100) + '</th>')
+        .join('') +
+      '</tr></tfoot></table>';
+    $('#payrollReportResult').innerHTML =
+      '<div class="notice">' +
+      rows.length +
+      ' / ' +
+      data.rows.length +
+      ' personel · ' +
+      esc(filterSummary()) +
+      '</div><div class="overflow">' +
+      table +
+      '</div>';
+  }
+  form.onsubmit = (e) => e.preventDefault();
+  for (const key of ['staff', 'department', 'active']) form.elements[key].onchange = refresh;
+  form.elements.query.oninput = refresh;
+  $('[data-payroll-report-clear]').onclick = () => {
+    for (const key of ['staff', 'department', 'active', 'query']) form.elements[key].value = '';
+    refresh();
+  };
+  refresh();
   document.querySelector('[data-payroll-report-month]').onchange = (e) => {
     if (e.target.value) {
       monthlyPayrollReportMonth = e.target.value;
@@ -1236,7 +1388,7 @@ async function monthlyPayrollReportPage() {
   document.querySelector('[data-payroll-report-csv]').onclick = () => {
     const lines = [
         columns.map(([, label]) => label),
-        ...data.rows.map((r) => columns.map(([key], i) => (i < 2 ? r[key] || '' : money(r[key] / 100)))),
+        ...rows.map((r) => columns.map(([key], i) => (i < 2 ? r[key] || '' : money(r[key] / 100)))),
         [
           'ALT TOPLAM',
           '',
@@ -1267,7 +1419,11 @@ async function monthlyPayrollReportPage() {
       esc(data.month) +
       '</title><style>@page{size:A4 landscape;margin:15mm}body{font:11px Arial}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:8px;text-align:left}</style><h1>Maaş ve Prim Raporu · ' +
       esc(data.month) +
-      '</h1>' +
+      '</h1><p>' +
+      esc(filterSummary()) +
+      ' · ' +
+      rows.length +
+      ' personel</p>' +
       table +
       '</html>';
   };

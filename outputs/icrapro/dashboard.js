@@ -91,6 +91,8 @@ let reportFilters = {
   account: '',
   query: '',
   undated: true,
+  receiver: '',
+  documentType: '',
 };
 
 let clientPayoutFilter = '',

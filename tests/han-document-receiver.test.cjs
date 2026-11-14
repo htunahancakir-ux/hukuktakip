@@ -101,6 +101,7 @@ test('HAN intake persists without a personnel record; dated reports count each c
       staffId: 'p',
       permissions: ['documents'],
     });
+    delete state.data['icrapro-v1'].docs[0].receivedById;
     state.data['icrapro-v1'].docs.push({
       id: 'old-han',
       number: '10',
@@ -162,6 +163,7 @@ test('HAN intake persists without a personnel record; dated reports count each c
     assert.equal(current.data['icrapro-personnel-v1'].length, 2);
     const query = new URLSearchParams({
       type: 'hanDocuments',
+      receiver: HAN_RECEIVER_ID,
       from: today,
       to: today,
       client: 'c',
@@ -175,6 +177,43 @@ test('HAN intake persists without a personnel record; dated reports count each c
       return result;
     }
     const first = await page();
+    const all = await page(new URLSearchParams({ ...Object.fromEntries(query), receiver: '', limit: '50' }));
+    assert.equal(all.count, '19', 'Evrak Raporu includes both personnel and HAN claims');
+    assert.equal(all.totals.count, '19');
+    assert.equal(
+      (await page(new URLSearchParams({ ...Object.fromEntries(query), receiver: 'p' }))).count,
+      '9',
+    );
+    assert.equal(
+      (await page(new URLSearchParams({ ...Object.fromEntries(query), documentType: 'Fatura' }))).count,
+      '5',
+    );
+    assert.equal(
+      (
+        await page(
+          new URLSearchParams({ ...Object.fromEntries(query), receiver: 'p', documentType: 'Fatura' }),
+        )
+      ).count,
+      '0',
+    );
+    assert.equal(
+      (await page(new URLSearchParams({ ...Object.fromEntries(query), receiver: "p' OR true--" }))).count,
+      '0',
+    );
+    const filteredExport = await fetch(
+      server.url +
+        '/api/records/reports/export?' +
+        new URLSearchParams({ ...Object.fromEntries(query), documentType: 'Fatura', format: 'csv' }),
+      { headers: ceo },
+    );
+    assert.equal(filteredExport.status, 200);
+    const filteredCsv = await filteredExport.text();
+    assert.equal(filteredCsv.trim().split(/\r?\n/).length, 6);
+    assert.doesNotMatch(filteredCsv, /Senet|Borçlu 0/);
+    const otherReport = await fetch(server.url + '/api/records/reports?type=finance&receiver=p', {
+      headers: ceo,
+    });
+    assert.equal(otherReport.status, 400);
     assert.equal(first.count, '10');
     assert.equal(first.totals.count, '10');
     assert.equal(first.items.length, 1);

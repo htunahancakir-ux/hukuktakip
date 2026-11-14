@@ -165,4 +165,40 @@ test('Report UI keeps complete totals across pages, rejects stale responses and 
   assert.equal(w.reportFilters.client, '');
   assert.equal(w.document.querySelector('#reportClient').closest('label').hidden, true);
   assert.ok(requests.at(-1).includes('type=expenses'));
+  w.personnel = [{ id: 'p', name: 'Örnek Personel' }];
+  w.isHanDocumentReceiver = (value) => ['HAN', 'receiver:han'].includes(value);
+  w.HanReceivables = { types: ['Senet', 'Fatura'] };
+  w.document.querySelector('#openHanDocumentReport').click();
+  await tick();
+  assert.match(w.document.querySelector('#openHanDocumentReport').textContent, /Evrak Raporu/);
+  assert.equal(w.document.querySelector('#clientInfoReportFilters').open, true);
+  assert.match(w.document.querySelector('#reportStaff').closest('label').textContent, /Dosya Sorumlusu/);
+  for (const [id, value] of [
+    ['reportReceiver', 'receiver:han'],
+    ['reportDocumentType', 'Fatura'],
+  ]) {
+    const input = w.document.querySelector('#' + id);
+    input.value = value;
+    input.dispatchEvent(new w.Event('change'));
+    await tick();
+  }
+  let params = new URL(requests.at(-1), w.location).searchParams;
+  assert.equal(params.get('receiver'), 'receiver:han');
+  assert.equal(params.get('documentType'), 'Fatura');
+  assert.equal(params.get('after'), '');
+  await w.exportReport();
+  params = new URL(requests.at(-1), w.location).searchParams;
+  assert.equal(params.get('receiver'), 'receiver:han');
+  assert.equal(params.get('documentType'), 'Fatura');
+  assert.equal(params.has('after'), false);
+  w.document.querySelector('#clearReportFilters').click();
+  await tick();
+  assert.equal(w.reportFilters.receiver, '');
+  assert.equal(w.reportFilters.documentType, '');
+  w.document.querySelector('#reportReceiver').value = 'p';
+  w.document.querySelector('#reportReceiver').dispatchEvent(new w.Event('change'));
+  w.document.querySelector('#openExpenseReport').click();
+  await tick();
+  assert.equal(w.reportFilters.receiver, '', 'document filters cannot leak into other reports');
+  assert.equal(w.document.querySelector('#reportReceiver'), null);
 });
