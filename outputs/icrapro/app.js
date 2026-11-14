@@ -354,7 +354,7 @@ function render() {
     document.getElementById('content').innerHTML = `
       <section class="panel">
         <div class="panelhead"><div><h2>Pazarlama</h2><p>Potansiyel müvekkil bilgileri</p></div>
-          <div class="toolbar">${routesOff ? '' : '<button class="primary" type="button" id="openRouteFinder">⌖ Rota Bulma</button>'}<button class="primary" type="button" id="addProspect" aria-expanded="false" aria-controls="prospectForm">＋ Potansiyel Müvekkil Ekle</button><button class="secondary" type="button" id="marketingBack">← Geri</button></div>
+          <div class="toolbar">${hanAuth?.role === 'ceo' ? '<button class="secondary" type="button" id="openMarketingSms">Pazarlama SMS’i</button>' : ''}${routesOff ? '' : '<button class="primary" type="button" id="openRouteFinder">⌖ Rota Bulma</button>'}<button class="primary" type="button" id="addProspect" aria-expanded="false" aria-controls="prospectForm">＋ Potansiyel Müvekkil Ekle</button><button class="secondary" type="button" id="marketingBack">← Geri</button></div>
         </div>
         <form id="prospectForm" class="formbody" hidden>
           <h3>Potansiyel Müvekkil Bilgileri</h3>
@@ -379,6 +379,8 @@ function render() {
     setupClientDistrict('prospect');
     const routeFinder = document.getElementById('openRouteFinder');
     if (routeFinder) routeFinder.onclick = openMarketingRouteFinder;
+    const marketingSms = document.getElementById('openMarketingSms');
+    if (marketingSms) marketingSms.onclick = marketingSmsPage;
     const button = document.getElementById('addProspect');
     const form = document.getElementById('prospectForm');
     document.getElementById('marketingBack').onclick = () => {

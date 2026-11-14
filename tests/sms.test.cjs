@@ -211,6 +211,80 @@ test('SMS settings over HTTP: CEO only, password sealed and never returned', asy
   }
 });
 
+test('marketing SMS requires CEO and recipient type, forces IYS and opt-out, never downgrades errors', async () => {
+  const state = fixture();
+  state.smsConfig = savedConfig({ enabled: false }); // Recovery is independent of commercial sends.
+  state.users.push({ ...state.users[0], id: 'sms-admin', username: 'admin', role: 'admin' });
+  const app = await start(state);
+  try {
+    const ceo = await app.cookieFor('test');
+    const admin = await app.cookieFor('admin');
+    const input = { phone: PHONE, text: 'Pazarlama denemesi', recipientType: 'BIREYSEL' };
+    assert.equal((await app.send('/api/sms/marketing', input)).status, 401);
+    assert.equal((await app.send('/api/sms/marketing', input, { cookie: admin })).status, 403);
+    assert.equal(
+      (await app.send('/api/sms/marketing', { ...input, recipientType: '' }, { cookie: ceo })).status,
+      400,
+    );
+    assert.equal(
+      (await app.send('/api/sms/marketing', { ...input, phone: '123' }, { cookie: ceo })).status,
+      400,
+    );
+    assert.equal(app.sms.sent().length, 0);
+    const response = await app.send(
+      '/api/sms/marketing',
+      {
+        ...input,
+        add_ret: false,
+        is_commercial: false,
+        iys_recipient_type: 'OTHER',
+      },
+      { cookie: ceo },
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      ok: true,
+      sms: { sent: true, accepted: true, campaignId: '4711' },
+    });
+    assert.equal(app.sms.sent().length, 1, 'One external submission after the transaction');
+    const payload = app.sms.sent()[0].body;
+    assert.equal(payload.add_ret, true);
+    assert.equal(payload.is_commercial, true);
+    assert.equal(payload.iys_recipient_type, 'BIREYSEL');
+    assert.deepEqual(payload.messages, [{ dest: PHONE, msg: input.text }]);
+    app.sms.fail = { status: 400, text: 'NOT_ALLOWED_BY_IYS' };
+    const rejected = await (await app.send('/api/sms/marketing', input, { cookie: ceo })).json();
+    assert.equal(rejected.sms.sent, false);
+    assert.match(rejected.sms.error, /NOT_ALLOWED_BY_IYS/);
+    assert.equal(app.sms.sent().length, 2, 'Rejection never falls back to informational SMS');
+  } finally {
+    await app.close();
+  }
+});
+
+test('marketing client validates before network and supports tacir recipients', async () => {
+  const sms = verimor();
+  const client = createVerimorSms({
+    username: ACCOUNT,
+    password: API_PASSWORD,
+    header: 'Av.HB.Patan',
+    fetcher: sms.fetch,
+  });
+  const input = { phone: PHONE, text: 'Mesaj', recipientType: 'TACIR' };
+  for (const invalid of [
+    { ...input, text: 'x'.repeat(901) },
+    { ...input, text: ' ' },
+    { ...input, recipientType: 'other' },
+  ])
+    await assert.rejects(client.sendMarketing(invalid), (e) => e.status === 400);
+  const missingHeader = createVerimorSms({ username: ACCOUNT, password: API_PASSWORD, fetcher: sms.fetch });
+  await assert.rejects(missingHeader.sendMarketing(input), (e) => e.status === 412);
+  assert.equal(sms.calls.length, 0);
+  await client.sendMarketing(input);
+  assert.equal(sms.sent()[0].body.iys_recipient_type, 'TACIR');
+  assert.equal(sms.sent()[0].body.add_ret, true);
+});
+
 test('SMS password recovery: one-time code, same answer for every account, limits', async () => {
   const state = fixture();
   state.users[0].mobilePhone = PHONE;

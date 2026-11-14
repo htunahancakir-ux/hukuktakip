@@ -5,7 +5,10 @@ const { JSDOM } = require('jsdom');
 
 // Loads login-recovery.js with minimal stand-ins for the login screen it plugs into.
 function setup(replies) {
-  const dom = new JSDOM('<!doctype html><body></body>', { url: 'https://buro.example.test/', runScripts: 'dangerously' });
+  const dom = new JSDOM('<!doctype html><body></body>', {
+    url: 'https://buro.example.test/',
+    runScripts: 'dangerously',
+  });
   const w = dom.window;
   const requests = [];
   const logins = [];
@@ -36,20 +39,79 @@ function setup(replies) {
 const settle = async () => {
   for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
 };
-const submit = (w, id) => w.document.getElementById(id).dispatchEvent(new w.Event('submit', { cancelable: true }));
+const submit = (w, id) =>
+  w.document.getElementById(id).dispatchEvent(new w.Event('submit', { cancelable: true }));
+
+test('marketing form requires a recipient classification, avoids double posts and distinguishes acceptance from delivery', async () => {
+  const dom = new JSDOM('<!doctype html><div id="content"></div>', {
+    url: 'https://buro.example.test/',
+    runScripts: 'dangerously',
+  });
+  const w = dom.window;
+  const requests = [];
+  let release;
+  w.hanAuth = { role: 'ceo' };
+  w.$ = (selector) => w.document.querySelector(selector);
+  w.esc = (value) => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
+  w.authApi = () => ({ configured: true, header: 'Av.HB.Patan' });
+  w.toast = () => {};
+  w.render = () => {};
+  w.fetch = async (url, options) => {
+    requests.push({ url, ...options, body: JSON.parse(options.body) });
+    return new Promise((resolve) => {
+      release = () =>
+        resolve({ ok: true, json: async () => ({ sms: { accepted: true, campaignId: '4711' } }) });
+    });
+  };
+  w.eval(fs.readFileSync('outputs/icrapro/workspace-sms.js', 'utf8'));
+  try {
+    w.marketingSmsPage();
+    const form = w.document.getElementById('marketingSmsForm');
+    form.elements.phone.value = '05321234567';
+    form.elements.text.value = 'Tanıtım mesajı';
+    submit(w, 'marketingSmsForm');
+    assert.equal(requests.length, 0, 'No default recipient type or premature send');
+    w.document.getElementById('marketingSmsIndividual').checked = true;
+    submit(w, 'marketingSmsForm');
+    submit(w, 'marketingSmsForm');
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].method, 'POST');
+    assert.equal(requests[0].headers['X-Han-Request'], '1');
+    assert.equal(requests[0].body.recipientType, 'BIREYSEL');
+    release();
+    await settle();
+    assert.match(w.document.getElementById('marketingSmsStatus').textContent, /isteği kabul etti.*4711/);
+    assert.equal(form.elements.text.value, '');
+    assert.equal(form.querySelector('[type="submit"]').disabled, false);
+    w.hanAuth.role = 'staff';
+    let denied = false;
+    w.toast = () => {
+      denied = true;
+    };
+    w.marketingSmsPage();
+    assert.equal(denied, true);
+  } finally {
+    w.close();
+  }
+});
 
 test('Şifremi unuttum with platform SMS: request, enter the temporary password, set a new one, signed in', async () => {
   const { w, requests, logins } = setup({
     '/api/password-reset/request': () => [200, { ok: true, channel: 'sms' }],
     '/api/password-reset/sms-complete': (body) =>
-      body.code === '12345678' ? [200, { ok: true, username: 'mehmet' }] : [200, { ok: false, error: 'Geçici şifre hatalı veya süresi dolmuş. Yeni şifre isteyin.' }],
+      body.code === '12345678'
+        ? [200, { ok: true, username: 'mehmet' }]
+        : [200, { ok: false, error: 'Geçici şifre hatalı veya süresi dolmuş. Yeni şifre isteyin.' }],
   });
   w.passwordRecoveryGate();
   assert.match(w.document.body.textContent, /SMS ile tek kullanımlık geçici şifre/);
   w.document.getElementById('recovery-account').value = '0532 123 45 67';
   submit(w, 'recoveryForm');
   await settle();
-  assert.ok(w.document.getElementById('smsRecoveryForm'), 'SMS channel goes straight to the temporary-password step');
+  assert.ok(
+    w.document.getElementById('smsRecoveryForm'),
+    'SMS channel goes straight to the temporary-password step',
+  );
   assert.equal(w.document.getElementById('sms-account').value, '0532 123 45 67', 'account carried over');
 
   const fill = (code, password, confirm = password) => {
@@ -70,8 +132,16 @@ test('Şifremi unuttum with platform SMS: request, enter the temporary password,
 
   fill('12345678', 'New-Password-123');
   await settle();
-  assert.deepEqual(requests.at(-1).body, { account: '0532 123 45 67', code: '12345678', password: 'New-Password-123' });
-  assert.deepEqual(logins, [{ username: 'mehmet', password: 'New-Password-123' }], 'signed in with the new password');
+  assert.deepEqual(requests.at(-1).body, {
+    account: '0532 123 45 67',
+    code: '12345678',
+    password: 'New-Password-123',
+  });
+  assert.deepEqual(
+    logins,
+    [{ username: 'mehmet', password: 'New-Password-123' }],
+    'signed in with the new password',
+  );
 });
 
 test('WhatsApp channel keeps the link message; "SMS ile geçici şifre aldım" opens the code step directly', async () => {
