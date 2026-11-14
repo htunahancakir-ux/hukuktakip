@@ -4,6 +4,40 @@ const { database, fixture, serve, password } = require('./support/postgres.cjs')
 const { createApplication } = require('../lib/application.cjs');
 const { createStore, importState } = require('../lib/postgres-store.cjs');
 const { importRecords, activateRecords } = require('../lib/record-store/storage.cjs');
+
+test('Hesabım shows recovery enrollment for an available sender and sends only own password/code', () => {
+  const { JSDOM } = require('jsdom');
+  const fs = require('node:fs');
+  const dom = new JSDOM('<div id="root"><div class="account-settings-form"></div></div>', {
+    runScripts: 'dangerously',
+  });
+  const w = dom.window,
+    calls = [];
+  w.esc = String;
+  w.hanAuth = { id: 'test' };
+  w.authApi = (path, method, input) => {
+    if (path === '/api/account/contact') return { id: 'test', email: 'test@example.test' };
+    if (!method) return { available: true, verified: false };
+    calls.push({ path, input });
+    return { ok: true };
+  };
+  try {
+    w.eval(fs.readFileSync('outputs/icrapro/workspace-contact.js', 'utf8'));
+    w.setupAccountContact(w.document.getElementById('root'));
+    assert.match(w.document.body.textContent, /Şifre kurtarma e-postası/);
+    w.document.querySelector('[data-recovery-password]').value = 'Synthetic-Own-Password';
+    w.document.querySelector('[data-email-enroll]').click();
+    assert.equal(calls[0].path, '/api/account/recovery-email');
+    assert.deepEqual(Object.keys(calls[0].input), ['password']);
+    assert.equal(w.document.querySelector('[data-recovery-password]').value, '');
+    w.document.querySelector('[data-recovery-code]').value = '12345678';
+    w.document.querySelector('[data-email-confirm]').click();
+    assert.deepEqual(Object.keys(calls[1].input), ['code']);
+    assert.match(w.document.querySelector('[data-email-status]').textContent, /doğrulandı/);
+  } finally {
+    w.close();
+  }
+});
 test('staff update only their own contact; managers edit others without changing roles, salary or credentials', async (t) => {
   const { pg, pool } = await database(),
     state = fixture();
