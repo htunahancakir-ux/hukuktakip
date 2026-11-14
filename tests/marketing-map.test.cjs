@@ -1545,7 +1545,7 @@ test('search counter over HTTP and on the page: every search of the office is co
   const { w, doc, settle, change, rows } = page;
   try {
     const note = () => doc.getElementById('marketingUsageNote').textContent;
-    assert.match(note(), /^Bu ay yapılan arama: Google Places API 7 · Harita tarama 2\./);
+    assert.match(note(), /^Bu ay toplam 9 arama yapıldı: Google Places API 7 · Harita tarama 2\./);
     // The stand-in server replies with the new totals; the note follows them.
     w.fetch = async () =>
       Response.json({
@@ -1558,8 +1558,21 @@ test('search counter over HTTP and on the page: every search of the office is co
     change(form.elements.city, 'Ankara');
     form.dispatchEvent(new w.Event('submit', { cancelable: true }));
     await settle(() => rows().length === 3);
-    assert.match(note(), /Google Places API 8 · Harita tarama 2/);
+    assert.match(note(), /^Bu ay toplam 10 arama yapıldı: Google Places API 8 · Harita tarama 2\./);
   } finally {
     w.close();
+  }
+  // One source: the count leads and the source follows; nothing yet says so plainly.
+  for (const [usage, text] of [
+    [{ google: 5, scraper: 0, platform: 0 }, /^Bu ay 5 arama yapıldı \(Google Places API\)\. Her “Bul”/],
+    [{ google: 1234, scraper: 0, platform: 0 }, /^Bu ay 1\.234 arama yapıldı \(Google Places API\)\./],
+    [{ google: 0, scraper: 0, platform: 0 }, /^Bu ay henüz arama yapılmadı\. Her “Bul”/],
+  ]) {
+    const single = await routePage({ places: FOUND, overview: { usage } });
+    try {
+      assert.match(single.doc.getElementById('marketingUsageNote').textContent, text);
+    } finally {
+      single.w.close();
+    }
   }
 });

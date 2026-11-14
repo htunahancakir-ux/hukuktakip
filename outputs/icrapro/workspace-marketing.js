@@ -203,18 +203,19 @@ function marketingUsageNote() {
   const usage = marketingRouteState.overview.usage;
   if (!usage) return '';
   const count = (value) => Number(value || 0).toLocaleString('tr-TR');
-  const parts = [
-    usage.google || marketingSources().some((source) => source.id === 'google')
-      ? `Google Places API ${count(usage.google)}`
-      : '',
-    usage.scraper || marketingSources().some((source) => source.id === 'scraper')
-      ? `Harita tarama ${count(usage.scraper)}`
-      : '',
-    usage.platform || marketingRouteState.overview.service
-      ? `Hazır harita servisi ${count(usage.platform)}`
-      : '',
-  ].filter(Boolean);
-  return `Bu ay yapılan arama: ${parts.join(' · ') || '0'}. Her “Bul” ve “Daha fazla getir” bir arama sayılır.`;
+  const sources = [
+    ['Google Places API', usage.google, marketingSources().some((source) => source.id === 'google')],
+    ['Harita tarama', usage.scraper, marketingSources().some((source) => source.id === 'scraper')],
+    ['Hazır harita servisi', usage.platform, !!marketingRouteState.overview.service],
+  ].filter(([, used, offered]) => used || offered);
+  const total = sources.reduce((sum, [, used]) => sum + Number(used || 0), 0);
+  // The number comes first: "Google Places API 5" read like a version, not a count.
+  const made = !total
+    ? 'Bu ay henüz arama yapılmadı'
+    : sources.length === 1
+      ? `Bu ay ${count(total)} arama yapıldı (${sources[0][0]})`
+      : `Bu ay toplam ${count(total)} arama yapıldı: ${sources.map(([label, used]) => `${label} ${count(used)}`).join(' · ')}`;
+  return `${made}. Her “Bul” ve “Daha fazla getir” bir arama sayılır.`;
 }
 
 function marketingShowUsage(usage) {
