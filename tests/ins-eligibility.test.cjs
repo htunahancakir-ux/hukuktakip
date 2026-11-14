@@ -7,6 +7,86 @@ const { database, fixture } = require('./support/postgres.cjs');
 const { importState } = require('../lib/postgres-store.cjs');
 const { importRecords, activateRecords } = require('../lib/record-store/storage.cjs');
 const { insReport } = require('../lib/record-store/reports.cjs');
+
+test('INS ranks each chart by its own descending metric while table sorting and totals remain independent', async (t) => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('<div id="content"></div>', {
+    url: 'https://local-test.invalid',
+    runScripts: 'dangerously',
+  });
+  t.after(() => dom.window.close());
+  const w = dom.window;
+  const rows = [
+    { id: 'b', name: 'Bora', collected: '10000', closedCount: '3', closedAmount: '10000' },
+    { id: 'c', name: 'Cem', collected: '20000', closedCount: '2', closedAmount: '90000' },
+    { id: 'a', name: 'Ali', collected: '30000', closedCount: '1', closedAmount: '20000' },
+    { id: 'bonus', name: 'Bonus', collected: '0', closedCount: '0', closedAmount: '0' },
+  ];
+  Object.assign(w, {
+    AbortController,
+    page: 'reports',
+    hanRecordsEnabled: true,
+    insDate: '2026-11-13',
+    insEndDate: '2026-11-13',
+    insSort: 'collected',
+    insPeriod: 'day',
+    $: (s) => w.document.querySelector(s),
+    esc: (s) => String(s),
+    money: (n) => String(n),
+    displayDate: (s) => s,
+    businessDate: () => '2026-11-13',
+    field: (label, name, type, value) =>
+      `<label>${label}<input name="${name}" type="${type}" value="${value}"></label>`,
+    fetch: async () => ({ ok: true, json: async () => ({ rows }) }),
+  });
+  w.eval(
+    ['workspace-reports.js', 'workspace-report-records.js']
+      .map((file) => fs.readFileSync('outputs/icrapro/' + file, 'utf8'))
+      .join('\n'),
+  );
+  const tableNames = () => [...w.document.querySelectorAll('tbody tr')].map((r) => r.cells[0].textContent);
+  const chartNames = () =>
+    [...w.document.querySelectorAll('.ins-chart')].map((c) =>
+      [...c.querySelectorAll('.ins-chart-row>span')].map((s) => s.textContent),
+    );
+  const expectedCharts = [
+    ['Ali', 'Cem', 'Bora', 'Bonus'],
+    ['Bora', 'Cem', 'Ali', 'Bonus'],
+    ['Cem', 'Ali', 'Bora', 'Bonus'],
+  ];
+  await w.insReportPage();
+  assert.deepEqual(tableNames(), expectedCharts[0]);
+  assert.deepEqual(chartNames(), expectedCharts);
+  const totals = w.document.querySelector('tfoot').textContent;
+  for (const [metric, order] of [
+    ['closedCount', expectedCharts[1]],
+    ['closedAmount', expectedCharts[2]],
+  ]) {
+    const select = w.document.getElementById('insSort');
+    select.value = metric;
+    select.dispatchEvent(new w.Event('change'));
+    for (let i = 0; i < 6; i++) await new Promise(setImmediate);
+    assert.deepEqual(tableNames(), order);
+    assert.deepEqual(chartNames(), expectedCharts, 'changing table sort never disturbs the other rankings');
+    assert.equal(w.document.querySelector('tfoot').textContent, totals);
+  }
+  const local = Object.freeze(
+    rows.map((r) =>
+      Object.freeze({
+        ...r,
+        collected: Number(r.collected),
+        closedCount: Number(r.closedCount),
+        closedAmount: Number(r.closedAmount),
+      }),
+    ),
+  );
+  w.renderInsReportPage(local);
+  assert.deepEqual(chartNames(), expectedCharts, 'local preview shares the same descending chart order');
+  assert.deepEqual(
+    rows.map((r) => r.id),
+    ['b', 'c', 'a', 'bonus'],
+  );
+});
 test('INS includes every callcenter unit and only the three existing categories, retaining legacy category collections', async () => {
   const { pg, pool } = await database();
   try {
