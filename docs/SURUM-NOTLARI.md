@@ -1,5 +1,12 @@
 # Sürüm Notları
 
+## 2.4.2 — 14 Kasım 2026
+
+### Yönetim konsolu: yerel yedekleme bilgisayarlarının durumu
+
+- Konsol → Yönetim → **Yedekleme** bölümünde yeni tablo: **Yedekleme bilgisayarı**. Büroda ya da evde duran, her gün R2 kovasını, site kodunu ve veritabanı dökümlerini kendi diskine çeken her bilgisayarın son yerel yedeği, dosya sayısı, boyutu ve durumu (Güncel / Eski / Hata) görünür. 36 saatten uzun süredir yedek almayan bilgisayar **Eski** olarak işaretlenir.
+- Tablo yalnızca sunucuda `HAN_LOCAL_BACKUP_DIR` ayarlıysa görünür; bilgisayarlar sonucu sunucuya kendileri bildirir.
+
 ## 2.4.1 — 14 Kasım 2026
 
 ### Kendi sunucumuzda konsol ve büro adresleri

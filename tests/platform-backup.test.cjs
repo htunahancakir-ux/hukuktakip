@@ -339,3 +339,33 @@ test('the nightly request starts the fleet backup after answering, even when thi
     await pg.close();
   }
 });
+
+test('backup computers report their last run through small files the console lists', async () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'han-local-backup-'));
+  const { pg, pool } = await world();
+  try {
+    assert.equal(platformBackup.localBackups(''), null, 'not configured: no list');
+    assert.equal((await platformBackup.status(pool)).localBackups, null);
+    assert.deepEqual(platformBackup.localBackups(path.join(directory, 'missing')), []);
+    const write = (name, body) => fs.writeFileSync(path.join(directory, name), body);
+    write('OFIS-PC.json', '{"name":"ignored","at":"2026-11-14T04:00:05Z","ok":true,"files":43,"mb":60}\n');
+    write('EV_PC.json', '{"at":"2026-11-13T04:00:00Z","ok":false,"files":-4,"mb":"<img>"}');
+    write('bozuk.json', '{not json');
+    write('tarihsiz.json', '{"ok":true}');
+    write('notlar.txt', 'x');
+    write('kötü ad.json', '{"at":"2026-11-14T04:00:05Z","ok":true}');
+    assert.deepEqual(platformBackup.localBackups(directory), [
+      { name: 'EV_PC', at: '2026-11-13T04:00:00.000Z', ok: false, files: null, sizeMb: null },
+      { name: 'OFIS-PC', at: '2026-11-14T04:00:05.000Z', ok: true, files: 43, sizeMb: 60 },
+    ]);
+    process.env.HAN_LOCAL_BACKUP_DIR = directory;
+    assert.equal((await platformBackup.status(pool)).localBackups.length, 2);
+  } finally {
+    delete process.env.HAN_LOCAL_BACKUP_DIR;
+    fs.rmSync(directory, { recursive: true, force: true });
+    await pg.close();
+  }
+});

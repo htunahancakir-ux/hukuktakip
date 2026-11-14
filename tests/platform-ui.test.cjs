@@ -600,6 +600,44 @@ test('Yönetim tab: without object storage the backup buttons are off and the re
   assert.match(broken.w.document.body.textContent, /Harita servisi/, 'a failing backup state does not empty the page');
 });
 
+test('Yönetim tab: backup computers show when they last pulled a copy', async () => {
+  const hour = 3600000;
+  const { w } = setup({
+    backups: {
+      localBackups: [
+        { name: 'OFIS-PC', at: new Date(Date.now() - hour).toISOString(), ok: true, files: 1043, sizeMb: 60 },
+        { name: 'EV-PC', at: new Date(Date.now() - 80 * hour).toISOString(), ok: true, files: 40, sizeMb: 58 },
+        { name: 'BOZUK-PC', at: new Date(Date.now() - hour).toISOString(), ok: false, files: null, sizeMb: null },
+      ],
+    },
+  });
+  await settle();
+  button(w, 'Yönetim').click();
+  await settle();
+  const panel = w.document.querySelector('section.backuppanel');
+  const head = [...panel.querySelectorAll('th')].find((th) => th.textContent === 'Yedekleme bilgisayarı');
+  const rows = [...head.closest('table').querySelectorAll('tbody tr')].map((tr) =>
+    [...tr.querySelectorAll('td')].map((td) => td.textContent),
+  );
+  assert.deepEqual(rows.map((r) => [r[0], r[2], r[3], r[4]]), [
+    ['OFIS-PC', '1.043', '60 MB', 'Güncel'],
+    ['EV-PC', '40', '58 MB', 'Eski'],
+    ['BOZUK-PC', '—', '—', 'Hata'],
+  ]);
+
+  // Not configured on the server: the list is left out; configured but silent: it says so.
+  const none = setup();
+  await settle();
+  button(none.w, 'Yönetim').click();
+  await settle();
+  assert.doesNotMatch(none.w.document.querySelector('section.backuppanel').textContent, /Yedekleme bilgisayarı/);
+  const silent = setup({ backups: { localBackups: [] } });
+  await settle();
+  button(silent.w, 'Yönetim').click();
+  await settle();
+  assert.match(silent.w.document.querySelector('section.backuppanel').textContent, /Henüz hiçbir bilgisayar yerel yedek bildirmedi/);
+});
+
 // ---------- sales screens: products, trials, campaigns, announcements, pipeline, profit ----------
 const submitLast = (w) =>
   [...w.document.querySelectorAll('dialog form')].pop().dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));

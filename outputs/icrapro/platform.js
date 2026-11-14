@@ -5740,6 +5740,10 @@ function boot() {
       ? badge('Eski', 'warn')
       : badge('Yedekli', 'ok');
   }
+  function localBackupBadge(computer) {
+    if (!computer.ok) return badge('Hata', 'bad');
+    return Date.now() - Date.parse(computer.at) > 36 * 3600000 ? badge('Eski', 'warn') : badge('Güncel', 'ok');
+  }
   function backupRunText(run) {
     const parts = [`${run.saved} büro yedeklendi`];
     if (run.fresh) parts.push(`${run.fresh} büro zaten güncel`);
@@ -5884,6 +5888,23 @@ function boot() {
         ),
         'Büro yok.',
       ),
+      backups.localBackups
+        ? table(
+            ['Yedekleme bilgisayarı', 'Son yerel yedek', 'Dosya', 'Boyut', 'Durum'],
+            backups.localBackups.map((computer) =>
+              h(
+                'tr',
+                {},
+                h('td', { text: computer.name }),
+                h('td', { text: dateTimeText(computer.at) }),
+                h('td', { text: computer.files == null ? '—' : computer.files.toLocaleString('tr-TR') }),
+                h('td', { text: sizeText((computer.sizeMb || 0) * 1048576) }),
+                h('td', {}, localBackupBadge(computer)),
+              ),
+            ),
+            'Henüz hiçbir bilgisayar yerel yedek bildirmedi.',
+          )
+        : null,
       state.backupFiles
         ? table(
             ['Yönetim yedeği', 'Boyut', ''],

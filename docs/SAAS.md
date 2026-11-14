@@ -253,6 +253,8 @@ arttıkça tek istekte hepsi yetişmeyebilir; bu durumda düğmeye yeniden bası
 zamanlanmış iş eklenir. (c) Büronun giriş ekranı görseli (`office_branding`) büro yedeğinde
 değildir.
 
+**Yerel yedekleme bilgisayarları.** Sunucunun dışında, büroda ya da evde duran bir bilgisayar her gün R2 kovasının tamamını, deponun aynasını ve sunucunun gecelik veritabanı dökümlerini kendi diskine çekebilir (kurulum dosyası `HanYedek-Kur.bat` depoda değil, işleten kişide durur). Bu bilgisayarlar sunucuya yalnızca yedek malzemesini verebilen kısıtlı bir SSH anahtarıyla bağlanır ve her çalıştırmanın sonucunu bildirir. Sunucu her bilgisayar için `HAN_LOCAL_BACKUP_DIR` klasörüne tek satırlık bir JSON dosyası yazar (`{"at","ok","files","mb"}`); konsol bu klasörü okuyup Yedekleme bölümünde **Yedekleme bilgisayarı** tablosunu gösterir. Ayar tanımlı değilse tablo görünmez.
+
 #### Satışlarda KDV
 
 Satış defterindeki tutarlar **KDV hariçtir**. KDV oranı her satış kaydında saklanır (formda
