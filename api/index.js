@@ -7,6 +7,7 @@ const { createUsageMeter } = require('../lib/saas/usage-meter.cjs');
 const { createSeatGate } = require('../lib/saas/seat-gate.cjs');
 const { createPlatformSms } = require('../lib/saas/platform-sms.cjs');
 const { createPlatformMaps, createMapsMeter } = require('../lib/saas/platform-maps.cjs');
+const platformBackup = require('../lib/saas/platform-backup.cjs');
 const { createPool, createStore } = require('../lib/postgres-store.cjs');
 const { createTenantRouter } = require('../lib/saas/tenant-router.cjs');
 const { createModuleGate } = require('../lib/saas/module-gate.cjs');
@@ -50,6 +51,10 @@ function build() {
         platformMaps: pool ? createPlatformMaps(pool, { tenantId }) : undefined,
         // How many map searches the office made this month, shown on the Rota Bulma screen.
         mapsMeter: pool ? createMapsMeter(pool, { tenantId }) : undefined,
+        // The nightly job also backs up every other office and the console, when the operator
+        // switched that on (Yönetim → Yedekleme). It runs after the answer, within the
+        // function's time limit.
+        fleetBackup: pool ? () => platformBackup.runAll(pool, { scheduled: true, budgetMs: 70000 }) : undefined,
         // Each office only accepts requests from its own origin.
         ...(slug ? { appOrigin: `https://${slug}.${baseDomain}` } : {}),
       }),

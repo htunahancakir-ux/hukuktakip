@@ -221,6 +221,38 @@ edildi. (e) Google koşulları Places sonuçlarının Google dışı haritada g�
 harita anahtarı girilmezse abone bürolar firmaları haritada nokta olarak göremez (bölge çizimi ve
 süzme çalışır). Ücretli hizmette harita anahtarının girilmesi önerilir.
 
+#### Yedekleme (tüm bürolar ve yönetim)
+
+Her büro kendi yedeğini Ayarlar → Yedekleme'den alır (`lib/backup-service.cjs`). Konsol bunun
+üstüne **toplu yedek** ekler (`lib/saas/platform-backup.cjs`, Konsol → Yönetim → Yedekleme):
+
+- **Şimdi tümünü yedekle:** önce yönetim verisi, sonra her büro sırayla yedeklenir (en eski
+  yedeği olan büro önce). Büro yedeği, büronun kendi aldığı dosyayla aynıdır ve kendi
+  klasörüne yazılır (`hanhukuk/production/` mevcut büro, `hanhukuk/tenants/<büro>/production/`
+  diğerleri); büro yöneticisi dosyayı kendi ekranında görür. Büro verisi her zaman büronun
+  kendi satır güvenliği (RLS) bağlantısıyla okunur.
+- **Yönetim yedeği:** `han_saas` şemasındaki bütün tablolar tek şifreli dosyada
+  (`hanhukuk/platform/production/`). Yeni eklenen tablo kendiliğinden yedeğe girer. Girmeyenler:
+  oturumlar, giriş denemesi sayaçları, tek kullanımlık destek kodları ve ayarlardaki mühürlü
+  sağlayıcı bilgileri (SMS şifresi, harita anahtarı). Dosya biçimi büro yedeğiyle aynıdır
+  (`BACKUP_ENCRYPTION_KEY` ile AES-256-GCM); içinde her tablo satır listesi olarak durur.
+- **Otomatik:** onay kutusu açılırsa Vercel'in her gün 03:00 UTC'de (06:00 TSİ) çağırdığı
+  `/api/backups/cron` isteği, mevcut büronun yedeğinden sonra toplu yedeği de başlatır. Son 12
+  saatte yedeği alınmış büro atlanır. Varsayılan kapalıdır.
+- **Süre sınırı:** bir çalıştırma en çok ~90 sn (otomatikte ~70 sn) büro yedekler; kalan
+  bürolar "sırada" görünür ve bir sonraki çalıştırmada önce onlar alınır.
+- **İndirme:** konsoldan yalnızca yönetim yedeği indirilebilir; büro dosyaları konsola
+  verilmez (anahtar başka bir klasörü gösteriyorsa depo sorulmadan 404 döner). Çalıştırma,
+  otomatik ayarı ve indirme işlemleri operatör işlem kaydına yazılır.
+
+Bilinen sınırlar: (a) Yönetim yedeği için hazır bir geri yükleme komutu yoktur; dosya
+`decryptState` ile açılır ve tablolar `jsonb_populate_recordset` ile yüklenir (elle, bir kez
+yapılacak iş). `npm run backup:restore` yalnızca mevcut büronun yedeğini geri yükler; diğer
+bürolar için büro seçimi henüz yoktur. (b) Büro sayısı
+arttıkça tek istekte hepsi yetişmeyebilir; bu durumda düğmeye yeniden basılır ya da ayrı bir
+zamanlanmış iş eklenir. (c) Büronun giriş ekranı görseli (`office_branding`) büro yedeğinde
+değildir.
+
 #### Satışlarda KDV
 
 Satış defterindeki tutarlar **KDV hariçtir**. KDV oranı her satış kaydında saklanır (formda

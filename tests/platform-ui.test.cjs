@@ -9,6 +9,7 @@ const source = fs.readFileSync(path.join(root, 'platform.js'), 'utf8');
 const { parseTl, formatTl, previewTotals, vatOf } = require(path.join(root, 'platform.js'));
 const html = fs.readFileSync(path.join(root, 'platform.html'), 'utf8').replace(/<script[^>]*><\/script>/, '');
 const hostile = '<img src=x onerror="window.pwned=1">Kötü Büro';
+const BACKUP_KEY = 'hanhukuk/platform/production/2026-11-14T03-00-00-000Z-11111111-2222-4333-8444-555555555555.hnb';
 
 test('TL parsing is exact and strict', () => {
   assert.equal(parseTl('1250,50'), 125050);
@@ -147,7 +148,7 @@ const financeSummary = () => {
 // accessList: the grants GET support/:id/access returns (mutate it between steps); accessReplies:
 // per-action overrides (connect, extend, request-extension, end) as (reply, body) => response;
 // fakeTime: manual setInterval/clearInterval and Date.now so a countdown can be stepped.
-function setup({ session = { admin: { id: 'a', name: 'Operatör', username: 'root' } }, dashboardStatus = 200, login = null, accessList = [], accessReplies = {}, tickets = null, detailTicket = {}, fakeTime = false } = {}) {
+function setup({ session = { admin: { id: 'a', name: 'Operatör', username: 'root' } }, dashboardStatus = 200, login = null, accessList = [], accessReplies = {}, tickets = null, detailTicket = {}, fakeTime = false, backups = {} } = {}) {
   const dom = new JSDOM(html, { url: 'https://admin.han.example.com/', runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
   w.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
@@ -167,6 +168,18 @@ function setup({ session = { admin: { id: 'a', name: 'Operatör', username: 'roo
     w.Date.now = () => timers.now;
   }
   const openGrants = () => Object.fromEntries(accessList.filter((a) => a.state !== 'closed').map((a) => [a.ticketId, a]));
+  // Yönetim → Yedekleme: an office backed up an hour ago, one never, one failing, one without data.
+  const backupStatus = (extra = {}) => ({
+    enabled: false, lastAttemptAt: null, lastSuccessAt: null, lastSize: null, lastObjectKey: null, lastError: null, lastRun: null,
+    r2Configured: true, encryptionConfigured: true, scheduleConfigured: true,
+    offices: [
+      { tenantId: 't0', name: 'Mevcut Büro', slug: 'existing-office', status: 'enabled', hasData: true, automatic: true, lastSuccessAt: new Date(Date.now() - 3600000).toISOString(), lastSize: 5452595, lastError: null },
+      { tenantId: 't1', name: hostile, slug: 'kotu', status: 'enabled', hasData: true, automatic: false, lastSuccessAt: null, lastSize: null, lastError: null },
+      { tenantId: 't2', name: 'Hatalı Büro', slug: 'hatali', status: 'enabled', hasData: true, automatic: false, lastSuccessAt: '2026-11-01T03:00:00Z', lastSize: 12288, lastError: 'Yedek alınamadı.' },
+      { tenantId: 't3', name: 'Boş Büro', slug: 'bos', status: 'provisioning', hasData: false, automatic: false, lastSuccessAt: null, lastSize: null, lastError: null },
+    ],
+    ...backups, ...extra,
+  });
   const requests = [];
   w.fetch = async (url, options = {}) => {
     const route = url.replace('/api/platform/', '');
@@ -219,6 +232,11 @@ function setup({ session = { admin: { id: 'a', name: 'Operatör', username: 'roo
       return reply(200, { configured: true, enabled: true, username: '908501234567', header: 'HANHUKUK', usage: { monthSent: 4, monthSegments: 5, failed30: 1, blocked30: 0 }, recent: [{ id: '1', purpose: 'password_recovery', dest: '90532*****67', status: 'sent', error: null, createdAt: '2026-11-10T09:00:00Z', office: hostile }], dailyLimitPerOffice: 30 });
     if (route === 'settings/sms/test') return reply(200, { ok: true, balance: 1250, headers: ['HANHUKUK'] });
     if (route === 'settings/sms' && options.method === 'POST') return reply(200, { configured: true, enabled: false, username: '908501234567', header: 'HANHUKUK' });
+    if (route === 'backups' && options.method !== 'POST') return backups ? reply(200, backupStatus()) : reply(500, { error: 'Sunucu hatası.' });
+    if (route === 'backups' && options.method === 'POST') return reply(200, backupStatus({ enabled: JSON.parse(options.body).enabled }));
+    if (route === 'backups/run')
+      return reply(200, { ok: false, ...backupStatus({ lastRun: { at: '2026-11-14T09:00:00Z', scheduled: false, platform: true, saved: 2, fresh: 0, failed: 1, waiting: 0, empty: 1 }, lastError: '1 büronun yedeği alınamadı.' }) });
+    if (route === 'backups/files') return reply(200, { backups: [{ key: BACKUP_KEY, createdAt: '2026-11-14T03:00:00.000Z', size: 20480 }] });
     if (route === 'settings/maps' && options.method !== 'POST')
       return reply(200, { configured: true, enabled: true, browserKey: '', monthlySearches: 300, monthlyDetails: 3000, usage: { monthSearches: 12, monthDetails: 40, offices: [{ tenantId: 't1', name: hostile, searches: 12, details: 40 }] } });
     if (route === 'settings/maps/test') return reply(200, { ok: true });
@@ -519,6 +537,67 @@ test('Yönetim tab: map service settings show each office’s searches as text a
   await settle();
   const saved = requests.find((r) => r.route === 'settings/maps' && r.method === 'POST');
   assert.deepEqual(saved.body, { browserKey: '', monthlySearches: 250, monthlyDetails: 3000, enabled: false });
+});
+
+test('Yönetim tab: backup panel lists every office, runs the fleet backup and offers only the console’s files', async () => {
+  const { w, requests } = setup();
+  await settle();
+  button(w, 'Yönetim').click();
+  await settle();
+  const panel = () => w.document.querySelector('section.backuppanel');
+  assert.match(panel().textContent, /Yedekleme — tüm bürolar ve yönetim/);
+  assert.match(panel().textContent, /Otomatik kapalı/);
+  assert.match(panel().textContent, /Henüz toplu yedek alınmadı/);
+  const rows = () => [...panel().querySelector('tbody').querySelectorAll('tr')].map((tr) => [...tr.children].map((td) => td.textContent));
+  assert.deepEqual(rows().map((r) => [r[1], r[3], r[4], r[5]]), [
+    ['ana adres', '5,2 MB', 'Yedekli', 'Açık'],
+    ['kotu', '—', 'Hiç alınmadı', 'Kapalı'],
+    ['hatali', '12 KB', 'Hata', 'Kapalı'],
+    ['bos', '—', 'Veri yok', 'Kapalı'],
+  ]);
+  assert.equal(w.document.querySelector('img'), null, 'office names stay text');
+  assert.equal(w.pwned, undefined);
+
+  // Switching the nightly run on saves at once.
+  const automatic = panel().querySelector('input[type=checkbox]');
+  automatic.checked = true;
+  automatic.dispatchEvent(new w.Event('change'));
+  await settle();
+  assert.deepEqual(requests.find((r) => r.route === 'backups' && r.method === 'POST').body, { enabled: true });
+  assert.match(panel().textContent, /Otomatik açık/);
+  assert.match(panel().textContent, /Otomatik yedekleme açıldı: her sabah 06:00’da çalışır/);
+
+  button(w, 'Şimdi tümünü yedekle').click();
+  await settle();
+  assert.equal(requests.filter((r) => r.route === 'backups/run').length, 1);
+  assert.match(panel().querySelector('[role=status]').textContent, /^✕ 2 büro yedeklendi, 1 büro alınamadı, 1 büroda veri yok, yönetim yedeği alındı\.$/);
+  assert.match(panel().textContent, /Son hata: 1 büronun yedeği alınamadı/);
+
+  assert.equal(panel().querySelector('a[download]'), null, 'files are listed on request');
+  button(w, 'Yönetim yedeği dosyaları').click();
+  await settle();
+  const links = [...panel().querySelectorAll('a[download]')];
+  assert.deepEqual(links.map((a) => a.getAttribute('href')), ['/api/platform/backups/download?key=' + encodeURIComponent(BACKUP_KEY)]);
+  assert.match(links[0].closest('tr').textContent, /20 KB/);
+});
+
+test('Yönetim tab: without object storage the backup buttons are off and the rest of the page still opens', async () => {
+  const { w } = setup({ backups: { r2Configured: false, encryptionConfigured: false } });
+  await settle();
+  button(w, 'Yönetim').click();
+  await settle();
+  const panel = w.document.querySelector('section.backuppanel');
+  assert.match(panel.textContent, /Ayarlanmadı/);
+  assert.match(panel.textContent, /sunucuda ayarlı değil/);
+  assert.equal(button(w, 'Şimdi tümünü yedekle').disabled, true);
+  assert.equal(panel.querySelector('input[type=checkbox]').disabled, true);
+
+  const broken = setup({ backups: null });
+  await settle();
+  button(broken.w, 'Yönetim').click();
+  await settle();
+  assert.equal(broken.w.document.querySelector('section.backuppanel'), null);
+  assert.match(broken.w.document.body.textContent, /Harita servisi/, 'a failing backup state does not empty the page');
 });
 
 // ---------- sales screens: products, trials, campaigns, announcements, pipeline, profit ----------

@@ -138,11 +138,42 @@ function fakeIyzico() {
   };
 }
 
+// Yedekleme: an in-memory stand-in for object storage, so "Şimdi tümünü yedekle" and the
+// file list work in the preview. Nothing leaves this computer.
+function fakeStorage() {
+  const { Readable } = require('node:stream');
+  const { format } = require('../lib/backup-service.cjs');
+  for (const name of ['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET_NAME', 'CRON_SECRET'])
+    process.env[name] ||= 'preview';
+  process.env.BACKUP_ENCRYPTION_KEY ||= require('node:crypto').randomBytes(32).toString('hex');
+  const files = new Map();
+  return {
+    upload: async (key, data) => void files.set(key, data),
+    client: () => ({
+      async send(command) {
+        const { Prefix, Key } = command.input;
+        if (Prefix !== undefined)
+          return { Contents: [...files].filter(([key]) => key.startsWith(Prefix)).map(([key, data]) => ({ Key: key, Size: data.length })) };
+        if (!files.has(Key)) throw Object.assign(new Error('missing'), { $metadata: { httpStatusCode: 404 } });
+        return { Metadata: { format }, Body: Readable.from([files.get(Key)]) };
+      },
+      destroy() {},
+    }),
+  };
+}
+
 async function main() {
   const { pool } = await database();
   const operator = await createPlatformAdmin(pool, OPERATOR);
   await seed(pool, operator.id);
-  const api = createPlatformHandler({ pool, secureCookies: false, iyzico: fakeIyzico() });
+  const storage = fakeStorage();
+  const api = createPlatformHandler({
+    pool,
+    secureCookies: false,
+    iyzico: fakeIyzico(),
+    backupUpload: storage.upload,
+    backupR2Client: storage.client,
+  });
   const version = String(Date.now());
   const server = http.createServer((req, res) => {
     const { pathname } = new URL(req.url, 'http://localhost');

@@ -1,5 +1,24 @@
 # Sürüm Notları
 
+## 2.4.0 — 14 Kasım 2026
+
+### Yönetim konsolu: tüm büroların ve yönetimin yedeği
+
+- Konsol → Yönetim'de yeni **Yedekleme** bölümü. **Şimdi tümünü yedekle** düğmesi, alt alan adlarındaki bürolar dahil **bütün büroları** ve **yönetim verisini** (bürolar, abonelikler, satışlar, giderler, destek kayıtları, operatör hesapları) tek seferde yedekler.
+- Her büronun yedeği kendi klasörüne şifreli yazılır; büro yöneticisi aynı dosyayı kendi Ayarlar → Yedekleme ekranında görür ve indirebilir.
+- **Her sabah 06:00'da otomatik** yedekleme tek onay kutusuyla açılır (varsayılan kapalı). Böylece kendi otomatik yedeğini açmamış bürolar da her gün yedeklenir.
+- Tabloda her büronun son yedek zamanı, boyutu ve durumu (Yedekli / Eski / Hiç alınmadı / Hata) görünür.
+- Konsoldan yalnızca yönetim yedeği indirilebilir; büro dosyaları konsola verilmez. SMS şifresi ve harita anahtarı gibi sağlayıcı bilgileri yedeğe girmez.
+
+### Düzeltme
+
+- Ayarlar → Entegrasyonlar → **SMS** sekmesi açılmıyordu (`smsSettingsPage is not defined`). Sayfanın dosyası 11 Kasım'daki bir birleştirmede yüklenen dosyalar listesinden düşmüştü; geri eklendi.
+
+### Teknik notlar
+
+- Veritabanı geçişi yok. Yedek deposu (R2) ve `BACKUP_ENCRYPTION_KEY` zaten ayarlıdır.
+- Yönetim yedeği için hazır geri yükleme komutu yoktur (bkz. docs/SAAS.md → Yedekleme).
+
 ## 2.3.0 — 13 Kasım 2026
 
 ### Rota Bulma: harita, bölge çizimi ve esnek arama

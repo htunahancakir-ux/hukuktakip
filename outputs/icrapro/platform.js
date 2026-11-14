@@ -362,15 +362,18 @@ function boot() {
       } else if (state.tab === 'admin' && !state.account) {
         state.account = await api('account');
         if (!state.setupRequired) {
-          const [list, sms, maps] = await Promise.all([
+          const [list, sms, maps, backups] = await Promise.all([
             api('operators'),
             api('settings/sms'),
             api('settings/maps'),
+            // The page stays usable when the backup state cannot be read.
+            api('backups').catch(() => null),
           ]);
           state.operators = list.operators;
           state.audit = list.audit;
           state.sms = sms;
           state.maps = maps;
+          state.backups = backups;
         }
         renderApp();
       }
@@ -5722,6 +5725,191 @@ function boot() {
         : null,
     );
   }
+  // ---------- Yedekleme: every office and the console's own data ----------
+  const sizeText = (bytes) =>
+    !bytes
+      ? '—'
+      : bytes < 1048576
+        ? Math.max(1, Math.round(bytes / 1024)).toLocaleString('tr-TR') + ' KB'
+        : (bytes / 1048576).toLocaleString('tr-TR', { maximumFractionDigits: 1 }) + ' MB';
+  function backupOfficeBadge(office) {
+    if (!office.hasData) return badge('Veri yok');
+    if (office.lastError) return badge('Hata', 'bad');
+    if (!office.lastSuccessAt) return badge('Hiç alınmadı', 'warn');
+    return Date.now() - Date.parse(office.lastSuccessAt) > 36 * 3600000
+      ? badge('Eski', 'warn')
+      : badge('Yedekli', 'ok');
+  }
+  function backupRunText(run) {
+    const parts = [`${run.saved} büro yedeklendi`];
+    if (run.fresh) parts.push(`${run.fresh} büro zaten güncel`);
+    if (run.failed) parts.push(`${run.failed} büro alınamadı`);
+    if (run.waiting) parts.push(`${run.waiting} büro sıraya kaldı (yeniden başlatın)`);
+    if (run.empty) parts.push(`${run.empty} büroda veri yok`);
+    parts.push(run.platform ? 'yönetim yedeği alındı' : 'yönetim yedeği alınamadı');
+    return parts.join(', ') + '.';
+  }
+  function backupPanel() {
+    const backups = state.backups;
+    if (!backups) return null;
+    const usable = backups.r2Configured && backups.encryptionConfigured;
+    const result = h('p', { class: 'muted backupnote', role: 'status', text: state.backupNote || '' });
+    const runButton = h('button', {
+      class: 'btn primary',
+      type: 'button',
+      text: 'Şimdi tümünü yedekle',
+      disabled: !usable,
+    });
+    runButton.onclick = async () => {
+      runButton.disabled = true;
+      runButton.textContent = 'Yedekleniyor…';
+      result.textContent =
+        'Tüm bürolar ve yönetim yedekleniyor. Büro sayısına göre bir-iki dakika sürebilir; sayfayı kapatmayın.';
+      try {
+        state.backups = await api('backups/run', { method: 'POST', body: {} });
+        state.backupNote = (state.backups.ok ? '✓ ' : '✕ ') + backupRunText(state.backups.lastRun);
+        state.backupFiles = null;
+      } catch (e) {
+        state.backupNote = '✕ ' + e.message;
+      }
+      renderApp();
+    };
+    const automatic = h('input', { type: 'checkbox', disabled: !usable || !backups.scheduleConfigured });
+    automatic.checked = backups.enabled;
+    automatic.onchange = async () => {
+      automatic.disabled = true;
+      try {
+        state.backups = await api('backups', { method: 'POST', body: { enabled: automatic.checked } });
+        state.backupNote = automatic.checked
+          ? '✓ Otomatik yedekleme açıldı: her sabah 06:00’da çalışır.'
+          : '✓ Otomatik toplu yedekleme kapatıldı.';
+      } catch (e) {
+        state.backupNote = '✕ ' + e.message;
+      }
+      renderApp();
+    };
+    const filesButton = h('button', {
+      class: 'btn',
+      type: 'button',
+      text: 'Yönetim yedeği dosyaları',
+      disabled: !backups.r2Configured,
+    });
+    filesButton.onclick = async () => {
+      filesButton.disabled = true;
+      try {
+        state.backupFiles = (await api('backups/files')).backups;
+        state.backupNote = '';
+      } catch (e) {
+        state.backupNote = '✕ ' + e.message;
+      }
+      renderApp();
+    };
+    const run = backups.lastRun;
+    const table = (heads, rows, empty) =>
+      h(
+        'div',
+        { class: 'overflow' },
+        h(
+          'table',
+          {},
+          h(
+            'thead',
+            {},
+            h(
+              'tr',
+              {},
+              heads.map((t) => h('th', { text: t })),
+            ),
+          ),
+          h(
+            'tbody',
+            {},
+            rows.length
+              ? rows
+              : h('tr', {}, h('td', { colspan: String(heads.length), class: 'empty', text: empty })),
+          ),
+        ),
+      );
+    return h(
+      'section',
+      { class: 'panel backuppanel' },
+      h(
+        'div',
+        { class: 'panelhead' },
+        h('h3', { text: 'Yedekleme — tüm bürolar ve yönetim' }),
+        badge(
+          !usable ? 'Ayarlanmadı' : backups.enabled ? 'Otomatik açık' : 'Otomatik kapalı',
+          usable && backups.enabled ? 'ok' : 'warn',
+        ),
+      ),
+      h(
+        'div',
+        { class: 'accountbody' },
+        h('p', {
+          class: 'muted',
+          text: run
+            ? `Son toplu yedek: ${dateTimeText(run.at)} (${run.scheduled ? 'otomatik' : 'elle'}) — ${backupRunText(run)} Yönetim yedeği: ${sizeText(backups.lastSize)}.`
+            : 'Henüz toplu yedek alınmadı.',
+        }),
+        backups.lastError
+          ? h('p', { class: 'muted backuperror', text: 'Son hata: ' + backups.lastError })
+          : null,
+        !usable
+          ? h('p', {
+              class: 'muted backuperror',
+              text: 'Yedek deposu (R2) veya şifreleme anahtarı sunucuda ayarlı değil; yedek alınamaz.',
+            })
+          : null,
+        h('label', { class: 'check' }, automatic, 'Her sabah 06:00’da tüm büroları ve yönetimi otomatik yedekle'),
+        h('div', { class: 'toolbar' }, runButton, filesButton),
+        result,
+        h('p', {
+          class: 'muted',
+          text: 'Her büronun yedeği kendi klasörüne şifreli yazılır; büro yöneticisi aynı dosyayı kendi Ayarlar → Yedekleme ekranında görür. Yönetim yedeği büroları, abonelikleri, satışları, giderleri, destek kayıtlarını ve operatör hesaplarını içerir; SMS şifresi ve harita anahtarı gibi sağlayıcı bilgileri yedeğe girmez. Buradan yalnızca yönetim yedeği indirilebilir. Otomatik yedekleme, son 12 saatte yedeği alınmış büroyu atlar.',
+        }),
+      ),
+      table(
+        ['Büro', 'Adres', 'Son yedek', 'Boyut', 'Durum', 'Büronun kendi zamanlaması'],
+        backups.offices.map((o) =>
+          h(
+            'tr',
+            {},
+            h('td', { text: o.name }),
+            h('td', { text: o.slug === 'existing-office' ? 'ana adres' : o.slug }),
+            h('td', { text: dateTimeText(o.lastSuccessAt) }),
+            h('td', { text: sizeText(o.lastSize) }),
+            h('td', {}, backupOfficeBadge(o)),
+            h('td', { text: o.automatic ? 'Açık' : 'Kapalı' }),
+          ),
+        ),
+        'Büro yok.',
+      ),
+      state.backupFiles
+        ? table(
+            ['Yönetim yedeği', 'Boyut', ''],
+            state.backupFiles.map((file) =>
+              h(
+                'tr',
+                {},
+                h('td', { text: dateTimeText(file.createdAt) }),
+                h('td', { text: sizeText(file.size) }),
+                h(
+                  'td',
+                  { class: 'rowactions' },
+                  h('a', {
+                    class: 'btn small',
+                    href: '/api/platform/backups/download?key=' + encodeURIComponent(file.key),
+                    download: true,
+                    text: 'İndir',
+                  }),
+                ),
+              ),
+            ),
+            'Henüz yönetim yedeği yok.',
+          )
+        : null,
+    );
+  }
   function showRecoveryCodes(codes) {
     return new Promise((resolve) => {
       const dialog = h('dialog', {});
@@ -6070,6 +6258,7 @@ function boot() {
       operators,
       smsPanel(),
       mapsPanel(),
+      backupPanel(),
       audit,
     );
   }

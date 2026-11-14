@@ -225,3 +225,8 @@ tr.loss td { background: #fff8f7; }
 .accessbox .facts b.neg { color: var(--bad); }
 .accessbox .countdown { font-variant-numeric: tabular-nums; }
 .accessnote { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 10px 14px; font-size: 13px; overflow-wrap: anywhere; }
+
+/* Yedekleme panel: the status line keeps its height so the buttons do not move. */
+.backupnote { min-height: 20px; margin: 8px 0; }
+.backuperror { color: var(--bad); }
+.backuppanel .toolbar { margin-top: 4px; }
