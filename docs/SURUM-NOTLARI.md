@@ -1,5 +1,13 @@
 # Sürüm Notları
 
+## 2.4.1 — 14 Kasım 2026
+
+### Kendi sunucumuzda konsol ve büro adresleri
+
+- Site Vercel'den kendi sunucumuza taşındıktan sonra `admin.<alan>` konsolu açılmıyor, giriş **İstek kaynağı doğrulanamadı** diyordu. Sunucunun başlatma dosyası (`outputs/icrapro/server.cjs`) yalnızca mevcut büroyu çalıştırıyordu; artık Vercel girişiyle aynı kurulumu kullanıyor (konsol, alt alan adlarındaki bürolar, modül kapıları, kullanıcı sınırı, destek, harita servisi, toplu yedek).
+- Sunucu veritabanıyla çalışırken canlı kipte çalışır: büro yedekleri yeniden `production/` klasörüne yazılır (taşınmadan sonraki günlerde `local/` klasörüne yazılmıştı).
+- Sunucunun kendi içinden (127.0.0.1) çağrılan zamanlanmış işler mevcut büro için çalışmaya devam eder.
+
 ## 2.4.0 — 14 Kasım 2026
 
 ### Yönetim konsolu: tüm büroların ve yönetimin yedeği

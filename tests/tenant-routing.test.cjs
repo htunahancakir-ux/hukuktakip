@@ -147,3 +147,47 @@ test('scheduled jobs requested on the deployment address run for the existing of
   // On the console's address the job path is still the console's, never an office's.
   assert.deepEqual(await resolver.resolve({ ...req('admin.' + BASE), url: '/api/backups/cron' }), { platform: true });
 });
+
+test('our own server serves the console, browser files and loopback jobs', async () => {
+  const http = require('node:http');
+  const { serve } = require('./support/postgres.cjs');
+  const { createStandaloneHandler } = require('../lib/saas/deployment.cjs');
+  const { pg, pool } = await database();
+  const server = await serve(createStandaloneHandler({ pool, cloud: false, baseDomain: BASE }));
+  const ask = (host, path, { method = 'GET', headers = {}, body } = {}) =>
+    new Promise((resolve, reject) => {
+      const request = http.request(server.url + path, { method, headers: { host, ...headers } }, (res) => {
+        let text = '';
+        res.on('data', (chunk) => (text += chunk));
+        res.on('end', () => resolve({ status: res.statusCode, text }));
+      });
+      request.on('error', reject);
+      request.end(body);
+    });
+  try {
+    const admin = 'admin.' + BASE;
+    const root = await ask(admin, '/');
+    assert.equal(root.status, 200);
+    assert.match(root.text, /platform\.js/);
+    assert.equal((await ask(admin, '/platform.js')).status, 200);
+    // The console answers on its own address instead of the office application.
+    const login = await ask(admin, '/api/platform/login', {
+      method: 'POST',
+      headers: { origin: 'https://' + admin, 'x-han-request': '1', 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'nobody', password: 'wrong-password-123' }),
+    });
+    assert.equal(login.status, 401, login.text);
+    assert.equal((await ask(admin, '/api/session')).status, 404);
+    // Scheduled jobs call the loopback address; they belong to the existing office.
+    const local = await ask('127.0.0.1:4317', '/api/session');
+    assert.notEqual(local.status, 404, local.text);
+    assert.deepEqual(local, await ask('www.' + BASE, '/api/session'));
+    // Browser files are the same everywhere; data of an unknown office is not.
+    assert.equal((await ask('nobody.' + BASE, '/app.js')).status, 200);
+    assert.equal((await ask('nobody.' + BASE, '/api/session')).status, 403);
+    assert.equal((await ask('evil.example.org', '/api/session')).status, 404);
+  } finally {
+    await server.close();
+    await pg.close();
+  }
+});
