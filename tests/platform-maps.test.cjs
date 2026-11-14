@@ -20,6 +20,23 @@ process.env.PLATFORM_ENCRYPTION_KEY = crypto.randomBytes(32).toString('hex');
 const SERVICE_KEY = 'AIza' + 'S'.repeat(35);
 const BROWSER_KEY = 'AIza' + 'B'.repeat(35);
 const opPassword = 'Synthetic-Platform-Maps-Test!';
+const LEGACY = '00000000-0000-0000-0000-000000000001';
+// One row of the console's office list (Yönetim → Harita servisi).
+const officeRow = (tenantId, name, slug, values = {}) => ({
+  tenantId,
+  name,
+  slug,
+  subscribed: false,
+  searches: 0,
+  details: 0,
+  ownSearches: 0,
+  scrapes: 0,
+  monthlySearches: 300,
+  ownLimit: false,
+  searchesLeft: 300,
+  ...values,
+});
+const existingOffice = (values) => officeRow(LEGACY, 'Mevcut Büro', 'existing-office', { subscribed: true, ...values });
 
 const openOffice = async (pool, op, slug, moduleCodes = []) =>
   (
@@ -46,7 +63,7 @@ test('map service settings: the Places key is sealed, the map key is separate, l
       monthlySearches: platformMaps.DEFAULT_LIMITS.monthlySearches,
       monthlyDetails: platformMaps.DEFAULT_LIMITS.monthlyDetails,
       updatedAt: null,
-      usage: { monthSearches: 0, monthDetails: 0, offices: [] },
+      usage: { monthSearches: 0, monthDetails: 0, offices: [existingOffice()] },
     });
     for (const input of [
       { enabled: true },
@@ -164,8 +181,9 @@ test('map service for one office: ready while its monthly allowance lasts, count
       monthSearches: 5,
       monthDetails: 4,
       offices: [
-        { tenantId: a.id, name: 'HARITA-A', searches: 3, details: 4 },
-        { tenantId: b.id, name: 'HARITA-B', searches: 2, details: 0 },
+        officeRow(a.id, 'HARITA-A', 'harita-a', { searches: 3, details: 4, monthlySearches: 3, searchesLeft: 0 }),
+        officeRow(b.id, 'HARITA-B', 'harita-b', { searches: 2, monthlySearches: 3, searchesLeft: 1 }),
+        existingOffice({ monthlySearches: 3, searchesLeft: 3 }),
       ],
     });
 
@@ -277,7 +295,8 @@ test('two products: the subscription opens the service, the module opens the off
   assert.equal((await call('/api/marketing/search', { city: 'Ankara', source: 'platform' })).status, 429);
   assert.equal(googleCalls.length, 2, 'the allowance stops the third request before Google');
   const usage = (await platformMaps.getSettings(pool)).usage;
-  assert.deepEqual(usage.offices, [{ tenantId: office.id, name: 'ABONE', searches: 2, details: 0 }]);
+  assert.deepEqual(usage.offices[0], { ...usage.offices[0], tenantId: office.id, name: 'ABONE', subscribed: true, searches: 2, details: 0 });
+  assert.equal(usage.offices[0].searchesLeft, usage.offices[0].monthlySearches - 2);
 
   // The estimated cost of those searches lands on the office and on the subscription product.
   await profit.saveUnitCosts(pool, op, { mapsSearchKurus: 150, mapsDetailKurus: 60 });
@@ -399,6 +418,109 @@ test('search counter: an office’s own searches are counted by source and month
       await broken.record({ google: 1 });
     } finally {
       console.error = logged;
+    }
+  } finally {
+    await pg.close();
+  }
+});
+
+test('each office can be given its own monthly allowance, and the console lists who used how much', async () => {
+  const { pg, pool } = await database();
+  try {
+    const op = (await createPlatformAdmin(pool, { username: 'root', name: 'Op', password: opPassword })).id;
+    await platform.upsertModule(pool, { code: platformMaps.SERVICE_MODULE, name: 'Rota Bulma harita servisi', monthlyPriceKurus: 90000, status: 'selling' }, op);
+    await platform.upsertModule(pool, { code: 'marketing-routes', name: 'Pazarlama ve rota', monthlyPriceKurus: 40000, status: 'selling' }, op);
+    const big = await openOffice(pool, op, 'kota-buyuk', [platformMaps.SERVICE_MODULE]);
+    const small = await openOffice(pool, op, 'kota-kucuk', [platformMaps.SERVICE_MODULE]);
+    const own = await openOffice(pool, op, 'kendi-anahtar', ['marketing-routes']);
+    await openOffice(pool, op, 'hic-kullanmayan');
+    const service = (office) => platformMaps.createPlatformMaps(pool, { tenantId: office.id, cacheMs: 0 });
+
+    // An allowance may be chosen before the service itself is set up.
+    await platformMaps.saveOfficeLimit(pool, op, { tenantId: big.id, monthlySearches: 2000 });
+    assert.equal((await platformMaps.getSettings(pool)).configured, false);
+    await platformMaps.saveSettings(pool, op, { apiKey: SERVICE_KEY, enabled: true, monthlySearches: 2 });
+
+    const first = await service(big).runtime();
+    assert.deepEqual([first.ready, first.monthlySearches, first.searchesLeft], [true, 2000, 2000], 'saving the keys keeps the allowance');
+    const general = await service(small).runtime();
+    assert.deepEqual([general.monthlySearches, general.searchesLeft], [2, 2], 'no allowance of its own: the general one');
+
+    // The office with the general allowance runs out; the one with its own keeps searching.
+    await service(small).record({ searches: 2 });
+    await service(big).record({ searches: 5, details: 3 });
+    assert.deepEqual(
+      [(await service(small).runtime()).reason, (await service(big).runtime()).searchesLeft],
+      ['quota', 1995],
+    );
+    // Raising the small office's allowance opens it again; removing it returns to the general one.
+    const raised = await platformMaps.saveOfficeLimit(pool, op, { tenantId: small.id, monthlySearches: 1500 });
+    assert.equal((await service(small).runtime()).searchesLeft, 1498);
+    assert.equal(raised.usage.offices.find((o) => o.tenantId === small.id).ownLimit, true);
+    await platformMaps.createMapsMeter(pool, { tenantId: own.id }).record({ google: 4, scraper: 1 });
+
+    const { usage } = await platformMaps.getSettings(pool);
+    assert.deepEqual(usage, {
+      monthSearches: 7,
+      monthDetails: 3,
+      offices: [
+        officeRow(big.id, 'KOTA-BUYUK', 'kota-buyuk', { subscribed: true, searches: 5, details: 3, monthlySearches: 2000, ownLimit: true, searchesLeft: 1995 }),
+        officeRow(small.id, 'KOTA-KUCUK', 'kota-kucuk', { subscribed: true, searches: 2, monthlySearches: 1500, ownLimit: true, searchesLeft: 1498 }),
+        // Not a subscriber, listed because it searched on its own keys.
+        officeRow(own.id, 'KENDI-ANAHTAR', 'kendi-anahtar', { ownSearches: 4, scrapes: 1, monthlySearches: 2, searchesLeft: 2 }),
+        existingOffice({ monthlySearches: 2, searchesLeft: 2 }),
+      ],
+    });
+
+    await platformMaps.saveOfficeLimit(pool, op, { tenantId: small.id, monthlySearches: null });
+    assert.deepEqual([(await service(small).runtime()).reason, (await service(small).runtime()).monthlySearches], ['quota', 2]);
+    assert.equal((await service(big).runtime()).monthlySearches, 2000, 'another office’s allowance is untouched');
+
+    for (const input of [
+      {},
+      { tenantId: 'not-an-id', monthlySearches: 1000 },
+      { tenantId: big.id },
+      { tenantId: big.id, monthlySearches: 0 },
+      { tenantId: big.id, monthlySearches: 1.5 },
+      { tenantId: big.id, monthlySearches: '1000' },
+      { tenantId: big.id, monthlySearches: 1_000_001 },
+    ])
+      await assert.rejects(() => platformMaps.saveOfficeLimit(pool, op, input), (e) => e.status === 400, JSON.stringify(input));
+    await assert.rejects(
+      () => platformMaps.saveOfficeLimit(pool, op, { tenantId: '11111111-2222-4333-8444-555555555555', monthlySearches: 1000 }),
+      (e) => e.status === 404,
+    );
+    // Removing the service's keys keeps what each office was allowed.
+    await platformMaps.saveSettings(pool, op, { clear: true });
+    assert.equal((await platformMaps.getSettings(pool)).configured, false);
+    await platformMaps.saveSettings(pool, op, { apiKey: SERVICE_KEY, enabled: true });
+    assert.equal((await service(big).runtime()).monthlySearches, 2000);
+
+    const { rows: audit } = await pool.query(
+      "SELECT target FROM han_saas.platform_audit WHERE action = 'settings.maps_quota' ORDER BY id",
+    );
+    assert.deepEqual(audit.map((row) => row.target), ['kota-buyuk: 2000', 'kota-kucuk: 1500', 'kota-kucuk: varsayılan']);
+
+    // Over HTTP the allowance needs an operator session.
+    const server = await serve(createPlatformHandler({ pool, appOrigin: undefined, secureCookies: false, requireTotp: false }));
+    try {
+      const headers = { 'content-type': 'application/json', 'x-han-request': '1', origin: server.url };
+      const body = JSON.stringify({ tenantId: small.id, monthlySearches: 1000 });
+      assert.equal((await fetch(server.url + '/api/platform/settings/maps/quota', { method: 'POST', headers, body })).status, 401);
+      const login = await fetch(server.url + '/api/platform/login', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ username: 'root', password: opPassword }),
+      });
+      assert.equal(login.status, 200);
+      const cookie = login.headers.get('set-cookie').split(';')[0];
+      const saved = await fetch(server.url + '/api/platform/settings/maps/quota', { method: 'POST', headers: { ...headers, cookie }, body });
+      assert.equal(saved.status, 200);
+      const answer = await saved.json();
+      assert.equal(answer.usage.offices.find((o) => o.tenantId === small.id).monthlySearches, 1000);
+      assert.doesNotMatch(JSON.stringify(answer), new RegExp(SERVICE_KEY));
+    } finally {
+      await server.close();
     }
   } finally {
     await pg.close();

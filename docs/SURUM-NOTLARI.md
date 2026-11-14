@@ -1,5 +1,14 @@
 # Sürüm Notları
 
+## 2.5.0 — 14 Kasım 2026
+
+### Yönetim konsolu: harita servisinde büro başına kota ve kullanım dökümü
+
+- Konsol → Yönetim → **Harita servisi** tablosu artık servisi kullanabilen **bütün büroları** gösterir (o ay hiç arama yapmamış olanlar dahil): bu ay yaptığı arama, kotası, kalan hakkı ve durumu (**Normal / Azaldı / Kota doldu**). Kotasının %80'ini kullanan büro **Azaldı** olarak işaretlenir.
+- **Büro başına aylık arama kotası:** her büronun satırındaki seçim kutusundan 500, 1.000, 1.500, 2.000, 3.000, 5.000 ya da 10.000 seçilir; seçim anında kaydedilir. **Varsayılan** seçilirse büro genel sınıra döner. Genel sınırın adı **Varsayılan aylık arama (büro başına)** oldu.
+- Büronun **kendi API anahtarıyla** yaptığı aramalar ayrı sütunda bilgi olarak görünür; kota yalnızca platformun sağladığı servis için geçerlidir. Servise abone olmayan ama kendi anahtarıyla arama yapan bürolar da listede yer alır.
+- Kotası dolan büronun Rota Bulma ekranı aramayı durdurur ve kalan hakkı 0 gösterir; kota yükseltilince en geç 15 saniye içinde yeniden açılır. Kota değişiklikleri işlem kaydına yazılır.
+
 ## 2.4.2 — 14 Kasım 2026
 
 

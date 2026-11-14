@@ -169,6 +169,20 @@ function setup({ session = { admin: { id: 'a', name: 'Operatör', username: 'roo
   }
   const openGrants = () => Object.fromEntries(accessList.filter((a) => a.state !== 'closed').map((a) => [a.ticketId, a]));
   // Yönetim → Yedekleme: an office backed up an hour ago, one never, one failing, one without data.
+  // Yönetim → Harita servisi: a subscriber near its allowance, one that ran out, the existing
+  // office, and an office that only searches on its own keys.
+  const mapsQuota = {};
+  const mapsOffices = () =>
+    [
+      { tenantId: 't1', name: hostile, slug: 'kotu', subscribed: true, searches: 12, details: 40, ownSearches: 0, scrapes: 0 },
+      { tenantId: 't2', name: 'Dolu Büro', slug: 'dolu', subscribed: true, searches: 300, details: 0, ownSearches: 0, scrapes: 0 },
+      { tenantId: 't3', name: 'Mevcut Büro', slug: 'existing-office', subscribed: true, searches: 250, details: 0, ownSearches: 0, scrapes: 0 },
+      { tenantId: 't4', name: 'Kendi Anahtarlı', slug: 'kendi', subscribed: false, searches: 0, details: 0, ownSearches: 7, scrapes: 2 },
+    ].map((office) => {
+      const own = mapsQuota[office.tenantId];
+      const monthlySearches = own ?? 300;
+      return { ...office, monthlySearches, ownLimit: own != null, searchesLeft: Math.max(0, monthlySearches - office.searches) };
+    });
   const backupStatus = (extra = {}) => ({
     enabled: false, lastAttemptAt: null, lastSuccessAt: null, lastSize: null, lastObjectKey: null, lastError: null, lastRun: null,
     r2Configured: true, encryptionConfigured: true, scheduleConfigured: true,
@@ -238,7 +252,13 @@ function setup({ session = { admin: { id: 'a', name: 'Operatör', username: 'roo
       return reply(200, { ok: false, ...backupStatus({ lastRun: { at: '2026-11-14T09:00:00Z', scheduled: false, platform: true, saved: 2, fresh: 0, failed: 1, waiting: 0, empty: 1 }, lastError: '1 büronun yedeği alınamadı.' }) });
     if (route === 'backups/files') return reply(200, { backups: [{ key: BACKUP_KEY, createdAt: '2026-11-14T03:00:00.000Z', size: 20480 }] });
     if (route === 'settings/maps' && options.method !== 'POST')
-      return reply(200, { configured: true, enabled: true, browserKey: '', monthlySearches: 300, monthlyDetails: 3000, usage: { monthSearches: 12, monthDetails: 40, offices: [{ tenantId: 't1', name: hostile, searches: 12, details: 40 }] } });
+      return reply(200, { configured: true, enabled: true, browserKey: '', monthlySearches: 300, monthlyDetails: 3000, usage: { monthSearches: 12, monthDetails: 40, offices: mapsOffices() } });
+    if (route === 'settings/maps/quota') {
+      const { tenantId, monthlySearches } = JSON.parse(options.body);
+      if (tenantId === 't3') return reply(400, { error: 'Aylık arama kotası kaydedilemedi.' });
+      mapsQuota[tenantId] = monthlySearches;
+      return reply(200, { configured: true, enabled: true, browserKey: '', monthlySearches: 300, monthlyDetails: 3000, usage: { monthSearches: 12, monthDetails: 40, offices: mapsOffices() } });
+    }
     if (route === 'settings/maps/test') return reply(200, { ok: true });
     if (route === 'settings/maps' && options.method === 'POST') return reply(200, { configured: true, enabled: false, browserKey: '', monthlySearches: 250, monthlyDetails: 3000 });
     if (route === `offices/${office().id}` && options.method !== 'POST')
@@ -537,6 +557,68 @@ test('Yönetim tab: map service settings show each office’s searches as text a
   await settle();
   const saved = requests.find((r) => r.route === 'settings/maps' && r.method === 'POST');
   assert.deepEqual(saved.body, { browserKey: '', monthlySearches: 250, monthlyDetails: 3000, enabled: false });
+});
+
+test('Yönetim tab: each office’s map searches, allowance and state are listed, and an allowance saves from its row', async () => {
+  const { w, requests } = setup();
+  await settle();
+  button(w, 'Yönetim').click();
+  await settle();
+  const region = w.document.querySelector('.mapsusage');
+  // A scrolling table is a named region a keyboard can reach; rows and columns have headers.
+  assert.equal(region.getAttribute('role'), 'region');
+  assert.equal(region.getAttribute('tabindex'), '0');
+  assert.equal(w.document.getElementById(region.getAttribute('aria-labelledby')).tagName, 'CAPTION');
+  assert.equal(region.querySelectorAll('thead th[scope=col]').length, 8);
+  const rows = () =>
+    [...region.querySelectorAll('tbody tr')].map((tr) => [
+      tr.querySelector('th[scope=row] small').textContent,
+      ...[...tr.querySelectorAll('td')].slice(0, 6).map((td) => td.textContent),
+    ]);
+  assert.deepEqual(rows(), [
+    ['kotu', '12', '300', '288', 'Normal', '0', '40'],
+    ['dolu', '300', '300', '0', 'Kota doldu', '0', '0'],
+    ['ana adres', '250', '300', '50', 'Azaldı', '0', '0'],
+    ['kendi', '0', '—', '—', 'Abone değil', '9', '0'],
+  ]);
+  const picker = (index) => region.querySelectorAll('tbody tr')[index].querySelector('select');
+  assert.equal(picker(3), null, 'an office that is not a subscriber has no allowance to set');
+  // Every picker is named after its office, not after the value it shows.
+  assert.equal(picker(1).getAttribute('aria-label'), 'Dolu Büro — aylık arama kotası');
+  assert.deepEqual([...picker(1).options].map((o) => o.textContent), ['Varsayılan (300)', '500', '1.000', '1.500', '2.000', '3.000', '5.000', '10.000']);
+  assert.equal(picker(1).value, '');
+
+  // Choosing an allowance saves at once; only that row is redrawn and focus stays on its picker.
+  const untouched = region.querySelectorAll('tbody tr')[0];
+  picker(1).value = '2000';
+  picker(1).dispatchEvent(new w.Event('change'));
+  await settle();
+  assert.deepEqual(requests.find((r) => r.route === 'settings/maps/quota').body, { tenantId: 't2', monthlySearches: 2000 });
+  assert.deepEqual(rows()[1], ['dolu', '300', '2.000', '1.700', 'Normal', '0', '0']);
+  assert.equal(picker(1).value, '2000');
+  assert.equal(w.document.activeElement, picker(1));
+  assert.equal(region.querySelectorAll('tbody tr')[0], untouched);
+  const status = w.document.getElementById('mapsQuotaStatus');
+  assert.equal(status.getAttribute('role'), 'status');
+  assert.equal(status.textContent, '✓ Dolu Büro: aylık kota 2.000 arama olarak kaydedildi.');
+
+  // Back to the general allowance.
+  picker(1).value = '';
+  picker(1).dispatchEvent(new w.Event('change'));
+  await settle();
+  assert.equal(requests.filter((r) => r.route === 'settings/maps/quota').at(-1).body.monthlySearches, null);
+  assert.deepEqual(rows()[1].slice(2, 5), ['300', '0', 'Kota doldu']);
+  assert.equal(status.textContent, '✓ Dolu Büro: aylık kota 300 arama (varsayılan) olarak kaydedildi.');
+
+  // A refused change puts the old choice back and says why.
+  picker(2).value = '1000';
+  picker(2).dispatchEvent(new w.Event('change'));
+  await settle();
+  assert.equal(picker(2).value, '');
+  assert.equal(picker(2).disabled, false);
+  assert.equal(status.textContent, '✕ Aylık arama kotası kaydedilemedi.');
+  assert.equal(w.document.querySelector('img'), null, 'office names stay text');
+  assert.equal(w.pwned, undefined);
 });
 
 test('Yönetim tab: backup panel lists every office, runs the fleet backup and offers only the console’s files', async () => {

@@ -5586,6 +5586,64 @@ function boot() {
   }
   // The selling company's own Google Maps account: offices subscribed to "Rota Bulma harita
   // servisi" search with it and need no key of their own.
+  // Allowances the operator picks from; any other saved value is offered beside them.
+  const MAPS_QUOTAS = [500, 1000, 1500, 2000, 3000, 5000, 10000];
+  function mapsOfficeBadge(office) {
+    if (!office.subscribed) return badge('Abone değil');
+    if (office.searchesLeft <= 0) return badge('Kota doldu', 'bad');
+    return office.searches >= office.monthlySearches * 0.8 ? badge('Azaldı', 'warn') : badge('Normal', 'ok');
+  }
+  // One office: what it used this month, what it may use, and the allowance picker. Choosing
+  // an allowance saves at once and redraws only this row, so focus stays on the picker.
+  function mapsOfficeRow(office) {
+    const number = (value) => Number(value || 0).toLocaleString('tr-TR');
+    const row = h('tr', {});
+    let picker = null;
+    if (office.subscribed) {
+      const general = state.maps.monthlySearches;
+      const values = [...new Set([...MAPS_QUOTAS, ...(office.ownLimit ? [office.monthlySearches] : [])])].sort((a, b) => a - b);
+      picker = h(
+        'select',
+        { class: 'mapsquota', 'aria-label': `${office.name} — aylık arama kotası` },
+        h('option', { value: '', text: `Varsayılan (${number(general)})` }),
+        values.map((value) => h('option', { value: String(value), text: number(value) })),
+      );
+      picker.value = office.ownLimit ? String(office.monthlySearches) : '';
+      picker.addEventListener('change', async () => {
+        const status = document.getElementById('mapsQuotaStatus');
+        picker.disabled = true;
+        try {
+          const saved = await api('settings/maps/quota', {
+            method: 'POST',
+            body: { tenantId: office.tenantId, monthlySearches: picker.value ? Number(picker.value) : null },
+          });
+          state.maps = { ...state.maps, ...saved };
+          const next = saved.usage.offices.find((o) => o.tenantId === office.tenantId) || office;
+          const fresh = mapsOfficeRow(next);
+          row.replaceWith(fresh);
+          fresh.querySelector('select')?.focus();
+          if (status)
+            status.textContent = `✓ ${office.name}: aylık kota ${number(next.monthlySearches)} arama${next.ownLimit ? '' : ' (varsayılan)'} olarak kaydedildi.`;
+        } catch (error) {
+          picker.value = office.ownLimit ? String(office.monthlySearches) : '';
+          picker.disabled = false;
+          picker.focus();
+          if (status) status.textContent = '✕ ' + error.message;
+        }
+      });
+    }
+    row.append(
+      h('th', { scope: 'row' }, office.name, h('small', { text: office.slug === 'existing-office' ? 'ana adres' : office.slug })),
+      h('td', { class: 'num', text: number(office.searches) }),
+      h('td', { class: 'num', text: office.subscribed ? number(office.monthlySearches) : '—' }),
+      h('td', { class: 'num', text: office.subscribed ? number(office.searchesLeft) : '—' }),
+      h('td', {}, mapsOfficeBadge(office)),
+      h('td', { class: 'num', text: number(office.ownSearches + office.scrapes) }),
+      h('td', { class: 'num', text: number(office.details) }),
+      h('td', {}, picker || '—'),
+    );
+    return row;
+  }
   function mapsPanel() {
     const maps = state.maps;
     if (!maps) return null;
@@ -5654,7 +5712,7 @@ function boot() {
         { class: 'smsgrid' },
         h('label', { class: 'field' }, h('span', { text: 'Google Places API anahtarı (gizli)' }), apiKey),
         h('label', { class: 'field' }, h('span', { text: 'Harita anahtarı (tarayıcı)' }), browserKey),
-        h('label', { class: 'field' }, h('span', { text: 'Büro başına aylık arama' }), searches),
+        h('label', { class: 'field' }, h('span', { text: 'Varsayılan aylık arama (büro başına)' }), searches),
         h('label', { class: 'field' }, h('span', { text: 'Büro başına aylık rota yenileme (firma)' }), details),
       ),
       h('label', { class: 'check' }, enabled, 'Abone bürolar hazır harita servisini kullansın'),
@@ -5689,37 +5747,30 @@ function boot() {
           text: `Bu ay ${u.monthSearches.toLocaleString('tr-TR')} arama, ${u.monthDetails.toLocaleString('tr-TR')} firma yenileme. “Rota Bulma harita servisi” ürününü alan bürolar bu hesapla arar; “Pazarlama ve rota” modülünü alan bürolar kendi anahtarını girer.`,
         }),
         form,
+        h('p', { class: 'muted backupnote', id: 'mapsQuotaStatus', role: 'status' }),
       ),
       u.offices.length
         ? h(
             'div',
-            { class: 'overflow' },
+            // A scrolling region must be reachable and named for keyboard and screen reader users.
+            { class: 'overflow mapsusage', tabindex: '0', role: 'region', 'aria-labelledby': 'mapsUsageCaption' },
             h(
               'table',
               {},
+              h('caption', { id: 'mapsUsageCaption', text: 'Bürolara göre bu ayki kullanım ve aylık arama kotası' }),
               h(
                 'thead',
                 {},
                 h(
                   'tr',
                   {},
-                  ['Büro', 'Bu ay arama', 'Kalan hak', 'Firma yenileme'].map((t) => h('th', { text: t })),
-                ),
-              ),
-              h(
-                'tbody',
-                {},
-                u.offices.map((o) =>
-                  h(
-                    'tr',
-                    {},
-                    h('td', { text: o.name }),
-                    h('td', { text: o.searches.toLocaleString('tr-TR') }),
-                    h('td', { text: Math.max(0, maps.monthlySearches - o.searches).toLocaleString('tr-TR') }),
-                    h('td', { text: o.details.toLocaleString('tr-TR') }),
+                  ['Büro', 'Bu ay arama', 'Kota', 'Kalan hak', 'Durum', 'Kendi anahtarıyla', 'Firma yenileme', 'Aylık kota'].map(
+                    // Number columns line up with their right-aligned figures.
+                    (t, i) => h('th', { scope: 'col', class: [1, 2, 3, 5, 6].includes(i) ? 'num' : '', text: t }),
                   ),
                 ),
               ),
+              h('tbody', {}, u.offices.map(mapsOfficeRow)),
             ),
           )
         : null,

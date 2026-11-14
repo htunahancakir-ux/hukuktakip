@@ -197,6 +197,12 @@ Rota Bulma bürolara iki biçimde satılır:
   sınır: **büro başına aylık arama** (varsayılan 300) ve **büro başına aylık rota yenileme**
   (firma sayısı, varsayılan 3000). "Anahtarı test et" ücretsiz bir kimlik aramasıdır. Şifreleme
   `PLATFORM_ENCRYPTION_KEY` ile yapılır.
+- **Büro başına kota:** aynı ekrandaki tablo servisi kullanabilen her büroyu (mevcut büro ve
+  aboneler), bu ayki aramasını, kotasını, kalan hakkını ve durumunu gösterir. Satırdaki seçim
+  kutusu o büroya kendi aylık arama kotasını verir (`POST /api/platform/settings/maps/quota`,
+  `{ tenantId, monthlySearches }`; `null` genel sınıra döndürür). Kotalar servis ayarının
+  içinde `officeLimits` olarak saklanır (`han_saas.platform_settings`, anahtar `maps`); ayrı
+  tablo ya da geçiş yoktur. Anahtarlar silinse de kotalar kalır.
 - **Sayaç:** platform anahtarıyla yapılan her "Bul" ve "Daha fazla getir" bir aramadır;
   kayıtlı bir rotayı açmak durak sayısı kadar "firma yenileme"dir. İstek başarıyla bittikten
   sonra `han_saas.usage_daily` tablosuna (`maps_searches`, `maps_details`) büro ve gün bazında
