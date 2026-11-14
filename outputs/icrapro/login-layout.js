@@ -1,9 +1,35 @@
+// An office reached on its own address shows its own name instead of the built-in brand
+// (the session answer carries it). Everything that prints the brand goes through these.
+let officeBrand = '';
+const brandEscape = (value) =>
+  String(value).replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+  );
+const brandName = () => officeBrand || 'HAN (PATAN) HUKUK';
+const brandMarkup = () => (officeBrand ? brandEscape(officeBrand) : 'HAN (PATAN)<span> HUKUK</span>');
+const brandDomain = () => (officeBrand ? location.hostname : 'hanhukuktakip.com');
+function applyOfficeBrand(name) {
+  if (typeof name !== 'string' || !name.trim()) return;
+  officeBrand = name.trim().slice(0, 120);
+  LOGIN_TEXT_DEFAULTS.find((item) => item.id === 'marka').text = officeBrand;
+  const domain = LOGIN_TEXT_DEFAULTS.find((item) => item.text === 'hanhukuktakip.com');
+  if (domain) domain.text = location.hostname;
+  document.title = officeBrand + ' · Hukuk ve Tahsilat Yönetimi';
+  document
+    .querySelectorAll('.brand-home[aria-label]')
+    .forEach((link) => link.setAttribute('aria-label', officeBrand + ' · Ana Sayfa'));
+  document.querySelectorAll('b, strong').forEach((el) => {
+    if (el.textContent.replace(/\s+/g, ' ').trim() === 'HAN (PATAN) HUKUK') el.textContent = officeBrand;
+  });
+}
+
 function loginBrandMark() {
   return `<img src="${assetUrl('brand-scales.png')}" width="43" height="43" alt="" aria-hidden="true">`;
 }
 
 function loginBrand() {
-  return `<div class="login-brand"><a class="brand brand-home" href="/" aria-label="HAN (PATAN) HUKUK · Ana Sayfa"><span class="login-brand-mark">${loginBrandMark()}</span><strong>HAN (PATAN)<span> HUKUK</span></strong></a><small>HUKUK VE TAHSİLAT YÖNETİMİ</small></div>`;
+  return `<div class="login-brand"><a class="brand brand-home" href="/" aria-label="${brandEscape(brandName())} · Ana Sayfa"><span class="login-brand-mark">${loginBrandMark()}</span><strong>${brandMarkup()}</strong></a><small>HUKUK VE TAHSİLAT YÖNETİMİ</small></div>`;
 }
 
 function loginIcon(kind) {
@@ -148,7 +174,7 @@ function loginFrame(content) {
     document.body.append(gate);
   }
   if (!gate.querySelector('.login-card'))
-    gate.innerHTML = `<section class="login-story" aria-label="HAN (PATAN) HUKUK">
+    gate.innerHTML = `<section class="login-story" aria-label="${brandEscape(brandName())}">
       <img class="login-art" src="/api/login-art" alt="" width="1254" height="1254" fetchpriority="high" decoding="async">
       <div class="login-story-shade" aria-hidden="true"></div>
       ${loginBrand()}
@@ -157,7 +183,7 @@ function loginFrame(content) {
         <p>Hukuk ve tahsilat yönetiminiz, tek bir çalışma alanında.</p>
       </div>
       <div class="login-story-footer">
-        <span class="login-story-domain">hanhukuktakip.com</span>
+        <span class="login-story-domain">${brandEscape(brandDomain())}</span>
         <a class="login-story-credit" href="https://www.emlakerp.com/" target="_blank" rel="noopener noreferrer">www.emlakerp.com</a>
       </div>
     </section>
@@ -166,7 +192,7 @@ function loginFrame(content) {
         <div class="login-mobile-brand">${loginBrand()}</div>
       </div>
       <div class="login-card"></div>
-      <div class="login-entry-footer"><span>HAN (PATAN) HUKUK</span><span data-login-version></span><a class="login-mobile-credit" href="https://www.emlakerp.com/" target="_blank" rel="noopener noreferrer">www.emlakerp.com</a></div>
+      <div class="login-entry-footer"><span>${brandEscape(brandName())}</span><span data-login-version></span><a class="login-mobile-credit" href="https://www.emlakerp.com/" target="_blank" rel="noopener noreferrer">www.emlakerp.com</a></div>
     </section>`;
   // The office's own picture (Ayarlar → Firma Bilgileri); the built-in one if it cannot load.
   const art = gate.querySelector('.login-art:not([data-fallback])');

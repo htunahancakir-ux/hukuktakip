@@ -73,7 +73,7 @@ async function enterWorkspace() {
 function employeeTermsGateMarkup({ document: doc, required, acceptedAt, notice }, preview = false) {
   const headingId = preview ? 'termsPreviewHeading' : 'termsHeading';
   return `<form class="panel terms-gate" aria-labelledby="${headingId}" ${preview ? 'data-ignore-dirty' : ''}>
-    <div class="terms-gate-head"><div><p class="terms-kicker">Han Hukuk Takip · ${termsEscape(new URL(doc.domain).hostname)}</p>
+    <div class="terms-gate-head"><div><p class="terms-kicker">${termsEscape(typeof officeBrand === 'string' && officeBrand ? officeBrand : 'Han Hukuk Takip')} · ${termsEscape(new URL(doc.domain).hostname)}</p>
     <h1 id="${headingId}">${termsEscape(doc.title)}</h1></div>
     <button type="button" class="secondary" data-terms-logout>${preview ? 'Önizlemeyi kapat' : 'Çıkış'}</button></div>
     <div class="terms-intro">

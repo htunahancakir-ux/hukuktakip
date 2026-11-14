@@ -247,7 +247,16 @@ function createAccess(stateFile, options = {}) {
         department: p.department,
         active: p.active,
       }));
-    if (key === 'icrapro-settings-v1') return { firm: { name: value.firm?.name || 'Hukuk Bürosu' } };
+    if (key === 'icrapro-settings-v1')
+      return {
+        firm: {
+          name: value.firm?.name || 'Hukuk Bürosu',
+          // Everyone who prints a receipt or a release letter needs the office's wording.
+          receiptCollector:
+            typeof value.firm?.receiptCollector === 'string' ? value.firm.receiptCollector : '',
+          releaseSigner: typeof value.firm?.releaseSigner === 'string' ? value.firm.releaseSigner : '',
+        },
+      };
     if (key === 'hanhukuk-accounting-v1')
       return { accounts: value.accounts.map((a) => ({ id: a.id, name: a.name, type: a.type })), entries: [] };
     return [];

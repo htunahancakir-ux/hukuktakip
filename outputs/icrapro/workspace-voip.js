@@ -1533,7 +1533,13 @@ async function openVoipWebphone(feedback, background = false) {
       phone.id = 'voipWebphone';
       phone.className = 'voip-webphone';
       phone.innerHTML =
-        '<div class="panelhead"><h2>HAN HUKUK WEB TELEFON</h2><div class="voip-phone-window-actions"><button type="button" class="secondary" data-phone-minimize>Küçült</button><button type="button" class="secondary" data-phone-close>Kapat</button></div></div><p class="voip-answer-hint" role="status">Gelen aramayı açmak için aşağıdaki telefonda yeşil düğmeye basın.</p><iframe title="HAN HUKUK web telefonu" allow="microphone; autoplay" referrerpolicy="no-referrer"></iframe>';
+        '<div class="panelhead"><h2>' +
+        esc(
+          typeof officeBrand === 'string' && officeBrand
+            ? officeBrand.toLocaleUpperCase('tr') + ' · WEB TELEFON'
+            : 'HAN HUKUK WEB TELEFON',
+        ) +
+        '</h2><div class="voip-phone-window-actions"><button type="button" class="secondary" data-phone-minimize>Küçült</button><button type="button" class="secondary" data-phone-close>Kapat</button></div></div><p class="voip-answer-hint" role="status">Gelen aramayı açmak için aşağıdaki telefonda yeşil düğmeye basın.</p><iframe title="HAN HUKUK web telefonu" allow="microphone; autoplay" referrerpolicy="no-referrer"></iframe>';
       dock.append(phone);
       // Esc must not close the phone while it waits to be answered: that would reload it.
       phone.addEventListener('cancel', (event) => {

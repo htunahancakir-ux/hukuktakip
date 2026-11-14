@@ -6,6 +6,9 @@ const settingsDefaults = {
     taxNumber: '',
     registration: '',
     authorized: '',
+    // Printed on receipts ("Tahsil Eden") and under the release letter; each office sets its own.
+    receiptCollector: '',
+    releaseSigner: '',
   },
   contact: { phone: '', email: '', website: '', city: '', district: '', address: '' },
   preferences: { receiver: '', prefix: 'EVR', showContact: true },
@@ -56,12 +59,32 @@ function refreshBackupIndicator() {
     assurance.textContent = '◈ Yedekleme durumu henüz doğrulanmadı.';
   }
 }
+// What receipts and the release letter print for the office. Each office sets its own wording
+// in Ayarlar → Firma Bilgileri. Until it does, an office on its own address prints its name;
+// the existing office keeps the wording it has always printed.
+function firmPrintName(kind) {
+  const own = String(
+    (kind === 'release' ? config.firm.releaseSigner : config.firm.receiptCollector) || '',
+  ).trim();
+  if (own) return own.slice(0, 160);
+  const brand = typeof officeBrand === 'string' ? officeBrand : '';
+  if (!brand) return kind === 'release' ? 'Av. Hasan Bahadır PATAN' : 'Av. Hasan Bahadır Patan Hukuk Bürosu';
+  const name = String(config.firm.name || '').trim();
+  return name && name !== 'Hukuk Bürosu' ? name : brand;
+}
+// The settings form requires every field, so the two print texts open filled in.
+function settingsWithPrintTexts(source) {
+  const draft = structuredClone(source);
+  draft.firm.receiptCollector = String(draft.firm.receiptCollector || '').trim() || firmPrintName('receipt');
+  draft.firm.releaseSigner = String(draft.firm.releaseSigner || '').trim() || firmPrintName('release');
+  return draft;
+}
 function firmReceipt() {
   return `<div style="border-bottom:1px solid #ddd;padding-bottom:15px;margin-bottom:20px"><b>${esc(config.firm.legalName || config.firm.name)}</b>${config.preferences.showContact ? `<div style="font-size:12px">${[config.contact.address, [config.contact.district, config.contact.city].filter(Boolean).join(' / '), config.contact.phone, config.contact.email].filter(Boolean).map(esc).join('<br>')}</div>` : ''}</div>`;
 }
 function settings() {
   if (settingsTab === 'staff') return personnelSettings();
-  if (!settingsDraft) settingsDraft = structuredClone(config);
+  if (!settingsDraft) settingsDraft = settingsWithPrintTexts(config);
   const tabs = {
     firm: ['Firma Bilgileri', 'Firma kimliği ve yetkili bilgileri'],
     contact: ['İletişim ve Adres', 'Firmanızın iletişim kanalları'],
@@ -70,11 +93,11 @@ function settings() {
   const v = settingsDraft[settingsTab];
   let fields = '';
   if (settingsTab === 'firm')
-    fields = `${field('Firma / Büro Adı', 'name', 'text', v.name, true, true)}${field('Ticari Unvan', 'legalName', 'text', v.legalName, false, true)}${field('Vergi Dairesi', 'taxOffice', 'text', v.taxOffice)}<label class="field">Vergi / TC Kimlik Numarası<input name="taxNumber" value="${esc(v.taxNumber)}" inputmode="numeric" pattern="[0-9]{10,11}" title="10 veya 11 rakam girin"></label>${field('Sicil / Baro Numarası', 'registration', 'text', v.registration)}${field('Firma Yetkilisi', 'authorized', 'text', v.authorized)}${loginArtSetting()}`;
+    fields = `${field('Firma / Büro Adı', 'name', 'text', v.name, true, true)}${field('Ticari Unvan', 'legalName', 'text', v.legalName, false, true)}${field('Vergi Dairesi', 'taxOffice', 'text', v.taxOffice)}<label class="field">Vergi / TC Kimlik Numarası<input name="taxNumber" value="${esc(v.taxNumber)}" inputmode="numeric" pattern="[0-9]{10,11}" title="10 veya 11 rakam girin"></label>${field('Sicil / Baro Numarası', 'registration', 'text', v.registration)}${field('Firma Yetkilisi', 'authorized', 'text', v.authorized)}${field('Makbuzda “Tahsil Eden” Yazısı', 'receiptCollector', 'text', v.receiptCollector, true)}${field('İbraname İmzası', 'releaseSigner', 'text', v.releaseSigner, true)}${loginArtSetting()}`;
   else if (settingsTab === 'contact')
     fields = `${field('Telefon', 'phone', 'tel', v.phone)}${field('E-posta', 'email', 'email', v.email)}${field('Web Sitesi', 'website', 'url', v.website, false, true)}${field('İl', 'city', 'text', v.city)}${field('İlçe', 'district', 'text', v.district)}<label class="field full">Açık Adres<textarea name="address" rows="4">${esc(v.address)}</textarea></label>`;
   else
-    fields = `${field('Varsayılan Teslim Alan', 'receiver', 'text', v.receiver, false, true)}<label class="field full">Evrak Numarası Ön Eki<input name="prefix" value="${esc(v.prefix)}" required maxlength="12" pattern="[A-Za-z0-9ÇĞİÖŞÜçğıöşü-]+" title="Harf, rakam ve tire kullanın"><small>Yeni kayıt örneği: ${esc(v.prefix || 'EVR')}-0001. Mevcut evrak numaraları korunur.</small></label><label class="settings-check full"><input type="checkbox" name="showContact" ${v.showContact ? 'checked' : ''}> Firma iletişim bilgilerini teslim tutanağında göster</label>`;
+    fields = `${field('Varsayılan Teslim Alan', 'receiver', 'text', v.receiver, false, true)}<label class="field full">Evrak Numarası Ön Eki<input name="prefix" value="${esc(v.prefix)}" required maxlength="12" pattern="[A-Za-z0-9ÇĞİÖŞÜçğıöşü\\-]+" title="Harf, rakam ve tire kullanın"><small>Yeni kayıt örneği: ${esc(v.prefix || 'EVR')}-0001. Mevcut evrak numaraları korunur.</small></label><label class="settings-check full"><input type="checkbox" name="showContact" ${v.showContact ? 'checked' : ''}> Firma iletişim bilgilerini teslim tutanağında göster</label>`;
   $('#content').innerHTML =
     `${settingsSectionTabs(settingsTab)}<form class="panel" id="settingsForm"><section role="tabpanel" id="settingsPanel" aria-labelledby="tab-${settingsTab}"><div class="panelhead"><div><h2>${tabs[settingsTab][0]}</h2><p>${tabs[settingsTab][1]}</p></div><span class="badge" id="saveState">Kaydedildi</span></div><div class="formbody"><div class="notice">Firma adı menüde ve teslim tutanaklarında kullanılır. Ayarlar bu tarayıcıda saklanır.</div><div class="grid">${fields}</div></div></section><div class="actions"><button type="button" class="secondary" id="discardSettings">Değişiklikleri Geri Al</button><button type="submit" class="primary">Ayarları Kaydet</button></div></form>`;
   const form = $('#settingsForm');
@@ -84,7 +107,9 @@ function settings() {
     if (settingsTab === 'preferences') data.showContact = form.elements.showContact.checked;
     settingsDraft[settingsTab] = { ...settingsDraft[settingsTab], ...data };
     $('#saveState').textContent =
-      JSON.stringify(settingsDraft) === JSON.stringify(config) ? 'Kaydedildi' : 'Kaydedilmemiş değişiklikler';
+      JSON.stringify(settingsDraft) === JSON.stringify(settingsWithPrintTexts(config))
+        ? 'Kaydedildi'
+        : 'Kaydedilmemiş değişiklikler';
   }
   form.oninput = capture;
   capture();
@@ -97,7 +122,7 @@ function settings() {
       }),
   );
   $('#discardSettings').onclick = () => {
-    settingsDraft = structuredClone(config);
+    settingsDraft = settingsWithPrintTexts(config);
     settings();
     toast('Kaydedilmiş ayarlara dönüldü.');
   };

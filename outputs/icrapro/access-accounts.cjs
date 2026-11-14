@@ -30,6 +30,7 @@ async function handleSessionRoutes(ctx) {
       employeeTermsRequired: ctx.termsRequired,
       appVersion,
       recordStore: options.recordStore === true,
+      officeName: typeof options.officeName === 'string' ? options.officeName : null,
     });
     return true;
   }

@@ -231,3 +231,67 @@ test('office provisioning and invitations', async (t) => {
     await pg.close();
   }
 });
+
+test('an office opened where records live in tables answers requests at once', async () => {
+  const { createApplication } = require('../lib/application.cjs');
+  const { createStore } = require('../lib/postgres-store.cjs');
+  const { createPlatformAdmin } = require('../lib/saas/platform-auth.cjs');
+  const platform = require('../lib/saas/platform.cjs');
+  const { activateOfficeRecords } = require('../lib/saas/tenants.cjs');
+  const { serve } = require('./support/postgres.cjs');
+  const { pg, pool } = await database();
+  const secret = 'Synthetic-Record-Office-Test!';
+  process.env.HAN_RECORD_STORE = '1';
+  let server;
+  try {
+    const op = (await createPlatformAdmin(pool, { username: 'root', name: 'Op', password: secret })).id;
+    const open = (slug) =>
+      platform.openOffice(pool, op, {
+        slug,
+        name: 'Kayıt Bürosu ' + slug,
+        admin: { name: 'Yönetici', username: slug, password: secret },
+        userCount: 2,
+        userPriceKurus: 1000,
+        termMonths: 1,
+        moduleCodes: [],
+        paid: true,
+      });
+    const first = (await open('kayit-bir')).office;
+    const second = (await open('kayit-iki')).office;
+    const { rows } = await pool.query('SELECT tenant_id, mode FROM han_data.control ORDER BY tenant_id');
+    assert.deepEqual(
+      rows.map((r) => [r.tenant_id, r.mode]).sort(),
+      [first.id, second.id].map((id) => [id, 'active']).sort(),
+    );
+    // Repeating the step leaves a switched-on office alone.
+    assert.equal(await activateOfficeRecords(pool, first.id), false);
+
+    server = await serve(
+      createApplication({
+        store: createStore(pool, { records: true, tenantId: first.id }),
+        appOrigin: undefined,
+        officeName: first.name,
+      }),
+    );
+    const session = await fetch(server.url + '/api/session');
+    assert.equal(session.status, 200, await session.clone().text());
+    assert.equal((await session.json()).officeName, 'Kayıt Bürosu kayit-bir', 'the sign-in screen gets the office name');
+    const login = await fetch(server.url + '/api/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-han-request': '1', origin: server.url },
+      body: JSON.stringify({ username: 'kayit-bir', password: secret }),
+    });
+    assert.equal(login.status, 200, await login.clone().text());
+    // The other office's account does not open this one.
+    const other = await fetch(server.url + '/api/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-han-request': '1', origin: server.url },
+      body: JSON.stringify({ username: 'kayit-iki', password: secret }),
+    });
+    assert.equal(other.status, 401);
+  } finally {
+    delete process.env.HAN_RECORD_STORE;
+    if (server) await server.close();
+    await pg.close();
+  }
+});

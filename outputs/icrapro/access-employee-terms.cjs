@@ -1,4 +1,5 @@
 const terms = require('../../lib/employee-terms.cjs');
+const { officeIdentity } = require('../../lib/office-identity.cjs');
 
 async function handleEmployeeTermsRoutes(ctx) {
   const { req, res, url, u, body, fail, send, userEnabled } = ctx;
@@ -10,6 +11,8 @@ async function handleEmployeeTermsRoutes(ctx) {
     return true;
   };
   const document = () => terms.currentRelease(ctx.state);
+  // The office's own name, contact and address in the suggested text and the published document.
+  const office = () => officeIdentity(ctx.state, ctx.options);
   const activeUsers = () => ctx.state.users.filter(userEnabled);
   const audit = (action, version) => {
     res.hanEmployeeTermsAudit = { action, version };
@@ -115,7 +118,7 @@ async function handleEmployeeTermsRoutes(ctx) {
     if (req.method === 'GET')
       return reply({
         document: document(),
-        draft: document() || terms.draft(),
+        draft: document() || terms.draft(office().controller, office().incidentContact, office().software),
         notice: terms.currentNotice(ctx.state),
         users: activeUsers().map(({ id, name, username }) => ({ id, name, username })),
       });
@@ -124,7 +127,7 @@ async function handleEmployeeTermsRoutes(ctx) {
       const now = new Date().toISOString();
       if (input?.action === 'publish') {
         if ((document()?.version || null) !== input.baseVersion) throw stale();
-        const release = terms.newRelease(input, now);
+        const release = terms.newRelease(input, now, office().origin);
         if (ctx.state.employeeTerms?.releases.some((row) => row.version === release.version))
           throw fail(409, 'Bu sürüm numarası kullanıldı. Yeni bir sürüm numarası girin.');
         save((data) => {

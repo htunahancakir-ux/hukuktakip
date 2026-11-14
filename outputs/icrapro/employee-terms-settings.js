@@ -122,7 +122,11 @@ function renderEmployeeTermsManagement(root, { records = true } = {}) {
             ...input,
             version: input.version || doc?.version || 'Taslak',
             title: doc?.title || 'Çalışanlar İçin Gizlilik ve Kişisel Veri Güvenliği Sözleşmesi',
-            domain: doc?.domain || 'https://www.hanhukuktakip.com',
+            domain:
+              doc?.domain ||
+              (typeof officeBrand === 'string' && officeBrand
+                ? location.origin
+                : 'https://www.hanhukuktakip.com'),
             issuedAt: doc?.issuedAt || null,
           },
           notice,

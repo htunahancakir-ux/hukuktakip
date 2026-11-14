@@ -622,8 +622,8 @@ function installPasswordVisibility(form) {
 }
 function authGate(setup) {
   loginFrame(`<form id="loginForm" autocomplete="off" class="panel" aria-labelledby="loginTitle">
-    <div class="login-heading"><h1 id="loginTitle">${setup ? 'İlk adımı atın.' : '<a class="brand-home" href="/">HAN (PATAN) HUKUK</a>'}</h1>
-      <p>${setup ? 'Han Hukuk çalışma alanınız için ilk yönetici hesabını oluşturun.' : 'Çalışma alanınıza erişmek için<br>hesap bilgilerinizle giriş yapın.'}</p></div>
+    <div class="login-heading"><h1 id="loginTitle">${setup ? 'İlk adımı atın.' : '<a class="brand-home" href="/">' + brandEscape(brandName()) + '</a>'}</h1>
+      <p>${setup ? brandEscape(officeBrand || 'Han Hukuk') + ' çalışma alanınız için ilk yönetici hesabını oluşturun.' : 'Çalışma alanınıza erişmek için<br>hesap bilgilerinizle giriş yapın.'}</p></div>
     <div class="login-fields">
       ${setup ? '<label class="field" for="login-name">Ad soyad<input id="login-name" name="name" required autocomplete="name" placeholder="Adınız ve soyadınız"></label>' : ''}
       <label class="field" for="login-username">Kullanıcı adı
@@ -712,6 +712,7 @@ if (passwordLink) {
 } else {
   try {
     const session = authApi('/api/session');
+    applyOfficeBrand(session.officeName);
     if (session.appVersion) {
       document.getElementById('appVersion').textContent = '●  Sürüm ' + session.appVersion;
     }

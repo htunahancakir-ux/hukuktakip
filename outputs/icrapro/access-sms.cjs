@@ -1,4 +1,5 @@
 const smsSettings = require('../../lib/sms-settings.cjs');
+const { officeIdentity, plainSms } = require('../../lib/office-identity.cjs');
 
 // Settings → Integrations → SMS: the office's own Verimor SMS account. CEO only; the API
 // password is never returned. Sending happens after the request commits (lib/application.cjs).
@@ -49,7 +50,9 @@ async function smsRoutes(ctx) {
     res.hanSms = {
       config: ctx.state.smsConfig,
       to: input.phone,
-      text: 'Han Hukuk SMS denemesi. Bu mesaji aldiysaniz SMS ayarlari calisiyor.',
+      text:
+        plainSms(officeIdentity(ctx.state, ctx.options).name) +
+        ' SMS denemesi. Bu mesaji aldiysaniz SMS ayarlari calisiyor.',
       silent: false,
     };
     send(res, 200, { ok: true });

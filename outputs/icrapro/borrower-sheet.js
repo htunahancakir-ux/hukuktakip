@@ -1556,7 +1556,9 @@ function borrowerReleaseContent(d, client) {
     esc(displayDate(tracking) || '—') +
     ' takip tarihli ' +
     esc(d.number) +
-    ' numaralı dosyanızdan borcunuz kalmamıştır.</p><div class="release-signature"><strong>Av. Hasan Bahadır PATAN</strong></div></article>'
+    ' numaralı dosyanızdan borcunuz kalmamıştır.</p><div class="release-signature"><strong>' +
+    esc(firmPrintName('release')) +
+    '</strong></div></article>'
   );
 }
 
@@ -1625,13 +1627,15 @@ function collectionReceiptContent(event, d, client) {
       'Kasa / Banka',
       event.accountName || accounting.accounts.find((a) => a.id === event.accountId)?.name,
     ) +
-    item('Tahsil Eden', 'Av. Hasan Bahadır Patan Hukuk Bürosu') +
+    item('Tahsil Eden', firmPrintName('receipt')) +
     item('Açıklama / Dekont No', event.note) +
     '</table><p>Yukarıda belirtilen dosyaya ilişkin ' +
     esc(money(event.amount / 100)) +
     ' tutarındaki ödeme tahsil edilmiştir.</p><div class="receipt-signatures"><div>Ödemeyi Yapan<br><strong>' +
     esc(d.debtor) +
-    '</strong><br>İmza</div><div>Tahsil Eden<br><strong>Av. Hasan Bahadır Patan Hukuk Bürosu</strong><br>İmza</div></div></article>'
+    '</strong><br>İmza</div><div>Tahsil Eden<br><strong>' +
+    esc(firmPrintName('receipt')) +
+    '</strong><br>İmza</div></div></article>'
   );
 }
 
