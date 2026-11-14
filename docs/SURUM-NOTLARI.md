@@ -14,6 +14,7 @@
 - Büronun kendi adresindeki **giriş ekranı**, sayfa başlığı ve üst şerit artık **büronun adını** gösteriyor (önceden her büroda HAN (PATAN) HUKUK yazıyordu). Mevcut büroda değişiklik yok.
 - **Makbuz ve ibraname her büronun kendi yazısıyla çıkar.** Ayarlar → Firma Bilgileri'nde iki yeni alan: **Makbuzda “Tahsil Eden” Yazısı** ve **İbraname İmzası**. Önceden bütün bürolarda mevcut büronun adı ve imzası sabit yazıyordu. Mevcut büro bugüne kadarki yazıyı kullanmaya devam eder; yeni büroda alanlar büronun adıyla dolu gelir ve değiştirilebilir. Makbuzu basan personel de bu iki yazıyı görür (vergi numarası gibi diğer firma bilgilerini görmez).
 - Uygulamanın kendi yazdığı metinler de büroya göre çıkar: **personel gizlilik sözleşmesi taslağı** (veri sorumlusu, bildirim yapılacak kişi, uygulama adresi), **deneme SMS'i**, **zamanlanmış hatırlatma mesajı** ve **web telefon penceresinin başlığı**. Büro, Firma Bilgileri'ne girdiği adla; girmediyse konsoldaki adıyla anılır. Mevcut büronun metinleri değişmedi; yayımlanmış sözleşmeler olduğu gibi kalır.
+- WhatsApp ile gönderilen PDF'lerin (teslim tutanağı, tahsilat makbuzu, ibraname) başlığı, büro Firma Bilgileri'ni henüz doldurmadıysa da büronun kendi adını taşır.
 - Ayarlar → Uygulama Tercihleri'ndeki evrak ön eki alanının denetim kalıbı tarayıcıda geçersiz sayılıyordu (konsolda uyarı); düzeltildi.
 
 ## 2.4.1 — 14 Kasım 2026

@@ -121,3 +121,23 @@ test('texts the application writes itself name the office they are written for',
   assert.equal(bare.incidentContact, 'büro yönetimi');
   assert.equal(plainSms('Şahin Avukatlık & Ortakları'), 'Sahin Avukatlik & Ortaklari');
 });
+
+test('PDFs sent over WhatsApp are headed by the office’s own name', () => {
+  const { printFirm } = require('../lib/office-identity.cjs');
+  const heading = (firm) => firm?.legalName || firm?.name || 'Han Hukuk';
+  const settings = (firm) => ({ data: { 'icrapro-settings-v1': firm === undefined ? {} : { firm } } });
+  const office = { officeName: 'Deneme Hukuk Takip' };
+  // An office that has filled in nothing, or only the generic default, is still itself.
+  assert.equal(heading(printFirm(settings(undefined), office)), 'Deneme Hukuk Takip');
+  assert.equal(heading(printFirm(settings({ name: 'Hukuk Bürosu', legalName: '  ' }), office)), 'Deneme Hukuk Takip');
+  assert.equal(heading(printFirm(settings({ name: 'Şahin Avukatlık' }), office)), 'Şahin Avukatlık');
+  assert.equal(heading(printFirm(settings({ name: 'Şahin Avukatlık', legalName: 'Şahin Hukuk Ltd.' }), office)), 'Şahin Hukuk Ltd.');
+  assert.equal(printFirm(settings({ name: 'x', taxNumber: '1234567890' }), office).taxNumber, '1234567890');
+  // The existing office is passed through untouched.
+  const own = settings({ name: 'Hukuk Bürosu' });
+  assert.equal(printFirm(own, {}), own.data['icrapro-settings-v1'].firm);
+  assert.equal(printFirm(settings(undefined), {}), undefined);
+  // The generator prints exactly this heading.
+  const media = fs.readFileSync('lib/whatsapp-media.cjs', 'utf8');
+  assert.equal(media.split("firm?.legalName || firm?.name || 'Han Hukuk'").length - 1, 3);
+});

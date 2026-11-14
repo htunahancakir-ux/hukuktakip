@@ -1,6 +1,7 @@
 const wa = require('../../lib/whatsapp.cjs');
 const smsRecovery = require('../../lib/sms-recovery.cjs');
 const smsSettings = require('../../lib/sms-settings.cjs');
+const { printFirm } = require('../../lib/office-identity.cjs');
 
 const manager = (user) => ['ceo', 'admin'].includes(user?.role);
 
@@ -127,7 +128,7 @@ function documentJob(ctx, input) {
     wa.queueDirect(ctx.res, state, 'documentTemplate', {
       to: phone,
       values: ['Teslim tesellüm tutanağı'],
-      media: { kind, docs: selected, clients, firm: state.data['icrapro-settings-v1']?.firm },
+      media: { kind, docs: selected, clients, firm: printFirm(state, ctx.options) },
     });
     return;
   }
@@ -137,7 +138,7 @@ function documentJob(ctx, input) {
   const template = kind === 'photo' ? 'imageTemplate' : 'documentTemplate';
   if (!state.whatsappConfig?.enabled || !state.whatsappConfig[template]) throw wa.unavailable();
   const client = clients.find((row) => row.id === doc.client);
-  const firm = state.data['icrapro-settings-v1']?.firm;
+  const firm = printFirm(state, ctx.options);
   const event =
     kind === 'collection'
       ? state.data['hanhukuk-finance-v1'].find(
