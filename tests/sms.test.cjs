@@ -399,3 +399,13 @@ test('Backups leave out SMS credentials and recovery codes', async (t) => {
   assert.equal('smsRecovery' in restored, false);
   assert.deepEqual(restored, { users: state.users, data: state.data });
 });
+
+// The SMS page once vanished from the served scripts in a merge: the settings tab then
+// failed with "smsSettingsPage is not defined". Every workspace script must be served.
+test('every workspace script on disk is in the served script list', () => {
+  const served = new Set(require('../outputs/icrapro/workspace-assets.js'));
+  const missing = fs
+    .readdirSync('outputs/icrapro')
+    .filter((name) => /^workspace-.*\.js$/.test(name) && name !== 'workspace-assets.js' && !served.has(name));
+  assert.deepEqual(missing, []);
+});
