@@ -424,7 +424,7 @@ function updateReportFilterSummary() {
 function renderReportsPage() {
   const filtersOpen = document.getElementById('clientInfoReportFilters')?.open;
   $('#content').innerHTML =
-    `<div class="reports-workspace"><div class="acc-actions report-actions" role="toolbar" aria-label="Rapor kısayolları"><div class="acc-actions-main" id="reportShortcuts"><button class="primary" id="openExpenseReport">Gider Raporu</button><button class="primary" id="openMarketingReport">Pazarlama Raporlama</button><button class="primary monthly-payroll-report-button" id="openMonthlyPayrollReport">Aylık Maaş ve Prim Raporu</button><button class="primary ins-report-button" id="openInsReport">İNS Raporu</button><button class="primary client-list-report-button" id="openClientListReport">Müvekkil Listesi</button><button class="primary client-debtor-report-button" id="openClientDebtorInfo">Müvekkil Borçlu Bilgi Raporu</button></div></div><section class="panel report-controls acc-accounts"><div class="panelhead"><div><h2>Rapor Merkezi</h2><p>Rapor seçin, kayıtları filtreleyin ve çıktısını alın.</p></div><div class="acc-head-side report-export-actions"><button class="secondary" id="printReport">Yazdır / PDF</button><button class="primary" id="exportReport">CSV İndir</button></div></div><div class="report-selection"><label class="field">Rapor Türü<select id="reportType">${Object.entries(
+    `<div class="reports-workspace"><div class="acc-actions report-actions" role="toolbar" aria-label="Rapor kısayolları"><div class="acc-actions-main" id="reportShortcuts"><button class="primary" id="openExpenseReport">Gider Raporu</button><button class="primary" id="openMarketingReport">Pazarlama Raporlama</button><button class="primary monthly-payroll-report-button" id="openMonthlyPayrollReport">Aylık Maaş ve Prim Raporu</button><button class="primary ins-report-button" id="openInsReport">İNS Raporu</button><button class="primary client-list-report-button" id="openClientListReport">Müvekkil Listesi</button><button class="primary client-debtor-report-button" id="openClientDebtorInfo">Müvekkil Borçlu Bilgi Raporu</button></div></div><section class="panel report-controls acc-accounts"><div class="panelhead"><div><h2>Rapor Merkezi</h2><p>Rapor seçin, kayıtları filtreleyin ve çıktısını alın.</p></div><div class="acc-head-side report-export-actions"><button class="secondary" id="printReport">Yazdır / PDF</button><button class="primary" id="exportReport">Excel İndir</button></div></div><div class="report-selection"><label class="field">Rapor Türü<select id="reportType">${Object.entries(
       reportDefinitions,
     )
       .map(
@@ -1052,7 +1052,7 @@ function renderClientListReportPage() {
     rows.length +
     ' müvekkil · ' +
     esc(displayDate(businessDate())) +
-    '</p></div><div class="toolbar"><button class="secondary" id="clientListBack">Raporlara Dön</button><button class="secondary" id="clientListPrint">Yazdır / PDF</button><button class="primary client-list-report-button" id="clientListCsv">CSV İndir</button></div></div><div class="overflow">' +
+    '</p></div><div class="toolbar"><button class="secondary" id="clientListBack">Raporlara Dön</button><button class="secondary" id="clientListPrint">Yazdır / PDF</button><button class="primary client-list-report-button" id="clientListCsv">Excel İndir</button></div></div><div class="overflow">' +
     table +
     '</div><div class="tablefoot">Toplam ' +
     rows.length +
@@ -1219,7 +1219,7 @@ async function monthlyPayrollReportPage() {
     (data.closed ? 'Geçmiş dönem' : 'Güncel dönem') +
     '</p></div><div class="toolbar"><label class="field">Rapor Ayı<input type="month" data-payroll-report-month data-optional="true" value="' +
     esc(data.month) +
-    '"></label><button class="secondary" data-payroll-report-back>Raporlara Dön</button><button class="secondary" data-payroll-report-print>Yazdır / PDF</button><button class="primary" data-payroll-report-csv>CSV İndir</button></div></div>' +
+    '"></label><button class="secondary" data-payroll-report-back>Raporlara Dön</button><button class="secondary" data-payroll-report-print>Yazdır / PDF</button><button class="primary" data-payroll-report-csv>Excel İndir</button></div></div>' +
     (data.missing
       ? '<div class="formbody notice">Bu ay için kayıtlı maaş ve prim dönemi bulunmuyor.</div>'
       : '') +
