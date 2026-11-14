@@ -114,7 +114,7 @@ function marketingSmsPage() {
   }
   $('#content').innerHTML = `<section class="panel">
     <div class="panelhead"><div><h2 id="marketingSmsTitle" tabindex="-1">Pazarlama SMS’i</h2>
-      <p>Tek bir alıcıya, Verimor’un İYS kontrolü ve otomatik ret bilgisiyle gönderin.</p></div>
+      <p>SMS’lerin sonuna ret/iptal bilgisi otomatik eklenir. Bu yöntemle çıkış yapan numaralar Verimor’da otomatik kara listeye alınır ve sonraki pazarlama gönderimlerinde engellenir.</p></div>
       <button type="button" class="secondary" id="marketingSmsBack">← Geri</button></div>
     ${
       config.configured && config.header
