@@ -379,6 +379,7 @@ function createAccess(stateFile, options = {}) {
         },
       };
       if (await handleSessionRoutes(ctx)) return true;
+      if (await require('../../lib/recovery-email.cjs').handleEmailRecovery(ctx)) return true;
       if (u?.activeBreak && url.pathname === '/api/staff-breaks' && (await handleBreakRoutes(ctx)))
         return true;
       if (await handleEmployeeTermsRoutes(ctx)) return true;

@@ -18,7 +18,8 @@ async function recoveryApi(path, data) {
 
 // Step 2 of SMS recovery: the one-time temporary password from the SMS plus a new password.
 // On success the user is signed in with the new password through the normal login form.
-function smsRecoveryGate(account = '') {
+function smsRecoveryGate(account = '', channel = 'sms') {
+  const byEmail = channel === 'email';
   loginFrame(`<form id="smsRecoveryForm" class="panel" aria-labelledby="smsRecoveryTitle">
     <div class="login-heading"><h1 id="smsRecoveryTitle">SMS ile giriş.</h1>
     <p>SMS ile gelen 8 haneli geçici şifreyi girin ve kendi şifrenizi belirleyin. Geçici şifre 15 dakika geçerlidir ve bir kez kullanılır.</p></div>
@@ -34,10 +35,21 @@ function smsRecoveryGate(account = '') {
   const form = document.getElementById('smsRecoveryForm');
   const submit = form.querySelector('[type="submit"]');
   const status = document.getElementById('smsRecoveryStatus');
+  if (byEmail) {
+    document.getElementById('smsRecoveryTitle').textContent = 'E-posta ile şifre sıfırlama.';
+    form.querySelector('.login-heading p').textContent =
+      'Uygun bir hesap ve kalan hak varsa kod doğrulanmış kurtarma e-postasına gönderilir. E-postadaki 8 haneli kodu girin. Kod 15 dakika geçerlidir ve bir kez kullanılır.';
+    const input = form.elements.account;
+    input.maxLength = 254;
+    input.placeholder = 'E-posta veya kullanıcı adınız';
+    input.parentElement.firstChild.textContent = 'E-posta veya kullanıcı adı';
+    form.elements.code.parentElement.firstChild.textContent = 'E-postadaki kod';
+  }
   form.elements.account.value = account;
   installPasswordVisibility(form);
   (account ? form.elements.code : form.elements.account).focus({ preventScroll: true });
-  document.getElementById('smsNewCode').onclick = () => passwordRecoveryGate();
+  document.getElementById('smsNewCode').onclick = () =>
+    byEmail ? emailRecoveryGate() : passwordRecoveryGate();
   document.getElementById('smsBackToLogin').onclick = () => {
     authGate(false);
     document.getElementById('login-username').focus({ preventScroll: true });
@@ -52,11 +64,14 @@ function smsRecoveryGate(account = '') {
     }
     submit.disabled = true;
     try {
-      const result = await recoveryApi('/api/password-reset/sms-complete', {
-        account: value.account.trim(),
-        code: value.code.replace(/\s/g, ''),
-        password: value.password,
-      });
+      const result = await recoveryApi(
+        byEmail ? '/api/password-reset/email-complete' : '/api/password-reset/sms-complete',
+        {
+          account: value.account.trim(),
+          code: value.code.replace(/\s/g, ''),
+          password: value.password,
+        },
+      );
       if (!result.ok) throw Error(result.error || 'Geçici şifre hatalı veya süresi dolmuş.');
       authGate(false);
       const login = document.getElementById('loginForm');
@@ -80,7 +95,7 @@ function passwordRecoveryGate(token) {
         : '<label class="field" for="recovery-account">Telefon veya kullanıcı adı<input id="recovery-account" name="account" required maxlength="80" autocomplete="username" placeholder="05xx xxx xx xx veya kullanıcı adınız" aria-describedby="recoveryStatus"></label><p class="login-note" data-recovery-limit>Talep sınırı: WhatsApp ile günde 1, SMS ile günde 3.</p>'
     }</div><p id="recoveryStatus" class="login-status" role="status"></p>
     <div class="login-actions"><button type="submit" class="login-submit">${token ? 'Şifreyi kaydet' : 'Bağlantı iste'}</button>
-    ${token ? '' : '<button type="button" class="login-link" id="haveSmsCode">SMS ile geçici şifre aldım</button>'}
+    ${token ? '' : '<button type="button" class="login-link" id="haveSmsCode">SMS ile geçici şifre aldım</button><button type="button" class="login-link" id="emailRecovery">E-posta ile şifremi sıfırla</button>'}
     <button type="button" class="login-link" id="backToLogin">Girişe dön</button></div></form>`);
   const form = document.getElementById('recoveryForm');
   const submit = form.querySelector('[type="submit"]');
@@ -91,7 +106,10 @@ function passwordRecoveryGate(token) {
     document.getElementById('login-username').focus({ preventScroll: true });
   };
   if (token) installPasswordVisibility(form);
-  else document.getElementById('haveSmsCode').onclick = () => smsRecoveryGate();
+  else {
+    document.getElementById('haveSmsCode').onclick = () => smsRecoveryGate();
+    document.getElementById('emailRecovery').onclick = () => emailRecoveryGate();
+  }
   form.onsubmit = async (event) => {
     event.preventDefault();
     submit.disabled = true;
@@ -119,6 +137,29 @@ function passwordRecoveryGate(token) {
       }
     } catch (error) {
       status.textContent = error.message;
+      submit.disabled = false;
+    }
+  };
+}
+
+function emailRecoveryGate() {
+  loginFrame(
+    `<form id="emailRecoveryForm" class="panel"><div class="login-heading"><h1>E-posta ile şifre sıfırlama.</h1><p>Hesabım bölümünde önceden doğruladığınız kurtarma e-postasını veya kullanıcı adınızı girin.</p></div><div class="login-fields"><label class="field">E-posta veya kullanıcı adı<input name="account" required maxlength="254" autocomplete="username"></label></div><p role="status" class="login-status"></p><div class="login-actions"><button type="submit" class="login-submit">Kod gönder</button><button type="button" class="login-link" data-have-email-code>Kodum var</button><button type="button" class="login-link" data-email-back>Geri</button></div></form>`,
+  );
+  const form = document.getElementById('emailRecoveryForm');
+  form.querySelector('[data-have-email-code]').onclick = () =>
+    smsRecoveryGate(form.elements.account.value.trim(), 'email');
+  form.querySelector('[data-email-back]').onclick = () => passwordRecoveryGate();
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    const submit = form.querySelector('[type="submit"]');
+    submit.disabled = true;
+    try {
+      const account = form.elements.account.value.trim();
+      await recoveryApi('/api/password-reset/email-request', { account });
+      smsRecoveryGate(account, 'email');
+    } catch (error) {
+      form.querySelector('[role="status"]').textContent = error.message;
       submit.disabled = false;
     }
   };

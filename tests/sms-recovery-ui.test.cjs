@@ -42,6 +42,30 @@ const settle = async () => {
 const submit = (w, id) =>
   w.document.getElementById(id).dispatchEvent(new w.Event('submit', { cancelable: true }));
 
+test('email recovery requests a code and submits it to the email channel before normal login', async () => {
+  const { w, requests, logins } = setup({
+    '/api/password-reset/email-request': () => [200, { ok: true }],
+    '/api/password-reset/email-complete': () => [200, { ok: true, username: 'test' }],
+  });
+  try {
+    w.passwordRecoveryGate();
+    w.document.getElementById('emailRecovery').click();
+    w.document.getElementById('emailRecoveryForm').elements.account.value = 'owner@example.test';
+    submit(w, 'emailRecoveryForm');
+    await settle();
+    const form = w.document.getElementById('smsRecoveryForm');
+    assert.match(form.textContent, /E-posta ile/);
+    assert.equal(form.elements.account.value, 'owner@example.test');
+    form.elements.code.value = '12345678';
+    form.elements.password.value = 'Synthetic-New-Email-Password';
+    form.elements.confirm.value = 'Synthetic-New-Email-Password';
+    submit(w, 'smsRecoveryForm');
+    await settle();
+    assert.equal(requests[1].url, '/api/password-reset/email-complete');
+    assert.equal(logins[0].username, 'test');
+  } finally { w.close(); }
+});
+
 test('marketing form requires a recipient classification, avoids double posts and distinguishes acceptance from delivery', async () => {
   const dom = new JSDOM('<!doctype html><div id="content"></div>', {
     url: 'https://buro.example.test/',

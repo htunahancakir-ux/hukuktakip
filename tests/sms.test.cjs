@@ -443,6 +443,7 @@ test('Backups leave out SMS credentials and recovery codes', async (t) => {
     data: { 'icrapro-v1': { docs: [] } },
     smsConfig: savedConfig(),
     smsRecovery: [{ userId: 'ceo', at: Date.now(), expires: Date.now() + 1, salt: 's', hash: 'h' }],
+    emailRecovery: [{ userId: 'ceo', kind: 'reset', at: Date.now(), salt: 's', hash: 'h' }],
   };
   let policy = {};
   const store = {
@@ -471,6 +472,7 @@ test('Backups leave out SMS credentials and recovery codes', async (t) => {
   const restored = decryptState(remote.bytes, Buffer.from(process.env.BACKUP_ENCRYPTION_KEY, 'hex'));
   assert.equal('smsConfig' in restored, false);
   assert.equal('smsRecovery' in restored, false);
+  assert.equal('emailRecovery' in restored, false);
   assert.deepEqual(restored, { users: state.users, data: state.data });
 });
 
