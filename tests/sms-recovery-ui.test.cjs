@@ -49,7 +49,6 @@ test('email recovery requests a code and submits it to the email channel before 
   });
   try {
     w.passwordRecoveryGate();
-    w.document.getElementById('emailRecovery').click();
     w.document.getElementById('emailRecoveryForm').elements.account.value = 'owner@example.test';
     submit(w, 'emailRecoveryForm');
     await settle();
@@ -63,7 +62,9 @@ test('email recovery requests a code and submits it to the email channel before 
     await settle();
     assert.equal(requests[1].url, '/api/password-reset/email-complete');
     assert.equal(logins[0].username, 'test');
-  } finally { w.close(); }
+  } finally {
+    w.close();
+  }
 });
 
 test('marketing form requires a recipient classification, avoids double posts and distinguishes acceptance from delivery', async () => {
@@ -128,6 +129,7 @@ test('Şifremi unuttum with platform SMS: request, enter the temporary password,
         : [200, { ok: false, error: 'Geçici şifre hatalı veya süresi dolmuş. Yeni şifre isteyin.' }],
   });
   w.passwordRecoveryGate();
+  w.document.querySelector('[data-email-back]').click();
   assert.match(w.document.body.textContent, /SMS ile tek kullanımlık geçici şifre/);
   w.document.getElementById('recovery-account').value = '0532 123 45 67';
   submit(w, 'recoveryForm');
@@ -171,6 +173,7 @@ test('Şifremi unuttum with platform SMS: request, enter the temporary password,
 test('WhatsApp channel keeps the link message; "SMS ile geçici şifre aldım" opens the code step directly', async () => {
   const { w } = setup({ '/api/password-reset/request': () => [200, { ok: true, channel: 'whatsapp' }] });
   w.passwordRecoveryGate();
+  w.document.querySelector('[data-email-back]').click();
   w.document.getElementById('recovery-account').value = 'mehmet';
   submit(w, 'recoveryForm');
   await settle();
