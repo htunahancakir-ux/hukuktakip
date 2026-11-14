@@ -498,7 +498,7 @@ test('Rota Bulma page runs a scrape, polls until results arrive and saves the ro
     const form = doc.getElementById('marketingSearchForm');
     assert.equal(form.elements.source.value, 'scraper', 'the office default is preselected');
     assert.equal(doc.getElementById('marketingDepthField').hidden, false);
-    form.elements.sector.value = 'mobilya';
+    form.querySelector('[name="sector"][value="mobilya"]').click();
     form.elements.city.value = 'Ankara';
     form.elements.district.value = 'Çankaya';
     form.elements.depth.value = 'quick';

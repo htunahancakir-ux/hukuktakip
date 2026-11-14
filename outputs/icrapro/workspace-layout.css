@@ -4397,3 +4397,29 @@ button.pm-offer {
     width: 100%;
   }
 }
+
+.marketing-sector-picker {
+  margin: 0;
+  border: 1px solid #dce3e9;
+  border-radius: 6px;
+  padding: 12px;
+  min-width: 0;
+}
+.marketing-sector-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+  gap: 10px 14px;
+}
+.marketing-sector-options label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #22384a;
+}
+.marketing-sector-options input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  flex-shrink: 0;
+}

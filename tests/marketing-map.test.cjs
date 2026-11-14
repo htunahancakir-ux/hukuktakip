@@ -858,6 +858,164 @@ async function routePage({ overview = {}, places: found, provider = 'osm' }) {
   return { w, doc, requests, settle, change, drawCircle, rows, pins, base };
 }
 
+test('Multiple sector checkboxes merge distinct firms, paginate each sector and retry failures without losing completed results', async () => {
+  const { w, doc, settle, rows } = await routePage({
+    places: [],
+    overview: {
+      sectors: [
+        { id: 'mobilya', label: 'Mobilya' },
+        { id: 'hali', label: 'Halı' },
+      ],
+    },
+  });
+  try {
+    const form = doc.querySelector('#marketingSearchForm');
+    form.elements.city.value = 'Ankara';
+    form.querySelector('[value="mobilya"]').click();
+    form.querySelector('[value="hali"]').click();
+    assert.equal(form.querySelector('[data-marketing-all-sectors]').checked, false);
+    const body = JSON.parse(JSON.stringify(w.marketingSearchInput(form)));
+    assert.deepEqual(body.sectors, ['mobilya', 'hali']);
+    const calls = [];
+    let fail = true;
+    w.fetch = async (url, options) => {
+      const input = JSON.parse(options.body);
+      calls.push(input);
+      if (input.sector === 'hali' && fail) {
+        fail = false;
+        return Response.json({ error: 'Tekrar deneyin' }, { status: 503 });
+      }
+      const place = (id) => ({ ...FOUND[0], placeId: id });
+      return Response.json(
+        input.sector === 'mobilya' && !input.pageToken
+          ? { places: [place('ChIJcommon001')], nextPageToken: 'mobilya-next' }
+          : {
+              places: [
+                place('ChIJcommon001'),
+                place(input.sector === 'hali' ? 'ChIJcarpet001' : 'ChIJfurnit002'),
+              ],
+              nextPageToken: '',
+            },
+      );
+    };
+    await w.marketingSearch(body);
+    assert.deepEqual(rows(), ['ChIJcommon001']);
+    assert.match(w.toasts.at(-1), /Tamamlanmayan sektörler/);
+    assert(doc.querySelector('#marketingMore'));
+    await w.marketingSearch(null, true);
+    assert.equal(rows().length, 3);
+    assert.equal(new Set(rows()).size, 3);
+    assert.deepEqual(
+      calls.map((c) => [c.sector, c.pageToken || '']),
+      [
+        ['mobilya', ''],
+        ['hali', ''],
+        ['mobilya', 'mobilya-next'],
+        ['hali', ''],
+      ],
+    );
+    assert(
+      calls.every((c) => !c.sectors),
+      'each request is metered and validated as one sector',
+    );
+    assert(!doc.querySelector('#marketingMore'));
+    w.marketingSearchTab();
+    assert.equal(
+      doc.querySelectorAll('[name="sector"]:checked').length,
+      2,
+      'page redraw retains selected sectors',
+    );
+    doc.querySelector('[data-marketing-all-sectors]').click();
+    assert.equal(doc.querySelectorAll('[name="sector"]:checked').length, 0);
+  } finally {
+    w.close();
+  }
+});
+
+test('Multiple sector scraping runs each job in sequence and keeps one deduplicated route result list', async () => {
+  const { w, doc } = await routePage({
+    places: [],
+    overview: {
+      sources: [{ id: 'scraper', label: 'Tarama', ready: true }],
+      defaultSource: 'scraper',
+      sectors: [
+        { id: 'mobilya', label: 'Mobilya' },
+        { id: 'hali', label: 'Halı' },
+      ],
+    },
+  });
+  try {
+    const body = { sector: 'mobilya', sectors: ['mobilya', 'hali'], city: 'Ankara' };
+    let jobs = 0;
+    const calls = [];
+    w.fetch = async (url, options) => {
+      const input = JSON.parse(options.body);
+      calls.push([url, input.sector]);
+      return Response.json(
+        url.endsWith('/scrape')
+          ? { jobId: 'job-' + ++jobs, depth: 'quick' }
+          : {
+              status: 'ok',
+              places: [
+                { ...FOUND[0], placeId: 'ChIJcommon001' },
+                { ...FOUND[0], placeId: 'ChIJ' + input.sector + '001' },
+              ],
+            },
+      );
+    };
+    await w.marketingStartScrape(body, 'quick');
+    await w.marketingPollScrape();
+    await w.marketingPollScrape();
+    assert.equal(jobs, 2);
+    assert.equal(doc.querySelectorAll('#marketingRows tr[data-place]').length, 3);
+    assert.deepEqual(
+      calls.map((c) => c[1]),
+      ['mobilya', 'mobilya', 'hali', 'hali'],
+    );
+    assert.match(doc.querySelector('.marketing-section-head').textContent, /Mobilya, Halı/);
+    assert.equal(doc.querySelector('#marketingSearchButton').disabled, false);
+  } finally {
+    w.close();
+  }
+});
+
+test('A failed later sector scrape leaves completed firms visible and clears the running indicator', async () => {
+  const { w, doc } = await routePage({
+    places: [],
+    overview: {
+      sources: [{ id: 'scraper', label: 'Tarama', ready: true }],
+      defaultSource: 'scraper',
+      sectors: [
+        { id: 'mobilya', label: 'Mobilya' },
+        { id: 'hali', label: 'Halı' },
+      ],
+    },
+  });
+  try {
+    w.fetch = async (url, options) => {
+      const body = JSON.parse(options.body);
+      if (url.endsWith('/scrape') && body.sector === 'hali')
+        return Response.json({ error: 'Tarama başlatılamadı' }, { status: 503 });
+      return Response.json(
+        url.endsWith('/scrape')
+          ? { jobId: 'test-job', depth: 'quick' }
+          : { status: 'ok', places: [FOUND[0]] },
+      );
+    };
+    await w.marketingStartScrape(
+      { sectors: ['mobilya', 'hali'], sector: 'mobilya', city: 'Ankara' },
+      'quick',
+    );
+    await w.marketingPollScrape();
+    assert.equal(doc.querySelectorAll('#marketingRows tr[data-place]').length, 1);
+    assert.equal(doc.querySelector('.marketing-scrape-status'), null);
+    assert.equal(doc.querySelector('#marketingSearchButton').disabled, false);
+    assert.match(w.toasts.at(-1), /Tarama başlatılamadı/);
+  } finally {
+    w.close();
+  }
+});
+
 const FOUND = [
   {
     placeId: 'ChIJinside0001',
@@ -905,7 +1063,7 @@ test('Rota Bulma page: province-only search, drawing a region, narrowing the lis
     assert.equal(form.elements.city.required, false);
     assert.equal(form.elements.district.required, false);
     assert.equal(doc.querySelector('label[for="routeCity"]').textContent, 'İl');
-    assert.equal(form.elements.sector.options[0].textContent, 'Hepsi');
+    assert.equal(form.querySelector('[data-marketing-all-sectors]').checked, true);
     assert.match(doc.getElementById('marketingRegionStatus').textContent, /Bölge seçilmedi/);
     assert.equal(doc.getElementById('marketingRegionClear').disabled, true);
 
@@ -1010,7 +1168,7 @@ test('Rota Bulma page: the subscribed map service is searched as "platform" and 
     const form = doc.getElementById('marketingSearchForm');
     assert.equal(form.elements.source.value, 'platform');
     change(form.elements.city, 'Ankara');
-    change(form.elements.sector, 'mobilya');
+    form.querySelector('[name="sector"][value="mobilya"]').click();
     form.dispatchEvent(new w.Event('submit', { cancelable: true }));
     await settle(() => rows().length === 3);
     assert.equal(requests.at(-1).data.source, 'platform');

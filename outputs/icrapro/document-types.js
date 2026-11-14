@@ -126,8 +126,9 @@ function setupDocumentTypes() {
     if (folio) {
       folio.value =
         form.dataset.existingFolio ||
+        form.dataset.folioNumber ||
         (window.hanRecordsEnabled
-          ? 'Kaydedildiğinde atanır'
+          ? 'Numara hazırlanıyor…'
           : nextDocumentNumber(type, db.docs, db.archivedNumbers));
       folio.hidden = false;
       const label = folio.closest('label');

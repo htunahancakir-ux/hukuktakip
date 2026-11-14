@@ -26,6 +26,7 @@ const marketingRouteState = {
     source: '',
     depth: 'normal',
     sector: '',
+    sectors: [],
     customQuery: '',
     city: '',
     district: '',
@@ -250,10 +251,8 @@ function marketingSearchTab() {
         .map((item) => `<option value="${esc(item.id)}">${esc(item.label)}</option>`)
         .join('')}</select></label>
       <label class="field" id="marketingDepthField" title="Tarama birkaç dakika sürer; sonuçlar hazır olunca liste kendiliğinden gelir." ${source === 'scraper' ? '' : 'hidden'}>Tarama kapsamı<select name="depth" data-optional="true"><option value="quick">Hızlı (ilk sonuçlar)</option><option value="normal">Normal</option><option value="wide">Geniş (daha çok firma, daha uzun sürer)</option></select></label>
-      <label class="field">Sektör<select name="sector" data-optional="true"><option value="">Hepsi</option>${state.overview.sectors
-        .map((sector) => `<option value="${esc(sector.id)}">${esc(sector.label)}</option>`)
-        .join('')}<option value="custom">Diğer (elle yazın)</option></select></label>
-      <label class="field" id="marketingCustomSector" ${form.sector === 'custom' ? '' : 'hidden'}>Aranacak sektör *<input name="customQuery" maxlength="80" ${form.sector === 'custom' ? '' : 'disabled'} value="${esc(form.customQuery)}" placeholder="ör. elektrik malzemeleri"></label>
+      <fieldset class="field full marketing-sector-picker"><legend>Sektörler</legend><div class="marketing-sector-options"><label><input type="checkbox" data-marketing-all-sectors data-optional="true"> Hepsi</label>${[...state.overview.sectors, { id: 'custom', label: 'Diğer (elle yazın)' }].map((sector) => `<label><input type="checkbox" name="sector" value="${esc(sector.id)}" data-optional="true"> ${esc(sector.label)}</label>`).join('')}</div><small>Birden fazla sektör seçebilirsiniz. Hepsi seçiliyse tüm firmalar aranır.</small></fieldset>
+      <label class="field" id="marketingCustomSector" hidden>Aranacak sektör *<input name="customQuery" maxlength="80" disabled value="${esc(form.customQuery)}" placeholder="ör. elektrik malzemeleri"></label>
       ${clientCityField({ city: form.city, district: form.district }, 'route')}
       ${text('neighborhood', 'Mahalle', 'ör. Kızılay')}${text('avenue', 'Cadde', 'ör. Atatürk Bulvarı')}${text('street', 'Sokak', 'ör. Sakarya Sokak')}
     </div><div class="actions"><button class="primary" type="submit" id="marketingSearchButton" ${blocked ? 'disabled' : ''}>Bul</button><span class="marketing-hint">Yalnızca il seçmek ya da haritada bölge çizmek yeterlidir; diğer alanlar aramayı daraltır.</span></div>${
@@ -293,18 +292,25 @@ function marketingSearchTab() {
     const caption = searchForm.querySelector(`label[for="${input.id}"]`);
     if (caption) caption.textContent = label;
   }
-  searchForm.elements.sector.value = state.overview.sectors.some((sector) => sector.id === form.sector)
-    ? form.sector
-    : form.sector === 'custom'
-      ? 'custom'
-      : '';
-  // The typed sector is asked for only when "Diğer" is chosen; a hidden field stays out
-  // of the form's validation by being disabled.
-  searchForm.elements.sector.onchange = () => {
-    const custom = searchForm.elements.sector.value === 'custom';
+  const checks = [...searchForm.querySelectorAll('[name="sector"]')];
+  const all = searchForm.querySelector('[data-marketing-all-sectors]');
+  const selectedSectors = form.sectors?.length ? form.sectors : form.sector ? [form.sector] : [];
+  for (const input of checks) input.checked = selectedSectors.includes(input.value);
+  function syncSectors() {
+    const selected = checks.filter((input) => input.checked).map((input) => input.value);
+    all.checked = selected.length === 0;
+    form.sectors = selected;
+    form.sector = selected[0] || '';
+    const custom = selected.includes('custom');
     $('#marketingCustomSector').hidden = !custom;
     searchForm.elements.customQuery.disabled = !custom;
+  }
+  for (const input of checks) input.onchange = syncSectors;
+  all.onchange = () => {
+    for (const input of checks) input.checked = false;
+    syncSectors();
   };
+  syncSectors();
   // Choosing a province turns the map to it.
   searchForm.elements.city?.addEventListener('change', () => {
     if (!state.region) state.map?.focusCity(searchForm.elements.city.value);
@@ -512,7 +518,7 @@ function marketingToggleSelected(placeId) {
 
 const marketingPollDelay = () => Number(globalThis.hanMarketingPollMs) || 10000;
 
-async function marketingStartScrape(body, depth) {
+async function marketingStartScrape(body, depth, continuation = null) {
   const state = marketingRouteState;
   if (state.loading || state.job) return toast('Bir harita taraması zaten sürüyor.');
   state.loading = true;
@@ -522,20 +528,32 @@ async function marketingStartScrape(body, depth) {
     button.textContent = 'Başlatılıyor…';
   }
   try {
-    const result = await marketingRouteRequest('/api/marketing/scrape', { ...body, depth });
-    state.job = { jobId: result.jobId, criteria: body, depth: result.depth || depth, startedAt: Date.now() };
+    const requests = continuation || marketingSectorRequests(body);
+    const current = requests[0];
+    const result = await marketingRouteRequest('/api/marketing/scrape', { ...current, depth });
+    state.job = {
+      jobId: result.jobId,
+      criteria: current,
+      remaining: requests.slice(1),
+      depth: result.depth || depth,
+      startedAt: Date.now(),
+    };
     marketingShowUsage(result.usage);
-    state.criteria = body;
+    if (!continuation) state.criteria = body;
     state.source = 'scraper';
-    state.places = [];
+    if (!continuation) state.places = [];
     state.selected = new Set();
     state.plan = null;
-    state.outside = 0;
+    if (!continuation) state.outside = 0;
     state.nextPageToken = '';
     state.filters.district = '';
     marketingSyncMap([]);
   } catch (error) {
     toast(error.message);
+    if (continuation && marketingView === 'routes' && state.tab === 'search') {
+      marketingRenderResults();
+      marketingRenderPlan();
+    }
   } finally {
     state.loading = false;
     if (button) {
@@ -602,8 +620,14 @@ async function marketingPollScrape() {
     return marketingScheduleScrapePoll(marketingPollDelay());
   }
   state.job = null;
-  state.places = result.places || [];
-  state.outside = result.outside || 0;
+  const known = new Set(state.places.map((place) => place.placeId));
+  for (const place of result.places || [])
+    if (!known.has(place.placeId)) {
+      known.add(place.placeId);
+      state.places.push(place);
+    }
+  state.outside += result.outside || 0;
+  if (job.remaining?.length) return marketingStartScrape(state.criteria, job.depth, job.remaining);
   if (marketingView === 'routes' && state.tab === 'search' && document.getElementById('marketingResults')) {
     const button = document.getElementById('marketingSearchButton');
     if (button) button.disabled = !!marketingBlockedNotice();
@@ -622,14 +646,15 @@ function marketingSearchInput(form) {
     return null;
   };
   const same = (a, b) => String(a).toLocaleLowerCase('tr') === String(b).trim().toLocaleLowerCase('tr');
-  const sector = form.elements.sector.value;
+  const sectors = [...form.querySelectorAll('[name="sector"]:checked')].map((input) => input.value);
+  const sector = sectors[0] || '';
   const customQuery = form.elements.customQuery.value.trim();
   const typedCity = form.elements.city.value.trim(),
     typedDistrict = form.elements.district.value.trim();
   const city = Object.keys(turkeyDistricts).find((name) => same(name, typedCity)) || '';
   const district = (turkeyDistricts[city] || []).find((name) => same(name, typedDistrict)) || '';
   const region = marketingRouteState.region;
-  if (sector === 'custom' && customQuery.length < 2)
+  if (sectors.includes('custom') && customQuery.length < 2)
     return fail(form.elements.customQuery, 'Aranacak sektörü yazın.');
   // A place is all a search needs: a province, or a region drawn on the map.
   if (typedCity && !city) return fail(form.elements.city, 'Listeden bir il seçin.');
@@ -638,62 +663,76 @@ function marketingSearchInput(form) {
     return fail(form.elements.district, 'Listeden bir ilçe seçin ya da ilçeyi boş bırakın.');
   const fields = {
     sector,
-    customQuery: sector === 'custom' ? customQuery : '',
+    ...(sectors.length > 1 ? { sectors } : {}),
+    customQuery: sectors.includes('custom') ? customQuery : '',
     city,
     district,
     neighborhood: form.elements.neighborhood.value.trim(),
     avenue: form.elements.avenue.value.trim(),
     street: form.elements.street.value.trim(),
   };
-  Object.assign(marketingRouteState.form, fields);
+  Object.assign(marketingRouteState.form, fields, { sectors });
   return region ? { ...fields, region } : fields;
 }
 
 // `source` is 'google' (the office's own key) or 'platform' (the subscribed map service).
+function marketingSectorRequests(body) {
+  const { sectors, ...single } = body;
+  return (sectors || [body.sector || '']).map((sector) => ({ ...single, sector }));
+}
+
 async function marketingSearch(body, more = false, source = 'google') {
   const state = marketingRouteState;
-  if (state.loading) return;
+  if (state.loading || state.job) return;
   if (more) source = state.source;
   const via = source === 'platform' ? { source: 'platform' } : {};
+  const requests = more
+    ? state.nextSearchRequests || [{ ...state.criteria, pageToken: state.nextPageToken }]
+    : marketingSectorRequests(body);
   state.loading = true;
+  if (!more) {
+    state.criteria = body;
+    state.source = source;
+    state.places = [];
+    state.selected = new Set();
+    state.plan = null;
+    state.outside = 0;
+    state.filters.district = '';
+  }
+  state.nextSearchRequests = [];
   const button = document.getElementById(more ? 'marketingMore' : 'marketingSearchButton');
   if (button) {
     button.disabled = true;
-    button.textContent = more ? 'Getiriliyor…' : 'Aranıyor…';
+    button.textContent = 'Aranıyor…';
   }
-  if (!more)
-    $('#marketingResults').innerHTML =
-      '<p class="formbody" role="status" aria-live="polite">Google Haritalar’da aranıyor…</p>';
-  let found = false;
+  const searchButton = document.getElementById('marketingSearchButton');
+  if (searchButton) searchButton.disabled = true;
+  let index = 0;
   try {
-    const result = await marketingRouteRequest(
-      '/api/marketing/search',
-      more ? { ...state.criteria, ...via, pageToken: state.nextPageToken } : { ...body, ...via },
-    );
-    if (!more) {
-      state.criteria = body;
-      state.source = source;
-      state.places = [];
-      state.selected = new Set();
-      state.plan = null;
-      state.outside = 0;
-      // A list from another search starts unfiltered by district.
-      state.filters.district = '';
+    for (; index < requests.length; index++) {
+      if (button) button.textContent = 'Aranıyor… ' + (index + 1) + '/' + requests.length;
+      const input = requests[index];
+      const result = await marketingRouteRequest('/api/marketing/search', { ...input, ...via });
+      const known = new Set(state.places.map((place) => place.placeId));
+      for (const place of result.places || [])
+        if (!known.has(place.placeId)) {
+          known.add(place.placeId);
+          state.places.push(place);
+        }
+      if (result.nextPageToken) state.nextSearchRequests.push({ ...input, pageToken: result.nextPageToken });
+      state.outside += result.outside || 0;
+      if (Number.isFinite(result.searchesLeft) && state.overview.service) {
+        state.overview.service.searchesLeft = result.searchesLeft;
+        const note = document.getElementById('marketingServiceNote');
+        if (note) note.textContent = marketingServiceNote();
+      }
+      marketingShowUsage(result.usage);
     }
-    const known = new Set(state.places.map((place) => place.placeId));
-    state.places.push(...result.places.filter((place) => !known.has(place.placeId)));
-    state.nextPageToken = result.nextPageToken || '';
-    state.outside += result.outside || 0;
-    if (Number.isFinite(result.searchesLeft) && state.overview.service) {
-      state.overview.service.searchesLeft = result.searchesLeft;
-      const note = document.getElementById('marketingServiceNote');
-      if (note) note.textContent = marketingServiceNote();
-    }
-    marketingShowUsage(result.usage);
-    found = !more;
   } catch (error) {
-    toast(error.message);
+    state.nextSearchRequests.push(...requests.slice(index));
+    toast(error.message + ' Tamamlanmayan sektörler için Daha Fazla Getir ile yeniden deneyebilirsiniz.');
   } finally {
+    state.nextPageToken = state.nextSearchRequests.length ? 'sectors' : '';
     state.loading = false;
     if (marketingView === 'routes' && state.tab === 'search' && document.getElementById('marketingResults')) {
       const search = document.getElementById('marketingSearchButton');
@@ -703,7 +742,7 @@ async function marketingSearch(body, more = false, source = 'google') {
       }
       marketingRenderResults();
       marketingRenderPlan();
-      if (found) marketingFitMap();
+      if (!more) marketingFitMap();
     }
   }
 }
@@ -770,10 +809,13 @@ function marketingRenderResults() {
     point = marketingOriginPoint(),
     office = marketingOfficeAddress(),
     criteria = state.criteria;
-  const sector =
-    criteria.sector === 'custom'
-      ? criteria.customQuery
-      : state.overview.sectors.find((item) => item.id === criteria.sector)?.label || 'Tüm firmalar';
+  const sector = (criteria.sectors || [criteria.sector])
+    .map((id) =>
+      id === 'custom'
+        ? criteria.customQuery
+        : state.overview.sectors.find((item) => item.id === id)?.label || 'Tüm firmalar',
+    )
+    .join(', ');
   // The districts the firms are in: a province-wide search is narrowed with these.
   const districts = HanMarketingRoute.districtCounts(state.places);
   if (

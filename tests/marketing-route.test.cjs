@@ -17,6 +17,26 @@ const { database, fixture, serve, password } = require('./support/postgres.cjs')
 // Synthetic key in Google's format. It is never sent anywhere: every fetch is stubbed.
 const KEY = 'AIza' + 'T'.repeat(35);
 
+test('Saved routes preserve all selected sectors and validate every selection', () => {
+  const sectors = maps.publicConfig({}).sectors;
+  const input = {
+    sector: 'mobilya',
+    sectors: ['mobilya', 'hirdavat', 'custom'],
+    customQuery: 'perde',
+    city: 'Ankara',
+    requestId: crypto.randomUUID(),
+    stops: ['ChIJexample001'],
+  };
+  const result = marketing.saveRoute({ marketingRoutes: [] }, { id: 'u', role: 'ceo' }, input, sectors).route;
+  assert.deepEqual(result.sectors, input.sectors);
+  assert.match(result.sectorLabel, /Mobilya/);
+  assert.match(result.sectorLabel, /Hırdavat/);
+  assert.match(result.sectorLabel, /perde/);
+  assert.equal(result.customQuery, 'perde');
+  for (const selected of [['unknown'], ['mobilya', 'mobilya'], [], [''], ['mobilya', 4]])
+    assert.throws(() => marketing.criteria({ ...input, sectors: selected }, sectors));
+});
+
 test('New route sectors upgrade saved lists once, preserve custom searches and support Hepsi', () => {
   const requested = [
     'Halı Mağazaları',
@@ -884,7 +904,7 @@ test('Rota Bulma page escapes Google content, selects visible firms and saves th
 
     w.openMarketingRouteFinder();
     const form = doc.getElementById('marketingSearchForm');
-    form.elements.sector.value = 'mobilya';
+    form.querySelector('[name="sector"][value="mobilya"]').click();
     form.elements.city.value = 'ankara';
     form.elements.district.value = 'ÇANKAYA';
     form.dispatchEvent(new w.Event('submit', { cancelable: true }));

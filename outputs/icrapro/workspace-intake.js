@@ -226,6 +226,38 @@ async function loadRecordIntakePage() {
   }
 }
 const pendingIntakeAttachments = new Map();
+async function prepareIntakeFolio(form) {
+  if (form.dataset.folioNumber) return true;
+  if (form._folioRequest) return form._folioRequest;
+  const field = form.querySelector('#intakeFolioNumber');
+  const id = (form.dataset.recordId ||= crypto.randomUUID());
+  form._folioRequest = (async () => {
+    try {
+      const response = await fetch('/api/records/folio-reservation', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-Han-Request': '1' },
+        body: JSON.stringify({ id }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw Error(result.error || 'Föy numarası alınamadı.');
+      if (result.id !== id || !/^[1-9]\d*$/.test(result.number)) throw Error('Föy numarası doğrulanamadı.');
+      form.dataset.folioNumber = result.number;
+      field.value = field.defaultValue = result.number;
+      field.closest('label').querySelector('small').textContent = 'Bu kayıt için otomatik ayrıldı.';
+      return true;
+    } catch (error) {
+      field.value = 'Numara alınamadı';
+      field.closest('label').querySelector('small').textContent = 'Yeniden denemek için buraya tıklayın.';
+      field.onclick = () => prepareIntakeFolio(form);
+      if (form.isConnected) toast(error.message);
+      return false;
+    } finally {
+      form._folioRequest = null;
+    }
+  })();
+  return form._folioRequest;
+}
 async function saveRecordIntake(original, next) {
   const source = original;
   const pending = pendingIntakeAttachments.get(next.id);
