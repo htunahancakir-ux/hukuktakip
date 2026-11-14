@@ -379,6 +379,7 @@ function createAccess(stateFile, options = {}) {
         },
       };
       if (await handleSessionRoutes(ctx)) return true;
+      if (await require('../../lib/recovery-channels.cjs').handle(ctx, true)) return true;
       if (await require('../../lib/recovery-email.cjs').handleEmailRecovery(ctx)) return true;
       if (u?.activeBreak && url.pathname === '/api/staff-breaks' && (await handleBreakRoutes(ctx)))
         return true;
@@ -398,6 +399,7 @@ function createAccess(stateFile, options = {}) {
       }
       if (await handleWhatsAppRoutes(ctx)) return true;
       if (!u) throw fail(401, 'Giriş yapın.');
+      if (await require('../../lib/recovery-channels.cjs').handle(ctx)) return true;
       if (await require('./access-ceo-pin.cjs').handleCeoPin(ctx)) return true;
       if (await handleAiRoutes(ctx)) return true;
       if (await handleIyzicoRoutes(ctx)) return true;

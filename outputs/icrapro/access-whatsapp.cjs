@@ -186,14 +186,24 @@ async function handleWhatsAppRoutes(ctx) {
   const route = url.pathname;
   if (route === '/api/password-reset/request' && req.method === 'POST') {
     throttle(ctx, 'password-wa-request', 8);
-    const input = String((await body(req)).account || '').trim();
+    const values = await body(req);
+    const input = String(values.account || '').trim();
+    const channel = values.channel;
+    if (channel !== undefined && !['sms', 'whatsapp'].includes(channel))
+      throw fail(400, 'Geçerli bir kurtarma kanalı seçin.');
+    if (channel && !require('../../lib/recovery-channels.cjs').ready(ctx.state, channel))
+      throw fail(503, 'Bu kurtarma kanalı henüz canlı testle doğrulanmadı.');
     if (!input || input.length > 80) throw fail(400, 'Telefon veya kullanıcı adı girin.');
     const cfg = ctx.state.whatsappConfig;
     // WhatsApp wins when it is set up; otherwise the office's own SMS integration (Settings →
     // Integrations → SMS), and failing that the platform's SMS service, sends a one-time
     // temporary password. The answer never says whether the account exists.
     const officeSms = smsSettings.publicConfig(ctx.state.smsConfig).enabled;
-    if (!(cfg?.enabled && cfg.resetTemplate) && (officeSms || ctx.options.smsAvailable === true)) {
+    if (
+      channel !== 'whatsapp' &&
+      (channel === 'sms' || !(cfg?.enabled && cfg.resetTemplate)) &&
+      (officeSms || ctx.options.smsAvailable === true)
+    ) {
       const user = recoveryAccount(ctx, input, 'sms');
       const phone = user && smsRecovery.smsPhone(ctx.state, user);
       if (phone) {
@@ -274,6 +284,9 @@ async function handleWhatsAppRoutes(ctx) {
     if (req.method === 'PUT') {
       const next = structuredClone(ctx.state);
       next.whatsappConfig = wa.configure(next.whatsappConfig, await body(req));
+      const recovery = require('../../lib/recovery-channels.cjs');
+      if (recovery.stamp(ctx.state, 'whatsapp') !== recovery.stamp(next, 'whatsapp'))
+        recovery.invalidate(next, 'whatsapp');
       ctx.persist(next);
     } else if (req.method !== 'GET') throw fail(405, 'Yöntem desteklenmiyor.');
     send(res, 200, wa.publicConfig(ctx.state.whatsappConfig));

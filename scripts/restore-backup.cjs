@@ -50,6 +50,8 @@ async function restoreBackup({ file, rawKey, localTarget, credentials }) {
   delete state.mapsConfig;
   delete state.passwordRecovery;
   delete state.emailRecovery;
+  delete state.recoveryChannelTests;
+  delete state.recoveryChannelReadiness;
   delete state.reminderScheduler;
   for (const reminder of state.scheduledReminders || []) {
     if (['pending', 'sending'].includes(reminder.deliveryStatus)) {

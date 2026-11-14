@@ -15,7 +15,7 @@ function whatsappSettingsPage() {
   }
   $('#content').innerHTML = `${settingsSectionTabs('whatsapp')}<section class="panel">
     <div class="panelhead"><div><h2>WhatsApp Business</h2>
-    <p>Meta Cloud API bilgilerini ve onaylı mesaj şablonlarını girin.</p></div><span class="badge">${config.enabled ? 'Etkin' : 'Kapalı'}</span></div>
+    <p>Meta Cloud API bilgilerini ve onaylı mesaj şablonlarını girin. Şifre kurtarma seçeneği aşağıdaki canlı test doğrulandıktan sonra otomatik görünür.</p></div><span class="badge">${config.enabled ? 'Etkin' : 'Kapalı'}</span></div>
     <form id="whatsappConfigForm"><div class="formbody grid">
       <label class="settings-check full"><input type="checkbox" name="enabled" ${config.enabled ? 'checked' : ''}> WhatsApp gönderimlerini aç</label>
       <label class="field">Telefon numarası kimliği<input name="phoneNumberId" inputmode="numeric" data-optional="true" value="${esc(config.phoneNumberId)}"></label>
@@ -30,8 +30,10 @@ function whatsappSettingsPage() {
         <p>Mesaj şablonu sırasıyla gönderen, konu ve mesaj önizlemesini; hatırlatma şablonu gönderen, iş başlığı ve son tarihi alır.</p>
         <p>PDF ve fotoğraf için sırasıyla belge veya görsel başlıklı şablon oluşturun. Metin gövdesinde evrak numarası için bir değişken kullanın.</p>
       </details></div><div class="actions"><button class="primary" type="submit">Bağlantı Ayarlarını Kaydet</button></div></form>
+    ${recoveryChannelTestPanel('whatsapp')}
   </section>`;
   bindSettingsSectionTabs();
+  bindRecoveryChannelTest($('#content'), 'whatsapp');
   $('#whatsappConfigForm').onsubmit = (event) => {
     event.preventDefault();
     const form = event.target;

@@ -28,6 +28,10 @@ function setup(replies) {
     });
   };
   w.fetch = async (url, options) => {
+    if (url === '/api/password-reset/channels') {
+      const [status, json] = (replies[url] || (() => [200, { sms: false, whatsapp: false }]))();
+      return { ok: status < 400, status, json: async () => json };
+    }
     const body = JSON.parse(options.body);
     requests.push({ url, body });
     const [status, json] = replies[url](body);
@@ -70,6 +74,75 @@ test('email recovery requests a code and submits it to the email channel before 
     await settle();
     assert.equal(requests[1].url, '/api/password-reset/email-complete');
     assert.equal(logins[0].username, 'test');
+  } finally {
+    w.close();
+  }
+});
+
+test('login reveals only server-verified channels and routes explicit SMS independently', async () => {
+  const { w, requests } = setup({
+    '/api/password-reset/channels': () => [200, { sms: true, whatsapp: false }],
+    '/api/password-reset/request': () => [200, { ok: true, channel: 'sms' }],
+  });
+  try {
+    w.passwordRecoveryGate();
+    await settle();
+    assert.ok(w.document.querySelector('[data-recovery-channel="sms"]'));
+    assert.equal(w.document.querySelector('[data-recovery-channel="whatsapp"]'), null);
+    w.document.querySelector('[data-recovery-channel="sms"]').click();
+    w.document.getElementById('recovery-account').value = 'test';
+    submit(w, 'recoveryForm');
+    await settle();
+    assert.equal(requests[0].body.channel, 'sms');
+    assert.ok(w.document.getElementById('smsRecoveryForm'));
+  } finally {
+    w.close();
+  }
+});
+
+test('WhatsApp test link needs an explicit confirmation and never requests a password', async () => {
+  const { w, requests } = setup({
+    '/api/password-reset/channel-test-link': (body) => [
+      200,
+      body.confirm ? { ok: true, test: true } : { test: true, usable: true },
+    ],
+  });
+  try {
+    w.passwordRecoveryGate('a'.repeat(43));
+    await settle();
+    assert.equal(w.document.querySelector('input[type="password"]'), null);
+    assert.equal(requests.length, 1);
+    w.document.querySelector('[data-channel-test-confirm]').click();
+    await settle();
+    assert.equal(requests[1].body.confirm, true);
+    assert.match(w.document.querySelector('[data-channel-test-status]').textContent, /doğrulandı/);
+    assert.equal(w.document.querySelector('[data-channel-test-confirm]'), null);
+  } finally {
+    w.close();
+  }
+});
+
+test('verified WhatsApp does not expose an untested SMS shortcut', async () => {
+  const { w } = setup({ '/api/password-reset/channels': () => [200, { sms: false, whatsapp: true }] });
+  try {
+    w.passwordRecoveryGate();
+    await settle();
+    assert.equal(w.document.querySelector('[data-recovery-channel="sms"]'), null);
+    w.document.querySelector('[data-recovery-channel="whatsapp"]').click();
+    assert.equal(w.document.getElementById('haveSmsCode'), null);
+    assert.doesNotMatch(w.document.getElementById('recoveryForm').textContent, /SMS/);
+  } finally {
+    w.close();
+  }
+});
+
+test('ordinary WhatsApp recovery links keep their password reset form', async () => {
+  const { w } = setup({ '/api/password-reset/channel-test-link': () => [200, { test: false }] });
+  try {
+    w.passwordRecoveryGate('b'.repeat(43));
+    await settle();
+    assert.ok(w.document.getElementById('recovery-password'));
+    assert.equal(w.document.querySelector('[data-channel-test-confirm]'), null);
   } finally {
     w.close();
   }

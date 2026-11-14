@@ -85,7 +85,11 @@ function smsRecoveryGate(account = '', channel = 'sms') {
   };
 }
 
-function passwordRecoveryGate(token, channel = 'email') {
+function passwordRecoveryGate(token, channel = 'email', testChecked = false) {
+  if (token && !testChecked) {
+    recoveryChannelTestGate(token, channel);
+    return;
+  }
   if (!token && channel === 'email') return emailRecoveryGate();
   loginFrame(`<form id="recoveryForm" class="panel" aria-labelledby="recoveryTitle">
     <div class="login-heading"><h1 id="recoveryTitle">${token ? 'Yeni şifreniz.' : 'Şifrenizi yenileyin.'}</h1>
@@ -96,11 +100,22 @@ function passwordRecoveryGate(token, channel = 'email') {
         : '<label class="field" for="recovery-account">Telefon veya kullanıcı adı<input id="recovery-account" name="account" required maxlength="80" autocomplete="username" placeholder="05xx xxx xx xx veya kullanıcı adınız" aria-describedby="recoveryStatus"></label><p class="login-note" data-recovery-limit>Talep sınırı: WhatsApp ile günde 1, SMS ile günde 3.</p>'
     }</div><p id="recoveryStatus" class="login-status" role="status"></p>
     <div class="login-actions"><button type="submit" class="login-submit">${token ? 'Şifreyi kaydet' : 'Bağlantı iste'}</button>
-    ${token ? '' : '<button type="button" class="login-link" id="haveSmsCode">SMS ile geçici şifre aldım</button><button type="button" class="login-link" id="emailRecovery">E-posta ile şifremi sıfırla</button>'}
+    ${token ? '' : `${channel === 'phone' ? '<button type="button" class="login-link" id="haveSmsCode">SMS ile geçici şifre aldım</button>' : ''}<button type="button" class="login-link" id="emailRecovery">E-posta ile şifremi sıfırla</button>`}
     <button type="button" class="login-link" id="backToLogin">Girişe dön</button></div></form>`);
   const form = document.getElementById('recoveryForm');
   const submit = form.querySelector('[type="submit"]');
   const status = document.getElementById('recoveryStatus');
+  if (!token && ['sms', 'whatsapp'].includes(channel)) {
+    const label = channel === 'sms' ? 'SMS' : 'WhatsApp';
+    document.getElementById('recoveryTitle').textContent = `${label} ile şifre sıfırlama.`;
+    form.querySelector('.login-heading p').textContent =
+      channel === 'sms'
+        ? 'Kayıtlı cep telefonunuza tek kullanımlık şifre sıfırlama kodu gönderilir.'
+        : 'Onaylı WhatsApp numaranıza şifre sıfırlama bağlantısı gönderilir.';
+    form.querySelector('[type="submit"]').textContent = `${label} ile gönder`;
+    form.querySelector('[data-recovery-limit]').textContent =
+      channel === 'sms' ? 'Talep sınırı: günde 3.' : 'Talep sınırı: günde 1.';
+  }
   let recoveryRequestCount = 0;
   document.getElementById('backToLogin').onclick = () => {
     authGate(false);
@@ -108,7 +123,8 @@ function passwordRecoveryGate(token, channel = 'email') {
   };
   if (token) installPasswordVisibility(form);
   else {
-    document.getElementById('haveSmsCode').onclick = () => smsRecoveryGate();
+    const haveSms = document.getElementById('haveSmsCode');
+    if (haveSms) haveSms.onclick = () => smsRecoveryGate();
     document.getElementById('emailRecovery').onclick = () => emailRecoveryGate();
   }
   form.onsubmit = async (event) => {
@@ -125,8 +141,13 @@ function passwordRecoveryGate(token, channel = 'email') {
       } else {
         if (recoveryRequestCount === 1)
           form.querySelector('[data-recovery-limit]').textContent =
-            'Ek talep sınırları: 7 günde 3 ve 30 günde 8. Kalan haklar WhatsApp mesajında gösterilir.';
-        const result = await recoveryApi('/api/password-reset/request', { account: value.account });
+            channel === 'sms'
+              ? 'Ek talep sınırları: 7 günde 6 ve 30 günde 12.'
+              : 'Ek talep sınırları: 7 günde 3 ve 30 günde 8. Kalan haklar WhatsApp mesajında gösterilir.';
+        const result = await recoveryApi('/api/password-reset/request', {
+          account: value.account,
+          ...(['sms', 'whatsapp'].includes(channel) ? { channel } : {}),
+        });
         recoveryRequestCount++;
         // The platform SMS channel: go straight to entering the temporary password. The same
         // screen appears whether or not the account exists.
@@ -148,7 +169,26 @@ function emailRecoveryGate() {
     `<form id="emailRecoveryForm" class="panel"><div class="login-heading"><h1>E-posta ile şifre sıfırlama.</h1><p>Hesabım bölümünde önceden doğruladığınız kurtarma e-postasını veya kullanıcı adınızı girin. Şifre sıfırlama kodu bu e-posta adresine gönderilir. E-postanızı daha önce doğrulamadıysanız büro yöneticinizle iletişime geçin.</p></div><div class="login-fields"><label class="field">E-posta veya kullanıcı adı<input name="account" required maxlength="254" autocomplete="username"></label></div><p role="status" class="login-status"></p><div class="login-actions"><button type="submit" class="login-submit">Şifre sıfırlama e-postası gönder</button><button type="button" class="login-link" data-email-login>Girişe dön</button></div></form>`,
   );
   const form = document.getElementById('emailRecoveryForm');
-  // SMS/WhatsApp stay out of the public recovery UI until approved and live-tested.
+  // The server reveals only channels whose current saved setup passed a live delivery test.
+  fetch('/api/password-reset/channels', { cache: 'no-store' })
+    .then(async (response) => {
+      if (!response.ok || !form.isConnected) return;
+      const channels = await response.json();
+      for (const [channel, label] of [
+        ['sms', 'SMS'],
+        ['whatsapp', 'WhatsApp'],
+      ]) {
+        if (channels[channel] !== true || !form.isConnected) continue;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'login-link';
+        button.textContent = `${label} ile şifre sıfırla`;
+        button.dataset.recoveryChannel = channel;
+        button.onclick = () => passwordRecoveryGate(undefined, channel);
+        form.querySelector('.login-actions').insertBefore(button, form.querySelector('[data-email-login]'));
+      }
+    })
+    .catch(() => {});
   form.querySelector('[data-email-login]').onclick = () => authGate(false);
   form.onsubmit = async (event) => {
     event.preventDefault();
@@ -163,4 +203,38 @@ function emailRecoveryGate() {
       submit.disabled = false;
     }
   };
+}
+
+function recoveryChannelTestGate(token, channel) {
+  loginFrame('<section class="panel"><h1>Bağlantı kontrol ediliyor…</h1></section>');
+  recoveryApi('/api/password-reset/channel-test-link', { token })
+    .then((result) => {
+      if (!result.test) return passwordRecoveryGate(token, channel, true);
+      loginFrame(
+        `<section class="panel"><div class="login-heading"><h1>WhatsApp kurtarma testi</h1><p>${result.usable ? 'Bu bağlantı WhatsApp şifre kurtarma şablonundan geldi. Testi doğruladığınızda WhatsApp seçeneği giriş ekranında otomatik açılır. Hesap şifreniz değişmez.' : 'Test bağlantısının süresi dolmuş veya ayarlar değişmiş. Ayarlardan yeni test başlatın.'}</p></div><p role="status" data-channel-test-status></p><div class="login-actions">${result.usable ? '<button type="button" class="login-submit" data-channel-test-confirm>Testi doğrula</button>' : ''}<button type="button" class="login-link" data-channel-test-back>Girişe dön</button></div></section>`,
+      );
+      document.querySelector('[data-channel-test-back]').onclick = () => authGate(false);
+      const button = document.querySelector('[data-channel-test-confirm]');
+      if (button)
+        button.onclick = async () => {
+          button.disabled = true;
+          try {
+            const confirmed = await recoveryApi('/api/password-reset/channel-test-link', {
+              token,
+              confirm: true,
+            });
+            if (!confirmed.ok) throw Error(confirmed.error || 'Test doğrulanamadı.');
+            document.querySelector('[data-channel-test-status]').textContent =
+              '✓ WhatsApp kurtarma testi doğrulandı. Seçenek artık giriş ekranında kullanılabilir.';
+            button.remove();
+          } catch (error) {
+            document.querySelector('[data-channel-test-status]').textContent = error.message;
+            button.disabled = false;
+          }
+        };
+    })
+    .catch((error) => {
+      loginFrame('<section class="panel"><h1>Bağlantı kontrol edilemedi</h1><p role="status"></p></section>');
+      document.querySelector('[role="status"]').textContent = error.message;
+    });
 }
