@@ -905,7 +905,7 @@ test('Rota Bulma page: province-only search, drawing a region, narrowing the lis
     assert.equal(form.elements.city.required, false);
     assert.equal(form.elements.district.required, false);
     assert.equal(doc.querySelector('label[for="routeCity"]').textContent, 'İl');
-    assert.equal(form.elements.sector.options[0].textContent, 'Tüm sektörler');
+    assert.equal(form.elements.sector.options[0].textContent, 'Hepsi');
     assert.match(doc.getElementById('marketingRegionStatus').textContent, /Bölge seçilmedi/);
     assert.equal(doc.getElementById('marketingRegionClear').disabled, true);
 

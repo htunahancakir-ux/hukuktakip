@@ -250,7 +250,7 @@ function marketingSearchTab() {
         .map((item) => `<option value="${esc(item.id)}">${esc(item.label)}</option>`)
         .join('')}</select></label>
       <label class="field" id="marketingDepthField" title="Tarama birkaç dakika sürer; sonuçlar hazır olunca liste kendiliğinden gelir." ${source === 'scraper' ? '' : 'hidden'}>Tarama kapsamı<select name="depth" data-optional="true"><option value="quick">Hızlı (ilk sonuçlar)</option><option value="normal">Normal</option><option value="wide">Geniş (daha çok firma, daha uzun sürer)</option></select></label>
-      <label class="field">Sektör<select name="sector" data-optional="true"><option value="">Tüm sektörler</option>${state.overview.sectors
+      <label class="field">Sektör<select name="sector" data-optional="true"><option value="">Hepsi</option>${state.overview.sectors
         .map((sector) => `<option value="${esc(sector.id)}">${esc(sector.label)}</option>`)
         .join('')}<option value="custom">Diğer (elle yazın)</option></select></label>
       <label class="field" id="marketingCustomSector" ${form.sector === 'custom' ? '' : 'hidden'}>Aranacak sektör *<input name="customQuery" maxlength="80" ${form.sector === 'custom' ? '' : 'disabled'} value="${esc(form.customQuery)}" placeholder="ör. elektrik malzemeleri"></label>
@@ -1554,7 +1554,7 @@ function mapsSettingsPage() {
   const sectorsField = `<h3 class="full">Sektörler</h3>
       <label class="field full">Sektör listesi<textarea name="sectors" rows="6" required>${esc(
         sectors,
-      )}</textarea><small>Her satıra bir sektör yazın: <code>Görünen ad | aranacak ifade</code>. İfade yazılmazsa ad aranır. En fazla 30 sektör. ${
+      )}</textarea><small>Her satıra bir sektör yazın: <code>Görünen ad | aranacak ifade</code>. İfade yazılmazsa ad aranır. En fazla 40 sektör. ${
         ownKeys ? 'Tüm kaynaklarda kullanılır.' : 'Rota Bulma’daki sektör seçeneklerini belirler.'
       }</small></label>`;
   if (!ownKeys) {

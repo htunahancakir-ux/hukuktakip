@@ -17,6 +17,63 @@ const { database, fixture, serve, password } = require('./support/postgres.cjs')
 // Synthetic key in Google's format. It is never sent anywhere: every fetch is stubbed.
 const KEY = 'AIza' + 'T'.repeat(35);
 
+test('New route sectors upgrade saved lists once, preserve custom searches and support Hepsi', () => {
+  const requested = [
+    'Halı Mağazaları',
+    'Züccaciye',
+    'Sürücü Kursu',
+    'Özel Okul',
+    'Yediemin Otoparkları',
+    'Veteriner',
+    'Tarım',
+    'Zirai Ürünler',
+  ];
+  const legacy = {
+    enabled: false,
+    sectors: [
+      { id: 'mobilya', label: 'Mobilya', query: 'özel mobilya' },
+      { id: 'custom-vet', label: 'Veteriner', query: 'hayvan hastanesi' },
+      { id: 'veteriner', label: 'Özel Sektör', query: 'özel arama' },
+    ],
+  };
+  const unchanged = structuredClone(legacy);
+  const sectors = maps.publicConfig(legacy).sectors;
+  for (const label of requested) {
+    const matches = sectors.filter((s) => s.label === label);
+    assert.equal(matches.length, 1, label);
+    const criteria = marketing.criteria({ city: 'Ankara', sector: matches[0].id }, sectors);
+    assert.equal(criteria.sectorLabel, label);
+    assert(marketing.textQuery(criteria).includes(matches[0].query));
+  }
+  assert.equal(sectors.find((s) => s.id === 'mobilya').query, 'özel mobilya');
+  assert.equal(sectors.find((s) => s.id === 'custom-vet').query, 'hayvan hastanesi');
+  assert.deepEqual(legacy, unchanged);
+  assert.equal(new Set(sectors.map((s) => s.id)).size, sectors.length);
+  const all = marketing.criteria({ city: 'Ankara', sector: '' }, sectors);
+  assert.equal(all.sector, '');
+  assert.equal(all.sectorQuery, 'firmalar');
+  const saved = maps.configure(legacy, {
+    enabled: false,
+    sectors: [{ id: 'perde', label: 'Perde', query: 'perde mağazası' }],
+  });
+  assert.deepEqual(
+    maps.publicConfig(saved).sectors.map((s) => s.label),
+    ['Perde'],
+    'later deliberate edits stay editable',
+  );
+  const full = {
+    enabled: false,
+    sectors: Array.from({ length: 30 }, (_, i) => ({ label: 'Özel Sektör ' + i })),
+  };
+  const upgraded = maps.configure(full, { enabled: false });
+  assert.equal(upgraded.sectors.length, 38, 'all thirty existing choices survive the addition');
+  assert.equal(maps.publicConfig(upgraded).sectors.length, 38);
+  const collision = maps.publicConfig({ sectors: [{ id: 'veteriner', label: 'Başka Sektör' }] }).sectors;
+  const vet = collision.find((s) => s.label === 'Veteriner');
+  assert.notEqual(vet.id, 'veteriner');
+  assert.equal(marketing.criteria({ city: 'Ankara', sector: vet.id }, collision).sectorLabel, 'Veteriner');
+});
+
 async function withEnvironment(values, work) {
   const previous = Object.fromEntries(Object.keys(values).map((name) => [name, process.env[name]]));
   for (const [name, value] of Object.entries(values))
@@ -167,7 +224,19 @@ test('Google API keys are sealed, never published, validated and need an encrypt
     assert.equal(maps.runtimeKey(saved), KEY);
     assert.deepEqual(
       shown.sectors.map((sector) => sector.label),
-      ['Beyaz Eşya', 'Mobilya', 'Hırdavat'],
+      [
+        'Beyaz Eşya',
+        'Mobilya',
+        'Hırdavat',
+        'Halı Mağazaları',
+        'Züccaciye',
+        'Sürücü Kursu',
+        'Özel Okul',
+        'Yediemin Otoparkları',
+        'Veteriner',
+        'Tarım',
+        'Zirai Ürünler',
+      ],
     );
     const kept = maps.configure(saved, {
       enabled: true,
@@ -188,7 +257,7 @@ test('Google API keys are sealed, never published, validated and need an encrypt
       { enabled: false, sectors: [] },
       { enabled: false, sectors: [{ label: 'A' }] },
       { enabled: false, sectors: [{ label: 'Mobilya' }, { label: 'mobilya' }] },
-      { enabled: false, sectors: Array.from({ length: 31 }, (_, i) => ({ label: 'Sektör ' + i })) },
+      { enabled: false, sectors: Array.from({ length: 41 }, (_, i) => ({ label: 'Sektör ' + i })) },
       { enabled: false, sectors: [{ label: '<script>' }] },
     ])
       assert.throws(
