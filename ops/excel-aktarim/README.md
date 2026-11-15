@@ -12,8 +12,8 @@ ve canlı sunucuya elle kurulmuştur (2026-11-15).
 | `han_excel_aktarim` | Giriş yapan rol. Hiçbir role üye değil, hiçbir tabloda yetkisi yok; yalnızca `han_excel.durum()`, `han_excel.muvekkil_ekle()`, `han_excel.foy_ekle()` işlevlerini çağırabilir. En fazla 3 bağlantı, 30 sn ifade süresi, 15 sn boşta açık işlem süresi. |
 | `han_excel_yazici` | Giriş yapamayan rol; işlevlerin sahibi (`SECURITY DEFINER`). Yetkisi: `clients` ve `documents` üzerinde SELECT + INSERT, `document_sequences` üzerinde SELECT + INSERT + UPDATE, `han_audit` üzerinde INSERT. Satır güvenliği kuralları (`excel_aktarim_*`) onu tek büroya ve etkin satır eklemeye bağlar. |
 | `han_excel` şeması | Üç açık işlev ve yardımcıları (`_metin`, `_tutar`, `_kaynak`, …). |
-| `pg_hba.conf` | `hostssl hanhukuk han_excel_aktarim 127.0.0.1/32` ve `::1/128`; ardından bu rol için `reject`. PostgreSQL dışarıya açılmaz. |
-| `hanexcel` sistem kullanıcısı | Kabuksuz; yetkili anahtarı yalnızca `127.0.0.1:5432`'ye SSH tüneli açabilir. |
+| Dış bağlantı (`disari-ac.sh`) | 2026-11-15'te kullanıcının kararıyla açıldı: aktarımı başka bir bilgisayardaki araç yapıyor. `listen_addresses = '*'`, güvenlik duvarında `5432/tcp` hız sınırlı (`ufw limit`), `authentication_timeout = 15s`. |
+| `pg_hba.conf` | `hostssl hanhukuk han_excel_aktarim all scram-sha-256`; ardından bu rol için `reject`; dosyanın sonunda sunucu dışından gelen her bağlantı için `reject`. Dışarıdan yalnızca bu rol, yalnızca `hanhukuk` veritabanına, yalnızca SSL ile girer; `hanhukuk` ve `postgres` rolleri şifre sorulmadan reddedilir. |
 
 ## Uygulamayla aynı tutulan kurallar
 
@@ -45,7 +45,9 @@ ataması. Otomatik yasal faiz / harç, föy uygulamada ilk yazıldığında hesa
 | `kur.sql` | Roller, yetkiler, satır güvenliği kuralları, işlevler. Tekrar çalıştırılabilir. |
 | `kaldir.sql` | Hepsini kaldırır (aktarılmış kayıtlar kalır). |
 | `sifre-ata.cjs` | Rastgele şifre üretir, yalnızca root'un okuyabildiği dosyaya yazar, sunucuya yalnızca SCRAM özetini gönderir. |
-| `ag-kur.sh` | `pg_hba.conf` satırları ve tünel kullanıcısı. |
+| `disari-ac.sh` | Veritabanını yalnızca bu rol için internete açar (yukarıdaki dış bağlantı düzeni); tünel kullanıcısını kaldırır. |
+| `disari-kapat.sh` | Dış bağlantıyı kapatır: güvenlik duvarı kuralı, `pg_hba.conf` satırları, `listen_addresses`. |
+| `ag-kur.sh` | Kapalı düzen (şu an kullanılmıyor): PostgreSQL dışarıya kapalıyken yalnızca `127.0.0.1:5432`'ye SSH tüneli açabilen kabuksuz `hanexcel` kullanıcısı ve yerel `pg_hba.conf` satırları. Bu düzene dönmek için önce `disari-kapat.sh`, sonra `ag-kur.sh <açık anahtar>`. |
 | `test.sql` | Yetki ve kural denemeleri; `han_excel_aktarim` olarak çalışır, tek işlemde, sonunda geri alınır. |
 | `ozet.sql`, `incele.sql` | Denemeden önce / sonra tablo özetleri ve eklenen deneme satırlarının biçim denetimi (süper kullanıcı). |
 | `kopyada-dene.sh` | Son dökümden bir kopya veritabanı açar, kurar, dener, kopyayı siler. Canlıya dokunmaz. |
@@ -60,7 +62,7 @@ Dosyalar `/opt/han-excel-aktarim` altındadır; şifre `/root/han-excel-aktarim/
 bash /opt/han-excel-aktarim/kopyada-dene.sh /var/backups/hanhukuk/hanhukuk-<tarih>.dump
 # Canlıya kur / güncelle
 runuser -u postgres -- psql -d hanhukuk -X -q -v ON_ERROR_STOP=1 -f /opt/han-excel-aktarim/kur.sql
-bash /opt/han-excel-aktarim/ag-kur.sh /yol/tunel_anahtari.pub
+bash /opt/han-excel-aktarim/disari-ac.sh                                         # internete aç (PostgreSQL yeniden başlar)
 node /opt/han-excel-aktarim/sifre-ata.cjs /root/han-excel-aktarim/sifre.txt      # şifreyi yeniler
 # Canlıda dene (kalıcı değişiklik yok)
 bash /opt/han-excel-aktarim/canlida-dene.sh /root/han-excel-aktarim/sifre.txt
@@ -69,14 +71,22 @@ bash /opt/han-excel-aktarim/canlida-dene.sh /root/han-excel-aktarim/sifre.txt
 Kaldırma:
 
 ```bash
+bash /opt/han-excel-aktarim/disari-kapat.sh        # internete kapat (PostgreSQL yeniden başlar)
 runuser -u postgres -- psql -d hanhukuk -X -q -v ON_ERROR_STOP=1 -f /opt/han-excel-aktarim/kaldir.sql
-# pg_hba.conf içindeki han_excel_aktarim satırlarını ve üstlerindeki iki açıklama satırını silin, sonra:
-runuser -u postgres -- psql -X -At -c 'select pg_reload_conf()'
-userdel --remove hanexcel
 rm -rf /opt/han-excel-aktarim /root/han-excel-aktarim
 ```
 
+Yalnızca internete kapatmak (rol ve işlevler kalsın) için ilk satır yeterlidir.
+
 ## Dikkat
+
+- **5432 internete açıktır.** Koruma katmanları: `pg_hba.conf` (dışarıdan tek rol), SSL zorunluluğu,
+  192 bitlik rastgele şifre (yalnızca SCRAM özeti saklı), rolün kendisinin dar yetkisi, güvenlik
+  duvarında bağlantı hız sınırı. `pg_hba.conf`'a dışarıdan başka bir role izin veren satır
+  eklemeyin; `host all all 0.0.0.0/0 reject` satırlarını silmeyin. Aktarım işi bittiğinde
+  `disari-kapat.sh` ile kapatmak en güvenlisidir.
+- İstemci aktarımı tek bağlantıdan yapmalıdır; aynı adresten 30 saniyede 6'dan fazla yeni
+  bağlantı güvenlik duvarınca bir süre engellenir.
 
 - Yedekten **başka bir sunucuya** geri yüklemede `han_excel_yazici` ve `han_excel_aktarim` rolleri
   yoksa `pg_restore` bu rollerin yetki ve kural satırlarında uyarı verir; veriler yine yüklenir.
