@@ -22,7 +22,7 @@ BEGIN
       tablo.sema, tablo.ad,
       CASE
         WHEN tablo.ad IN ('clients', 'documents')
-          THEN $f$coalesce(x.body -> 'sourceImport' ->> 'file', '') NOT IN ('YETKI-DENEMESI.xlsx', 'BASKA-DOSYA.xlsx')$f$
+          THEN $f$coalesce(x.body -> 'sourceImport' ->> 'file', '') NOT IN ('YETKI-DENEMESI.xlsx', 'BASKA-DOSYA.xlsx', 'TABLO-DENEMESI.xlsx')$f$
         WHEN tablo.ad = 'document_sequences'
           THEN $f$NOT (x.tenant_id = '00000000-0000-0000-0000-000000000001' AND x.prefix = 'GLOBAL')$f$
         ELSE 'true'

@@ -29,6 +29,7 @@ echo "bağlantı: $(PGPASSFILE="$GECICI" psql -X -q -At "host=127.0.0.1 port=543
   -c "SELECT 'kullanıcı=' || session_user || ' ssl=' || (SELECT ssl::text || ' ' || version FROM pg_stat_ssl WHERE pid = pg_backend_pid())")"
 PGPASSFILE="$GECICI" psql -X -q -v ON_ERROR_STOP=1 "host=127.0.0.1 port=5432 dbname=$VT user=han_excel_aktarim sslmode=require" \
   -f "$DIZIN/test.sql" 2>&1 | sed -e 's/^psql:[^ ]* NOTICE:  //' -e '/^$/d'
+PGPASSFILE="$GECICI" psql -X -q -v ON_ERROR_STOP=1 "host=127.0.0.1 port=5432 dbname=$VT user=han_excel_aktarim sslmode=require"   -f "$DIZIN/test-tablo.sql" 2>&1 | sed -e 's/^psql:[^ ]* NOTICE:  //' -e '/^$/d'
 
 SONRA="$(ozet)"
 echo "sonra: özet ${SONRA%% *}"
@@ -37,5 +38,5 @@ if [ "${ONCE%% *}" = "${SONRA%% *}" ]; then
 else
   echo "HATA   özetler farklı (arada uygulamada kayıt değişmiş olabilir; yeniden çalıştırın)"
 fi
-echo "kalan deneme kaydı: $(P -c "SELECT count(*) FROM han_data.clients WHERE body->'sourceImport'->>'file' IN ('YETKI-DENEMESI.xlsx','BASKA-DOSYA.xlsx')") müvekkil, $(P -c "SELECT count(*) FROM han_data.documents WHERE body->'sourceImport'->>'file' IN ('YETKI-DENEMESI.xlsx','BASKA-DOSYA.xlsx')") föy"
+echo "kalan deneme kaydı: $(P -c "SELECT count(*) FROM han_data.clients WHERE body->'sourceImport'->>'file' IN ('YETKI-DENEMESI.xlsx','BASKA-DOSYA.xlsx','TABLO-DENEMESI.xlsx')") müvekkil, $(P -c "SELECT count(*) FROM han_data.documents WHERE body->'sourceImport'->>'file' IN ('YETKI-DENEMESI.xlsx','BASKA-DOSYA.xlsx','TABLO-DENEMESI.xlsx')") föy"
 echo "sayaç: $(P -c "SELECT last_value FROM han_data.document_sequences WHERE tenant_id='00000000-0000-0000-0000-000000000001' AND prefix='GLOBAL'")"

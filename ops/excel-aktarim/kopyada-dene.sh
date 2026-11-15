@@ -23,6 +23,7 @@ P -d "$KOPYA" -Atc "select 1 from han_data.clients limit 1" >/dev/null || { echo
 echo "kopya hazır: $(P -d "$KOPYA" -Atc "select count(*) from han_data.clients") müvekkil, $(P -d "$KOPYA" -Atc "select count(*) from han_data.documents") föy satırı"
 
 P -d "$KOPYA" -q -f "$DIZIN/kur.sql"
+P -d "$KOPYA" -q -f "$DIZIN/tablolar.sql"
 echo "kurulum tamam"
 
 cat > /tmp/excel-kopya-test.sql <<SQL
@@ -44,6 +45,16 @@ chmod 644 /tmp/excel-kopya-test.sql
 P -d "$KOPYA" -q -f /tmp/excel-kopya-test.sql 2>&1 | sed -e 's/^psql:[^ ]* NOTICE:  //' -e '/^$/d'
 rm -f /tmp/excel-kopya-test.sql
 
-echo "geri alma sonrası kopyada deneme kaydı: $(P -d "$KOPYA" -Atc "select count(*) from han_data.clients where body->'sourceImport'->>'file' = 'YETKI-DENEMESI.xlsx'") müvekkil, $(P -d "$KOPYA" -Atc "select count(*) from han_data.documents where body->'sourceImport'->>'file' = 'YETKI-DENEMESI.xlsx'") föy"
+# The plain INSERT views, in a transaction of their own (rolled back by the test itself).
+cat > /tmp/excel-kopya-test.sql <<SQL
+\set ON_ERROR_STOP on
+SET SESSION AUTHORIZATION han_excel_aktarim;
+\i $DIZIN/test-tablo.sql
+SQL
+chmod 644 /tmp/excel-kopya-test.sql
+P -d "$KOPYA" -q -f /tmp/excel-kopya-test.sql 2>&1 | sed -e 's/^psql:[^ ]* NOTICE:  //' -e '/^$/d'
+rm -f /tmp/excel-kopya-test.sql
+
+echo "geri alma sonrası kopyada deneme kaydı: $(P -d "$KOPYA" -Atc "select count(*) from han_data.clients where body->'sourceImport'->>'file' IN ('YETKI-DENEMESI.xlsx','TABLO-DENEMESI.xlsx')") müvekkil, $(P -d "$KOPYA" -Atc "select count(*) from han_data.documents where body->'sourceImport'->>'file' IN ('YETKI-DENEMESI.xlsx','TABLO-DENEMESI.xlsx')") föy"
 P -d postgres -q -c "DROP DATABASE $KOPYA"
 echo "kopya silindi"
