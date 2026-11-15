@@ -420,7 +420,9 @@ function firstIntegrationTab() {
 function settingsSectionTabs(active) {
   const ceo = hanAuth.role === 'ceo';
   const manager = ['ceo', 'admin'].includes(hanAuth.role);
-  const integration = ['ai', 'voip', 'whatsapp', 'sms', 'maps', 'iyzico', 'permissions'].includes(active);
+  const integration = ['ai', 'voip', 'whatsapp', 'sms', 'recovery', 'maps', 'iyzico', 'permissions'].includes(
+    active,
+  );
   const voipPage = ['voip', 'permissions'].includes(active);
   const tabs = [
     ['firm', 'Firma Bilgileri'],
@@ -441,6 +443,7 @@ function settingsSectionTabs(active) {
           ['voip', 'VoIP / Telefon'],
           ['whatsapp', 'WhatsApp Business'],
           ['sms', 'SMS (Verimor)'],
+          ['recovery', 'Şifre Yenileme'],
           ['maps', 'Google Haritalar'],
           ['iyzico', 'iyzico Ödeme'],
         ]
@@ -653,7 +656,9 @@ settings = async function () {
   // Admins have only the VoIP extensions and recording access page under Entegrasyonlar.
   if (['integrations', 'voip'].includes(settingsTab) && hanAuth.role !== 'ceo') settingsTab = 'permissions';
   const requestedTab = settingsTab;
-  const pinScope = ['integrations', 'voip', 'ai', 'whatsapp', 'sms', 'maps', 'iyzico'].includes(settingsTab)
+  const pinScope = ['integrations', 'voip', 'ai', 'whatsapp', 'sms', 'recovery', 'maps', 'iyzico'].includes(
+    settingsTab,
+  )
     ? 'integrations'
     : settingsTab === 'permissions'
       ? 'permissions'
@@ -673,6 +678,7 @@ settings = async function () {
   if (settingsTab === 'audit') return auditSettingsPage();
   if (settingsTab === 'whatsapp') return whatsappSettingsPage();
   if (settingsTab === 'sms') return smsSettingsPage();
+  if (settingsTab === 'recovery') return recoverySettingsPage();
   if (settingsTab === 'ai') return aiSettingsPage();
   if (settingsTab === 'maps') return mapsSettingsPage();
   if (settingsTab === 'iyzico') return iyzicoSettingsPage();

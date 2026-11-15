@@ -1,5 +1,34 @@
 # Sürüm Notları
 
+## 2.6.0 — 14 Kasım 2026
+
+### Şifremi unuttum: SMS, e-posta, WhatsApp ve "Yöneticiden iste"
+
+- **E-posta ile şifre yenileme.** Kodlar platformun Brevo hesabından, **noreply@hanhukuktakip.com** adresinden ve **her büronun kendi adıyla** gider. Doğrulanmış adrese 8 haneli, 15 dakika geçerli şifre yenileme kodu gider. Adres henüz doğrulanmamışsa önce 6 haneli doğrulama kodu gider; kod girilince adres doğrulanır ve şifre yenileme kodu ayrı bir e-postayla gelir.
+- **İlk tercih büronun.** Ayarlar → Entegrasyonlar → **Şifre Yenileme** (yalnızca CEO): SMS, e-posta ve WhatsApp'tan hangisinin önce deneneceği seçilir. Kurulu olmayan yöntem seçilemez. Seçim yapılmamışsa eski sıra geçerlidir: WhatsApp, SMS, e-posta.
+- **"SMS gelmedi mi?"** Kod ekranında 30 saniye sonra bu bağlantı açılır. Kullanıcı kodu yeniden isteyebilir, büroda açık olan öteki yolu seçebilir (ör. **E-posta ile gönder**) ya da **Yöneticiden iste** diyebilir.
+- **Yöneticiden iste (son çare).** Telefonu ya da e-postası kayıtlı değilse veya kod ulaşmıyorsa kullanıcı, isteğe bağlı bir notla büro yöneticilerinden yeni şifre ister. Talep yöneticilere mesaj ve açılır bildirim olarak düşer. Kullanıcı Yönetimi ekranının üstünde **Bekleyen şifre talepleri** listesi görünür. Yönetici kimliği doğruladıktan sonra yeni şifreyi belirler (**Şifre üret** düğmesi okunması kolay 12 karakter üretir) ve kendisi iletir ya da kayıtlı cep telefonuna SMS / e-posta adresine gönderir. Şifre değişince talep kapanır. CEO'nun talebi yalnızca öteki CEO'lara gider.
+- Giriş adı olarak artık kullanıcı adı, kayıtlı cep telefonu, WhatsApp numarası ya da **doğrulanmış** e-posta adresi yazılabilir. Doğrulanmamış adres hesabı bulmak için kullanılmaz.
+- Hiçbir yöntem kurulu değilse ekran hata vermez; doğrudan "Yöneticiden iste" adımına geçer.
+- Yanıtlar hesabın var olup olmadığını yine belli etmez. Kodlar yalnızca özetiyle saklanır, yedeğe girmez, 5 yanlış denemede geçersiz olur. Hesap başına sınırlar: şifre yenileme kodu günde 3, doğrulama kodu günde 5, yönetici talebi günde 3 (açık talep varken yenisi açılmaz).
+
+### Personel e-posta doğrulaması
+
+- Doğrulanmış adreslerin yanında Kullanıcı Yönetimi'nde ve Hesabım'da yeşil **✓ Doğrulandı**, öbürlerinde turuncu **Doğrulanmadı** işareti görünür. Adres değişince doğrulama düşer.
+- Hesabım → İletişim bilgilerim ve kullanıcı iletişim penceresinde **Doğrulama kodu gönder** ve kod alanı var. Kod 24 saat geçerlidir. Yönetici, personelin okuduğu kodu kendisi de girebilir.
+- E-posta gönderimi açıkken adresi doğrulanmamış kullanıcı, uygulamanın üstündeki şeritte adresini doğrulamaya çağrılır.
+- Ayarlar → Entegrasyonlar → Şifre Yenileme'de kaç hesabın doğrulandığı görünür. **Doğrulanmamış adreslere doğrulama kodu gönder** düğmesiyle hepsine kod gider; son 24 saatte kod gitmiş hesaplar atlanır.
+
+### Yönetim konsolu: E-posta (Brevo)
+
+- Konsol → Yönetim → **E-posta (Brevo) — platform hesabı**: API anahtarı (mühürlü saklanır, geri gösterilmez), gönderen adresi (varsayılan noreply@hanhukuktakip.com), varsayılan gönderen adı ve "açık" anahtarı. **Bağlantıyı test et**, kalan krediyi ve gönderen alan adının Brevo'da doğrulanıp doğrulanmadığını gösterir. **Deneme e-postası** kısa bir e-posta gönderir.
+- Her gönderim maskeli adresle kayda geçer, e-posta metni saklanmaz. Konsol aylık ve günlük sayıyı, hataları ve son 50 gönderimi gösterir. Bir büro günde en fazla 60 e-posta tetikleyebilir.
+- Yeni veritabanı geçişi: `20261114120000_platform_email` (`han_saas.email_log`).
+
+### Düzeltme
+
+- Platform SMS'iyle, sonucu beklenen gönderimlerde (yöneticinin SMS ile gönderdiği şifre) hata sessizce yutuluyordu. Artık sonuç ekrana yazılıyor.
+
 ## 2.5.0 — 14 Kasım 2026
 
 ### Yönetim konsolu: harita servisinde büro başına kota ve kullanım dökümü

@@ -151,7 +151,7 @@ test('Şifremi unuttum: without office WhatsApp, a one-time SMS password lets th
   const known = await post('/api/password-reset/request', { account: '0532 123 45 67' });
   await Promise.all(pending);
   assert.deepEqual(unknown, known, 'the answer never reveals whether the account exists');
-  assert.deepEqual(known.body, { ok: true, channel: 'sms' });
+  assert.deepEqual(known.body, { ok: true, channel: 'sms', alternatives: [] });
   assert.equal(fake.sent().length, 1);
   assert.equal(fake.sent()[0].body.messages[0].dest, '905321234567');
   const code = lastCode();
@@ -212,8 +212,9 @@ test('once the office sets up WhatsApp, or when platform SMS is off, recovery do
   };
   const viaWhatsApp = await run({ whatsapp: true, available: true });
   assert.deepEqual([viaWhatsApp.status, viaWhatsApp.body.channel, viaWhatsApp.sent.length], [200, 'whatsapp', 0], 'office WhatsApp wins');
+  assert.deepEqual(viaWhatsApp.body.alternatives, ['sms'], 'platform SMS stays offered when WhatsApp does not arrive');
   const nothing = await run({ whatsapp: false, available: false });
-  assert.equal(nothing.status, 503, 'no WhatsApp and no platform SMS: the old "not set up" answer');
+  assert.deepEqual(nothing.body, { ok: true, channel: 'none', alternatives: [] }, 'no channel: the screen offers "Yöneticiden iste"');
   assert.equal(nothing.sent.length, 0);
 });
 

@@ -130,6 +130,8 @@ test('user management lists escaped contacts, filters by email and refreshes aft
     w = dom.window;
   w.eval(fs.readFileSync('outputs/icrapro/html-safety.js', 'utf8'));
   w.esc = w.escapeHtml;
+  // Loaded before workspace-access.js in the app: the e-mail verified mark lives here.
+  w.eval(fs.readFileSync('outputs/icrapro/workspace-contact.js', 'utf8'));
   w.hanAuth = { role: 'admin' };
   w.$ = (selector) => w.document.querySelector(selector);
   w.normalizeSearch = (value) => String(value).toLowerCase();
@@ -162,6 +164,11 @@ test('user management lists escaped contacts, filters by email and refreshes aft
   await w.userManagement();
   assert.match(w.document.querySelector('thead').textContent, /E-POSTA.*CEP TELEFONU/);
   assert.match(w.document.querySelector('#passwordUserRows').textContent, /p@example.com/);
+  assert.match(
+    w.document.querySelector('#passwordUserRows .email-unverified-mark').textContent,
+    /Doğrulanmadı/,
+    'an address not yet verified is marked',
+  );
   assert.equal(w.document.querySelector('[data-reset-password="other"]'), null);
   const inactive = w.document.querySelector('#showInactiveUsers');
   inactive.checked = true;

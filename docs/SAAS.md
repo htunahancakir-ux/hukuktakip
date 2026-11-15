@@ -361,6 +361,49 @@ Vercel sunucusuz fonksiyonların çıkış IP'si sabit değildir; sabit çıkı�
 Secure Compute ya da sabit IP'li bir aracı) olmadan test "IP izni" hatası verir. Gerçek Verimor
 hesabıyla uçtan uca deneme yapılmadı; istek biçimi Verimor'un SMS API v2 belgesinden alındı.
 
+#### Platform e-postası (Brevo), şifre yenileme yolları ve "Yöneticiden iste"
+
+Satıcı firmanın Brevo hesabı konsolda **Yönetim → E-posta (Brevo)** bölümünden ayarlanır
+(`lib/brevo-email.cjs`, `lib/saas/platform-email.cjs`, ayar `platform_settings` anahtarı `email`):
+API anahtarı (`xkeysib-…`, `PLATFORM_ENCRYPTION_KEY` ile mühürlü), gönderen adresi (varsayılan
+`noreply@hanhukuktakip.com`), varsayılan gönderen adı ve "açık" anahtarı. Büroların e-postaları
+bu adresten **büronun kendi adıyla** (`officeIdentity`) gider. Her gönderim `han_saas.email_log`
+tablosuna maskeli adresle yazılır; büro başına günde 60 e-posta sınırı vardır.
+
+**Brevo'yu canlıda açma (sırayla):**
+1. Brevo'da hesap açın. **Gönderenler, alan adları ve IP'ler → Alan adları** bölümüne
+   `hanhukuktakip.com` ekleyin. Brevo'nun verdiği kayıtları (Brevo kodu TXT, DKIM, DMARC) alan
+   adının DNS'ine (Cloudflare) girip **Doğrula**'ya basın. Doğrulanmamış alan adından giden
+   e-posta spam'e düşer ya da reddedilir.
+2. **SMTP ve API → API anahtarları** bölümünden bir API anahtarı oluşturun (SMTP anahtarı değil).
+3. **Ayarlar → Güvenlik → Yetkili IP adresleri** açıksa sunucunun IP adresini (185.23.72.201)
+   ekleyin. Eklenmezse test "IP" hatası verir.
+4. Canlı veritabanında geçişi çalıştırın (`npm run db:migrate`, `20261114120000_platform_email`).
+5. Konsolda Yönetim → E-posta: anahtarı yazın, **Bağlantıyı test et** (alan adı "doğrulanmış"
+   görünmeli), **Kaydet**, **Deneme e-postası**, sonra "açık" kutusunu işaretleyip kaydedin.
+
+**Şifre yenileme yolları** (`lib/recovery-channels.cjs`, `outputs/icrapro/access-recovery.cjs`):
+WhatsApp (büronun kendi entegrasyonu), SMS (büronun Verimor hesabı ya da platform SMS'i) ve
+e-posta (platform Brevo). Büro CEO'su Ayarlar → Entegrasyonlar → **Şifre Yenileme**'de ilk
+tercihi seçer (`recoveryPolicy.primary`); seçim yoksa sıra WhatsApp, SMS, e-posta. İstek yanıtı
+kullanılan yolu ve büroda açık olan öteki yolları (`alternatives`) söyler. Kod ekranında 30 saniye
+sonra "SMS gelmedi mi?" ile öteki yollar ve "Yöneticiden iste" sunulur. Hiçbir yol yoksa yanıt
+`channel: 'none'` olur ve ekran "Yöneticiden iste"ye geçer.
+
+**E-posta kodları** (`lib/email-recovery.cjs`, durumda `emailRecovery`, yalnızca özetleri):
+doğrulama kodu 6 hane / 24 saat, şifre yenileme kodu 8 hane / 15 dakika; tek kullanımlık, 5 yanlış
+denemede biter, yedeğe girmez. Şifre yenileme kodu yalnızca doğrulanmış adrese gider. Doğrulanmamış
+adrese önce doğrulama kodu gider; kod girilince adres doğrulanır (`user.emailVerified =
+{ address, at }`) ve şifre yenileme kodu gönderilir. Doğrulanmamış adres hesabı bulmak için
+kullanılmaz: kişi kullanıcı adını ya da telefonunu yazmalıdır (yanlış girilmiş bir adresin sahibi
+hesabı ele geçiremesin diye).
+
+**Yöneticiden iste:** `POST /api/password-reset/ask-manager` → durumda `passwordHelp` kaydı,
+yöneticilere `systemType: 'passwordHelp'` mesajı ve açılır bildirim. Yönetici `/api/users/password`
+ile şifreyi belirler (`deliver: 'none' | 'sms' | 'email'`); şifre değişince talep kapanır. Açık
+talep 3 gün sonra yenisini engellemez. CEO'nun talebi yalnızca öteki CEO'lara gider; büronun tek
+yöneticisi platform desteğine başvurur (konsoldan yönetici şifresi sıfırlama).
+
 #### Kullanıcı sayısı sınırı
 
 Fiyat kullanıcı başına olduğu için satın alınan sayı uygulamada **uygulanır**

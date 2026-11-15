@@ -184,12 +184,17 @@ async function handleAccountRoutes(ctx) {
       throw fail(403, 'CEO şifresini yalnızca CEO değiştirebilir.');
     if (typeof v.password !== 'string' || v.password.length < 10 || v.password.length > 128)
       throw fail(400, 'Yeni şifre 10–128 karakter olmalı.');
+    const recovery = require('./access-recovery.cjs');
     const next = structuredClone(ctx.state),
       account = next.users.find((x) => x.id === target.id);
     account.salt = crypto.randomBytes(16).toString('hex');
     account.hash = await hash(v.password, account.salt);
     account.passwordChangedAt = new Date().toISOString();
     account.passwordChangedBy = u.id;
+    // Answers the user's "Yöneticiden iste" request, and optionally sends them the new
+    // password by SMS or e-mail (sent after the change commits).
+    recovery.closeHelp(next, target.id, u.id);
+    if (target.id !== u.id) recovery.deliverPassword(ctx, next, account, v.password, v.deliver);
     persist(next);
     invalidate(target.id);
     if (target.id === u.id) clearSessionCookie(res);
@@ -212,7 +217,12 @@ async function handleAccountRoutes(ctx) {
           .filter((user) => !user.platformSupport)
           .map((user) => {
             const contact = require('../../lib/account-contact.cjs').profile(ctx.state, user);
-            return { ...publicUser(user), email: contact.email, mobilePhone: contact.mobilePhone };
+            return {
+              ...publicUser(user),
+              email: contact.email,
+              emailVerified: contact.emailVerified,
+              mobilePhone: contact.mobilePhone,
+            };
           }),
       );
       return true;
