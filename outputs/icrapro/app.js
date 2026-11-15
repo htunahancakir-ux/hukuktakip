@@ -325,9 +325,11 @@ function render() {
   $('#newClient').hidden = page !== 'clients';
   $('#clientSearchBar').hidden = page !== 'clients';
   $('#clientSearchBar').replaceChildren();
+  // Müvekkiller keeps its heading, filters and totals short so the list starts high on the page.
+  document.querySelector('main')?.classList.toggle('compact-top', page === 'clients');
   if (page === 'clients') {
     $('#content').innerHTML =
-      `<div class="panel"><div class="panelhead"><div><h2>Müvekkil kayıtları</h2><p>Tüm müvekkiller ve iletişim bilgileri</p></div><div class="client-search-wrap"><input class="search" id="search" type="search" maxlength="200" placeholder="Müvekkil adının başlangıcını yazın (ör. sak)…" aria-label="Müvekkil ara" autocomplete="off" aria-controls="clientSuggestions" aria-expanded="false"><div id="clientSuggestions" class="client-suggestions" hidden></div></div></div><div class="overflow"><table><thead><tr><th>MÜVEKKİL / UNVAN</th><th>TÜR</th><th>İLETİŞİM</th><th>EVRAK</th><th>İŞLEMLER</th></tr></thead><tbody id="rows"></tbody></table></div><div class="tablefoot" id="total"></div></div>`;
+      `<div class="panel"><div class="panelhead client-filterbar">${clientFilterBar()}</div><div class="overflow"><table><thead><tr><th>MÜVEKKİL / UNVAN</th><th>TÜR</th><th>İLETİŞİM</th><th>EVRAK</th><th>İŞLEMLER</th></tr></thead><tbody id="rows"></tbody></table></div><div class="tablefoot" id="total"></div></div>`;
     $('#clientSearchBar').append($('#content .panelhead'));
     if (window.hanRecordsEnabled) $('#search').value = recordClientList.q;
     clientRows();

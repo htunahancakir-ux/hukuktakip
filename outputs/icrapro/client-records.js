@@ -325,15 +325,71 @@ function clientDocumentTotals(docs) {
   };
 }
 
+// The il / ilçe filter of the client list survives re-rendering the page. It lives on window
+// so that the list loader in workspace-client-list.js reads the same values.
+function clientPlaceFilter() {
+  return (window.hanClientPlaceFilter ||= { city: '', district: '' });
+}
+
+// One row above the list: search by name, identity number or phone, then il and its ilçe.
+function clientFilterBar() {
+  const options = (names, selected) =>
+    names.map((name) => `<option${name === selected ? ' selected' : ''}>${esc(name)}</option>`).join('');
+  const { city, district } = clientPlaceFilter();
+  return `<search class="client-filters" aria-label="Müvekkil süzgeci">
+    <div class="client-search-wrap"><label for="search">Ad, kimlik no veya telefon</label><input class="search" id="search" type="search" maxlength="200" placeholder="ör. sak · 0532 111" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" enterkeyhint="search" aria-controls="clientSuggestions" aria-expanded="false" data-optional="true"><div id="clientSuggestions" class="client-suggestions" hidden></div></div>
+    <label class="filter-field">İl<select id="clientCity" data-optional="true"><option value="">Tüm iller</option>${options(turkeyCities, city)}</select></label>
+    <label class="filter-field">İlçe<select id="clientDistrict" data-optional="true"${city ? '' : ' disabled'}><option value="">${city ? 'Tüm ilçeler' : 'Önce il seçin'}</option>${options(turkeyDistricts[city] || [], district)}</select></label>
+    <button type="button" class="secondary" id="clientFilterClear">Temizle</button>
+  </search>`;
+}
+
+// What was typed, when it reads as a phone number: its digits without the country code and the
+// leading zero ('' otherwise). The server makes the same reading (lib/record-store/clients.cjs).
+function clientPhoneDigits(query) {
+  if (!/^[\d\s()+\-.]+$/.test(query)) return '';
+  let digits = query.replace(/\D/g, '');
+  if (/^\s*(\+|00)\s*90/.test(query)) digits = digits.replace(/^(00)?90/, '');
+  else if (digits.length >= 12 && digits.startsWith('90')) digits = digits.slice(2);
+  digits = digits.replace(/^0/, '');
+  return digits.length >= 3 ? digits : '';
+}
+
 function clientRows(event) {
+  syncClientFilterBar();
   if (window.hanRecordsEnabled) return event ? scheduleRecordClientPage() : loadRecordClientPage();
   const q = normalizeSearch($('#search').value);
-  const list = db.clients.filter((c) =>
-    [c.name, c.fullName, c.tradeName, c.identity].some((value) => normalizeSearch(value).startsWith(q)),
+  const digits = clientPhoneDigits($('#search').value.trim());
+  const city = normalizeSearch(clientPlaceFilter().city),
+    district = normalizeSearch(clientPlaceFilter().district);
+  const list = db.clients.filter(
+    (c) =>
+      ([c.name, c.fullName, c.tradeName, c.identity].some((value) => normalizeSearch(value).startsWith(q)) ||
+        (digits &&
+          [c.phone, ...(Array.isArray(c.additionalPhones) ? c.additionalPhones : [])].some((phone) =>
+            String(phone ?? '')
+              .replace(/\D/g, '')
+              .includes(digits),
+          ))) &&
+      (!city || normalizeSearch(c.city) === city) &&
+      (!district || normalizeSearch(c.district) === district),
   );
   renderClientSuggestions(q, list);
   paintClientRows(list);
-  $('#total').textContent = `${list.length} müvekkil gösteriliyor`;
+  $('#total').textContent =
+    `${list.length} müvekkil gösteriliyor` + (q || city || district ? ' · Süzgeç uygulandı' : '');
+}
+
+// Keeps the il / ilçe selects, their saved values and the Temizle button in step.
+function syncClientFilterBar() {
+  const citySelect = document.getElementById('clientCity'),
+    districtSelect = document.getElementById('clientDistrict'),
+    clear = document.getElementById('clientFilterClear');
+  if (!citySelect || !districtSelect) return;
+  clientPlaceFilter().city = citySelect.value;
+  clientPlaceFilter().district = districtSelect.disabled ? '' : districtSelect.value;
+  // Disabled rather than hidden: the row keeps its size whatever the state.
+  if (clear) clear.disabled = !$('#search').value.trim() && !clientPlaceFilter().city;
 }
 
 function bindClientSearch() {
@@ -341,10 +397,32 @@ function bindClientSearch() {
   input.addEventListener('input', clientRows);
   input.addEventListener('search', clientRows);
   input.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
+    // Enter that only confirms an input-method composition is not a search.
+    if (event.key === 'Enter' && !event.isComposing) {
       event.preventDefault();
       clientRows();
     }
+  });
+  const citySelect = document.getElementById('clientCity'),
+    districtSelect = document.getElementById('clientDistrict'),
+    clear = document.getElementById('clientFilterClear');
+  if (!citySelect || !districtSelect) return;
+  citySelect.addEventListener('change', () => {
+    // A new il starts with all of its ilçe.
+    const names = turkeyDistricts[citySelect.value] || [];
+    districtSelect.replaceChildren(
+      new Option(citySelect.value ? 'Tüm ilçeler' : 'Önce il seçin', ''),
+      ...names.map((name) => new Option(name)),
+    );
+    districtSelect.disabled = !citySelect.value;
+    clientRows(true);
+  });
+  districtSelect.addEventListener('change', () => clientRows(true));
+  clear?.addEventListener('click', () => {
+    input.value = '';
+    citySelect.value = '';
+    citySelect.dispatchEvent(new Event('change'));
+    input.focus();
   });
 }
 

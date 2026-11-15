@@ -1,4 +1,25 @@
-const recordClientList = { q: '', cursors: [''], index: 0, request: null, timer: null };
+const recordClientList = {
+  q: '',
+  city: '',
+  district: '',
+  cursors: [''],
+  index: 0,
+  request: null,
+  timer: null,
+};
+
+// The search text with the il / ilçe filter. A change of any of them starts from the first page.
+function recordClientFilters() {
+  const filters = {
+    q: $('#search')?.value.trim() || '',
+    city: typeof clientPlaceFilter === 'function' ? clientPlaceFilter().city : '',
+    district: typeof clientPlaceFilter === 'function' ? clientPlaceFilter().district : '',
+  };
+  if (['q', 'city', 'district'].some((key) => filters[key] !== recordClientList[key])) {
+    Object.assign(recordClientList, filters, { cursors: [''], index: 0 });
+  }
+  return filters;
+}
 let recordClientOpening = 0;
 
 function renderRecordClientStats(summary) {
@@ -27,12 +48,7 @@ function renderRecordClientStats(summary) {
 }
 
 function scheduleRecordClientPage() {
-  const q = $('#search')?.value.trim() || '';
-  if (q !== recordClientList.q) {
-    recordClientList.q = q;
-    recordClientList.cursors = [''];
-    recordClientList.index = 0;
-  }
+  recordClientFilters();
   clearTimeout(recordClientList.timer);
   recordClientList.request?.abort();
   recordClientList.timer = setTimeout(() => loadRecordClientPage(), 200);
@@ -47,18 +63,15 @@ async function loadRecordClientPage() {
     footer = $('#total'),
     input = $('#search');
   if (page !== 'clients' || !rows || !input) return;
-  const q = input.value.trim();
-  if (q !== recordClientList.q) {
-    recordClientList.q = q;
-    recordClientList.cursors = [''];
-    recordClientList.index = 0;
-  }
+  const { q, city, district } = recordClientFilters();
   rows.innerHTML = '<tr><td colspan="5" class="empty">Müvekkiller yükleniyor…</td></tr>';
   footer.textContent = '';
   $('#clientSuggestions').hidden = true;
   input.setAttribute('aria-expanded', 'false');
   try {
     const params = new URLSearchParams({ q, limit: '50' });
+    if (city) params.set('city', city);
+    if (district) params.set('district', district);
     const cursor = recordClientList.cursors[recordClientList.index];
     if (cursor) params.set('after', cursor);
     const response = await fetch('/api/records/clients?' + params, {
@@ -68,7 +81,15 @@ async function loadRecordClientPage() {
     });
     const result = await response.json();
     if (!response.ok) throw Error(result.error || 'Müvekkiller alınamadı.');
-    if (request.signal.aborted || !rows.isConnected || page !== 'clients' || input.value.trim() !== q) return;
+    if (
+      request.signal.aborted ||
+      !rows.isConnected ||
+      page !== 'clients' ||
+      input.value.trim() !== q ||
+      recordClientList.city !== city ||
+      recordClientList.district !== district
+    )
+      return;
     paintClientRows(result.items, true);
     renderClientSuggestions(q, result.items);
     // Search/list limits do not affect these workspace-wide totals.
@@ -77,7 +98,7 @@ async function loadRecordClientPage() {
       if (window.hanRecordSummary) window.hanRecordSummary.clients = result.summary.clients;
     }
     const start = result.items.length ? recordClientList.index * 50 + 1 : 0;
-    footer.innerHTML = `<span>${start}–${result.items.length ? start + result.items.length - 1 : 0} / ${esc(result.count)} müvekkil${q ? ' · Arama sonucu' : ''}</span><div><button type="button" class="secondary" id="previousClients" ${recordClientList.index ? '' : 'disabled'}>Önceki</button> <button type="button" class="secondary" id="nextClients" ${result.next ? '' : 'disabled'}>Sonraki</button></div>`;
+    footer.innerHTML = `<span>${start}–${result.items.length ? start + result.items.length - 1 : 0} / ${esc(result.count)} müvekkil${q || city ? ' · Süzgeç uygulandı' : ''}</span><div><button type="button" class="secondary" id="previousClients" ${recordClientList.index ? '' : 'disabled'}>Önceki</button> <button type="button" class="secondary" id="nextClients" ${result.next ? '' : 'disabled'}>Sonraki</button></div>`;
     $('#previousClients').onclick = () => {
       recordClientList.index--;
       loadRecordClientPage();

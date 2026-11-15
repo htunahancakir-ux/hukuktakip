@@ -1,5 +1,13 @@
 # Sürüm Notları
 
+## 2.6.1 — 15 Kasım 2026
+
+### Müvekkiller: kısa üst bölüm ve süzgeç satırı
+
+- Müvekkiller ekranının üstü kısaldı: başlık, tek satırlık süzgeç ve tek satırlık özet şeridi. Özet kartları küçültüldü (başlık ve değer); liste artık ekranın üst yarısında başlıyor.
+- **Süzgeç satırı:** arama kutusu ad, kimlik / vergi numarası **ve telefonla** arar (telefon nasıl yazılırsa yazılsın: `0532 111`, `(532) 111`, `+90 532 111`; ek telefonlar dahil). Yanında **İl** ve **İlçe** seçimleri var: il seçilince ilçe listesi o ilin ilçeleriyle dolar ve liste seçildikçe süzülür. **Temizle** hepsini sıfırlar.
+- İl ve ilçe karşılaştırması büyük / küçük harfe bakmaz (`İSTANBUL` ile `İstanbul` aynıdır). Süzgeç sayfalar arasında gezinirken korunur; sayfalama süzgeçle birlikte çalışır.
+
 ## 2.6.0 — 15 Kasım 2026
 
 ### Şifremi unuttum: SMS, e-posta, WhatsApp ve "Yöneticiden iste"
