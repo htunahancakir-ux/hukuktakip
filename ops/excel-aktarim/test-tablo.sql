@@ -93,6 +93,10 @@ BEGIN
   IF adet = 1 THEN tamam := tamam + 1; RAISE NOTICE 'TAMAM  eklenen müvekkil kimlik ve kaynak sütunlarıyla görünüyor; kontrol ve tekrar satırları iz bırakmadı';
   ELSE hata := hata + 1; RAISE NOTICE 'HATA   görünen müvekkil sayısı % (1 olmalıydı)', adet; END IF;
 
+  SELECT count(*) INTO adet FROM han_excel.foy WHERE borclu = 'TABLO BORCLU BIR' AND telefon1 = '0 (532) 111 22 33' AND tutar = 12499.5 AND muvekkil_id = m_id;
+  IF adet = 1 THEN tamam := tamam + 1; RAISE NOTICE 'TAMAM  eklenen föy düz sütunlarıyla geri okunuyor (borçlu, telefon, tutar)';
+  ELSE hata := hata + 1; RAISE NOTICE 'HATA   eklenen föy geri okunamadı (%)', adet; END IF;
+
   -- 3. Kurallar görünümden de geçerli.
   FOR deneme IN
     SELECT * FROM (VALUES
@@ -131,11 +135,6 @@ BEGIN
       ('eklediği föyü silme', format('DELETE FROM han_excel.foy WHERE id = %L', f_id)),
       ('eklediği müvekkili değiştirme', format('UPDATE han_excel.muvekkil SET unvan = %L WHERE id = %L', 'x', m_id)),
       ('eklediği müvekkili silme', format('DELETE FROM han_excel.muvekkil WHERE id = %L', m_id)),
-      ('föylerde borçlu adını okuma', 'SELECT borclu FROM han_excel.foy'),
-      ('föylerde kimlik numarası, telefon ve adres okuma', 'SELECT borclu_kimlik_no, telefon1, adres FROM han_excel.foy'),
-      ('föyleri bütün sütunlarıyla okuma', 'SELECT * FROM han_excel.foy'),
-      ('müvekkil adını ve vergi numarasını okuma', 'SELECT unvan, vergi_kimlik_no FROM han_excel.muvekkil'),
-      ('kimlik numarasıyla kayıt arama', $q$SELECT id FROM han_excel.muvekkil WHERE vergi_kimlik_no = '9999999973'$q$),
       ('föy numarasını elle yazma', $q$INSERT INTO han_excel.foy (foy_no, muvekkil_vergi_kimlik_no, borclu, evrak_turu, tutar, kaynak_dosya, kaynak_satir) VALUES ('1', '9999999973', 'B', 'Senet', 1, 'TABLO-DENEMESI.xlsx', 20)$q$),
       ('föy durumunu elle yazma', $q$INSERT INTO han_excel.foy (durum, muvekkil_vergi_kimlik_no, borclu, evrak_turu, tutar, kaynak_dosya, kaynak_satir) VALUES ('İnfaz', '9999999973', 'B', 'Senet', 1, 'TABLO-DENEMESI.xlsx', 21)$q$),
       ('kayıt kimliğini elle yazma', $q$INSERT INTO han_excel.muvekkil (id, unvan, kaynak_dosya, kaynak_satir) VALUES ('x', 'ELLE KIMLIK', 'TABLO-DENEMESI.xlsx', 22)$q$),

@@ -9,7 +9,8 @@ ve canlı sunucuya elle kurulmuştur (2026-11-15).
 
 | Parça | Ne |
 |---|---|
-| `han_excel_aktarim` | Giriş yapan rol. Hiçbir role üye değil, hiçbir tabloda yetkisi yok; yalnızca `han_excel.durum()`, `han_excel.muvekkil_ekle()`, `han_excel.foy_ekle()` işlevlerini çağırabilir. En fazla 3 bağlantı, 30 sn ifade süresi, 15 sn boşta açık işlem süresi. |
+| `han_excel_aktarim` | Giriş yapan rol. Hiçbir role üye değil. Ekleme: `han_excel.muvekkil` / `han_excel.foy` görünümlerine INSERT ve `han_excel.durum()`, `muvekkil_ekle()`, `foy_ekle()` işlevleri. Okuma (`okuma.sql`, 2026-11-15'te kullanıcının isteğiyle): mevcut büronun `han_data` kayıt tablolarına SELECT. UPDATE / DELETE / doğrudan INSERT yok. En fazla 3 bağlantı, 30 sn ifade süresi, 15 sn boşta açık işlem süresi. |
+| Okuma kapsamı (`okuma.sql`) | `han_data` içindeki `tenant_id` taşıyan bütün tablolar, `metadata` ve `control` hariç; her birinde `excel_aktarim_okuma` satır güvenliği kuralı rolü tek büroya bağlar. Kapalı kalanlar: `han_data.metadata` (kullanıcı şifre özetleri, entegrasyon anahtarları, kurtarma kodları), `han_private.*` (oturumlar, işlem günlüğü, eski durum kopyası, telefon ayarları), `han_saas.*`. Kullanıcı listesi şifre bilgisi olmadan `han_excel.kullanicilar` görünümünden okunur (sahibi `hanhukuk`). **Yeni bir tablo `han_data`'ya eklenirse `okuma.sql` yeniden çalıştırılana kadar okunamaz; gizli veri taşıyan yeni tablo için `okuma.sql`'deki dışlama listesine ekleme yapın.** |
 | `han_excel_yazici` | Giriş yapamayan rol; işlevlerin sahibi (`SECURITY DEFINER`). Yetkisi: `clients` ve `documents` üzerinde SELECT + INSERT, `document_sequences` üzerinde SELECT + INSERT + UPDATE, `han_audit` üzerinde INSERT. Satır güvenliği kuralları (`excel_aktarim_*`) onu tek büroya ve etkin satır eklemeye bağlar. |
 | `han_excel` şeması | Üç açık işlev ve yardımcıları (`_metin`, `_tutar`, `_kaynak`, …). |
 | `han_excel.muvekkil`, `han_excel.foy` | Düz sütunlu iki görünüm (`tablolar.sql`). Aktarımı yapan araç bunlara sıradan `INSERT` yazar; her satır `INSTEAD OF INSERT` tetikleyicisiyle `muvekkil_ekle` / `foy_ekle` işlevinden geçer, yani kurallar aynıdır. Kullanıcının yetkisi sütun düzeyindedir: girdi sütunlarına INSERT; yalnızca `id`, `foy_no`, `durum`, `muvekkil_id`, `kaynak_*`, `eklenme` sütunlarına SELECT. Görünümler yalnızca bu aktarımın eklediği satırları gösterir. UPDATE / DELETE yoktur. Gerçek tablolara doğrudan INSERT bilerek verilmedi: kayıt gövdesi, föy sayacı ve çakışma denetimi uygulamanın kurallarına bağlıdır. |
@@ -45,6 +46,8 @@ ataması. Otomatik yasal faiz / harç, föy uygulamada ilk yazıldığında hesa
 |---|---|
 | `kur.sql` | Roller, yetkiler, satır güvenliği kuralları, işlevler. Tekrar çalıştırılabilir. |
 | `tablolar.sql` | `han_excel.muvekkil` ve `han_excel.foy` görünümleri, tetikleyicileri ve sütun yetkileri. `kur.sql`'den sonra çalıştırılır; tekrar çalıştırılabilir. |
+| `okuma.sql` | Okuma yetkisi: tablo yetkileri, satır güvenliği kuralları, `han_excel.kullanicilar`. `tablolar.sql`'den sonra çalıştırılır; tekrar çalıştırılabilir. |
+| `test-okuma.sql` | Okuma denemeleri: tablolar okunuyor, başka büro görünmüyor, gizli bölümler ve her türlü değiştirme / silme kapalı. |
 | `kaldir.sql` | Hepsini kaldırır (aktarılmış kayıtlar kalır). |
 | `sifre-ata.cjs` | Rastgele şifre üretir, yalnızca root'un okuyabildiği dosyaya yazar, sunucuya yalnızca SCRAM özetini gönderir. |
 | `disari-ac.sh` | Veritabanını yalnızca bu rol için internete açar (yukarıdaki dış bağlantı düzeni); tünel kullanıcısını kaldırır. |
@@ -66,6 +69,7 @@ bash /opt/han-excel-aktarim/kopyada-dene.sh /var/backups/hanhukuk/hanhukuk-<tari
 # Canlıya kur / güncelle
 runuser -u postgres -- psql -d hanhukuk -X -q -v ON_ERROR_STOP=1 -f /opt/han-excel-aktarim/kur.sql
 runuser -u postgres -- psql -d hanhukuk -X -q -v ON_ERROR_STOP=1 -f /opt/han-excel-aktarim/tablolar.sql
+runuser -u postgres -- psql -d hanhukuk -X -q -v ON_ERROR_STOP=1 -f /opt/han-excel-aktarim/okuma.sql
 bash /opt/han-excel-aktarim/disari-ac.sh                                         # internete aç (PostgreSQL yeniden başlar)
 node /opt/han-excel-aktarim/sifre-ata.cjs /root/han-excel-aktarim/sifre.txt      # şifreyi yeniler
 # Canlıda dene (kalıcı değişiklik yok)
@@ -84,6 +88,9 @@ Yalnızca internete kapatmak (rol ve işlevler kalsın) için ilk satır yeterli
 
 ## Dikkat
 
+- **Bu rolün şifresi büronun bütün kayıtlarını okumaya yeter** (müvekkil, borçlu, tahsilat, personel).
+  Şifre sızarsa `sifre-ata.cjs` ile hemen yenileyin. Yalnızca okumayı geri almak için:
+  `DROP POLICY excel_aktarim_okuma` (her tabloda) ve `REVOKE SELECT ON ALL TABLES IN SCHEMA han_data FROM han_excel_aktarim`.
 - **5432 internete açıktır.** Koruma katmanları: `pg_hba.conf` (dışarıdan tek rol), SSL zorunluluğu,
   192 bitlik rastgele şifre (yalnızca SCRAM özeti saklı), rolün kendisinin dar yetkisi, güvenlik
   duvarında bağlantı hız sınırı. `pg_hba.conf`'a dışarıdan başka bir role izin veren satır

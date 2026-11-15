@@ -24,6 +24,7 @@ echo "kopya hazır: $(P -d "$KOPYA" -Atc "select count(*) from han_data.clients"
 
 P -d "$KOPYA" -q -f "$DIZIN/kur.sql"
 P -d "$KOPYA" -q -f "$DIZIN/tablolar.sql"
+P -d "$KOPYA" -q -f "$DIZIN/okuma.sql"
 echo "kurulum tamam"
 
 cat > /tmp/excel-kopya-test.sql <<SQL
@@ -50,6 +51,7 @@ cat > /tmp/excel-kopya-test.sql <<SQL
 \set ON_ERROR_STOP on
 SET SESSION AUTHORIZATION han_excel_aktarim;
 \i $DIZIN/test-tablo.sql
+\i $DIZIN/test-okuma.sql
 SQL
 chmod 644 /tmp/excel-kopya-test.sql
 P -d "$KOPYA" -q -f /tmp/excel-kopya-test.sql 2>&1 | sed -e 's/^psql:[^ ]* NOTICE:  //' -e '/^$/d'

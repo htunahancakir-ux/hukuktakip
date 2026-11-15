@@ -17,6 +17,15 @@ DROP POLICY IF EXISTS excel_aktarim_ekle ON han_data.document_sequences;
 DROP POLICY IF EXISTS excel_aktarim_ilerlet ON han_data.document_sequences;
 DROP POLICY IF EXISTS excel_aktarim_ekle ON han_private.han_audit;
 
+DO $okuma$
+DECLARE p record;
+BEGIN
+  FOR p IN SELECT schemaname, tablename FROM pg_policies WHERE policyname = 'excel_aktarim_okuma' LOOP
+    EXECUTE format('DROP POLICY excel_aktarim_okuma ON %I.%I', p.schemaname, p.tablename);
+  END LOOP;
+END
+$okuma$;
+
 DROP SCHEMA IF EXISTS han_excel CASCADE;
 
 DO $drop$

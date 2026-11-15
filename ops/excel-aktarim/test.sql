@@ -34,8 +34,6 @@ BEGIN
   -- 1. Doğrudan erişim ve yetki yükseltme denemeleri: hepsi reddedilmeli.
   FOR deneme IN
     SELECT * FROM (VALUES
-      ('müvekkil tablosunu okuma', 'SELECT count(*) FROM han_data.clients'),
-      ('föy tablosunu okuma', 'SELECT count(*) FROM han_data.documents'),
       ('müvekkil tablosuna doğrudan ekleme', $q$INSERT INTO han_data.clients (tenant_id, id, body, ordinal) VALUES ('00000000-0000-0000-0000-000000000001', 'x', '{}', 1)$q$),
       ('mevcut müvekkili değiştirme', $q$UPDATE han_data.clients SET body = body || '{"name": "x"}'$q$),
       ('mevcut müvekkili silme', 'DELETE FROM han_data.clients'),
@@ -45,9 +43,13 @@ BEGIN
       ('mevcut föyü silme', 'DELETE FROM han_data.documents'),
       ('mevcut föyü arşivleme', 'UPDATE han_data.documents SET active = false'),
       ('föy numarası sayacını değiştirme', 'UPDATE han_data.document_sequences SET last_value = 0'),
+      ('tahsilat kayıtlarını silme', 'DELETE FROM han_data.financial_events'),
+      ('tahsilat kayıtlarını değiştirme', $q$UPDATE han_data.financial_events SET body = '{}'$q$),
+      ('personel kayıtlarını değiştirme', $q$UPDATE han_data.personnel SET body = '{}'$q$),
+      ('föy tablosunu boşaltma', 'TRUNCATE han_data.documents'),
+      ('depo durumunu okuma', 'SELECT mode FROM han_data.control'),
       ('tahsilat / finans kayıtlarına yazma', $q$INSERT INTO han_data.financial_events (tenant_id, id, body, ordinal) VALUES ('00000000-0000-0000-0000-000000000001', 'x', '{}', 1)$q$),
       ('muhasebe kayıtlarına yazma', $q$INSERT INTO han_data.ledger_entries (tenant_id, id, body, ordinal) VALUES ('00000000-0000-0000-0000-000000000001', 'x', '{}', 1)$q$),
-      ('personel kayıtlarını okuma', 'SELECT count(*) FROM han_data.personnel'),
       ('kullanıcı ve ayar kaydını okuma', 'SELECT body FROM han_data.metadata'),
       ('kullanıcı ve ayar kaydını değiştirme', $q$UPDATE han_data.metadata SET body = '{}'$q$),
       ('işlem günlüğünü okuma', 'SELECT count(*) FROM han_private.han_audit'),
