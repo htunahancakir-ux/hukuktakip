@@ -54,6 +54,7 @@ const workspaceScripts = [
   'workspace-record-list.js',
   'workspace-client-list.js',
   'workspace-intake.js',
+  'workspace-excel-import.js',
   'form-inputs.js',
   'workspace-total-tooltips.js',
   'borrower-sheet.js',

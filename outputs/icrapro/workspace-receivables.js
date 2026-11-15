@@ -479,19 +479,6 @@ function setupIntakeBorrowerSheet(form, original) {
   head.querySelector('.badge')?.remove();
   const actions = document.createElement('div');
   actions.className = 'toolbar intake-sheet-actions';
-  for (const title of ['Ara', 'Tahsilat', 'Ödeme Sözü', 'Masraf', 'Borcu Yapılandır']) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = ['Ara', 'Tahsilat', 'Borcu Yapılandır'].includes(title) ? 'primary' : 'secondary';
-    button.textContent = title;
-    button.disabled = true;
-    button.title = 'Bu işlemler föy kaydedildikten sonra borçlu föyünden yapılabilir.';
-    actions.append(button);
-  }
-  const status = document.createElement('span');
-  status.className = 'intake-sheet-status';
-  status.textContent = 'Dosya Durumu: Derdest';
-  actions.append(status);
   const save = form.querySelector('#accept');
   actions.append(save);
   head.append(actions);
@@ -734,7 +721,6 @@ function setupIntakeBorrowerSheet(form, original) {
       if (node.tagName === 'INPUT') node.value = text;
       else node.textContent = text;
     });
-    status.textContent = 'Dosya Durumu: ' + values.status;
     summary.querySelector('[data-draft-unit-totals]')?.remove();
     const foreign = items.filter((item) => item.currency !== 'TRY');
     if (foreign.length) {

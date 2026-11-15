@@ -4636,3 +4636,85 @@ main.compact-top .stat small {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.excel-import-dialog {
+  width: min(1200px, 96vw);
+  max-height: 94vh;
+}
+.excel-import-dialog > .panelhead {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 2;
+}
+.excel-import-controls {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.excel-import-mapping {
+  border-top: 1px solid #dce3e9;
+}
+.excel-import-mapping > summary {
+  cursor: pointer;
+  padding: 14px 24px;
+  background: #f6f8fa;
+}
+.excel-import-mapping .grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.excel-import-dialog .overflow {
+  max-height: 380px;
+  overflow: auto;
+}
+.excel-import-dialog table {
+  min-width: 760px;
+}
+.excel-import-dialog th {
+  position: sticky;
+  top: 0;
+}
+.excel-import-dialog td {
+  padding: 10px 12px;
+  max-width: 340px;
+  overflow-wrap: anywhere;
+}
+.excel-row-error {
+  background: #fff1f2;
+}
+.excel-row-duplicate {
+  background: #f5f6f8;
+  color: #68758a;
+}
+.excel-import-dialog .actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+}
+.excel-import-dialog .settings-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.excel-import-dialog .field a {
+  display: block;
+  text-align: center;
+  padding: 10px;
+}
+.excel-import-dialog input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+@media (max-width: 800px) {
+  .excel-import-controls,
+  .excel-import-mapping .grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 520px) {
+  .excel-import-controls,
+  .excel-import-mapping .grid {
+    grid-template-columns: 1fr;
+  }
+}

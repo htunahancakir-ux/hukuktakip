@@ -323,6 +323,7 @@ function render() {
   $('#title').textContent = $('#crumb').textContent = titles[page][0];
   $('#subtitle').textContent = titles[page][1];
   $('#newClient').hidden = page !== 'clients';
+  if (typeof bindExcelImportButtons === 'function') bindExcelImportButtons(page);
   $('#clientSearchBar').hidden = page !== 'clients';
   $('#clientSearchBar').replaceChildren();
   // Müvekkiller keeps its heading, filters and totals short so the list starts high on the page.
