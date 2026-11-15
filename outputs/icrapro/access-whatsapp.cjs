@@ -194,6 +194,9 @@ async function handleWhatsAppRoutes(ctx) {
     if (req.method === 'PUT') {
       const next = structuredClone(ctx.state);
       next.whatsappConfig = wa.configure(next.whatsappConfig, await body(req));
+      const recovery = require('../../lib/recovery-channels.cjs');
+      if (recovery.stamp(ctx.state, 'whatsapp') !== recovery.stamp(next, 'whatsapp'))
+        recovery.invalidate(next, 'whatsapp');
       ctx.persist(next);
     } else if (req.method !== 'GET') throw fail(405, 'Yöntem desteklenmiyor.');
     send(res, 200, wa.publicConfig(ctx.state.whatsappConfig));

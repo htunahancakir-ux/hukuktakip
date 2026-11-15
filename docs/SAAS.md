@@ -384,7 +384,10 @@ tablosuna maskeli adresle yazılır; büro başına günde 60 e-posta sınırı 
 
 **Şifre yenileme yolları** (`lib/recovery-channels.cjs`, `outputs/icrapro/access-recovery.cjs`):
 WhatsApp (büronun kendi entegrasyonu), SMS (büronun Verimor hesabı ya da platform SMS'i) ve
-e-posta (platform Brevo). Büro CEO'su Ayarlar → Entegrasyonlar → **Şifre Yenileme**'de ilk
+e-posta (platform Brevo; açık değilken sunucunun `BREVO_SMTP_*` ayarı, `lib/recovery-email.cjs`).
+Büronun kendi WhatsApp ve SMS'i ancak **canlı test** geçince açık sayılır
+(`recoveryChannelReadiness`, ayrıntı: `docs/EMAIL-RECOVERY.md`); test edilmemiş kendi SMS'i
+yerine, kullanılabiliyorsa platform SMS'i gönderir. Büro CEO'su Ayarlar → Entegrasyonlar → **Şifre Yenileme**'de ilk
 tercihi seçer (`recoveryPolicy.primary`); seçim yoksa sıra WhatsApp, SMS, e-posta. İstek yanıtı
 kullanılan yolu ve büroda açık olan öteki yolları (`alternatives`) söyler. Kod ekranında 30 saniye
 sonra "SMS gelmedi mi?" ile öteki yollar ve "Yöneticiden iste" sunulur. Hiçbir yol yoksa yanıt
@@ -392,11 +395,12 @@ sonra "SMS gelmedi mi?" ile öteki yollar ve "Yöneticiden iste" sunulur. Hiçbi
 
 **E-posta kodları** (`lib/email-recovery.cjs`, durumda `emailRecovery`, yalnızca özetleri):
 doğrulama kodu 6 hane / 24 saat, şifre yenileme kodu 8 hane / 15 dakika; tek kullanımlık, 5 yanlış
-denemede biter, yedeğe girmez. Şifre yenileme kodu yalnızca doğrulanmış adrese gider. Doğrulanmamış
-adrese önce doğrulama kodu gider; kod girilince adres doğrulanır (`user.emailVerified =
-{ address, at }`) ve şifre yenileme kodu gönderilir. Doğrulanmamış adres hesabı bulmak için
-kullanılmaz: kişi kullanıcı adını ya da telefonunu yazmalıdır (yanlış girilmiş bir adresin sahibi
-hesabı ele geçiremesin diye).
+denemede biter, yedeğe girmez. Şifre yenileme kodu yalnızca doğrulanmış adrese gider
+(`user.emailVerified = { address, at }`; ilk sürümün `user.recoveryEmail` işareti de sayılır).
+Doğrulama yalnızca açık oturumda yapılır: kullanıcı kodu mevcut şifresiyle girer, yönetici
+personelin kodunu şifresiz girer. Giriş ekranında adres doğrulanmaz ve doğrulanmamış adrese
+hiçbir şey gönderilmez; böylece bir iletişim kaydını değiştirebilen kişi hesabı ele geçiremez.
+Doğrulanmamış adres hesabı bulmak için de kullanılmaz.
 
 **Yöneticiden iste:** `POST /api/password-reset/ask-manager` → durumda `passwordHelp` kaydı,
 yöneticilere `systemType: 'passwordHelp'` mesajı ve açılır bildirim. Yönetici `/api/users/password`

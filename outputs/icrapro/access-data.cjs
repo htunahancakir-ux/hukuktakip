@@ -22,6 +22,12 @@ async function handleDataRoutes(ctx) {
     parkingToday,
     applyParkingFee,
   } = ctx;
+  if (url.pathname === '/api/client-categories' && req.method === 'GET') {
+    if (!allowed(u, 'clients')) throw fail(403, 'Müvekkil kayıtlarına erişim yetkiniz yok.');
+    const sectors = require('../../lib/maps-settings.cjs').publicConfig(ctx.state.mapsConfig).sectors;
+    send(res, 200, { categories: [...new Set([...sectors.map((sector) => sector.label), 'Diğer'])] });
+    return true;
+  }
   if (url.pathname === '/api/personnel-attachments' && req.method === 'GET') {
     if (!['ceo', 'admin'].includes(u.role)) throw fail(403, 'Personel ekleri için yönetici yetkisi gerekli.');
     const personnelId = url.searchParams.get('personnelId'),

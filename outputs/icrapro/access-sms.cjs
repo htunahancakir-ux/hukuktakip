@@ -31,6 +31,8 @@ async function smsRoutes(ctx) {
     const config = smsSettings.configure(next.smsConfig, await body(req));
     if (config) next.smsConfig = config;
     else delete next.smsConfig;
+    const recovery = require('../../lib/recovery-channels.cjs');
+    if (recovery.stamp(ctx.state, 'sms') !== recovery.stamp(next, 'sms')) recovery.invalidate(next, 'sms');
     ctx.persist(next);
     send(res, 200, smsSettings.publicConfig(config));
     return true;

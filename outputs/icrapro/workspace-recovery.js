@@ -8,17 +8,21 @@ const RECOVERY_CHANNEL_TEXT = {
         ? 'Büronuzun Verimor hesabından 8 haneli geçici şifre gider.'
         : 'Platformun SMS hizmetinden 8 haneli geçici şifre gider.',
     off: 'Entegrasyonlar → SMS (Verimor) bölümünden kurulunca açılır.',
+    untested:
+      'Kurulu, ancak canlı test yapılmadı. Entegrasyonlar → SMS (Verimor) bölümündeki “Şifre kurtarma canlı testi”ni tamamlayınca açılır.',
   },
   email: {
     label: 'E-posta',
     on: () =>
-      'Platformun e-posta adresinden, büronuzun adıyla kod gider. Doğrulanmamış adrese önce doğrulama kodu, ardından şifre yenileme kodu gider.',
+      'Platformun e-posta adresinden, büronuzun adıyla 8 haneli kod gider. Kod yalnızca kullanıcının Hesabım bölümünde doğruladığı adrese gönderilir.',
     off: 'Platformun e-posta hizmeti henüz açık değil.',
   },
   whatsapp: {
     label: 'WhatsApp',
     on: () => 'Kayıtlı ve onaylı WhatsApp numarasına şifre bağlantısı gider.',
     off: 'Entegrasyonlar → WhatsApp Business bölümünde şifre şablonu kurulunca açılır.',
+    untested:
+      'Kurulu, ancak canlı test yapılmadı. Entegrasyonlar → WhatsApp Business bölümündeki “Şifre kurtarma canlı testi”ni tamamlayınca açılır.',
   },
 };
 
@@ -43,7 +47,9 @@ function recoverySettingsPage() {
         .map((id) => {
           const text = RECOVERY_CHANNEL_TEXT[id];
           const on = settings.available[id] === true;
-          return `<label class="recovery-channel"><input type="radio" name="primary" value="${id}" ${on ? '' : 'disabled'} ${chosen === id ? 'checked' : ''}><span><b>${text.label}</b> ${on ? '<span class="email-verified-mark">Açık</span>' : '<span class="email-unverified-mark">Kurulu değil</span>'}</span><small>${esc(on ? text.on(settings) : text.off)}</small></label>`;
+          // The office's own channel is set up but has not passed its live delivery test yet.
+          const untested = !on && settings.configured?.[id] === true && settings.tested?.[id] !== true;
+          return `<label class="recovery-channel"><input type="radio" name="primary" value="${id}" ${on ? '' : 'disabled'} ${chosen === id ? 'checked' : ''}><span><b>${text.label}</b> ${on ? '<span class="email-verified-mark">Açık</span>' : `<span class="email-unverified-mark">${untested ? 'Canlı test bekliyor' : 'Kurulu değil'}</span>`}</span><small>${esc(on ? text.on(settings) : untested ? text.untested : text.off)}</small></label>`;
         })
         .join('')}</fieldset>
       <p class="recovery-order">Şu anki sıra: <b>${esc(order)}</b></p>

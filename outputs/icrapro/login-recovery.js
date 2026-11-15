@@ -123,20 +123,20 @@ function bindRecoveryFallback(form, account, channel, alternatives, status) {
 }
 
 // The code step of SMS or e-mail recovery: the code and a new password. On success the user is
-// signed in with the new password through the normal login form. An e-mail address that was not
-// verified yet first gets a 6-digit verification code; entering it sends the 8-digit reset code.
+// signed in with the new password through the normal login form. An e-mail code is sent only to
+// an address the user verified in Hesabım; otherwise the other ways and "Yöneticiden iste" below.
 function codeRecoveryGate(account = '', channel = 'sms', alternatives = []) {
   const email = channel === 'email';
   loginFrame(`<form id="codeRecoveryForm" class="panel" aria-labelledby="codeRecoveryTitle" data-channel="${channel}">
     <div class="login-heading"><h1 id="codeRecoveryTitle">${email ? 'E-posta ile yenileme.' : 'SMS ile giriş.'}</h1>
     <p id="codeRecoveryHint">${
       email
-        ? 'E-postanıza gelen kodu girin ve yeni şifrenizi belirleyin. Adresiniz henüz doğrulanmadıysa önce 6 haneli doğrulama kodu gelir; onu girince 8 haneli şifre yenileme kodu ayrıca gönderilir.'
+        ? 'E-postanıza gelen 8 haneli kodu girin ve yeni şifrenizi belirleyin. Kod 15 dakika geçerlidir ve yalnızca Hesabım bölümünde doğruladığınız adrese gönderilir. Adresinizi doğrulamadıysanız aşağıdan başka bir yol seçin ya da yöneticinizden isteyin.'
         : 'SMS ile gelen 8 haneli geçici şifreyi girin ve kendi şifrenizi belirleyin. Geçici şifre 15 dakika geçerlidir ve bir kez kullanılır.'
     }</p></div>
     <div class="login-fields">
-      <label class="field" for="code-account">Kullanıcı adı, telefon veya e-posta<input id="code-account" name="account" required maxlength="120" autocomplete="username" placeholder="Kullanıcı adınız veya 05xx xxx xx xx"></label>
-      <label class="field" for="code-value">${email ? 'E-postadaki kod' : 'Geçici şifre (SMS)'}<input id="code-value" name="code" type="text" required inputmode="numeric" pattern="${email ? '[0-9 ]{6,9}' : '[0-9 ]{8,9}'}" maxlength="9" autocomplete="one-time-code" aria-describedby="codeRecoveryHint" placeholder="${email ? '6 veya 8 haneli kod' : '8 haneli kod'}"></label>
+      <label class="field" for="code-account">Kullanıcı adı, telefon veya e-posta<input id="code-account" name="account" required maxlength="120" autocomplete="username" autocorrect="off" autocapitalize="none" spellcheck="false" placeholder="Kullanıcı adınız veya 05xx xxx xx xx"></label>
+      <label class="field" for="code-value">${email ? 'E-postadaki kod' : 'Geçici şifre (SMS)'}<input id="code-value" name="code" type="text" required inputmode="numeric" pattern="[0-9 ]{8,9}" maxlength="9" autocomplete="one-time-code" aria-describedby="codeRecoveryHint" placeholder="8 haneli kod"></label>
       <label class="field" for="code-password">Yeni şifre<input id="code-password" name="password" type="password" required minlength="10" maxlength="128" autocomplete="new-password" placeholder="En az 10 karakter"></label>
       <label class="field" for="code-confirm">Yeni şifre tekrar<input id="code-confirm" name="confirm" type="password" required minlength="10" maxlength="128" autocomplete="new-password" placeholder="Yeni şifrenizi tekrar girin"></label>
     </div><p id="codeRecoveryStatus" class="login-status" role="status"></p>
@@ -165,14 +165,6 @@ function codeRecoveryGate(account = '', channel = 'sms', alternatives = []) {
         email ? '/api/password-reset/email-complete' : '/api/password-reset/sms-complete',
         { account: value.account.trim(), code: value.code.replace(/\s/g, ''), password: value.password },
       );
-      if (result.verified) {
-        // Step two of an unverified address: the reset code is on its way.
-        status.textContent = result.error;
-        form.elements.code.value = '';
-        form.elements.code.focus({ preventScroll: true });
-        submit.disabled = false;
-        return;
-      }
       if (!result.ok) throw Error(result.error || 'Kod hatalı veya süresi dolmuş.');
       authGate(false);
       const login = document.getElementById('loginForm');
@@ -210,7 +202,7 @@ function managerHelpGate(account = '', { none = false } = {}) {
     <div class="login-heading"><h1 id="managerHelpTitle">Yöneticinizden isteyin.</h1>
     <p>${none ? 'Büronuzda şifre yenileme için SMS, e-posta veya WhatsApp henüz açık değil. ' : ''}Kayıtlı telefonunuz ya da e-postanız yoksa veya kod size ulaşmıyorsa talebiniz büro yöneticilerine mesaj olarak iletilir. Yöneticiniz kimliğinizi doğruladıktan sonra yeni şifrenizi belirleyip size iletir.</p></div>
     <div class="login-fields">
-      <label class="field" for="help-account">Kullanıcı adı, telefon veya e-posta<input id="help-account" name="account" required maxlength="120" autocomplete="username" placeholder="Kullanıcı adınız"></label>
+      <label class="field" for="help-account">Kullanıcı adı, telefon veya e-posta<input id="help-account" name="account" required maxlength="120" autocomplete="username" autocorrect="off" autocapitalize="none" spellcheck="false" placeholder="Kullanıcı adınız"></label>
       <label class="field" for="help-note">Yöneticinize not (isteğe bağlı)<input id="help-note" name="note" maxlength="300" data-optional="true" autocomplete="off" placeholder="Örn. Telefon numaram değişti, bana 05xx… numarasından ulaşın"></label>
     </div><p id="managerHelpStatus" class="login-status" role="status"></p>
     <div class="login-actions"><button type="submit" class="login-submit">Yöneticiden yeni şifre iste</button>
@@ -243,11 +235,11 @@ function managerHelpGate(account = '', { none = false } = {}) {
 }
 
 function passwordRecoveryGate(token) {
-  if (token) return passwordLinkGate(token);
+  if (token) return recoveryLinkGate(token);
   loginFrame(`<form id="recoveryForm" class="panel" aria-labelledby="recoveryTitle">
     <div class="login-heading"><h1 id="recoveryTitle">Şifrenizi yenileyin.</h1>
     <p id="recoveryIntro">Kullanıcı adınızı, kayıtlı cep telefonunuzu veya doğrulanmış e-posta adresinizi girin. Büronuzun seçtiği yolla (SMS, e-posta veya WhatsApp) tek kullanımlık kod gönderilir.</p></div>
-    <div class="login-fields"><label class="field" for="recovery-account">Kullanıcı adı, telefon veya e-posta<input id="recovery-account" name="account" required maxlength="120" autocomplete="username" placeholder="Kullanıcı adınız veya 05xx xxx xx xx" aria-describedby="recoveryIntro recoveryStatus"></label>
+    <div class="login-fields"><label class="field" for="recovery-account">Kullanıcı adı, telefon veya e-posta<input id="recovery-account" name="account" required maxlength="120" autocomplete="username" autocorrect="off" autocapitalize="none" spellcheck="false" placeholder="Kullanıcı adınız veya 05xx xxx xx xx" aria-describedby="recoveryIntro recoveryStatus"></label>
     <p class="login-note" data-recovery-limit>Talep sınırı: SMS ve e-posta ile günde 3, WhatsApp ile günde 1.</p></div>
     <p id="recoveryStatus" class="login-status" role="status"></p>
     <div class="login-actions"><button type="submit" class="login-submit">Kod gönder</button>
@@ -298,7 +290,54 @@ function passwordRecoveryGate(token) {
   };
 }
 
-// The page a WhatsApp password link opens (#sifre=<token>).
+// A WhatsApp password link (#sifre=<token>) is either a user's own reset link or the link of
+// the office's live delivery test (Ayarlar → WhatsApp → Şifre kurtarma canlı testi). The test
+// link changes no password: opening it and confirming proves the message really arrives.
+function recoveryLinkGate(token) {
+  loginFrame(`<section class="panel" aria-labelledby="linkCheckTitle"><div class="login-heading">
+    <h1 id="linkCheckTitle">Bağlantı kontrol ediliyor…</h1></div>
+    <p id="linkCheckStatus" class="login-status" role="status"></p></section>`);
+  recoveryApi('/api/password-reset/channel-test-link', { token })
+    .then((result) =>
+      result.test ? channelTestGate(token, result.usable === true) : passwordLinkGate(token),
+    )
+    .catch((error) => {
+      document.getElementById('linkCheckTitle').textContent = 'Bağlantı kontrol edilemedi.';
+      document.getElementById('linkCheckStatus').textContent = error.message;
+    });
+}
+function channelTestGate(token, usable) {
+  loginFrame(`<section class="panel" aria-labelledby="channelTestTitle">
+    <div class="login-heading"><h1 id="channelTestTitle">WhatsApp kurtarma testi.</h1>
+    <p>${
+      usable
+        ? 'Bu bağlantı büronuzun WhatsApp şifre yenileme şablonundan geldi. Testi doğruladığınızda WhatsApp seçeneği “Şifremi unuttum” ekranında açılır. Hesap şifreniz değişmez.'
+        : 'Test bağlantısının süresi dolmuş ya da ayarlar değişmiş. Ayarlar → WhatsApp bölümünden yeni test başlatın.'
+    }</p></div>
+    <p id="channelTestStatus" class="login-status" role="status"></p>
+    <div class="login-actions">${usable ? '<button type="button" class="login-submit" id="channelTestConfirm">Testi doğrula</button>' : ''}
+    <button type="button" class="login-link" id="channelTestBack">Girişe dön</button></div></section>`);
+  document.getElementById('channelTestBack').onclick = recoveryBackToLogin;
+  const button = document.getElementById('channelTestConfirm');
+  if (!button) return;
+  const status = document.getElementById('channelTestStatus');
+  button.onclick = async () => {
+    button.disabled = true;
+    status.textContent = '';
+    try {
+      const confirmed = await recoveryApi('/api/password-reset/channel-test-link', { token, confirm: true });
+      if (!confirmed.ok) throw Error(confirmed.error || 'Test doğrulanamadı.');
+      status.textContent =
+        '✓ WhatsApp kurtarma testi doğrulandı. Seçenek artık giriş ekranında kullanılabilir.';
+      button.hidden = true;
+    } catch (error) {
+      status.textContent = error.message;
+      button.disabled = false;
+    }
+  };
+}
+
+// The page a user's own WhatsApp password link opens.
 function passwordLinkGate(token) {
   loginFrame(`<form id="recoveryForm" class="panel" aria-labelledby="recoveryTitle">
     <div class="login-heading"><h1 id="recoveryTitle">Yeni şifreniz.</h1>

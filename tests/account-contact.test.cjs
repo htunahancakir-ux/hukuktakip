@@ -4,6 +4,90 @@ const { database, fixture, serve, password } = require('./support/postgres.cjs')
 const { createApplication } = require('../lib/application.cjs');
 const { createStore, importState } = require('../lib/postgres-store.cjs');
 const { importRecords, activateRecords } = require('../lib/record-store/storage.cjs');
+
+test('Hesabım verifies the saved e-mail address with a code and the current password; a manager needs no password', () => {
+  const { JSDOM } = require('jsdom');
+  const fs = require('node:fs');
+  const dom = new JSDOM('<div id="root"><div class="account-settings-form"></div></div>', {
+    runScripts: 'dangerously',
+  });
+  const w = dom.window,
+    calls = [];
+  w.esc = String;
+  w.hanAuth = { id: 'test' };
+  let saved = 'test@example.test',
+    verified = false;
+  w.authApi = (path, method, input) => {
+    if (path === '/api/account/contact') {
+      if (method === 'PUT' && input.email !== saved) {
+        saved = input.email;
+        verified = false;
+      }
+      return {
+        id: 'test',
+        email: saved,
+        mobilePhone: '',
+        emailVerified: verified,
+        emailVerification: true,
+        complete: true,
+      };
+    }
+    calls.push(JSON.parse(JSON.stringify({ path, input })));
+    if (path === '/api/email-verification/send')
+      return { ok: true, sentTo: 'te***@example.test', email: { sent: true } };
+    verified = true;
+    return { ok: true, id: input.userId, email: saved, emailVerified: true };
+  };
+  const $ = (selector) => w.document.querySelector(selector);
+  try {
+    w.eval(fs.readFileSync('outputs/icrapro/workspace-contact.js', 'utf8'));
+    w.setupAccountContact(w.document.getElementById('root'));
+    assert.match($('[data-verify-state]').textContent, /Doğrulanmadı/);
+    assert.equal($('[name="verifyPassword"]').autocomplete, 'current-password');
+    $('[data-verify-send]').click();
+    assert.deepEqual(calls[0], { path: '/api/email-verification/send', input: { userId: 'test' } });
+    assert.match($('[data-verify-status]').textContent, /te\*\*\*@example\.test/);
+
+    // The code alone is not enough for one's own address: the current password is asked.
+    $('[name="verifyCode"]').value = '123456';
+    $('[data-verify-confirm]').click();
+    assert.equal(calls.length, 1, 'nothing is sent without the password');
+    assert.match($('[data-verify-status]').textContent, /mevcut hesap şifrenizi/);
+    $('[name="verifyPassword"]').value = 'Synthetic-Own-Password';
+    $('[data-verify-confirm]').click();
+    assert.deepEqual(calls[1], {
+      path: '/api/email-verification/confirm',
+      input: { userId: 'test', code: '123456', password: 'Synthetic-Own-Password' },
+    });
+    assert.equal($('[name="verifyPassword"]').value, '', 'the password does not stay on the page');
+    assert.match($('[data-verify-state]').textContent, /✓ Doğrulandı/);
+    assert.equal($('[data-verify-send]').disabled, true);
+    assert.equal($('[data-recovery-section]'), null, 'no second verification section');
+
+    w.document.getElementById('root').innerHTML = '<div class="account-settings-form"></div>';
+    w.setupAccountContact(w.document.getElementById('root'));
+    assert.match($('[data-verify-state]').textContent, /✓ Doğrulandı/, 'verified state survives reopening');
+    $('[name="contactEmail"]').value = 'changed@example.test';
+    $('[data-save-contact]').click();
+    assert.match($('[data-verify-state]').textContent, /Doğrulanmadı/, 'a changed address is verified again');
+    assert.equal($('[data-verify-send]').disabled, false);
+
+    // A manager verifying a staff account's address enters only the code the person reads out.
+    const host = w.document.createElement('div');
+    w.document.body.append(host);
+    w.bindContactEditor(
+      host,
+      { id: 'staff', email: 'staff@example.test', mobilePhone: '', emailVerified: false, emailVerification: true },
+      '/api/users/contact',
+    );
+    assert.equal(host.querySelector('[name="verifyPassword"]'), null);
+    host.querySelector('[name="verifyCode"]').value = '654321';
+    host.querySelector('[data-verify-confirm]').click();
+    assert.deepEqual(calls.at(-1).input, { userId: 'staff', code: '654321' });
+  } finally {
+    w.close();
+  }
+});
 test('staff update only their own contact; managers edit others without changing roles, salary or credentials', async (t) => {
   const { pg, pool } = await database(),
     state = fixture();

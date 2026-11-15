@@ -13,6 +13,7 @@ const { createBackupService, decryptState } = require('../lib/backup-service.cjs
 const { createVerimorSms, smsNumber } = require('../lib/verimor-sms.cjs');
 const smsSettings = require('../lib/sms-settings.cjs');
 const { password, fixture, database, serve } = require('./support/postgres.cjs');
+const { liveTested, WHATSAPP } = require('./support/recovery.cjs');
 
 const API_PASSWORD = 'Verimor-Api-Secret-Only-Test';
 const ACCOUNT = '908501234567';
@@ -289,6 +290,7 @@ test('SMS password recovery: one-time code, same answer for every account, limit
   const state = fixture();
   state.users[0].mobilePhone = PHONE;
   state.smsConfig = savedConfig();
+  liveTested(state, 'sms');
   const app = await start(state);
   const request = async (account) => {
     const response = await app.send('/api/password-reset/request', { account });
@@ -386,20 +388,36 @@ test('SMS settings errors reach the CEO with their status and message', async ()
   }
 });
 
-test('Password reset channel: WhatsApp wins, otherwise SMS only when enabled', async () => {
+test('Password reset channel: WhatsApp wins, otherwise SMS; only live-tested channels are open', async () => {
   // Without any channel the screen offers "Yöneticiden iste" instead of an error.
   const none = { ok: true, channel: 'none', alternatives: [] };
   const cases = [
     {
       name: 'whatsapp configured',
-      extra: { whatsappConfig: { enabled: true, resetTemplate: 'x' }, smsConfig: savedConfig() },
+      extra: { whatsappConfig: { ...WHATSAPP }, smsConfig: savedConfig() },
       status: 200,
       body: { ok: true, channel: 'whatsapp', alternatives: ['sms'] },
     },
     {
+      // Saved settings alone open nothing: the CEO's live delivery test has to pass first.
+      name: 'set up but never live-tested',
+      extra: { whatsappConfig: { ...WHATSAPP }, smsConfig: savedConfig() },
+      untested: true,
+      status: 200,
+      body: none,
+    },
+    {
+      name: 'only SMS passed its live test',
+      extra: { whatsappConfig: { ...WHATSAPP }, smsConfig: savedConfig() },
+      tested: ['sms'],
+      status: 200,
+      body: { ok: true, channel: 'sms', alternatives: [] },
+      sends: true,
+    },
+    {
       name: 'the office picked SMS first',
       extra: {
-        whatsappConfig: { enabled: true, resetTemplate: 'x' },
+        whatsappConfig: { ...WHATSAPP },
         smsConfig: savedConfig(),
         recoveryPolicy: { primary: 'sms' },
       },
@@ -412,6 +430,7 @@ test('Password reset channel: WhatsApp wins, otherwise SMS only when enabled', a
   ];
   for (const item of cases) {
     const state = { ...fixture(), ...item.extra };
+    if (!item.untested) liveTested(state, ...(item.tested || []));
     state.users[0].mobilePhone = PHONE;
     const app = await start(state);
     try {
@@ -458,6 +477,7 @@ test('Backups leave out SMS credentials and recovery codes', async (t) => {
     smsConfig: savedConfig(),
     smsRecovery: [{ userId: 'ceo', at: Date.now(), expires: Date.now() + 1, salt: 's', hash: 'h' }],
     emailRecovery: [{ userId: 'ceo', kind: 'reset', at: Date.now(), expires: Date.now() + 1, salt: 's', hash: 'h' }],
+    recoveryChannelTests: [{ channel: 'sms', at: Date.now(), salt: 's', hash: 'h' }],
   };
   let policy = {};
   const store = {
@@ -487,6 +507,7 @@ test('Backups leave out SMS credentials and recovery codes', async (t) => {
   assert.equal('smsConfig' in restored, false);
   assert.equal('smsRecovery' in restored, false);
   assert.equal('emailRecovery' in restored, false, 'e-mail codes stay out too');
+  assert.equal('recoveryChannelTests' in restored, false);
   assert.deepEqual(restored, { users: state.users, data: state.data });
 });
 

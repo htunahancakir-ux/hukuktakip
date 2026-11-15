@@ -9,7 +9,7 @@ function smsSettingsPage() {
   const state = config.configured ? (config.enabled ? 'Açık' : 'Kapalı') : 'Ayarlanmadı';
   $('#content').innerHTML = `${settingsSectionTabs('sms')}<section class="panel">
     <div class="panelhead"><div><h2>SMS — Verimor</h2>
-    <p>Şifremi unuttum ve benzeri önemli bildirimler için büronuzun Verimor SMS hesabı. SMS ile tek kullanımlık geçici şifre gönderilir; SMS, e-posta ve WhatsApp arasında hangisinin önce deneneceğini Entegrasyonlar → Şifre Yenileme bölümünden seçin.</p></div><span class="badge" id="smsState">${esc(state)}</span></div>
+    <p>Şifre yenileme ve benzeri önemli bildirimler için büronuzun Verimor SMS hesabı. SMS seçeneği, ayarlar kaydedilip aşağıdaki canlı test doğrulandıktan sonra giriş ekranında görünür. SMS, e-posta ve WhatsApp arasında hangisinin önce deneneceğini Entegrasyonlar → Şifre Yenileme bölümünden seçin.</p></div><span class="badge" id="smsState">${esc(state)}</span></div>
     <form id="smsConfigForm"><div class="formbody grid">
       <label class="field">Kullanıcı adı (Verimor hesap numarası)<input name="username" inputmode="numeric" autocomplete="off" maxlength="15" required data-optional="true" placeholder="ör. 908501234567" value="${esc(config.username)}"></label>
       <label class="field">API şifresi<input name="password" type="password" maxlength="200" autocomplete="new-password" data-optional="true"
@@ -31,8 +31,10 @@ function smsSettingsPage() {
     </div><div class="actions"><button class="secondary" type="submit">Deneme SMS gönder</button></div></form>`
         : ''
     }
+    ${recoveryChannelTestPanel('sms')}
   </section>`;
   bindSettingsSectionTabs();
+  bindRecoveryChannelTest($('#content'), 'sms');
   $('#openMarketingSms').onclick = marketingSmsPage;
   const form = $('#smsConfigForm');
   const typed = () => ({
@@ -94,12 +96,65 @@ function smsSettingsPage() {
       try {
         const result = authApi('/api/sms/send-test', 'POST', { phone: sendForm.elements.phone.value.trim() });
         status.textContent = result.sms?.sent
-          ? '✓ Deneme SMS gönderildi.'
+          ? 'Sağlayıcı deneme mesajını kabul etti. Kurtarma seçeneğini açmak için aşağıdaki canlı testi tamamlayın.'
           : '✕ ' + (result.sms?.error || 'Deneme SMS gönderilemedi.');
       } catch (error) {
         status.textContent = '✕ ' + error.message;
       } finally {
         button.disabled = false;
+      }
+    };
+}
+
+function recoveryChannelTestPanel(channel) {
+  const label = channel === 'sms' ? 'SMS' : 'WhatsApp';
+  let ready = false;
+  try {
+    ready = authApi('/api/password-reset/channels').tested?.[channel] === true;
+  } catch {}
+  return `<section class="formbody" data-recovery-live-test="${channel}"><h3>Şifre kurtarma canlı testi — ${label}</h3><p role="status" data-live-test-status>${ready ? '✓ Canlı test doğrulandı. Bu seçenek Şifremi unuttum ekranında otomatik görünür.' : 'Kayıtlı ve etkin ayarlarla gerçek test mesajı gönderin. Mesajın kabul edilmesi tek başına kanalı açmaz.'}</p>${ready ? '' : `<div data-live-test-controls><label class="field">Test alıcısının cep telefonu<input type="tel" maxlength="30" data-live-test-phone data-optional="true" placeholder="05xx xxx xx xx"></label><button type="button" class="secondary" data-live-test-start>${label} kurtarma testini gönder</button>${channel === 'sms' ? '<label class="field">SMS ile gelen 8 haneli test kodu<input inputmode="numeric" maxlength="8" data-live-test-code data-optional="true"></label><button type="button" class="secondary" data-live-test-confirm>SMS test kodunu doğrula</button>' : '<p>WhatsApp şifre bağlantısı şablonundan gelen bağlantıyı açıp Testi doğrula düğmesine basın. Hesap şifresi değişmez.</p>'}</div>`}</section>`;
+}
+function bindRecoveryChannelTest(host, channel) {
+  const section = host.querySelector(`[data-recovery-live-test="${channel}"]`);
+  const start = section?.querySelector('[data-live-test-start]');
+  if (!start) return;
+  const status = section.querySelector('[data-live-test-status]');
+  start.onclick = async () => {
+    const phone = section.querySelector('[data-live-test-phone]').value.trim();
+    if (!phone) {
+      status.textContent = 'Test alıcısının telefonunu girin.';
+      return;
+    }
+    start.disabled = true;
+    status.textContent = 'Test mesajı gönderiliyor…';
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    try {
+      const result = authApi(`/api/${channel}/recovery-test`, 'POST', { phone });
+      const accepted = channel === 'sms' ? result.sms?.sent : result.whatsapp?.accepted > 0;
+      status.textContent = accepted
+        ? channel === 'sms'
+          ? 'Sağlayıcı kabul etti. SMS ile gelen test kodunu aşağıya girin.'
+          : 'Sağlayıcı kabul etti. WhatsApp bağlantısını açıp Testi doğrula düğmesine basın.'
+        : 'Test gönderimi başarısız. ' + (result.sms?.error || whatsappDeliveryNotice(result));
+    } catch (error) {
+      status.textContent = error.message;
+    } finally {
+      start.disabled = false;
+    }
+  };
+  const confirm = section.querySelector('[data-live-test-confirm]');
+  if (confirm)
+    confirm.onclick = () => {
+      try {
+        const result = authApi('/api/sms/recovery-test', 'POST', {
+          code: section.querySelector('[data-live-test-code]').value.trim(),
+        });
+        if (!result.ok) throw Error(result.error || 'Test doğrulanamadı.');
+        status.textContent =
+          '✓ Canlı SMS testi doğrulandı. SMS seçeneği Şifremi unuttum ekranında otomatik görünür.';
+        section.querySelector('[data-live-test-controls]').remove();
+      } catch (error) {
+        status.textContent = error.message;
       }
     };
 }

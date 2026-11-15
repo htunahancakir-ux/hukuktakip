@@ -163,24 +163,14 @@ test('Şifremi unuttum with platform SMS: request, enter the temporary password,
   );
 });
 
-test('E-mail recovery to an unverified address: the verification code first, then the reset code, then signed in', async () => {
+test('E-mail recovery: the 8-digit code from a verified address and a new password sign the user in', async () => {
   const { w, requests, logins } = setup({
     '/api/password-reset/channels': () => [200, { channels: ['email', 'sms'] }],
     '/api/password-reset/request': () => [200, { ok: true, channel: 'email', alternatives: ['sms'] }],
     '/api/password-reset/email-complete': (body) =>
-      body.code === '123456'
-        ? [
-            200,
-            {
-              ok: false,
-              verified: true,
-              error:
-                'E-posta adresiniz doğrulandı. Şifre yenileme kodu aynı adrese gönderildi; e-postadaki 8 haneli kodu girin.',
-            },
-          ]
-        : body.code === '12345678'
-          ? [200, { ok: true, username: 'mehmet' }]
-          : [200, { ok: false, error: 'Kod hatalı veya süresi dolmuş. Yeni kod isteyin.' }],
+      body.code === '12345678'
+        ? [200, { ok: true, username: 'mehmet' }]
+        : [200, { ok: false, error: 'Kod hatalı veya süresi dolmuş. Yeni kod isteyin.' }],
   });
   w.passwordRecoveryGate();
   await settle();
@@ -189,23 +179,71 @@ test('E-mail recovery to an unverified address: the verification code first, the
   submit(w, 'recoveryForm');
   await settle();
   assert.equal(w.document.getElementById('codeRecoveryForm').dataset.channel, 'email');
-  assert.match(w.document.body.textContent, /önce 6 haneli doğrulama kodu/);
+  // Nothing is sent to an address the user never verified; the screen says where to go then.
+  assert.match(w.document.body.textContent, /yalnızca Hesabım bölümünde doğruladığınız adrese/);
   const code = w.document.getElementById('code-value');
+  assert.equal(code.pattern, '[0-9 ]{8,9}');
+  assert.equal(code.autocomplete, 'one-time-code');
   w.document.getElementById('code-password').value = 'New-Password-123';
   w.document.getElementById('code-confirm').value = 'New-Password-123';
-  code.value = '123 456';
+  code.value = '0000 0000';
   submit(w, 'codeRecoveryForm');
   await settle();
   assert.equal(requests.at(-1).url, '/api/password-reset/email-complete');
-  assert.equal(requests.at(-1).body.code, '123456');
-  assert.match(w.document.getElementById('codeRecoveryStatus').textContent, /doğrulandı.*8 haneli/);
-  assert.equal(code.value, '', 'the verification code is cleared for the reset code');
+  assert.equal(requests.at(-1).body.code, '00000000');
+  assert.match(w.document.getElementById('codeRecoveryStatus').textContent, /Kod hatalı/);
   assert.equal(w.document.getElementById('code-password').value, 'New-Password-123', 'the new password stays');
   assert.deepEqual(logins, []);
-  code.value = '12345678';
+  code.value = '1234 5678';
   submit(w, 'codeRecoveryForm');
   await settle();
   assert.deepEqual(logins, [{ username: 'mehmet', password: 'New-Password-123' }]);
+});
+
+test('a WhatsApp live-test link asks for an explicit confirmation and never for a password', async () => {
+  const { w, requests } = setup({
+    '/api/password-reset/channel-test-link': (body) => [
+      200,
+      body.confirm ? { ok: true, test: true } : { test: true, usable: true },
+    ],
+  });
+  w.passwordRecoveryGate('a'.repeat(43));
+  await settle();
+  assert.equal(w.document.querySelector('input[type="password"]'), null);
+  assert.deepEqual(requests.at(-1).body, { token: 'a'.repeat(43) });
+  assert.match(w.document.body.textContent, /Hesap şifreniz değişmez/);
+  const confirm = w.document.getElementById('channelTestConfirm');
+  confirm.click();
+  await settle();
+  assert.equal(requests.at(-1).body.confirm, true);
+  assert.match(w.document.getElementById('channelTestStatus').textContent, /doğrulandı/);
+  assert.equal(confirm.hidden, true, 'confirmed once');
+
+  // An expired test link, or one from before the settings changed, offers nothing to confirm.
+  const stale = setup({ '/api/password-reset/channel-test-link': () => [200, { test: true, usable: false }] });
+  stale.w.passwordRecoveryGate('c'.repeat(43));
+  await settle();
+  assert.equal(stale.w.document.getElementById('channelTestConfirm'), null);
+  assert.match(stale.w.document.body.textContent, /süresi dolmuş/);
+});
+
+test('a user’s own WhatsApp password link keeps its new-password form', async () => {
+  const { w, requests } = setup({
+    '/api/password-reset/channel-test-link': () => [200, { test: false }],
+    '/api/password-reset/complete': () => [200, { ok: true }],
+  });
+  w.passwordRecoveryGate('b'.repeat(43));
+  await settle();
+  assert.ok(w.document.getElementById('recovery-password'));
+  assert.equal(w.document.getElementById('channelTestConfirm'), null);
+  w.document.getElementById('recovery-password').value = 'New-Password-123';
+  w.document.getElementById('recovery-confirm').value = 'New-Password-123';
+  submit(w, 'recoveryForm');
+  await settle();
+  assert.deepEqual(requests.at(-1), {
+    url: '/api/password-reset/complete',
+    body: { token: 'b'.repeat(43), password: 'New-Password-123' },
+  });
 });
 
 test('"SMS gelmedi mi?" offers e-mail after the wait, and "Yöneticiden iste" reaches the managers', async () => {

@@ -1,17 +1,21 @@
 const wa = require('../../lib/whatsapp.cjs');
 const smsRecovery = require('../../lib/sms-recovery.cjs');
-const smsSettings = require('../../lib/sms-settings.cjs');
 const emailRecovery = require('../../lib/email-recovery.cjs');
 const channels = require('../../lib/recovery-channels.cjs');
 const { emailAddress, maskEmail } = require('../../lib/brevo-email.cjs');
 const { smsNumber } = require('../../lib/verimor-sms.cjs');
 const { profile } = require('../../lib/account-contact.cjs');
-const { officeIdentity } = require('../../lib/office-identity.cjs');
+const { officeIdentity, plainSms } = require('../../lib/office-identity.cjs');
 const { throttle, requestReset } = require('./access-whatsapp.cjs');
 
 // "Şifremi unuttum" over every open channel (WhatsApp link, SMS code, e-mail code), e-mail
 // address verification, and the last resort "Yöneticiden iste": the request lands in the
 // managers' inbox, and a manager sets a new password and passes it on.
+//
+// A reset code goes by e-mail only to an address that was verified inside a signed-in session:
+// by the account's owner with their current password, or by a manager who may set that
+// account's password anyway. Saving an address (in Hesabım or on the personnel record) never
+// verifies it, so whoever can edit a contact record cannot take the account over.
 
 const DAY = 86400000;
 const MANAGERS = ['ceo', 'admin'];
@@ -31,7 +35,11 @@ const PUBLIC_ROUTES = Object.freeze([
 const officeName = (ctx) => officeIdentity(ctx.state, ctx.options).name;
 const openChannels = (ctx) =>
   channels.channelOrder(ctx.state, channels.availableChannels(ctx.state, ctx.options));
-const officeSmsOn = (state) => smsSettings.publicConfig(state.smsConfig).enabled;
+// The office's own WhatsApp and SMS, set up or not, and whether each passed its live test.
+const officeChannels = (state) => ({
+  configured: { sms: !!channels.stamp(state, 'sms'), whatsapp: !!channels.stamp(state, 'whatsapp') },
+  tested: { sms: channels.ready(state, 'sms'), whatsapp: channels.ready(state, 'whatsapp') },
+});
 
 // E-mail goes out after the request committed (lib/application.cjs → finalizeEmail).
 function queueEmail(res, job, { silent }) {
@@ -85,21 +93,23 @@ function sendSmsCode(ctx, user) {
   if (!code) return;
   ctx.persist(next);
   ctx.res.hanSms = {
-    ...(officeSmsOn(ctx.state) ? { config: ctx.state.smsConfig } : {}),
+    // The office's own account once it passed the live test, otherwise the platform's service.
+    ...(channels.recoverySmsAccount(ctx.state, ctx.options) === 'office'
+      ? { config: ctx.state.smsConfig }
+      : {}),
     to: phone,
     text: smsRecovery.message(code),
     silent: true,
   };
 }
-// A verified address gets the 8-digit reset code. An unverified one first gets a 6-digit
-// verification code; entering it verifies the address and sends the reset code.
+// The 8-digit reset code, only to a verified address. An account whose address was never
+// verified gets nothing; the screen then offers the other ways and "Yöneticiden iste".
 function sendEmailCode(ctx, user) {
-  const address = user && emailRecovery.accountEmail(ctx.state, user);
-  if (!address) return;
+  if (!user || !emailRecovery.isVerified(ctx.state, user)) return;
+  const address = emailRecovery.accountEmail(ctx.state, user);
   const next = structuredClone(ctx.state);
   const target = next.users.find((row) => row.id === user.id);
-  const verified = emailRecovery.isVerified(next, target);
-  const code = emailRecovery.issueCode(next, target, verified ? 'reset' : 'verify');
+  const code = emailRecovery.issueCode(next, target, 'reset');
   if (!code) return;
   ctx.persist(next);
   const office = officeName(ctx);
@@ -109,10 +119,8 @@ function sendEmailCode(ctx, user) {
       to: address,
       toName: user.name,
       fromName: office,
-      purpose: verified ? 'password_recovery' : 'email_verification',
-      ...(verified
-        ? emailRecovery.resetMessage({ office, code })
-        : emailRecovery.verifyMessage({ office, code, during: 'recovery' })),
+      purpose: 'password_recovery',
+      ...emailRecovery.resetMessage({ office, code }),
     },
     { silent: true },
   );
@@ -226,16 +234,13 @@ function deliverPassword(ctx, next, account, password, deliver) {
         409,
         'Kullanıcının kayıtlı cep telefonu yok. Önce E-posta / Cep Telefonu bölümünden ekleyin.',
       );
-    if (!channels.availableChannels(ctx.state, ctx.options).sms)
-      throw ctx.fail(412, 'Büroda SMS gönderimi açık değil.');
-    const plain = (text) =>
-      String(text)
-        .replace(/[çÇğĞıİöÖşŞüÜ]/g, (c) => 'cCgGiIoOsSuU'['çÇğĞıİöÖşŞüÜ'.indexOf(c)])
-        .replace(/[^\x20-\x7e]/g, '');
+    // The manager sees the result on screen, so the office's own account needs no live test here.
+    const sender = channels.deliverySmsAccount(ctx.state, ctx.options);
+    if (!sender) throw ctx.fail(412, 'Büroda SMS gönderimi açık değil.');
     ctx.res.hanSms = {
-      ...(officeSmsOn(ctx.state) ? { config: ctx.state.smsConfig } : {}),
+      ...(sender === 'office' ? { config: ctx.state.smsConfig } : {}),
       to: phone,
-      text: `${plain(office)}: Sifreniz yoneticiniz tarafindan yenilendi. Kullanici adi: ${account.username} Yeni sifre: ${password} Giristen sonra Hesabim bolumunden degistirin.`,
+      text: `${plainSms(office)}: Sifreniz yoneticiniz tarafindan yenilendi. Kullanici adi: ${account.username} Yeni sifre: ${password} Giristen sonra Hesabim bolumunden degistirin.`,
       silent: false,
     };
     return;
@@ -273,7 +278,8 @@ async function handlePublicRecovery(ctx) {
   const { req, res, url, send, fail, body } = ctx;
   const route = url.pathname;
   if (route === '/api/password-reset/channels' && req.method === 'GET') {
-    send(res, 200, { channels: openChannels(ctx) });
+    // `tested` tells the settings screens whether the office's own channel passed its live test.
+    send(res, 200, { channels: openChannels(ctx), tested: officeChannels(ctx.state).tested });
     return true;
   }
   if (route === '/api/password-reset/request' && req.method === 'POST') {
@@ -323,37 +329,14 @@ async function handlePublicRecovery(ctx) {
     const user = findAccount(ctx, readAccount(input, fail));
     const next = structuredClone(ctx.state);
     const target = user && next.users.find((row) => row.id === user.id);
-    const check = target ? emailRecovery.checkCode(next, target, input.code) : { ok: false, changed: false };
+    // Only a reset code counts here; an address is never verified from the sign-in screen.
+    const check =
+      target && emailRecovery.isVerified(next, target)
+        ? emailRecovery.checkCode(next, target, input.code, { kinds: ['reset'] })
+        : { ok: false, changed: false };
     if (!check.ok) {
       if (check.changed) ctx.persist(next);
       send(res, 200, { ok: false, error: CODE_ERROR });
-      return true;
-    }
-    if (check.kind === 'verify') {
-      // The address is now verified: the reset code follows to the same address.
-      const code = emailRecovery.issueCode(next, target, 'reset');
-      ctx.persist(next);
-      if (code) {
-        const office = officeName(ctx);
-        queueEmail(
-          res,
-          {
-            to: emailRecovery.accountEmail(next, target),
-            toName: target.name,
-            fromName: office,
-            purpose: 'password_recovery',
-            ...emailRecovery.resetMessage({ office, code }),
-          },
-          { silent: true },
-        );
-      }
-      send(res, 200, {
-        ok: false,
-        verified: true,
-        error: code
-          ? 'E-posta adresiniz doğrulandı. Şifre yenileme kodu aynı adrese gönderildi; e-postadaki 8 haneli kodu girin.'
-          : 'E-posta adresiniz doğrulandı, ancak bugünkü şifre yenileme hakkınız doldu. Yarın tekrar deneyin veya yöneticinizden isteyin.',
-      });
       return true;
     }
     await setPassword(ctx, next, target, password);
@@ -420,6 +403,9 @@ async function handleRecoveryRoutes(ctx) {
   if (route === '/api/email-verification/confirm' && req.method === 'POST') {
     const input = await body(req);
     const target = verificationTarget(ctx, input.userId);
+    // The owner proves it is really them; a manager acts under their own authority.
+    if (target.id === u.id && !(await ctx.passwordOK(input.password, u)))
+      throw fail(403, 'Mevcut şifreniz yanlış. E-postanızı doğrulamak için hesap şifrenizi girin.');
     const next = structuredClone(ctx.state);
     const account = next.users.find((row) => row.id === target.id);
     const check = emailRecovery.checkCode(next, account, input.code, { kinds: ['verify'] });
@@ -493,7 +479,9 @@ async function handleRecoveryRoutes(ctx) {
       primary: ctx.state.recoveryPolicy?.primary || null,
       order: openChannels(ctx),
       available: channels.availableChannels(ctx.state, ctx.options),
-      officeSms: officeSmsOn(ctx.state),
+      // Whose account sends the SMS code: the office's own once it passed the live test.
+      officeSms: channels.recoverySmsAccount(ctx.state, ctx.options) === 'office',
+      ...officeChannels(ctx.state),
       accounts,
     });
     return true;
@@ -523,8 +511,13 @@ async function handleRecoveryRoutes(ctx) {
         };
       })
       .sort((a, b) => b.at.localeCompare(a.at));
-    const available = channels.availableChannels(ctx.state, ctx.options);
-    send(res, 200, { requests, delivery: { sms: available.sms, email: available.email } });
+    send(res, 200, {
+      requests,
+      delivery: {
+        sms: channels.deliverySmsAccount(ctx.state, ctx.options) !== null,
+        email: ctx.options.emailAvailable === true,
+      },
+    });
     return true;
   }
   if (route === '/api/password-help/close' && req.method === 'POST') {

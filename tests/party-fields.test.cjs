@@ -46,6 +46,9 @@ test('Client company controls and borrower type controls stay optional across ty
       save() {},
       render() {},
       toast: (m) => notices.push(m),
+      authApi: () => ({
+        categories: [...require('../lib/maps-settings.cjs').DEFAULT_SECTORS.map((s) => s.label), 'Diğer'],
+      }),
       staffSelect: (label, name, value = '') =>
         `<label class="field">${label}<select name="${name}"><option value="">Seçin</option><option value="p" ${value === 'p' ? 'selected' : ''}>Personel</option></select></label>`,
     });
@@ -69,6 +72,12 @@ test('Client company controls and borrower type controls stay optional across ty
     load(w, 'personnel.js', ['mandatoryControls', 'enforceRequired']);
     w.clientModal();
     let form = w.document.getElementById('clientForm');
+    const categoryOptions = [...form.elements.clientCategory.options].map((o) => o.value);
+    assert(categoryOptions.includes('Özel Okul'));
+    assert(categoryOptions.includes('Veteriner'));
+    assert(categoryOptions.includes('Halı Mağazaları'));
+    assert(!categoryOptions.includes('Mağaza'));
+    assert(!categoryOptions.includes('Hepsi'));
     assert.equal(form.elements.taxOffice.closest('label').hidden, true);
     const choose = (type) => form.querySelector(`[data-kind="${type}"]`).click();
     choose('Şirket');
@@ -83,7 +92,7 @@ test('Client company controls and borrower type controls stay optional across ty
       identity: '1234567890',
       city: 'İstanbul',
       district: 'Kadıköy',
-      clientCategory: 'Yediemin',
+      clientCategory: 'Yediemin Otoparkları',
       recordedBy: 'p',
       documentStaff: 'p',
       address: 'Adres',
@@ -109,8 +118,10 @@ test('Client company controls and borrower type controls stay optional across ty
     assert.equal(w.db.clients[0].taxOffice, '');
     assert.equal(w.db.clients[0].mersisNumber, '');
     const id = w.db.clients[0].id;
+    w.db.clients[0].clientCategory = 'Mağaza';
     w.clientModal(id);
     form = w.document.getElementById('clientForm');
+    assert.equal(form.elements.clientCategory.value, 'Mağaza', 'existing categories are retained on edit');
     assert.equal(form.querySelectorAll('[data-client-bank]').length, 2);
     assert.equal(form.querySelector('[data-client-bank] [data-bank-field="bankName"]').value, 'İkinci Banka');
     form.querySelector('[data-remove-client-bank]').click();
@@ -128,9 +139,28 @@ test('Client company controls and borrower type controls stay optional across ty
     assert.equal(w.db.clients[0].additionalBankAccounts[0].bankName, 'Üçüncü Banka');
     assert.equal(w.db.clients[0].taxOffice, 'Kadıköy');
     assert.equal(w.db.clients[0].mersisNumber, '0012345678901234');
+    assert.equal(w.db.clients[0].clientCategory, 'Mağaza', 'other edits preserve the original category');
+    w.clientModal(id);
+    form = w.document.getElementById('clientForm');
+    form.elements.clientCategory.value = 'Özel Okul';
+    await form.onsubmit({ preventDefault() {}, target: form });
+    assert.equal(
+      w.db.clients[0].clientCategory,
+      'Özel Okul',
+      'a configured sector can be selected and saved',
+    );
     w.clientModal(id);
     form = w.document.getElementById('clientForm');
     assert.equal(form.elements.mersisNumber.value, '0012345678901234');
+    w.authApi = () => ({ categories: ['Perde', 'Diğer'] });
+    w.clientModal(id);
+    form = w.document.getElementById('clientForm');
+    assert.equal(form.elements.clientCategory.value, 'Özel Okul');
+    assert([...form.elements.clientCategory.options].some((o) => o.value === 'Perde'));
+    assert(![...form.elements.clientCategory.options].some((o) => o.value === 'Mobilya'));
+    form.elements.clientCategory.value = 'Perde';
+    await form.onsubmit({ preventDefault() {}, target: form });
+    assert.equal(w.db.clients[0].clientCategory, 'Perde');
     const borrower = w.document.createElement('form');
     borrower.innerHTML = w.borrowerPartyFields() + w.field('TC Kimlik / Vergi No', 'identity');
     w.document.body.append(borrower);

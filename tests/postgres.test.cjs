@@ -1057,6 +1057,14 @@ test('WhatsApp recovery uses one-time links, registered contacts and private cre
     assert.equal(JSON.parse(savedConfig).tokenSaved, true);
     assert.notEqual((await store.readState()).whatsappConfig.sealedToken, token);
 
+    // Saved settings alone do not open the channel; the CEO's live delivery test does
+    // (tests/recovery-channels.test.cjs covers the test itself).
+    assert.equal((await (await send('/api/password-reset/request', { account: 'staff' })).json()).channel, 'none');
+    await store.transaction(({ state, saveState }) => {
+      require('./support/recovery.cjs').liveTested(state, 'whatsapp');
+      saveState(state);
+    });
+
     const unknown = await (await send('/api/password-reset/request', { account: 'unknown' })).json();
     const requested = await (
       await send('/api/password-reset/request', { account: '0 (532) 123 45 67' })

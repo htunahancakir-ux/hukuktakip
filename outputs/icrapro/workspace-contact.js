@@ -8,13 +8,16 @@ function emailVerifiedMark(verified) {
     : '<span class="email-unverified-mark" title="Bu adres henüz doğrulanmadı">Doğrulanmadı</span>';
 }
 // E-mail verification under the contact fields: send a 6-digit code to the saved address and
-// enter it here. A manager can do it for a staff account while the person reads out the code.
+// enter it here. The account's owner also enters their current password, so an open session
+// alone cannot make a new address a recovery address. A manager can verify a staff account's
+// address while the person reads out the code.
 function bindEmailVerification(host, profile, onVerified) {
   const box = host.querySelector('[data-email-verify]');
   const email = host.querySelector('[name="contactEmail"]');
   const state = box.querySelector('[data-verify-state]');
   const send = box.querySelector('[data-verify-send]');
   const code = box.querySelector('[name="verifyCode"]');
+  const password = box.querySelector('[name="verifyPassword"]');
   const confirm = box.querySelector('[data-verify-confirm]');
   const status = box.querySelector('[data-verify-status]');
   const render = () => {
@@ -28,6 +31,7 @@ function bindEmailVerification(host, profile, onVerified) {
     // Disabled rather than hidden: the row keeps its size whatever the state.
     send.disabled = !canVerify;
     code.disabled = !canVerify;
+    if (password) password.disabled = !canVerify;
     confirm.disabled = !canVerify;
     if (!changed && !profile.emailVerified && profile.emailVerification !== true && saved)
       status.textContent = 'E-posta gönderimi bu büroda henüz açık değil; doğrulama kodu gönderilemiyor.';
@@ -52,15 +56,22 @@ function bindEmailVerification(host, profile, onVerified) {
       status.textContent = 'E-postadaki 6 haneli kodu girin.';
       return;
     }
+    if (password && !password.value) {
+      status.textContent = 'E-postanızı doğrulamak için mevcut hesap şifrenizi girin.';
+      password.focus();
+      return;
+    }
     try {
       const result = authApi('/api/email-verification/confirm', 'POST', {
         userId: profile.id,
         code: code.value.replace(/\s/g, ''),
+        ...(password && { password: password.value }),
       });
       if (!result.ok) throw Error(result.error);
       Object.assign(profile, { email: result.email, emailVerified: true });
       code.value = '';
       code.defaultValue = '';
+      if (password) password.value = '';
       status.textContent = 'E-posta adresi doğrulandı.';
       onVerified?.(result);
     } catch (error) {
@@ -82,6 +93,7 @@ function bindContactEditor(host, profile, route, done) {
     <div class="contact-verify" data-email-verify><span data-verify-state></span>
       <button type="button" class="secondary" data-verify-send>Doğrulama kodu gönder</button>
       <label class="field">E-postadaki kod<input name="verifyCode" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,7}" maxlength="7" placeholder="6 haneli kod" data-optional="true"></label>
+      ${profile.id === hanAuth.id ? '<label class="field">Mevcut şifreniz<input name="verifyPassword" type="password" autocomplete="current-password" maxlength="128" data-optional="true"></label>' : ''}
       <button type="button" class="secondary" data-verify-confirm>Doğrula</button>
       <p class="full" role="status" data-verify-status></p></div>
     <p role="status" data-contact-status></p><button type="button" class="primary" data-save-contact>İletişim Bilgilerini Kaydet</button>`;
@@ -105,7 +117,9 @@ function bindContactEditor(host, profile, route, done) {
       Object.assign(profile, saved);
       renderVerification();
       // Only this section was saved; password inputs elsewhere in Hesabım remain untouched.
-      host.querySelectorAll('input').forEach((input) => (input.defaultValue = input.value));
+      host
+        .querySelectorAll('[name="contactEmail"], [name="contactMobile"]')
+        .forEach((input) => (input.defaultValue = input.value));
       if (host.tagName === 'FORM') window.modalFormSaved?.(host);
       if (saved.id === hanAuth.id) window.refreshContactReminder?.();
       done?.(saved);

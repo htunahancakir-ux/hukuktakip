@@ -131,7 +131,7 @@ test('platform e-mail settings are sealed, testable before saving, logged masked
 });
 
 // One office on PostgreSQL with stand-ins for the platform's SMS and e-mail services.
-async function office(t, { state = fixture(), sms = false, email = true } = {}) {
+async function office(t, { state = fixture(), sms = false, email = true, smtp } = {}) {
   const { pg, pool } = await database();
   await importState(pool, state);
   const mails = [];
@@ -142,6 +142,8 @@ async function office(t, { state = fixture(), sms = false, email = true } = {}) 
       store: createStore(pool),
       platformSms: { available: async () => sms, send: async (job) => texts.push(job) },
       platformEmail: { available: async () => email, send: async (job) => mails.push(job) },
+      // The server's own SMTP sender (lib/recovery-email.cjs); none unless a test passes one.
+      recoveryEmail: smtp ? { send: async (job) => smtp.push(job) } : null,
       background: (promise) => pending.push(promise),
     }),
   );
@@ -178,56 +180,101 @@ const staffUser = (base, extra = {}) => ({
   ...extra,
 });
 
-test('Şifremi unuttum by e-mail: an unverified address is verified first, then the reset code signs the user in', async (t) => {
+test('Şifremi unuttum by e-mail: a reset code goes only to an address verified in a signed-in session', async (t) => {
   const state = fixture();
   state.users[0].email = 'Test@Example.com';
   const o = await office(t, { state });
+  const newPassword = 'New-Synthetic-Password-1';
 
-  // Only e-mail is open. An unverified address is not accepted as the account name.
+  // Only e-mail is open. An address nobody verified gets nothing, by address or by username;
+  // the answer is the same as for any other account.
   const byAddress = await o.call('/api/password-reset/request', { account: 'test@example.com' });
   assert.deepEqual(byAddress.body, { ok: true, channel: 'email', alternatives: [] });
-  assert.equal(o.mails.length, 0, 'an unverified address does not identify the account');
+  const byName = await o.call('/api/password-reset/request', { account: 'test' });
+  assert.deepEqual(byName.body, byAddress.body, 'the answer never reveals whether the account exists');
+  assert.equal(o.mails.length, 0, 'saving an address does not make it a recovery address');
 
-  const requested = await o.call('/api/password-reset/request', { account: 'test' });
-  assert.deepEqual(requested.body, byAddress.body, 'the answer never reveals whether the account exists');
-  assert.equal(o.mails.length, 1);
+  // The owner verifies it in Hesabım: a 6-digit code to the address, entered with the current password.
+  const ceo = await o.login('test');
+  const sent = await o.call('/api/email-verification/send', {}, { cookie: ceo });
+  assert.deepEqual(sent.body, { ok: true, sentTo: 'te***@example.com', email: { sent: true } });
   const verifyMail = o.mails[0];
   assert.deepEqual([verifyMail.to, verifyMail.purpose, verifyMail.fromName], ['test@example.com', 'email_verification', 'Han Hukuk']);
   assert.match(verifyMail.subject, /E-posta doğrulama kodu/);
-  assert.match(verifyMail.html, /Şifremi unuttum/);
   const verifyCode = codeIn(verifyMail, 6);
   assert.ok(!JSON.stringify(await o.readState()).includes(verifyCode), 'only a hash is stored');
-
-  const newPassword = 'New-Synthetic-Password-1';
-  const wrong = await o.call('/api/password-reset/email-complete', { account: 'test', code: '000000', password: newPassword });
-  assert.equal(wrong.body.ok, false);
-  const verified = await o.call('/api/password-reset/email-complete', { account: 'test', code: verifyCode, password: newPassword });
-  assert.deepEqual([verified.body.ok, verified.body.verified], [false, true]);
+  // The verification code is worth nothing on the sign-in screen.
+  const onLogin = await o.call('/api/password-reset/email-complete', { account: 'test', code: verifyCode, password: newPassword });
+  assert.equal(onLogin.body.ok, false);
+  assert.equal((await o.readState()).users[0].emailVerified, undefined);
+  // An open session alone is not enough: the current password is asked.
+  assert.equal((await o.call('/api/email-verification/confirm', { code: verifyCode }, { cookie: ceo })).status, 403);
+  assert.equal((await o.call('/api/email-verification/confirm', { code: verifyCode, password: 'Wrong-Synthetic-Pass-0' }, { cookie: ceo })).status, 403);
+  const confirmed = await o.call('/api/email-verification/confirm', { code: verifyCode, password }, { cookie: ceo });
+  assert.deepEqual([confirmed.body.ok, confirmed.body.emailVerified], [true, true]);
   assert.equal((await o.readState()).users[0].emailVerified.address, 'test@example.com');
-  assert.equal(o.mails.length, 2, 'the reset code follows to the now verified address');
+
+  // Verified now: the address names the account and gets the 8-digit reset code.
+  await o.call('/api/password-reset/request', { account: 'TEST@example.com' });
+  assert.equal(o.mails.length, 2);
   assert.equal(o.mails[1].purpose, 'password_recovery');
   assert.match(o.mails[1].subject, /Şifre yenileme kodu/);
-  assert.equal((await o.call('/api/login', { username: 'test', password: newPassword })).status, 401, 'verifying alone changes nothing');
-
+  const wrong = await o.call('/api/password-reset/email-complete', { account: 'test', code: '00000000', password: newPassword });
+  assert.equal(wrong.body.ok, false);
   const done = await o.call('/api/password-reset/email-complete', { account: 'test', code: codeIn(o.mails[1], 8), password: newPassword });
   assert.deepEqual(done.body, { ok: true, username: 'test' });
   assert.equal((await o.call('/api/login', { username: 'test', password })).status, 401, 'old password is gone');
   assert.equal((await o.call('/api/login', { username: 'test', password: newPassword })).status, 200);
-
-  // Verified now: the address names the account and gets the reset code directly.
-  await o.call('/api/password-reset/request', { account: 'TEST@example.com' });
-  assert.equal(o.mails.at(-1).purpose, 'password_recovery');
   const reused = await o.call('/api/password-reset/email-complete', { account: 'test', code: codeIn(o.mails[1], 8), password: 'Another-Synthetic-Pass-2' });
   assert.equal(reused.body.ok, false, 'a code works once');
+});
+
+test('an address verified by the first e-mail recovery release stays verified; a changed one does not', async (t) => {
+  const state = fixture();
+  state.users[0].email = 'test@example.com';
+  state.users[0].recoveryEmail = 'test@example.com';
+  const o = await office(t, { state });
+  const ceo = await o.login('test');
+  assert.equal((await o.call('/api/account/contact', undefined, { cookie: ceo })).body.emailVerified, true);
+  await o.call('/api/password-reset/request', { account: 'test@example.com' });
+  assert.equal(o.mails.at(-1).purpose, 'password_recovery');
+  const changed = await o.call('/api/account/contact', { email: 'yeni@example.com', mobilePhone: '' }, { cookie: ceo, method: 'PUT' });
+  assert.equal(changed.body.emailVerified, false);
+  const before = o.mails.length;
+  await o.call('/api/password-reset/request', { account: 'test' });
+  assert.equal(o.mails.length, before, 'the new address has to be verified first');
+});
+
+test('while the platform account is off, the server’s own SMTP sender carries the same e-mails', async (t) => {
+  const state = fixture();
+  state.users[0].email = 'test@example.com';
+  state.users[0].emailVerified = { address: 'test@example.com', at: new Date().toISOString() };
+  const smtp = [];
+  const o = await office(t, { state, email: false, smtp });
+  assert.deepEqual((await o.call('/api/password-reset/channels')).body.channels, ['email']);
+  await o.call('/api/password-reset/request', { account: 'test' });
+  assert.equal(o.mails.length, 0, 'the platform account is switched off');
+  assert.equal(smtp.length, 1);
+  assert.deepEqual([smtp[0].to, smtp[0].fromName], ['test@example.com', 'Han Hukuk'], 'under the office’s own name');
+  assert.match(smtp[0].text, /\b\d{8}\b/);
+
+  // Neither sender: e-mail is not offered at all.
+  const none = await office(t, { state: structuredClone(state), email: false });
+  assert.deepEqual((await none.call('/api/password-reset/channels')).body.channels, []);
 });
 
 test('the office picks the first way; the others stay offered; a channel that is not open is refused', async (t) => {
   const state = fixture();
   state.users[0].email = 'test@example.com';
+  state.users[0].emailVerified = { address: 'test@example.com', at: new Date().toISOString() };
   state.users[0].mobilePhone = '905321234567';
   state.users.push(staffUser(state.users[0]));
   const o = await office(t, { state, sms: true, email: true });
-  assert.deepEqual((await o.call('/api/password-reset/channels')).body, { channels: ['sms', 'email'] });
+  // SMS here is the platform's service; the office has no SMS or WhatsApp of its own.
+  assert.deepEqual((await o.call('/api/password-reset/channels')).body, {
+    channels: ['sms', 'email'],
+    tested: { sms: false, whatsapp: false },
+  });
 
   const first = await o.call('/api/password-reset/request', { account: 'test' });
   assert.deepEqual(first.body, { ok: true, channel: 'sms', alternatives: ['email'] }, 'SMS before e-mail by default');
@@ -243,8 +290,12 @@ test('the office picks the first way; the others stay offered; a channel that is
   assert.equal((await o.call('/api/recovery/settings', { primary: 'whatsapp' }, { cookie: ceo, method: 'PUT' })).status, 409, 'not set up');
   const saved = await o.call('/api/recovery/settings', { primary: 'email' }, { cookie: ceo, method: 'PUT' });
   assert.deepEqual(saved.body.order, ['email', 'sms']);
-  assert.deepEqual(saved.body.accounts, { total: 2, verified: 0, unverified: 1, missing: 1 });
-  assert.deepEqual((await o.call('/api/password-reset/channels')).body, { channels: ['email', 'sms'] });
+  assert.deepEqual(saved.body.accounts, { total: 2, verified: 1, unverified: 0, missing: 1 });
+  assert.deepEqual(
+    [saved.body.officeSms, saved.body.configured, saved.body.tested],
+    [false, { sms: false, whatsapp: false }, { sms: false, whatsapp: false }],
+  );
+  assert.deepEqual((await o.call('/api/password-reset/channels')).body.channels, ['email', 'sms']);
   assert.equal((await o.call('/api/password-reset/request', { account: 'test' })).body.channel, 'email');
 });
 
@@ -265,9 +316,10 @@ test('e-mail verification from the account screen: a 6-digit code, a tick, gone 
   assert.deepEqual(sent.body, { ok: true, sentTo: 'al***@example.com', email: { sent: true } });
   const code = codeIn(o.mails.at(-1), 6);
   assert.equal(o.mails.at(-1).purpose, 'email_verification');
-  assert.equal((await o.call('/api/email-verification/confirm', { code: '111111' }, { cookie: ali })).body.ok, false);
-  const confirmed = await o.call('/api/email-verification/confirm', { code }, { cookie: ali });
-  assert.deepEqual([confirmed.body.ok, confirmed.body.emailVerified], [true, true]);
+  assert.equal((await o.call('/api/email-verification/confirm', { code: '111111', password }, { cookie: ali })).body.ok, false);
+  assert.equal((await o.call('/api/email-verification/confirm', { code }, { cookie: ali })).status, 403, 'the owner’s password is asked');
+  const confirmed = await o.call('/api/email-verification/confirm', { code, password }, { cookie: ali });
+  assert.deepEqual([confirmed.body.ok, confirmed.body.emailVerified, confirmed.body.emailVerification], [true, true, true]);
   const users = (await o.call('/api/users', undefined, { cookie: ceo })).body;
   assert.equal(users.find((u) => u.id === 'staff-ali').emailVerified, true, 'the tick on Kullanıcı Yönetimi');
   assert.equal((await o.call('/api/email-verification/send', {}, { cookie: ali })).status, 409, 'already verified');
@@ -280,6 +332,9 @@ test('e-mail verification from the account screen: a 6-digit code, a tick, gone 
   assert.deepEqual([bulk.body.queued, bulk.body.missing], [1, 1]);
   const again = await o.call('/api/email-verification/send-all', {}, { cookie: ceo });
   assert.deepEqual([again.body.queued, again.body.recent], [0, 1]);
+  // The manager enters the code the person reads out, without that person's password.
+  const read = await o.call('/api/email-verification/confirm', { userId: 'staff-ali', code: codeIn(o.mails.at(-1), 6) }, { cookie: ceo });
+  assert.deepEqual([read.body.ok, read.body.emailVerified], [true, true]);
   assert.equal((await o.call('/api/email-verification/send-all', {}, { cookie: ali })).status, 403);
 });
 

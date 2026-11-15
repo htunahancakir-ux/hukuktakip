@@ -11,6 +11,7 @@ const { createPlatformHandler } = require('../lib/platform-app.cjs');
 const { officeManagers, resetManager } = require('../lib/saas/office-recovery.cjs');
 const { verifyPassword } = require('../lib/password-policy.cjs');
 const platform = require('../lib/saas/platform.cjs');
+const { liveTested, WHATSAPP } = require('./support/recovery.cjs');
 
 process.env.PLATFORM_ENCRYPTION_KEY = crypto.randomBytes(32).toString('hex');
 const API_PASSWORD = 'Synthetic-Verimor-Api-Pass';
@@ -183,12 +184,13 @@ test('Şifremi unuttum: without office WhatsApp, a one-time SMS password lets th
   assert.equal(fake.sent().length, before + 1, 'third request of the day sent, fourth silently not');
 });
 
-test('once the office sets up WhatsApp, or when platform SMS is off, recovery does not use platform SMS', async (t) => {
-  const run = async ({ whatsapp, available }) => {
+test('once the office’s WhatsApp passed its live test, or when platform SMS is off, recovery does not use platform SMS', async (t) => {
+  const run = async ({ whatsapp, available, tested = true }) => {
     const { pg, pool } = await database();
     const state = fixture();
     state.users[0].mobilePhone = '905321234567';
-    if (whatsapp) state.whatsappConfig = { enabled: true, resetTemplate: 'password_link_tr' };
+    if (whatsapp) state.whatsappConfig = { ...WHATSAPP, resetTemplate: 'password_link_tr' };
+    if (tested) liveTested(state);
     await importState(pool, state);
     const sent = [];
     const app = await serve(
@@ -213,6 +215,9 @@ test('once the office sets up WhatsApp, or when platform SMS is off, recovery do
   const viaWhatsApp = await run({ whatsapp: true, available: true });
   assert.deepEqual([viaWhatsApp.status, viaWhatsApp.body.channel, viaWhatsApp.sent.length], [200, 'whatsapp', 0], 'office WhatsApp wins');
   assert.deepEqual(viaWhatsApp.body.alternatives, ['sms'], 'platform SMS stays offered when WhatsApp does not arrive');
+  // WhatsApp saved but never live-tested: the platform's SMS still carries recovery.
+  const untested = await run({ whatsapp: true, available: true, tested: false });
+  assert.deepEqual([untested.body.channel, untested.body.alternatives, untested.sent.length], ['sms', [], 1]);
   const nothing = await run({ whatsapp: false, available: false });
   assert.deepEqual(nothing.body, { ok: true, channel: 'none', alternatives: [] }, 'no channel: the screen offers "Yöneticiden iste"');
   assert.equal(nothing.sent.length, 0);
