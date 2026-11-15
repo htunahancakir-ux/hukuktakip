@@ -11,8 +11,31 @@ async function userManagement(editId) {
     return;
   }
   const selected = users.find((u) => u.id === editId);
+  // "Yöneticiden iste" requests and whether a new password can be sent by SMS or e-mail.
+  let help = { requests: [], delivery: {} };
+  try {
+    const answer = authApi('/api/password-help');
+    if (Array.isArray(answer?.requests)) help = answer;
+  } catch {}
+  const helpFor = selected && help.requests.find((request) => request.userId === selected.id);
+  const deliveryOption = (value, label, ready, missing) =>
+    `<option value="${value}" ${ready ? '' : 'disabled'}>${esc(label)}${ready ? '' : ' — ' + esc(missing)}</option>`;
   $('#content').innerHTML =
-    `<div class="panel"><div class="panelhead"><div><h2>Personel Şifre Değiştirme / Sıfırlama</h2><p>Yeni hesap ve yetki işlemleri Personel bölümünden yapılır. Şifre sıfırlanınca kullanıcının açık oturumları kapatılır.</p></div></div>${selected ? `<form id="passwordResetForm"><div class="formbody grid"><p class="full"><b>${esc(selected.name)}</b> · ${esc(selected.username)}</p><label class="field">Yeni Şifre<input name="password" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></label><label class="field">Yeni Şifre Tekrar<input name="confirm" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></label></div><div class="actions"><button class="secondary" type="button" id="cancelPasswordReset">Vazgeç</button><button class="primary" type="submit">Şifreyi Sıfırla</button></div></form>` : ''}<div class="formbody"><label class="field">Personel / Kullanıcı Ara<input type="search" id="passwordUserSearch" placeholder="Ad, kullanıcı adı, e-posta veya telefon…"></label></div><div class="overflow"><table><thead><tr><th>AD SOYAD</th><th>KULLANICI ADI</th><th>E-POSTA</th><th>CEP TELEFONU</th><th>ROL</th><th>DURUM</th><th>ŞİFRE İŞLEMİ</th></tr></thead><tbody id="passwordUserRows"></tbody></table></div></div>`;
+    `${passwordHelpPanel(help.requests)}<div class="panel"><div class="panelhead"><div><h2>Personel Şifre Değiştirme / Sıfırlama</h2><p>Yeni hesap ve yetki işlemleri Personel bölümünden yapılır. Şifre sıfırlanınca kullanıcının açık oturumları kapatılır.</p></div></div>${
+      selected
+        ? `<form id="passwordResetForm"><div class="formbody grid"><p class="full"><b>${esc(selected.name)}</b> · ${esc(selected.username)}${helpFor ? ' · <span class="email-unverified-mark">Şifre talebi bekliyor</span>' : ''}</p><label class="field">Yeni Şifre<input name="password" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></label><label class="field">Yeni Şifre Tekrar<input name="confirm" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></label><label class="field">Yeni şifreyi kullanıcıya iletme<select name="deliver">${deliveryOption('none', 'Kendim ileteceğim (telefonla / yüz yüze)', true)}${deliveryOption(
+            'sms',
+            'SMS ile gönder (kayıtlı cep telefonuna)',
+            help.delivery?.sms && selected.mobilePhone,
+            help.delivery?.sms ? 'cep telefonu kayıtlı değil' : 'SMS açık değil',
+          )}${deliveryOption(
+            'email',
+            'E-posta ile gönder (kayıtlı adrese)',
+            help.delivery?.email && selected.email,
+            help.delivery?.email ? 'e-posta kayıtlı değil' : 'e-posta gönderimi açık değil',
+          )}</select></label><div class="field"><span>Güçlü şifre</span><button type="button" class="secondary" id="generatePassword">Şifre üret</button></div><p class="full" id="generatedPassword" role="status"></p><p class="full">Kimliğini doğrulamadığınız birine şifre iletmeyin. Kayıtlı telefon veya e-posta yanlışsa önce tablodaki “E-posta / Cep Telefonu” ile düzeltin.</p></div><div class="actions"><button class="secondary" type="button" id="cancelPasswordReset">Vazgeç</button><button class="primary" type="submit">Şifreyi Sıfırla</button></div></form>`
+        : ''
+    }<div class="formbody"><label class="field">Personel / Kullanıcı Ara<input type="search" id="passwordUserSearch" placeholder="Ad, kullanıcı adı, e-posta veya telefon…"></label></div><div class="overflow"><table><thead><tr><th>AD SOYAD</th><th>KULLANICI ADI</th><th>E-POSTA</th><th>CEP TELEFONU</th><th>ROL</th><th>DURUM</th><th>ŞİFRE İŞLEMİ</th></tr></thead><tbody id="passwordUserRows"></tbody></table></div></div>`;
   $('#content').insertAdjacentHTML('afterbegin', userAuditTabs('users'));
   bindUserAuditTabs();
   const inactiveToggle = document.createElement('label');
@@ -33,7 +56,7 @@ async function userManagement(editId) {
       visibleUsers
         .map(
           (u) =>
-            `<tr><td>${esc(u.name)}${u.testAccount ? '<small class="test-record-badge">Test hesabı</small>' : ''}</td><td>${esc(u.username)}</td><td>${(window.hanPrivacy && hanPrivacy.html('email', u.email)) || esc(u.email || '—')}</td><td>${((phone) => (window.hanPrivacy && hanPrivacy.html('phone', u.mobilePhone, phone)) || esc(phone || '—'))(u.mobilePhone && typeof formatPhoneNumber === 'function' ? formatPhoneNumber(u.mobilePhone) : u.mobilePhone)}</td><td>${u.role === 'ceo' ? 'CEO' : u.role === 'admin' ? 'Yönetici' : 'Personel'}</td><td>${u.active ? 'Aktif' : 'Pasif'}</td><td>${u.role !== 'ceo' || hanAuth.role === 'ceo' ? `<button class="link" data-reset-password="${esc(u.id)}">Şifre Değiştir / Sıfırla</button>` : 'CEO tarafından yönetilir'}</td></tr>`,
+            `<tr><td>${esc(u.name)}${u.testAccount ? '<small class="test-record-badge">Test hesabı</small>' : ''}</td><td>${esc(u.username)}</td><td>${(window.hanPrivacy && hanPrivacy.html('email', u.email)) || esc(u.email || '—')}${u.email ? ' ' + emailVerifiedMark(u.emailVerified === true) : ''}</td><td>${((phone) => (window.hanPrivacy && hanPrivacy.html('phone', u.mobilePhone, phone)) || esc(phone || '—'))(u.mobilePhone && typeof formatPhoneNumber === 'function' ? formatPhoneNumber(u.mobilePhone) : u.mobilePhone)}</td><td>${u.role === 'ceo' ? 'CEO' : u.role === 'admin' ? 'Yönetici' : 'Personel'}</td><td>${u.active ? 'Aktif' : 'Pasif'}</td><td>${u.role !== 'ceo' || hanAuth.role === 'ceo' ? `<button class="link" data-reset-password="${esc(u.id)}">Şifre Değiştir / Sıfırla</button>` : 'CEO tarafından yönetilir'}</td></tr>`,
         )
         .join('') || '<tr><td colspan="7" class="empty">Kullanıcı bulunamadı.</td></tr>';
     document.querySelectorAll('[data-reset-password]').forEach((b) => {
@@ -56,7 +79,11 @@ async function userManagement(editId) {
       button.textContent = 'E-posta / Cep Telefonu';
       button.onclick = () =>
         showUserContact(account, (saved) => {
-          Object.assign(account, { email: saved.email, mobilePhone: saved.mobilePhone });
+          Object.assign(account, {
+            email: saved.email,
+            mobilePhone: saved.mobilePhone,
+            emailVerified: saved.emailVerified === true,
+          });
           renderRows();
         });
       row.lastElementChild.append(button);
@@ -65,26 +92,83 @@ async function userManagement(editId) {
   $('#passwordUserSearch').oninput = renderRows;
   $('#showInactiveUsers').onchange = renderRows;
   renderRows();
+  bindPasswordHelpPanel();
   if (!selected) return;
-  installPasswordVisibility($('#passwordResetForm'));
+  const resetForm = $('#passwordResetForm');
+  installPasswordVisibility(resetForm);
+  if (selected.id === hanAuth.id) resetForm.elements.deliver.closest('label').hidden = true;
+  $('#generatePassword').onclick = () => {
+    const password = strongPassword();
+    resetForm.elements.password.value = password;
+    resetForm.elements.confirm.value = password;
+    $('#generatedPassword').textContent = 'Üretilen şifre: ' + password;
+  };
   $('#cancelPasswordReset').onclick = () => userManagement();
-  $('#passwordResetForm').onsubmit = (e) => {
+  resetForm.onsubmit = (e) => {
     e.preventDefault();
     const value = Object.fromEntries(new FormData(e.target));
     if (value.password !== value.confirm) return toast('Şifreler aynı olmalıdır.');
     try {
-      const result = authApi('/api/users/password', 'POST', { id: selected.id, password: value.password });
+      const result = authApi('/api/users/password', 'POST', {
+        id: selected.id,
+        password: value.password,
+        deliver: selected.id === hanAuth.id ? 'none' : value.deliver || 'none',
+      });
       if (result.reauthenticate) {
         hanAuth = null;
         location.reload();
         return;
       }
+      const sent = result.sms || result.email;
       userManagement();
-      toast('Şifre güncellendi. Kullanıcının açık oturumları kapatıldı.');
+      toast(
+        !sent
+          ? 'Şifre güncellendi. Kullanıcının açık oturumları kapatıldı; yeni şifreyi kullanıcıya iletin.'
+          : sent.sent
+            ? 'Şifre güncellendi ve kullanıcıya ' + (result.sms ? 'SMS' : 'e-posta') + ' ile gönderildi.'
+            : 'Şifre güncellendi ama gönderilemedi: ' +
+              sent.error +
+              ' Yeni şifreyi kullanıcıya kendiniz iletin.',
+      );
     } catch (error) {
       toast(error.message);
     }
   };
+}
+
+// 12 characters without look-alikes (0/O, 1/l/I), easy to read out on the phone.
+function strongPassword() {
+  const alphabet = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  return [...bytes].map((byte) => alphabet[byte % alphabet.length]).join('');
+}
+
+// "Yöneticiden iste": users who could not sign in and asked for a new password.
+function passwordHelpPanel(requests) {
+  if (!requests?.length) return '';
+  return `<section class="panel password-help-list" aria-labelledby="passwordHelpTitle"><div class="panelhead"><div><h2 id="passwordHelpTitle">Bekleyen şifre talepleri (${requests.length})</h2><p>Bu kişiler giriş yapamadığını bildirdi. Kimliğini doğrulayın, yeni şifre belirleyip iletin; şifre değişince talep kapanır.</p></div></div><div class="overflow"><table><thead><tr><th>AD SOYAD</th><th>KULLANICI ADI</th><th>TALEP ZAMANI</th><th>NOT</th><th>KAYITLI İLETİŞİM</th><th>İŞLEM</th></tr></thead><tbody>${requests
+    .map(
+      (request) =>
+        `<tr><td>${esc(request.name)}</td><td>${esc(request.username)}</td><td>${esc(new Date(request.at).toLocaleString('tr-TR'))}</td><td class="password-help-note">${esc(request.note || '—')}</td><td>${request.mobilePhone ? ((phone) => (window.hanPrivacy && hanPrivacy.html('phone', request.mobilePhone, phone)) || esc(phone))(typeof formatPhoneNumber === 'function' ? formatPhoneNumber(request.mobilePhone) : request.mobilePhone) : 'Cep telefonu yok'}<br>${request.email ? ((window.hanPrivacy && hanPrivacy.html('email', request.email)) || esc(request.email)) + ' ' + emailVerifiedMark(request.emailVerified === true) : 'E-posta yok'}</td><td><button type="button" class="link" data-help-reset="${esc(request.userId)}">Şifre Belirle</button><button type="button" class="link" data-help-close="${esc(request.id)}">Talebi Kapat</button></td></tr>`,
+    )
+    .join('')}</tbody></table></div></section>`;
+}
+function bindPasswordHelpPanel() {
+  document.querySelectorAll('[data-help-reset]').forEach((button) => {
+    button.onclick = () => userManagement(button.dataset.helpReset);
+  });
+  document.querySelectorAll('[data-help-close]').forEach((button) => {
+    button.onclick = () => {
+      if (!confirm('Talep şifre belirlenmeden kapatılsın mı?')) return;
+      try {
+        authApi('/api/password-help/close', 'POST', { id: button.dataset.helpClose });
+        userManagement();
+        toast('Şifre talebi kapatıldı.');
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+  });
 }
 
 function staffAccounting() {

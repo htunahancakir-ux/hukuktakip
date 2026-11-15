@@ -17,6 +17,7 @@ const {
 const { searchWorkspace } = require('../../lib/workspace-search.cjs');
 const { notificationSummary } = require('../../lib/notification-summary.cjs');
 const { handleWhatsAppRoutes } = require('./access-whatsapp.cjs');
+const { handleRecoveryRoutes, PUBLIC_ROUTES: RECOVERY_ROUTES } = require('./access-recovery.cjs');
 const { handleSmsRoutes } = require('./access-sms.cjs');
 const { handleFeedbackRoutes } = require('./access-feedback.cjs');
 const { handleAiRoutes } = require('./access-ai.cjs');
@@ -382,21 +383,16 @@ function createAccess(stateFile, options = {}) {
       if (u?.activeBreak && url.pathname === '/api/staff-breaks' && (await handleBreakRoutes(ctx)))
         return true;
       if (await handleEmployeeTermsRoutes(ctx)) return true;
-      if (
-        [
-          '/api/password-reset/request',
-          '/api/password-reset/complete',
-          '/api/password-reset/sms-complete',
-        ].includes(url.pathname) &&
-        (await handleWhatsAppRoutes(ctx))
-      )
-        return true;
+      // "Şifremi unuttum" works signed out: every channel, and "Yöneticiden iste".
+      if (RECOVERY_ROUTES.includes(url.pathname) && (await handleRecoveryRoutes(ctx))) return true;
+      if (url.pathname === '/api/password-reset/complete' && (await handleWhatsAppRoutes(ctx))) return true;
       if (termsRequired && url.pathname !== '/api/logout') {
         send(res, 428, { error: REQUIRED_MESSAGE, code: 'employee_terms_required' });
         return true;
       }
       if (await handleWhatsAppRoutes(ctx)) return true;
       if (!u) throw fail(401, 'Giriş yapın.');
+      if (await handleRecoveryRoutes(ctx)) return true;
       if (await require('./access-ceo-pin.cjs').handleCeoPin(ctx)) return true;
       if (await handleAiRoutes(ctx)) return true;
       if (await handleIyzicoRoutes(ctx)) return true;

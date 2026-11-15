@@ -155,7 +155,9 @@ function showWorkflowReceipt(notice) {
   host.setAttribute('role', 'status');
   host.setAttribute('aria-live', 'polite');
   const breakNotice = ['breakStarted', 'breakEnded'].includes(notice.type);
-  host.innerHTML = `<div class="receipt-brand">HANHUKUK · ${breakNotice ? 'MOLA BİLDİRİMİ' : 'DOSYA BİLDİRİMİ'}</div><div class="receipt-rule"></div><strong>${notice.type === 'breakStarted' ? 'MOLAYA ÇIKTI' : notice.type === 'breakEnded' ? 'MOLA BİTTİ' : notice.type === 'noCallWarning' ? 'ARAMA HATIRLATMASI' : notice.type === 'fileWon' ? 'YENİ DOSYA' : notice.type === 'fileLost' ? 'DOSYA DEVRİ' : 'SORUMLU DEĞİŞİKLİĞİ'}</strong><p>${esc(notice.text)}</p>${!breakNotice && notice.type !== 'fileLost' ? '<button type="button" class="secondary" data-workflow-open>Föyü Aç</button>' : ''}<small>${messageTimestamp(notice.createdAt)}</small><div class="receipt-rule"></div><div class="receipt-barcode">▌▏▎▍▌▎▏▌▍▎▌▏▎▍▌</div>`;
+  // "Yöneticiden iste": a user who cannot sign in asked the managers for a new password.
+  const helpNotice = notice.type === 'passwordHelp';
+  host.innerHTML = `<div class="receipt-brand">HANHUKUK · ${breakNotice ? 'MOLA BİLDİRİMİ' : helpNotice ? 'ŞİFRE TALEBİ' : 'DOSYA BİLDİRİMİ'}</div><div class="receipt-rule"></div><strong>${notice.type === 'breakStarted' ? 'MOLAYA ÇIKTI' : notice.type === 'breakEnded' ? 'MOLA BİTTİ' : helpNotice ? 'YENİ ŞİFRE İSTENDİ' : notice.type === 'noCallWarning' ? 'ARAMA HATIRLATMASI' : notice.type === 'fileWon' ? 'YENİ DOSYA' : notice.type === 'fileLost' ? 'DOSYA DEVRİ' : 'SORUMLU DEĞİŞİKLİĞİ'}</strong><p>${esc(notice.text)}</p>${helpNotice ? '<button type="button" class="secondary" data-workflow-help>Şifre Belirle</button>' : !breakNotice && notice.type !== 'fileLost' ? '<button type="button" class="secondary" data-workflow-open>Föyü Aç</button>' : ''}<small>${messageTimestamp(notice.createdAt)}</small><div class="receipt-rule"></div><div class="receipt-barcode">▌▏▎▍▌▎▏▌▍▎▌▏▎▍▌</div>`;
   document.body.append(host);
   if (host.showPopover)
     try {
@@ -167,6 +169,12 @@ function showWorkflowReceipt(notice) {
   host.querySelector('[data-workflow-open]')?.addEventListener('click', () => {
     host.remove();
     openPromiseBorrower(notice.documentId);
+  });
+  host.querySelector('[data-workflow-help]')?.addEventListener('click', () => {
+    host.remove();
+    page = 'users';
+    render();
+    userManagement(notice.helpUserId);
   });
   fetch('/api/workflow-notices/ack', {
     method: 'POST',

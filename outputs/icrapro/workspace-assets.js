@@ -21,6 +21,7 @@ const workspaceScripts = [
   'workspace-search.js',
   'workspace-whatsapp.js',
   'workspace-sms.js',
+  'workspace-recovery.js',
   'workspace-ai.js',
   'workspace-iyzico.js',
   'workspace-support.js',

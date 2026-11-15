@@ -362,9 +362,11 @@ function boot() {
       } else if (state.tab === 'admin' && !state.account) {
         state.account = await api('account');
         if (!state.setupRequired) {
-          const [list, sms, maps, backups] = await Promise.all([
+          const [list, sms, email, maps, backups] = await Promise.all([
             api('operators'),
             api('settings/sms'),
+            // The page stays usable before the e-mail table exists (migration not applied yet).
+            api('settings/email').catch(() => null),
             api('settings/maps'),
             // The page stays usable when the backup state cannot be read.
             api('backups').catch(() => null),
@@ -372,6 +374,7 @@ function boot() {
           state.operators = list.operators;
           state.audit = list.audit;
           state.sms = sms;
+          state.email = email;
           state.maps = maps;
           state.backups = backups;
         }
@@ -5428,6 +5431,9 @@ function boot() {
     'settings.sms': 'SMS ayarlarını kaydetti',
     'settings.sms_clear': 'SMS ayarlarını sildi',
     'settings.sms_test': 'Deneme SMS gönderdi',
+    'settings.email': 'E-posta ayarlarını kaydetti',
+    'settings.email_clear': 'E-posta ayarlarını sildi',
+    'settings.email_test': 'Deneme e-postası gönderdi',
     'settings.maps': 'Harita servisi ayarlarını kaydetti',
     'settings.maps_clear': 'Harita servisi ayarlarını sildi',
   };
@@ -5574,6 +5580,157 @@ function boot() {
                     h('td', { text: dateTimeText(r.createdAt) }),
                     h('td', { text: r.office || '—' }),
                     h('td', { text: SMS_PURPOSE[r.purpose] || r.purpose }),
+                    h('td', { text: r.dest }),
+                    h('td', { text: (SMS_STATUS[r.status] || r.status) + (r.error ? ' · ' + r.error : '') }),
+                  ),
+                ),
+              ),
+            ),
+          )
+        : null,
+    );
+  }
+  // The selling company's own Brevo account: "Şifremi unuttum" codes, e-mail verification and
+  // passwords a manager sends go out from one platform address under each office's name.
+  const EMAIL_PURPOSE = {
+    password_recovery: 'Şifremi unuttum',
+    email_verification: 'E-posta doğrulama',
+    password_delivery: 'Yöneticinin gönderdiği şifre',
+    test: 'Deneme',
+  };
+  function emailPanel() {
+    const email = state.email;
+    if (!email) return null;
+    const result = h('p', { class: 'muted', role: 'status' });
+    const form = h('form', { class: 'smsform', novalidate: true });
+    const apiKey = h('input', {
+      type: 'password',
+      autocomplete: 'new-password',
+      placeholder: email.configured ? 'Kayıtlı — değiştirmek için yazın' : 'xkeysib-…',
+    });
+    const senderEmail = h('input', { type: 'email', autocomplete: 'off', maxlength: '254' });
+    senderEmail.value = email.senderEmail;
+    const senderName = h('input', { type: 'text', autocomplete: 'off', maxlength: '70' });
+    senderName.value = email.senderName;
+    const enabled = h('input', { type: 'checkbox' });
+    enabled.checked = email.enabled;
+    const typed = () => ({
+      apiKey: apiKey.value.trim() || undefined,
+      senderEmail: senderEmail.value.trim(),
+      senderName: senderName.value.trim(),
+    });
+    const run = async (button, work) => {
+      button.disabled = true;
+      result.textContent = '';
+      try {
+        await work();
+      } catch (e) {
+        result.textContent = '✕ ' + e.message;
+      } finally {
+        button.disabled = false;
+      }
+    };
+    const testButton = h('button', { class: 'btn', type: 'button', text: 'Bağlantıyı test et' });
+    testButton.onclick = () =>
+      run(testButton, async () => {
+        const r = await api('settings/email/test', { method: 'POST', body: typed() });
+        const credits = r.credits === null ? '—' : Number(r.credits).toLocaleString('tr-TR');
+        const domain = r.domain.missing
+          ? `✕ ${r.domain.name} alan adı Brevo’da ekli değil: Gönderenler ve alan adları bölümünden ekleyip DNS kayıtlarını girin.`
+          : r.domain.authenticated
+            ? `✓ ${r.domain.name} alan adı doğrulanmış.`
+            : `✕ ${r.domain.name} alan adı henüz doğrulanmamış: Brevo’nun verdiği DKIM/DMARC kayıtlarını DNS’e ekleyip “Doğrula”ya basın.`;
+        result.textContent = `✓ Bağlandı (${r.account}). Kalan kredi: ${credits}${r.plan ? ' · ' + r.plan : ''}. ${domain}`;
+      });
+    const sendButton = h('button', { class: 'btn', type: 'button', text: 'Deneme e-postası gönder' });
+    sendButton.onclick = () =>
+      formDialog({
+        title: 'Deneme e-postası',
+        intro: 'Kayıtlı ayarlarla bu adrese kısa bir deneme e-postası gönderilir.',
+        fields: [{ name: 'email', label: 'E-posta adresi', type: 'text', required: true }],
+        submitLabel: 'Gönder',
+        submit: (v) => api('settings/email/send-test', { method: 'POST', body: { email: v.email } }),
+      }).then((ok) => ok && (toast('Deneme e-postası gönderildi.'), reloadAdmin()));
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const save = form.querySelector('button[type=submit]');
+      run(save, async () => {
+        state.email = {
+          ...state.email,
+          ...(await api('settings/email', { method: 'POST', body: { ...typed(), enabled: enabled.checked } })),
+        };
+        toast('E-posta ayarları kaydedildi.');
+        await reloadAdmin();
+      });
+    });
+    form.append(
+      h(
+        'div',
+        { class: 'smsgrid' },
+        h('label', { class: 'field' }, h('span', { text: 'Brevo API anahtarı' }), apiKey),
+        h('label', { class: 'field' }, h('span', { text: 'Gönderen adresi' }), senderEmail),
+        h('label', { class: 'field' }, h('span', { text: 'Varsayılan gönderen adı' }), senderName),
+      ),
+      h('label', { class: 'check' }, enabled, 'Bürolar e-postayla şifre yenileme ve e-posta doğrulama kullanabilsin'),
+      h(
+        'p',
+        { class: 'muted' },
+        'Her büronun e-postası bu adresten, büronun kendi adıyla gider; varsayılan ad yalnızca deneme e-postasında kullanılır. Brevo’da gönderen alan adı (hanhukuktakip.com) doğrulanmış olmalı. Brevo’da “Yetkili IP adresleri” açıksa sunucunun IP adresine izin verin; yoksa test “IP” hatası verir.',
+      ),
+      result,
+      h(
+        'div',
+        { class: 'toolbar' },
+        testButton,
+        email.configured ? sendButton : null,
+        h('button', { class: 'btn primary', type: 'submit', text: 'Kaydet' }),
+      ),
+    );
+    const u = email.usage;
+    return h(
+      'section',
+      { class: 'panel' },
+      h(
+        'div',
+        { class: 'panelhead' },
+        h('h3', { text: 'E-posta (Brevo) — platform hesabı' }),
+        badge(email.enabled ? 'Açık' : email.configured ? 'Kapalı' : 'Ayarlanmadı', email.enabled ? 'ok' : 'warn'),
+      ),
+      h(
+        'div',
+        { class: 'accountbody' },
+        h('p', {
+          class: 'muted',
+          text: `Bu ay ${u.monthSent} e-posta, son 24 saatte ${u.daySent}. Son 30 günde ${u.failed30} hata, ${u.blocked30} sınıra takılan. Büro başına günlük sınır: ${email.dailyLimitPerOffice}.`,
+        }),
+        form,
+      ),
+      email.recent.length
+        ? h(
+            'div',
+            { class: 'overflow' },
+            h(
+              'table',
+              {},
+              h(
+                'thead',
+                {},
+                h(
+                  'tr',
+                  {},
+                  ['Zaman', 'Büro', 'Amaç', 'Adres', 'Durum'].map((t) => h('th', { text: t })),
+                ),
+              ),
+              h(
+                'tbody',
+                {},
+                email.recent.map((r) =>
+                  h(
+                    'tr',
+                    {},
+                    h('td', { text: dateTimeText(r.createdAt) }),
+                    h('td', { text: r.office || '—' }),
+                    h('td', { text: EMAIL_PURPOSE[r.purpose] || r.purpose }),
                     h('td', { text: r.dest }),
                     h('td', { text: (SMS_STATUS[r.status] || r.status) + (r.error ? ' · ' + r.error : '') }),
                   ),
@@ -6329,6 +6486,7 @@ function boot() {
       myAccount,
       operators,
       smsPanel(),
+      emailPanel(),
       mapsPanel(),
       backupPanel(),
       audit,

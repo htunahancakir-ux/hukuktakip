@@ -315,7 +315,7 @@ test('SMS password recovery: one-time code, same answer for every account, limit
   try {
     const unknown = await request('unknown');
     const known = await request('test');
-    assert.deepEqual(unknown, { ok: true, channel: 'sms' });
+    assert.deepEqual(unknown, { ok: true, channel: 'sms', alternatives: [] });
     assert.deepEqual(known, unknown);
     assert.equal(app.sms.sent().length, 1);
     const message = app.sms.sent()[0].body;
@@ -387,15 +387,28 @@ test('SMS settings errors reach the CEO with their status and message', async ()
 });
 
 test('Password reset channel: WhatsApp wins, otherwise SMS only when enabled', async () => {
+  // Without any channel the screen offers "Yöneticiden iste" instead of an error.
+  const none = { ok: true, channel: 'none', alternatives: [] };
   const cases = [
     {
       name: 'whatsapp configured',
       extra: { whatsappConfig: { enabled: true, resetTemplate: 'x' }, smsConfig: savedConfig() },
       status: 200,
-      body: { ok: true, channel: 'whatsapp' },
+      body: { ok: true, channel: 'whatsapp', alternatives: ['sms'] },
     },
-    { name: 'nothing configured', extra: {}, status: 503 },
-    { name: 'sms disabled', extra: { smsConfig: savedConfig({ enabled: false }) }, status: 503 },
+    {
+      name: 'the office picked SMS first',
+      extra: {
+        whatsappConfig: { enabled: true, resetTemplate: 'x' },
+        smsConfig: savedConfig(),
+        recoveryPolicy: { primary: 'sms' },
+      },
+      status: 200,
+      body: { ok: true, channel: 'sms', alternatives: ['whatsapp'] },
+      sends: true,
+    },
+    { name: 'nothing configured', extra: {}, status: 200, body: none },
+    { name: 'sms disabled', extra: { smsConfig: savedConfig({ enabled: false }) }, status: 200, body: none },
   ];
   for (const item of cases) {
     const state = { ...fixture(), ...item.extra };
@@ -408,7 +421,8 @@ test('Password reset channel: WhatsApp wins, otherwise SMS only when enabled', a
         if (item.body) assert.deepEqual(await response.json(), item.body, item.name);
         await app.settle();
       }
-      assert.equal(app.sms.calls.length, 0, item.name);
+      // Only the office's own choice of SMS reaches Verimor, once, for the existing account.
+      assert.equal(app.sms.calls.length, item.sends ? 1 : 0, item.name);
     } finally {
       await app.close();
     }
@@ -443,6 +457,7 @@ test('Backups leave out SMS credentials and recovery codes', async (t) => {
     data: { 'icrapro-v1': { docs: [] } },
     smsConfig: savedConfig(),
     smsRecovery: [{ userId: 'ceo', at: Date.now(), expires: Date.now() + 1, salt: 's', hash: 'h' }],
+    emailRecovery: [{ userId: 'ceo', kind: 'reset', at: Date.now(), expires: Date.now() + 1, salt: 's', hash: 'h' }],
   };
   let policy = {};
   const store = {
@@ -471,6 +486,7 @@ test('Backups leave out SMS credentials and recovery codes', async (t) => {
   const restored = decryptState(remote.bytes, Buffer.from(process.env.BACKUP_ENCRYPTION_KEY, 'hex'));
   assert.equal('smsConfig' in restored, false);
   assert.equal('smsRecovery' in restored, false);
+  assert.equal('emailRecovery' in restored, false, 'e-mail codes stay out too');
   assert.deepEqual(restored, { users: state.users, data: state.data });
 });
 

@@ -9,7 +9,7 @@ function smsSettingsPage() {
   const state = config.configured ? (config.enabled ? 'Açık' : 'Kapalı') : 'Ayarlanmadı';
   $('#content').innerHTML = `${settingsSectionTabs('sms')}<section class="panel">
     <div class="panelhead"><div><h2>SMS — Verimor</h2>
-    <p>Şifremi unuttum ve benzeri önemli bildirimler için büronuzun Verimor SMS hesabı. WhatsApp entegrasyonu kuruluysa şifre bağlantısı WhatsApp’tan gider; kurulu değilse SMS ile tek kullanımlık geçici şifre gönderilir.</p></div><span class="badge" id="smsState">${esc(state)}</span></div>
+    <p>Şifremi unuttum ve benzeri önemli bildirimler için büronuzun Verimor SMS hesabı. SMS ile tek kullanımlık geçici şifre gönderilir; SMS, e-posta ve WhatsApp arasında hangisinin önce deneneceğini Entegrasyonlar → Şifre Yenileme bölümünden seçin.</p></div><span class="badge" id="smsState">${esc(state)}</span></div>
     <form id="smsConfigForm"><div class="formbody grid">
       <label class="field">Kullanıcı adı (Verimor hesap numarası)<input name="username" inputmode="numeric" autocomplete="off" maxlength="15" required data-optional="true" placeholder="ör. 908501234567" value="${esc(config.username)}"></label>
       <label class="field">API şifresi<input name="password" type="password" maxlength="200" autocomplete="new-password" data-optional="true"
