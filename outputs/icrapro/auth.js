@@ -53,6 +53,9 @@ async function preloadServerData({ complete = false } = {}) {
     hanStartupData = new Map([...protectedKeys].map((key) => [key, result.data[key]]));
     for (const [key, value] of hanStartupData) hanDataBaselines.set(key, structuredClone(value));
     window.hanRecordSummary = result.summary;
+    window.hanPersonnelDepartmentUnits = Array.isArray(result.personnelDepartmentUnits)
+      ? result.personnelDepartmentUnits
+      : [];
     window.hanAccountBalances = result.accountBalances;
     window.hanWorkspaceComplete = false;
     return;

@@ -1,19 +1,46 @@
 let personnelPayrollTodayMonth = '';
-function personnelDepartmentLabel(value) {
+function personnelDepartmentCode(value) {
   const name = String(value || '')
     .normalize('NFKC')
     .trim()
     .replace(/\s+/g, ' ');
-  return name.toLocaleLowerCase('tr') === 'temlik' ? 'Call Center-T' : name;
+  const code = name.toLocaleLowerCase('tr') === 'temlik' ? 'Call Center-T' : name;
+  return (
+    (window.hanPersonnelDepartmentUnits || []).find(
+      (unit) => unit.id.toLocaleLowerCase('tr') === code.toLocaleLowerCase('tr'),
+    )?.id || code
+  );
 }
-function readPersonnelDepartments() {
-  const result = authApi('/api/personnel-departments');
+function personnelDepartmentLabel(value) {
+  const code = personnelDepartmentCode(value);
+  return (window.hanPersonnelDepartmentUnits || []).find((unit) => unit.id === code)?.name || code;
+}
+function cachePersonnelDepartments(result) {
   if (
     !Array.isArray(result.departments) ||
     result.departments.some((name) => typeof name !== 'string' || !name)
   )
     throw Error('Birim listesi alınamadı. Yeniden deneyin.');
+  const units = result.units || result.departments.map((id) => ({ id, name: id }));
+  if (
+    !Array.isArray(units) ||
+    units.length !== result.departments.length ||
+    units.some(
+      (unit) =>
+        !unit ||
+        typeof unit.id !== 'string' ||
+        typeof unit.name !== 'string' ||
+        !unit.name ||
+        !result.departments.includes(unit.id),
+    ) ||
+    new Set(units.map((unit) => unit.id)).size !== units.length
+  )
+    throw Error('Birim listesi alınamadı. Yeniden deneyin.');
+  window.hanPersonnelDepartmentUnits = units.map((unit) => ({ id: unit.id, name: unit.name }));
   return result.departments;
+}
+function readPersonnelDepartments() {
+  return cachePersonnelDepartments(authApi('/api/personnel-departments'));
 }
 async function openPersonnelDepartment() {
   if (!['ceo', 'admin'].includes(window.hanAuth?.role))
@@ -21,6 +48,13 @@ async function openPersonnelDepartment() {
   const requestedPage = page;
   if (hanAuth.role === 'ceo' && typeof requireCeoPin === 'function') {
     if (!(await requireCeoPin('permissions')) || page !== requestedPage) return;
+  }
+  let units;
+  try {
+    readPersonnelDepartments();
+    units = window.hanPersonnelDepartmentUnits;
+  } catch (error) {
+    return toast(error.message);
   }
   let dialog = document.getElementById('personnelDepartmentDialog');
   if (!dialog) {
@@ -30,10 +64,34 @@ async function openPersonnelDepartment() {
     document.body.append(dialog);
   }
   dialog.innerHTML =
-    '<form id="personnelDepartmentForm"><div class="panelhead"><h2 id="personnelDepartmentTitle">Yeni Birim Ekle</h2><button type="button" class="secondary" data-close-department>Kapat</button></div><div class="formbody"><label class="field">Birim Adı<input name="departmentName" type="text" required maxlength="60" autocomplete="off" placeholder="Örn. Saha Operasyon"></label><p data-department-error role="alert" hidden></p></div><div class="actions"><button type="button" class="secondary" data-close-department>Vazgeç</button><button type="submit" class="primary">Birimi Kaydet</button></div></form>';
+    '<form id="personnelDepartmentForm"><div class="panelhead"><h2 id="personnelDepartmentTitle">Birim Ekle / Düzenle</h2><button type="button" class="secondary" data-close-department>Kapat</button></div><div class="formbody"><div class="toolbar"><h3>Kayıtlı Birimler</h3><button type="button" class="secondary" data-new-department>Yeni Birim Ekle</button></div><div class="department-list"><table><thead><tr><th>Birim Adı</th><th>İşlem</th></tr></thead><tbody data-department-list></tbody></table></div><h3 data-department-mode>Yeni Birim Ekle</h3><label class="field">Birim Adı<input name="departmentName" type="text" required maxlength="60" autocomplete="off" placeholder="Örn. Saha Operasyon"></label><p>Birim adı değiştiğinde personellerin maaş, prim ve yetki kuralları korunur.</p><p data-department-error role="alert" hidden></p></div><div class="actions"><button type="button" class="secondary" data-close-department>Vazgeç</button><button type="submit" class="primary">Birimi Kaydet</button></div></form>';
   const form = dialog.querySelector('form'),
     submit = form.querySelector('[type="submit"]'),
     error = form.querySelector('[data-department-error]');
+  let editing = null;
+  function select(unit) {
+    editing = unit ? { ...unit } : null;
+    form.elements.departmentName.value = unit?.name || '';
+    form.querySelector('[data-department-mode]').textContent = unit
+      ? 'Birim Adını Düzenle'
+      : 'Yeni Birim Ekle';
+    submit.textContent = unit ? 'Değişikliği Kaydet' : 'Birimi Kaydet';
+    error.hidden = true;
+    form.elements.departmentName.focus();
+  }
+  form.querySelector('[data-department-list]').innerHTML = units
+    .map(
+      (unit) =>
+        '<tr><td>' +
+        esc(unit.name) +
+        '</td><td><button type="button" class="link" data-edit-department="' +
+        esc(unit.id) +
+        '">Düzenle</button></td></tr>',
+    )
+    .join('');
+  for (const button of form.querySelectorAll('[data-edit-department]'))
+    button.onclick = () => select(units.find((unit) => unit.id === button.dataset.editDepartment));
+  form.querySelector('[data-new-department]').onclick = () => select(null);
   for (const button of dialog.querySelectorAll('[data-close-department]'))
     button.onclick = () => dialog.close();
   form.onsubmit = async (event) => {
@@ -42,12 +100,15 @@ async function openPersonnelDepartment() {
     submit.disabled = true;
     error.hidden = true;
     try {
-      const result = authApi('/api/personnel-departments', 'POST', {
+      const result = authApi('/api/personnel-departments', editing ? 'PATCH' : 'POST', {
         name: form.elements.departmentName.value,
+        ...(editing ? { action: 'rename', id: editing.id, previousName: editing.name } : {}),
       });
+      cachePersonnelDepartments(result);
       window.modalFormSaved?.(form);
       dialog.close();
-      toast(result.name + ' birimi eklendi.');
+      toast(result.name + (editing ? ' birim adı güncellendi.' : ' birimi eklendi.'));
+      if (page === requestedPage) await personnelSettings();
     } catch (failure) {
       error.textContent = failure.message || 'Birim eklenemedi.';
       error.hidden = false;
@@ -244,6 +305,11 @@ async function personnelSettings(editId) {
   }
   if (!['ceo', 'admin'].includes(window.hanAuth?.role))
     return toast('Personel tanımını yalnızca yönetici yapabilir.');
+  try {
+    readPersonnelDepartments();
+  } catch (error) {
+    return toast(error.message);
+  }
   renderActiveOperator();
   loadCalculatedBonus2();
   const dailyPrimData = authApi('/api/daily-bonuses?month=' + businessDate().slice(0, 7));
@@ -280,7 +346,7 @@ async function personnelSettings(editId) {
   addDepartment.type = 'button';
   addDepartment.id = 'newPersonnelDepartment';
   addDepartment.className = 'secondary';
-  addDepartment.textContent = 'Yeni Birim Ekle';
+  addDepartment.textContent = 'Birim Ekle / Düzenle';
   addDepartment.onclick = () => openPersonnelDepartment();
   $('#newPersonnel').before(addDepartment);
   $('#exportPersonnel').onclick = () =>
@@ -327,14 +393,13 @@ async function openPersonnelRecord(editId) {
     if (!(await requireCeoPin('permissions')) || page !== requestedPage) return;
   }
   const existing = editId ? personnel.find((record) => record.id === editId) : {};
-  const current = existing
-    ? { ...existing, department: personnelDepartmentLabel(existing.department) }
-    : null;
+  const current = existing ? { ...existing, department: personnelDepartmentCode(existing.department) } : null;
   if (!current) return toast('Personel kaydı bulunamadı.');
   let accounts, departmentOptions;
   try {
     accounts = authApi('/api/users');
     departmentOptions = readPersonnelDepartments();
+    current.department = personnelDepartmentCode(existing.department);
   } catch (error) {
     return toast(error.message || 'Personel giriş bilgileri alınamadı.');
   }
@@ -346,7 +411,7 @@ async function openPersonnelRecord(editId) {
     dialog.setAttribute('aria-labelledby', 'personnelRecordTitle');
     document.body.append(dialog);
   }
-  dialog.innerHTML = `<div class="panelhead"><div><h2 id="personnelRecordTitle">${editId ? esc(current.name) : 'Yeni Personel'}</h2><p>Personel kayıt ve bilgileri</p></div><button type="button" class="secondary" data-personnel-close>Kapat</button></div><form id="personnelForm"><div class="formbody"><h3 class="sectiontitle">${editId ? 'Personel düzenle' : 'Yeni personel'}</h3><div class="grid">${field('Ad Soyad', 'staffName', 'text', current.name, true)}<label class="field">TC Kimlik Numarası (isteğe bağlı)<input name="identity" data-optional="true" inputmode="numeric" maxlength="11" pattern="[0-9]{11}" title="11 rakam girin" value="${esc(current.identity || '')}"></label>${field('E-posta (isteğe bağlı)', 'email', 'email', current.email).replace('<input ', '<input data-optional="true" ')}${field('Cep telefonu (isteğe bağlı)', 'mobilePhone', 'tel', current.mobilePhone ?? (/^(?:90|0)?5\d{9}$/.test(String(current.phone || '').replace(/\D/g, '')) ? current.phone : '')).replace('<input ', '<input data-optional="true" ')}${field('Telefon (isteğe bağlı)', 'phone', 'tel', current.phone).replace('<input ', '<input data-optional="true" ')}<label class="field">Birimi<select name="department"><option value="">Birim seçin</option>${departmentOptions.map((unit) => `<option value="${esc(unit)}" ${(loginAccount?.role === 'admin' ? 'Yönetici' : current.department) === unit ? 'selected' : ''}>${esc(unit)}</option>`).join('')}${current.department && !departmentOptions.includes(current.department) ? `<option value="${esc(current.department)}" selected>${esc(current.department)} (önceki kayıt)</option>` : ''}</select></label>${clientCityField(current, 'staff')}<label class="field full">Açık Adres<textarea name="address" rows="3">${esc(current.address || '')}</textarea></label></div><h3 class="sectiontitle" style="margin-top:25px">Personel Giriş Bilgileri ve Yetkileri</h3><div class="grid"><label class="field">Kullanıcı Adı<input name="loginUsername" autocomplete="off" value="${esc(loginAccount?.username || '')}" ${editId && !loginAccount ? 'data-optional="true"' : 'required'}></label><label class="field">${loginAccount ? 'Yeni Şifre (değiştirmek için doldurun)' : 'Şifre'}<input name="loginPassword" type="password" minlength="10" autocomplete="new-password" ${editId ? 'data-optional="true"' : 'required'}></label><div class="full"><p>Personel bu kullanıcı adı ve şifreyle giriş yapar. Ana sayfasında yalnızca kendi dosyalarının tahsilatını, brüt kârını ve hesaplanan primini görür.</p>${[
+  dialog.innerHTML = `<div class="panelhead"><div><h2 id="personnelRecordTitle">${editId ? esc(current.name) : 'Yeni Personel'}</h2><p>Personel kayıt ve bilgileri</p></div><button type="button" class="secondary" data-personnel-close>Kapat</button></div><form id="personnelForm"><div class="formbody"><h3 class="sectiontitle">${editId ? 'Personel düzenle' : 'Yeni personel'}</h3><div class="grid">${field('Ad Soyad', 'staffName', 'text', current.name, true)}<label class="field">TC Kimlik Numarası (isteğe bağlı)<input name="identity" data-optional="true" inputmode="numeric" maxlength="11" pattern="[0-9]{11}" title="11 rakam girin" value="${esc(current.identity || '')}"></label>${field('E-posta (isteğe bağlı)', 'email', 'email', current.email).replace('<input ', '<input data-optional="true" ')}${field('Cep telefonu (isteğe bağlı)', 'mobilePhone', 'tel', current.mobilePhone ?? (/^(?:90|0)?5\d{9}$/.test(String(current.phone || '').replace(/\D/g, '')) ? current.phone : '')).replace('<input ', '<input data-optional="true" ')}${field('Telefon (isteğe bağlı)', 'phone', 'tel', current.phone).replace('<input ', '<input data-optional="true" ')}<label class="field">Birimi<select name="department"><option value="">Birim seçin</option>${departmentOptions.map((unit) => `<option value="${esc(unit)}" ${(loginAccount?.role === 'admin' ? 'Yönetici' : current.department) === unit ? 'selected' : ''}>${esc(personnelDepartmentLabel(unit))}</option>`).join('')}${current.department && !departmentOptions.includes(current.department) ? `<option value="${esc(current.department)}" selected>${esc(current.department)} (önceki kayıt)</option>` : ''}</select></label>${clientCityField(current, 'staff')}<label class="field full">Açık Adres<textarea name="address" rows="3">${esc(current.address || '')}</textarea></label></div><h3 class="sectiontitle" style="margin-top:25px">Personel Giriş Bilgileri ve Yetkileri</h3><div class="grid"><label class="field">Kullanıcı Adı<input name="loginUsername" autocomplete="off" value="${esc(loginAccount?.username || '')}" ${editId && !loginAccount ? 'data-optional="true"' : 'required'}></label><label class="field">${loginAccount ? 'Yeni Şifre (değiştirmek için doldurun)' : 'Şifre'}<input name="loginPassword" type="password" minlength="10" autocomplete="new-password" ${editId ? 'data-optional="true"' : 'required'}></label><div class="full"><p>Personel bu kullanıcı adı ve şifreyle giriş yapar. Ana sayfasında yalnızca kendi dosyalarının tahsilatını, brüt kârını ve hesaplanan primini görür.</p>${[
     ['clients', 'Müvekkil Kayıtları'],
     ['documents', 'Evrak / Borçlu Kayıtları'],
     ['cashIn', 'Muhasebe Para Girişi'],

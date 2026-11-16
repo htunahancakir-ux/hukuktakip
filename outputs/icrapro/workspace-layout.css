@@ -4647,6 +4647,15 @@ main.compact-top .stat small {
 #personnelDepartmentDialog [data-department-error] {
   color: #b91c1c;
 }
+#personnelDepartmentDialog .department-list {
+  max-height: 250px;
+  overflow: auto;
+  margin: 12px 0 20px;
+}
+#personnelDepartmentDialog table {
+  width: 100%;
+  min-width: 0;
+}
 .excel-import-dialog > .panelhead {
   position: sticky;
   top: 0;

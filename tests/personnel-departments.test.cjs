@@ -6,6 +6,49 @@ const { createApplication } = require('../lib/application.cjs');
 const { importState, createStore } = require('../lib/postgres-store.cjs');
 const { importRecords, activateRecords } = require('../lib/record-store/storage.cjs');
 const { createTenantPool, LEGACY_TENANT_ID } = require('../lib/saas/tenant-pool.cjs');
+test('Renaming built-in and custom units changes labels while payroll and permissions keep stable identities', () => {
+  const state = fixture();
+  state.data['icrapro-personnel-v1'] = [
+    { id: 'manager', department: 'Yönetici', officialSalary: 1000 },
+    { id: 'agent', name: 'Agent', department: 'Call Center-Y', active: true, officialSalary: 1000 },
+    { id: 'other', department: 'Diğer', officialSalary: 0 },
+  ];
+  const before = structuredClone(state.data);
+  const calculate = require('../outputs/icrapro/personnel-bonus.cjs').calculateCallcenterBonus;
+  const bonusBefore = calculate(state, '2026-11');
+  units.rename(state, 'Yönetici', 'Koordinasyon', 'Yönetici');
+  units.rename(state, 'Call Center-Y', 'Y Ekibi', 'Call Center-Y');
+  units.rename(state, 'Diğer', 'Destek', 'Diğer');
+  assert.deepEqual(state.data, before);
+  assert.deepEqual(calculate(state, '2026-11'), bonusBefore);
+  assert.equal(units.catalog(state).find((u) => u.id === 'Yönetici').name, 'Koordinasyon');
+  assert(!units.departments(state).includes('Koordinasyon'));
+  assert.throws(
+    () => units.add(state, 'koordinasyon'),
+    (e) => e.code === 409,
+  );
+  assert.throws(
+    () => units.rename(state, 'Pazarlama', 'Y Ekibi', 'Pazarlama'),
+    (e) => e.code === 409,
+  );
+  assert.throws(
+    () => units.rename(state, 'Yönetici', 'Başka', 'Yönetici'),
+    (e) => e.code === 409,
+  );
+  assert.throws(
+    () => units.rename(state, 'missing', 'Yeni', 'missing'),
+    (e) => e.code === 404,
+  );
+  assert.throws(
+    () => units.rename(state, 'Pazarlama', '<script>', 'Pazarlama'),
+    (e) => e.code === 400,
+  );
+  units.add(state, 'Saha');
+  units.rename(state, 'Saha', 'Saha & Operasyon', 'Saha');
+  assert.equal(units.catalog(state).find((u) => u.id === 'Saha').name, 'Saha & Operasyon');
+  units.rename(state, 'Saha', 'Saha', 'Saha & Operasyon');
+  assert(!Object.hasOwn(state.personnelDepartmentLabels, 'Saha'));
+});
 
 test('Department names preserve built-in rules, normalize Temlik and reject duplicates or invalid input', () => {
   const state = fixture();
@@ -99,7 +142,7 @@ for (const records of [false, true])
         assert.equal((await call('POST', { name: 'Salt Okunur' }, readonly)).status, 403);
         const list = await call('GET', null, admin);
         assert.equal(list.status, 200);
-        assert.deepEqual(Object.keys(list.body), ['departments']);
+        assert.deepEqual(Object.keys(list.body), ['departments', 'units']);
         assert(list.body.departments.includes('Call Center-T'));
         assert(!list.body.departments.includes('Temlik'));
         const created = await call('POST', { name: 'Saha Operasyon' }, admin);
@@ -113,6 +156,53 @@ for (const records of [false, true])
         assert.deepEqual(saved.data['icrapro-v1'], state.data['icrapro-v1']);
         assert.deepEqual(saved.data['hanhukuk-accounting-v1'], state.data['hanhukuk-accounting-v1']);
         assert.deepEqual(saved.users, state.users);
+        const rename = {
+          action: 'rename',
+          id: 'Call Center-T',
+          name: 'Tahsilat T Ekibi',
+          previousName: 'Call Center-T',
+        };
+        assert.equal(
+          (await call('POST', rename, admin)).status,
+          405,
+          'rename is never interpreted as adding another unit',
+        );
+        assert.equal((await call('PATCH', rename, staff)).status, 403);
+        assert.equal((await call('PATCH', rename, readonly)).status, 403);
+        assert.equal((await call('PATCH', rename, admin)).status, 200);
+        const afterRename = await store.readState();
+        assert.deepEqual(afterRename.data, saved.data);
+        assert.deepEqual(afterRename.users, saved.users);
+        assert.equal(afterRename.personnelDepartmentLabels['Call Center-T'], 'Tahsilat T Ekibi');
+        assert.equal(
+          (await call('PATCH', { ...rename, name: 'Yanlış', previousName: 'Call Center-T' })).status,
+          409,
+        );
+        assert.equal(
+          (await call('PATCH', { action: 'rename', id: 'Call Center-T', name: 'Eksik' })).status,
+          400,
+        );
+        assert.equal(
+          (
+            await call('PATCH', {
+              action: 'rename',
+              id: 'Pazarlama',
+              name: 'Tahsilat T Ekibi',
+              previousName: 'Pazarlama',
+            })
+          ).status,
+          409,
+        );
+        if (records) {
+          const bootstrap = await fetch(server.url + '/api/records/bootstrap', { headers: ceo });
+          const data = await bootstrap.json();
+          assert.equal(bootstrap.status, 200);
+          assert.equal(
+            data.personnelDepartmentUnits.find((unit) => unit.id === 'Call Center-T').name,
+            'Tahsilat T Ekibi',
+          );
+          assert.equal(data.data['icrapro-personnel-v1'][0].department, 'Temlik');
+        }
         const selected = await call(
           'POST',
           {
@@ -147,6 +237,10 @@ for (const records of [false, true])
         assert(
           (await call('GET')).body.departments.includes('Saha Operasyon'),
           'names survive a new server instance',
+        );
+        assert.equal(
+          (await call('GET')).body.units.find((unit) => unit.id === 'Call Center-T').name,
+          'Tahsilat T Ekibi',
         );
       } finally {
         if (server) await server.close();

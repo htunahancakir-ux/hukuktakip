@@ -25,15 +25,31 @@ async function handlePersonnelRoutes(ctx) {
     if (!['ceo', 'admin'].includes(u.role)) throw fail(403, 'Birimleri yalnızca yönetici düzenleyebilir.');
     const units = require('../../lib/personnel-departments.cjs');
     if (req.method === 'GET') {
-      send(res, 200, { departments: units.departments(ctx.state) });
+      send(res, 200, { departments: units.departments(ctx.state), units: units.catalog(ctx.state) });
       return true;
     }
-    if (req.method !== 'POST') throw fail(405, 'İşlem desteklenmiyor.');
+    if (!['POST', 'PATCH'].includes(req.method)) throw fail(405, 'İşlem desteklenmiyor.');
     const input = await body(req),
       next = structuredClone(ctx.state);
-    const name = units.add(next, input.name);
+    if (input.action && !['add', 'rename'].includes(input.action)) throw fail(400, 'Birim işlemi geçersiz.');
+    if (req.method === 'PATCH' && input.action !== 'rename') throw fail(400, 'Düzenlenecek birimi seçin.');
+    if (req.method === 'POST' && input.action === 'rename')
+      throw fail(405, 'Birim adı güncelleme işlemini yeniden açın.');
+    if (input.action === 'rename' && typeof input.previousName !== 'string')
+      throw fail(400, 'Güncel birim listesinden seçim yapın.');
+    const changed =
+      input.action === 'rename'
+        ? units.rename(next, input.id, input.name, input.previousName)
+        : { id: units.add(next, input.name) };
+    const name = changed.name || changed.id;
     persist(next);
-    send(res, 200, { name, departments: units.departments(next) });
+    send(res, 200, {
+      id: changed.id,
+      name,
+      renamed: input.action === 'rename',
+      departments: units.departments(next),
+      units: units.catalog(next),
+    });
     return true;
   }
   if (url.pathname === '/api/personnel-ledger' && req.method === 'GET') {

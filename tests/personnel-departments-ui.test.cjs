@@ -64,9 +64,14 @@ for (const role of ['ceo', 'admin'])
           if (path === '/api/users') return [];
           if (path.startsWith('/api/daily-bonuses')) return { rows: [] };
           if (path === '/api/personnel-departments') {
-            if (method === 'POST')
-              return { name: units.add(state, body.name), departments: units.departments(state) };
-            return { departments: units.departments(state) };
+            if (method === 'POST' || method === 'PATCH') {
+              const change =
+                body.action === 'rename'
+                  ? units.rename(state, body.id, body.name, body.previousName)
+                  : { name: units.add(state, body.name) };
+              return { ...change, departments: units.departments(state), units: units.catalog(state) };
+            }
+            return { departments: units.departments(state), units: units.catalog(state) };
           }
           throw Error('Unexpected API ' + path);
         },
@@ -84,16 +89,20 @@ for (const role of ['ceo', 'admin'])
       load(w, 'personnel.js', [
         'personnelSettings',
         'isRealPersonnelRecord',
+        'personnelDepartmentCode',
         'personnelDepartmentLabel',
+        'cachePersonnelDepartments',
         'readPersonnelDepartments',
         'openPersonnelDepartment',
         'openPersonnelRecord',
         'salaryField',
+        'setupPersonnelSalaryRequirements',
+        'setupPersonnelDepartmentRole',
       ]);
       await w.personnelSettings();
       const add = w.document.getElementById('newPersonnelDepartment');
       assert(add);
-      assert.equal(add.textContent, 'Yeni Birim Ekle');
+      assert.equal(add.textContent, 'Birim Ekle / Düzenle');
       assert.match(w.document.querySelector('#personnelView tbody').textContent, /Call Center-T/);
       await add.onclick();
       let dialog = w.document.getElementById('personnelDepartmentDialog'),
@@ -120,6 +129,43 @@ for (const role of ['ceo', 'admin'])
       await w.openPersonnelRecord('old');
       assert.equal(w.document.getElementById('personnelForm').elements.department.value, 'Call Center-T');
       assert.equal(people[0].department, 'Temlik', 'rendering a legacy name does not silently mutate data');
+      w.document.getElementById('personnelRecordDialog').close();
+      async function renameUnit(id, name) {
+        await w.openPersonnelDepartment();
+        const current = w.document.getElementById('personnelDepartmentForm');
+        current.querySelector('[data-edit-department="' + id + '"]').click();
+        assert.equal(
+          current.elements.departmentName.value,
+          units.catalog(state).find((unit) => unit.id === id).name,
+        );
+        current.elements.departmentName.value = name;
+        await current.onsubmit({ preventDefault() {} });
+      }
+      await renameUnit('Call Center-T', 'T & Operasyon');
+      assert.match(w.document.querySelector('#personnelView tbody').textContent, /T & Operasyon/);
+      assert.equal(people[0].department, 'Temlik');
+      await renameUnit('Yönetici', 'İdare');
+      await renameUnit('Diğer', 'Destek');
+      await w.openPersonnelRecord('old');
+      const edited = w.document.getElementById('personnelForm');
+      assert.equal(edited.elements.department.value, 'Call Center-T');
+      assert.equal(edited.elements.department.selectedOptions[0].textContent, 'T & Operasyon');
+      edited.elements.department.value = 'Diğer';
+      edited.elements.department.dispatchEvent(new w.Event('change'));
+      assert.equal(edited.elements.department.selectedOptions[0].textContent, 'Destek');
+      assert.equal(edited.elements.officialSalary.required, false);
+      edited.elements.department.value = 'Yönetici';
+      edited.elements.department.dispatchEvent(new w.Event('change'));
+      assert.equal(edited.elements.department.selectedOptions[0].textContent, 'İdare');
+      assert.equal(edited.elements.loginUsername.required, true);
+      load(w, 'workspace-reports.js', ['reportCell']);
+      assert.equal(w.reportCell({ cells: { department: 'Yönetici' } }, ['department', 'Birim']), 'İdare');
+      assert(
+        requests.some(
+          (r) =>
+            r.body?.action === 'rename' && r.body.id === 'Yönetici' && r.body.previousName === 'Yönetici',
+        ),
+      );
       assert(requests.some((r) => r.path === '/api/personnel-departments' && r.method === 'POST'));
     },
   );

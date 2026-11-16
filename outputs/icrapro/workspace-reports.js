@@ -370,6 +370,8 @@ function filterReportRows(rows, f) {
 
 function reportCell(row, col) {
   const value = row.cells[col[0]];
+  if (col[0] === 'department' && value && typeof personnelDepartmentLabel === 'function')
+    return personnelDepartmentLabel(value);
   if (col[2] === 'money' && typeof value === 'string' && /^-?\d+$/.test(value)) return recordMoney(value);
   return col[2] === 'money' ? money(Number(value || 0) / 100) : String(value ?? '—');
 }
@@ -1231,6 +1233,8 @@ async function monthlyPayrollReportPage() {
 let monthlyPayrollReportFilters = { staff: '', department: '', active: '', query: '' };
 
 function renderMonthlyPayrollReport(data) {
+  const departmentLabel = (value) =>
+    typeof personnelDepartmentLabel === 'function' ? personnelDepartmentLabel(value) : value || '';
   const columns = [
       ['name', 'Personel'],
       ['department', 'Birim'],
@@ -1288,7 +1292,10 @@ function renderMonthlyPayrollReport(data) {
     '</select></label>' +
     '<label class="field">Birim<select name="department" data-optional="true">' +
     options(
-      [['', 'Tümü'], ...departments.sort((a, b) => a.localeCompare(b, 'tr')).map((v) => [v, v])],
+      [
+        ['', 'Tümü'],
+        ...departments.sort((a, b) => a.localeCompare(b, 'tr')).map((v) => [v, departmentLabel(v)]),
+      ],
       monthlyPayrollReportFilters.department,
     ) +
     '</select></label>' +
@@ -1331,7 +1338,8 @@ function renderMonthlyPayrollReport(data) {
         (!f.staff || r.staffId === f.staff) &&
         (!f.department || r.department === f.department) &&
         (!f.active || (r.active === false ? 'inactive' : 'active') === f.active) &&
-        (!query || normalizeSearch([r.name, r.department].join(' ')).includes(query)),
+        (!query ||
+          normalizeSearch([r.name, r.department, departmentLabel(r.department)].join(' ')).includes(query)),
     );
     totals = rows.reduce(
       (s, r) => {
@@ -1349,7 +1357,18 @@ function renderMonthlyPayrollReport(data) {
           (r) =>
             '<tr>' +
             columns
-              .map(([key], i) => '<td>' + esc(i < 2 ? r[key] || '—' : money(r[key] / 100)) + '</td>')
+              .map(
+                ([key], i) =>
+                  '<td>' +
+                  esc(
+                    key === 'department'
+                      ? departmentLabel(r[key]) || '—'
+                      : i < 2
+                        ? r[key] || '—'
+                        : money(r[key] / 100),
+                  ) +
+                  '</td>',
+              )
               .join('') +
             '</tr>',
         )
@@ -1388,7 +1407,11 @@ function renderMonthlyPayrollReport(data) {
   document.querySelector('[data-payroll-report-csv]').onclick = () => {
     const lines = [
         columns.map(([, label]) => label),
-        ...rows.map((r) => columns.map(([key], i) => (i < 2 ? r[key] || '' : money(r[key] / 100)))),
+        ...rows.map((r) =>
+          columns.map(([key], i) =>
+            key === 'department' ? departmentLabel(r[key]) : i < 2 ? r[key] || '' : money(r[key] / 100),
+          ),
+        ),
         [
           'ALT TOPLAM',
           '',
