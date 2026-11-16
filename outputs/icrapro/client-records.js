@@ -1,7 +1,7 @@
-function setupClientDistrict(prefix = 'client') {
-  const city = $('#' + prefix + 'City'),
-    input = $('#' + prefix + 'District'),
-    box = $('#' + prefix + 'DistrictSuggestions');
+function setupClientDistrict(prefix = 'client', root = document) {
+  const city = root.querySelector('#' + prefix + 'City'),
+    input = root.querySelector('#' + prefix + 'District'),
+    box = root.querySelector('#' + prefix + 'DistrictSuggestions');
   let lastCity = city.value;
   function synchronize() {
     const canonical = turkeyCities.find(
@@ -85,9 +85,9 @@ function clientCityField(c, prefix = 'client') {
   return `<div class="field"><label for="${prefix}City">İl *</label><input id="${prefix}City" name="city" required autocomplete="off" value="${esc(c.city || '')}" placeholder="İlin ilk harfini yazın…" aria-controls="${prefix}CitySuggestions" aria-expanded="false"><div id="${prefix}CitySuggestions" class="city-suggestions" hidden></div></div><div class="field"><label for="${prefix}District">İlçe *</label><input id="${prefix}District" name="district" required autocomplete="off" value="${esc(c.district || '')}" placeholder="Önce il seçin" aria-controls="${prefix}DistrictSuggestions" aria-expanded="false"><div id="${prefix}DistrictSuggestions" class="city-suggestions" hidden></div></div>`;
 }
 
-function setupClientCity(prefix = 'client') {
-  const input = $('#' + prefix + 'City'),
-    box = $('#' + prefix + 'CitySuggestions');
+function setupClientCity(prefix = 'client', root = document) {
+  const input = root.querySelector('#' + prefix + 'City'),
+    box = root.querySelector('#' + prefix + 'CitySuggestions');
   function show() {
     const q = input.value.trim().toLocaleLowerCase('tr');
     const cities = turkeyCities.filter((city) => normalizeSearch(city).includes(normalizeSearch(q)));
@@ -104,7 +104,7 @@ function setupClientCity(prefix = 'client') {
           input.setCustomValidity('');
           box.hidden = true;
           input.setAttribute('aria-expanded', 'false');
-          document.getElementById(prefix + 'District').focus();
+          root.querySelector('#' + prefix + 'District').focus();
         }),
     );
   }
@@ -338,8 +338,8 @@ function clientFilterBar() {
   const { city, district } = clientPlaceFilter();
   return `<search class="client-filters" aria-label="Müvekkil süzgeci">
     <div class="client-search-wrap"><label for="search">Ad, kimlik no veya telefon</label><input class="search" id="search" type="search" maxlength="200" placeholder="ör. sak · 0532 111" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" enterkeyhint="search" aria-controls="clientSuggestions" aria-expanded="false" data-optional="true"><div id="clientSuggestions" class="client-suggestions" hidden></div></div>
-    <label class="filter-field">İl<select id="clientCity" data-optional="true"><option value="">Tüm iller</option>${options(turkeyCities, city)}</select></label>
-    <label class="filter-field">İlçe<select id="clientDistrict" data-optional="true"${city ? '' : ' disabled'}><option value="">${city ? 'Tüm ilçeler' : 'Önce il seçin'}</option>${options(turkeyDistricts[city] || [], district)}</select></label>
+    <label class="filter-field">İl<select id="clientFilterCity" data-optional="true"><option value="">Tüm iller</option>${options(turkeyCities, city)}</select></label>
+    <label class="filter-field">İlçe<select id="clientFilterDistrict" data-optional="true"${city ? '' : ' disabled'}><option value="">${city ? 'Tüm ilçeler' : 'Önce il seçin'}</option>${options(turkeyDistricts[city] || [], district)}</select></label>
     <button type="button" class="secondary" id="clientFilterClear">Temizle</button>
   </search>`;
 }
@@ -382,8 +382,8 @@ function clientRows(event) {
 
 // Keeps the il / ilçe selects, their saved values and the Temizle button in step.
 function syncClientFilterBar() {
-  const citySelect = document.getElementById('clientCity'),
-    districtSelect = document.getElementById('clientDistrict'),
+  const citySelect = document.getElementById('clientFilterCity'),
+    districtSelect = document.getElementById('clientFilterDistrict'),
     clear = document.getElementById('clientFilterClear');
   if (!citySelect || !districtSelect) return;
   clientPlaceFilter().city = citySelect.value;
@@ -403,8 +403,8 @@ function bindClientSearch() {
       clientRows();
     }
   });
-  const citySelect = document.getElementById('clientCity'),
-    districtSelect = document.getElementById('clientDistrict'),
+  const citySelect = document.getElementById('clientFilterCity'),
+    districtSelect = document.getElementById('clientFilterDistrict'),
     clear = document.getElementById('clientFilterClear');
   if (!citySelect || !districtSelect) return;
   citySelect.addEventListener('change', () => {
@@ -480,8 +480,8 @@ function clientModal(id, loadedRecord) {
   setupClientBankAccounts($('#clientForm'), c);
   for (const selector of ['#clientPhotos', '#clientPowerOfAttorney']) bindMultipleFileInput($(selector));
   $('#modal').showModal();
-  setupClientCity();
-  setupClientDistrict();
+  setupClientCity('client', $('#clientForm'));
+  setupClientDistrict('client', $('#clientForm'));
   $('#close').onclick = $('#cancel').onclick = () => $('#modal').close();
   document.querySelectorAll('[data-kind]').forEach(
     (b) =>
@@ -499,8 +499,8 @@ function clientModal(id, loadedRecord) {
       (city) => city.toLocaleLowerCase('tr') === v.city.trim().toLocaleLowerCase('tr'),
     );
     if (!city) {
-      $('#clientCity').setCustomValidity('Türkiye illerinden birini seçin.');
-      $('#clientCity').reportValidity();
+      e.target.elements.city.setCustomValidity('Türkiye illerinden birini seçin.');
+      e.target.elements.city.reportValidity();
       return;
     }
     v.city = city;
@@ -508,8 +508,8 @@ function clientModal(id, loadedRecord) {
       (name) => name.toLocaleLowerCase('tr') === v.district.trim().toLocaleLowerCase('tr'),
     );
     if (!district) {
-      $('#clientDistrict').setCustomValidity('Seçili ilin ilçelerinden birini seçin.');
-      $('#clientDistrict').reportValidity();
+      e.target.elements.district.setCustomValidity('Seçili ilin ilçelerinden birini seçin.');
+      e.target.elements.district.reportValidity();
       return;
     }
     v.district = district;

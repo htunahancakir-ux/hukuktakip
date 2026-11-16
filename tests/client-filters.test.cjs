@@ -145,30 +145,30 @@ test('client list: the filter row narrows the list; choosing an il fills its il�
   // Every control is labelled and sits in a search landmark.
   assert.equal($('search.client-filters').getAttribute('aria-label'), 'Müvekkil süzgeci');
   assert.equal($('label[for="search"]').textContent, 'Ad, kimlik no veya telefon');
-  assert.match($('#clientCity').closest('label').textContent, /^İl/);
-  assert.match($('#clientDistrict').closest('label').textContent, /^İlçe/);
+  assert.match($('#clientFilterCity').closest('label').textContent, /^İl/);
+  assert.match($('#clientFilterDistrict').closest('label').textContent, /^İlçe/);
   assert.equal(shown().length, 8);
-  assert.equal($('#clientDistrict').disabled, true, 'no ilçe before an il');
+  assert.equal($('#clientFilterDistrict').disabled, true, 'no ilçe before an il');
   assert.equal($('#clientFilterClear').disabled, true, 'nothing to clear yet');
 
-  choose('#clientCity', 'İstanbul');
+  choose('#clientFilterCity', 'İstanbul');
   assert.deepEqual(shown(), ['c0', 'c1', 'c2', 'c6'], 'capitals in the record do not matter');
-  assert.equal($('#clientDistrict').disabled, false);
+  assert.equal($('#clientFilterDistrict').disabled, false);
   assert.deepEqual(
-    [...$('#clientDistrict').options].map((o) => o.text),
+    [...$('#clientFilterDistrict').options].map((o) => o.text),
     ['Tüm ilçeler', 'Kadıköy', 'Üsküdar'],
   );
   assert.match($('#total').textContent, /4 müvekkil gösteriliyor · Süzgeç uygulandı/);
-  choose('#clientDistrict', 'Kadıköy');
+  choose('#clientFilterDistrict', 'Kadıköy');
   assert.deepEqual(shown(), ['c0', 'c2', 'c6']);
   type('sak');
   assert.deepEqual(shown(), ['c0', 'c2']);
 
   // Another il starts again with all of its ilçe.
-  choose('#clientCity', 'Ankara');
-  assert.equal($('#clientDistrict').value, '');
+  choose('#clientFilterCity', 'Ankara');
+  assert.equal($('#clientFilterDistrict').value, '');
   assert.deepEqual(
-    [...$('#clientDistrict').options].map((o) => o.text),
+    [...$('#clientFilterDistrict').options].map((o) => o.text),
     ['Tüm ilçeler', 'Çankaya', 'Keçiören'],
   );
   assert.deepEqual(shown(), [], 'sak is not in Ankara');
@@ -179,7 +179,7 @@ test('client list: the filter row narrows the list; choosing an il fills its il�
   assert.equal($('#clientFilterClear').disabled, false);
   $('#clientFilterClear').click();
   assert.deepEqual(
-    [$('#search').value, $('#clientCity').value, $('#clientDistrict').disabled],
+    [$('#search').value, $('#clientFilterCity').value, $('#clientFilterDistrict').disabled],
     ['', '', true],
   );
   assert.equal(shown().length, 8);
@@ -192,11 +192,11 @@ test('client list: the filter row narrows the list; choosing an il fills its il�
   assert.deepEqual(shown(), ['c0']);
 
   // The filter survives drawing the page again.
-  choose('#clientCity', 'İstanbul');
-  choose('#clientDistrict', 'Üsküdar');
+  choose('#clientFilterCity', 'İstanbul');
+  choose('#clientFilterDistrict', 'Üsküdar');
   w.document.getElementById('bar').innerHTML = w.clientFilterBar();
   assert.deepEqual(
-    [$('#clientCity').value, $('#clientDistrict').value, $('#clientDistrict').disabled],
+    [$('#clientFilterCity').value, $('#clientFilterDistrict').value, $('#clientFilterDistrict').disabled],
     ['İstanbul', 'Üsküdar', false],
   );
 });
@@ -250,7 +250,7 @@ test('client list on record tables: il, ilçe and the search text travel to the 
   await settle();
   assert.deepEqual(requests.at(-1), { q: '', limit: '50' }, 'no filter: no il or ilçe in the request');
 
-  await choose('#clientCity', 'İstanbul');
+  await choose('#clientFilterCity', 'İstanbul');
   assert.deepEqual(requests.at(-1), { q: '', limit: '50', city: 'İstanbul' });
   assert.match($('#total').textContent, /Süzgeç uygulandı/);
   $('#nextClients').click();
@@ -261,7 +261,7 @@ test('client list on record tables: il, ilçe and the search text travel to the 
     'paging keeps the filter',
   );
 
-  await choose('#clientDistrict', 'Kadıköy');
+  await choose('#clientFilterDistrict', 'Kadıköy');
   assert.deepEqual(
     requests.at(-1),
     { q: '', limit: '50', city: 'İstanbul', district: 'Kadıköy' },
@@ -276,5 +276,5 @@ test('client list on record tables: il, ilçe and the search text travel to the 
   $('#clientFilterClear').click();
   await settle();
   assert.deepEqual(requests.at(-1), { q: '', limit: '50' });
-  assert.equal($('#clientDistrict').disabled, true);
+  assert.equal($('#clientFilterDistrict').disabled, true);
 });
