@@ -1,5 +1,14 @@
 # Sürüm Notları
 
+## 2.7.0 — 16 Kasım 2026
+
+### Tanıtım sayfası ve Google (SEO)
+
+- **www.hanhukuktakip.com artık Hukuk Takip Platformu'nun tanıtım sayfasını gösterir** (özellikler, modüller, güvenlik, fiyatlandırma ilkesi, sık sorulanlar). Sayfa tek dosyadır, betik ve dış kaynak yüklemez; başlık, açıklama, canonical, Open Graph / sosyal medya görseli ve schema.org yapılandırılmış verisi (Organization, WebSite, SoftwareApplication) içerir. Hiçbir büronun adı geçmez.
+- **Mevcut büronun personeli için değişen bir şey yok:** oturumu açık olan kullanıcı `/` adresinde doğrudan uygulamayı görür. Giriş ekranı ayrıca **/giris** adresindedir; tanıtım sayfasındaki "Giriş yap" düğmeleri oraya gider. Oturumu kapanan kullanıcı kök adreste tanıtım sayfasını görür.
+- **robots.txt ve sitemap.xml:** genel adreste site haritasını gösterir, `/api/` taranmaz. Büro adresleri (`<büro>.hanhukuktakip.com`), yönetim konsolu ve bütün uygulama ekranları `X-Robots-Tag: noindex, nofollow` ile Google dizininin dışında tutulur.
+- İletişim bölümü sunucu ayarından gelir: `HAN_SITE_CONTACT_EMAIL` ve/veya `HAN_SITE_CONTACT_PHONE` tanımlanınca sayfada "Büronuz için demo isteyin" bölümü çıkar; tanımlı değilse "Demo isteyin" düğmeleri giriş ekranına gider. Ayrıntılar docs/SAAS.md "Tanıtım sayfası ve arama motorları" bölümünde.
+
 ## 2.6.1 — 15 Kasım 2026
 
 ### Müvekkiller: kısa üst bölüm ve süzgeç satırı

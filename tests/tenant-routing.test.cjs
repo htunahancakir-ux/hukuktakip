@@ -159,7 +159,7 @@ test('our own server serves the console, browser files and loopback jobs', async
       const request = http.request(server.url + path, { method, headers: { host, ...headers } }, (res) => {
         let text = '';
         res.on('data', (chunk) => (text += chunk));
-        res.on('end', () => resolve({ status: res.statusCode, text }));
+        res.on('end', () => resolve({ status: res.statusCode, text, headers: res.headers }));
       });
       request.on('error', reject);
       request.end(body);
@@ -186,6 +186,44 @@ test('our own server serves the console, browser files and loopback jobs', async
     assert.equal((await ask('nobody.' + BASE, '/app.js')).status, 200);
     assert.equal((await ask('nobody.' + BASE, '/api/session')).status, 403);
     assert.equal((await ask('evil.example.org', '/api/session')).status, 404);
+
+    // Search engines see the product page on the public address only.
+    const www = 'www.' + BASE;
+    const landing = await ask(www, '/');
+    assert.equal(landing.status, 200);
+    assert.match(landing.text, /<link rel="canonical" href="https:\/\/www\.han\.example\.com\/"/);
+    assert.equal(landing.headers['x-robots-tag'], undefined);
+    assert.match(landing.headers.vary, /Cookie/);
+    assert.equal((await ask(BASE, '/')).text, landing.text);
+    // A signed-in member of the existing office still gets the application on "/".
+    const signedIn = await ask(www, '/', { headers: { cookie: 'han_session=' + 'a'.repeat(64) } });
+    assert.doesNotMatch(signedIn.text, /canonical/);
+    assert.match(signedIn.text, /id="authGate"|auth\.js/);
+    assert.equal(signedIn.headers['x-robots-tag'], 'noindex, nofollow');
+    // Its sign-in screen has its own address.
+    const signIn = await ask(www, '/giris?x=1');
+    assert.equal(signIn.status, 200);
+    assert.match(signIn.text, /auth\.js/);
+    assert.equal(signIn.headers['x-robots-tag'], 'noindex, nofollow');
+    for (const file of ['/landing-og.png', '/platform-icon.svg']) {
+      const asset = await ask(www, file);
+      assert.equal(asset.status, 200, file);
+      assert.equal(asset.headers['x-robots-tag'], undefined, file);
+    }
+    const robots = await ask(www, '/robots.txt');
+    assert.match(robots.text, /Sitemap: https:\/\/www\.han\.example\.com\/sitemap\.xml/);
+    assert.match((await ask(www, '/sitemap.xml')).text, /<loc>https:\/\/www\.han\.example\.com\/<\/loc>/);
+    // Offices and the console are never indexed and get no product page.
+    for (const host of ['nobody.' + BASE, admin]) {
+      const page = await ask(host, '/');
+      assert.doesNotMatch(page.text, /canonical/, host);
+      assert.equal(page.headers['x-robots-tag'], 'noindex, nofollow', host);
+      assert.doesNotMatch((await ask(host, '/robots.txt')).text, /Sitemap/, host);
+      assert.equal((await ask(host, '/sitemap.xml')).status, 404, host);
+      assert.equal((await ask(host, '/giris')).status, 404, host);
+    }
+    assert.equal((await ask(www, '/api/session')).headers['x-robots-tag'], 'noindex, nofollow');
+    assert.equal((await ask(www, '/landing.html')).status, 404);
   } finally {
     await server.close();
     await pg.close();

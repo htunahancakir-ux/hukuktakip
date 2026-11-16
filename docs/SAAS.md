@@ -592,6 +592,18 @@ depo ilk büro ile sınırlıdır. Önceden kurulmuş deneysel şemadan çalış
 yabancı anahtar varsa tenant migration açıklayıcı hatayla durur. Bu kurulum için
 ayrı geçiş planı gerekir; bağımlılıklar CASCADE ile silinmez.
 
+### Tanıtım sayfası ve arama motorları
+
+Kendi sunucuda (`createStandaloneHandler`, `lib/site-seo.cjs`) yalnızca `<alan-adı>` ve `www.<alan-adı>` aranabilir:
+
+- `/`: oturum çerezi (`han_session`) olmayan ziyaretçiye `outputs/icrapro/landing.html` (tanıtım sayfası); çerezi olana mevcut büronun uygulaması. Yanıt `Vary: Cookie` ve `Cache-Control: private, no-cache` taşır.
+- `/giris`: mevcut büronun giriş ekranı (`index.html`).
+- `/robots.txt`, `/sitemap.xml`: site haritası yalnızca genel adreste; büro ve konsol adreslerinin robots.txt dosyası site haritası göstermez.
+- Tanıtım sayfası, `landing-og.png` ve `platform-icon.svg` dışındaki her yanıt (bütün büro adresleri, `admin.`, `/api/`, `/giris`) `X-Robots-Tag: noindex, nofollow` taşır.
+- İletişim: `.env.local` içine `HAN_SITE_CONTACT_EMAIL=...` ve/veya `HAN_SITE_CONTACT_PHONE=...` yazıp `systemctl restart hanhukuk`. Tanımsızsa iletişim bölümü gösterilmez.
+- Cloudflare'ın "Managed robots.txt" özelliği açıksa kendi içerik sinyali satırlarını bu dosyanın başına ekler; site haritası satırı korunur.
+- **Google Search Console:** Search Console → Mülk ekle → **Alan adı** → `hanhukuktakip.com`. Verilen `google-site-verification=...` değerini Cloudflare → DNS → **TXT** kaydı olarak (ad `@`) ekleyin, Doğrula'ya basın. Ardından Site haritaları → `https://www.hanhukuktakip.com/sitemap.xml` gönderin ve URL denetimi ile ana sayfanın dizine eklenmesini isteyin.
+
 ## Satışa çıkmadan önce tamamlanacak uygulama işleri
 
 1. **Veri izolasyonu — uygulandı, canlıya alınmadı:** `han_private` ve `han_data`
