@@ -4641,6 +4641,12 @@ main.compact-top .stat small {
   width: min(1200px, 96vw);
   max-height: 94vh;
 }
+#personnelDepartmentDialog {
+  width: min(480px, calc(100vw - 24px));
+}
+#personnelDepartmentDialog [data-department-error] {
+  color: #b91c1c;
+}
 .excel-import-dialog > .panelhead {
   position: sticky;
   top: 0;

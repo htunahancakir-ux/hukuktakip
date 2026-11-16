@@ -21,6 +21,21 @@ async function handlePersonnelRoutes(ctx) {
     applyParkingFee,
     recognizedCollectionRevenue,
   } = ctx;
+  if (url.pathname === '/api/personnel-departments') {
+    if (!['ceo', 'admin'].includes(u.role)) throw fail(403, 'Birimleri yalnızca yönetici düzenleyebilir.');
+    const units = require('../../lib/personnel-departments.cjs');
+    if (req.method === 'GET') {
+      send(res, 200, { departments: units.departments(ctx.state) });
+      return true;
+    }
+    if (req.method !== 'POST') throw fail(405, 'İşlem desteklenmiyor.');
+    const input = await body(req),
+      next = structuredClone(ctx.state);
+    const name = units.add(next, input.name);
+    persist(next);
+    send(res, 200, { name, departments: units.departments(next) });
+    return true;
+  }
   if (url.pathname === '/api/personnel-ledger' && req.method === 'GET') {
     if (!['ceo', 'admin'].includes(u.role))
       throw fail(403, 'Personel carilerini yalnızca yönetici görebilir.');
@@ -273,6 +288,8 @@ async function handlePersonnelRoutes(ctx) {
       record = v.record,
       account = v.account || {};
     if (!record?.id || !String(record.name || '').trim()) throw fail(400, 'Geçerli personel girin.');
+    if (typeof record.department === 'string')
+      record.department = require('../../lib/personnel-departments.cjs').canonicalName(record.department);
     if (!String(record.unofficialSalary ?? '').trim()) record.unofficialSalary = 0;
     if (record.department === 'Diğer' && !String(record.officialSalary ?? '').trim())
       record.officialSalary = 0;
