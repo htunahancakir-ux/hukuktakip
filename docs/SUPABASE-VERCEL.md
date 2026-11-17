@@ -1,5 +1,7 @@
 # Han Hukuk: Supabase PostgreSQL + Vercel
 
+> **Kullanımdan kaldırıldı (17 Kasım 2026).** Uygulama 14 Kasım 2026'dan beri kendi sunucusunda çalışıyor (`outputs/icrapro/server.cjs`; bkz. docs/SAAS.md ve docs/YEDEKLEME.md). Vercel kurulumu kapatılmadığı için eski Supabase veritabanından her gece R2'deki canlı yedek klasörüne bayat yedek yazıyordu. Artık `vercel.json` hiçbir zamanlayıcı tanımlamaz ve her isteği `https://www.hanhukuktakip.com` adresine yönlendirir; `api/index.js` veritabanına bağlanmadan 410 döner (`tests/vercel-retired.test.cjs`). Kalan adımlar panelden yapılmalıdır: Vercel projesinin Git bağlantısını kesip projeyi silmek, Supabase'deki zamanlayıcıları kapatıp projeyi duraklatmak.
+
 ## Bu aşamada yapılanlar
 
 Mevcut iş verileri PostgreSQL JSONB içinde korunur. İlk performans aşamasında GET okumaları ortak yazma kilidinden ayrılmıştır; oturumlar, giriş deneme sayaçları ve bildirim okuma modeli ayrı tablolardadır. İş verisi değişiklikleri hâlâ `han_private.han_state` üzerinde transaction kullanır. Yeni kayıt bazlı model `database/next` altında pilottur ve otomatik migration kapsamına dahil değildir.
