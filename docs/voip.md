@@ -63,4 +63,9 @@ Dinleme isteğinde dosyanın güncel durumu okunur. İnfaz dosyasının önbelle
   - Gelen arama için ekranda bildirim/değerlendirme penceresi yok (2. aşama).
   - Gelen aramalar henüz bir dahilide çalmıyor; web telefonu yalnızca arama yaparken açık. Web telefonunun sürekli bağlı tutulması ve "Santral Programlama API" ile son arayan personele yönlendirme 3. aşamadadır.
   - Bildirimi kaçan aramalar için santral arama kayıtlarından (CDR) tamamlama henüz yok.
-  - Gerçek Verimor hesabında gelen arama olay alanları henüz doğrulanmadı; sunucu günlüğündeki `VoIP inbound event` satırları (yalnızca alan adları, numara içermez) bu doğrulama içindir.
+- **Gerçek Verimor hesabıyla doğrulandı (17 Kasım 2026).** Mesai içi üç deneme araması (biri cevaplandı, ikisi cevapsız) ve mesai dışı bir arama (santral anonsu) yapıldı:
+  - `ringing` bildirimi şu alanlarla geliyor: `call_uuid`, `caller_id_number`, `destination_number`, `dialed_user`, `direction`, `domain_id`, `event_type`, `outbound_caller_id_number`, `queue`, `start_stamp`. Kayıt bu bildirimle açılıyor, çalan dahili (`ringingExtensions`) doğru yazılıyor.
+  - `answer` bildirimindeki `connected_user` doğru personele eşleşti; cevaplanan arama "görüşüldü" durumuna geçti, süre (9 sn) ve ses kaydı geldi, kayıt R2 arşivine alındı.
+  - `hangup` bildirimi şu alanlarla geliyor: `answer_stamp`, `answered`, `call_uuid`, `caller_id_number`, `connected_user`, `destination_number`, `dialed_user`, `direction`, `domain_id`, `duration`, `end_stamp`, `event_type`, `failure_phrase`, `failure_status`, `hangup_cause`, `outbound_caller_id_number`, `queue`, `queue_wait_duration`, `recording_present`, `sip_hangup_disposition`, `start_stamp`. Kodun okuduğu adların hepsi mevcut.
+  - Cevaplanmayan aramalar "cevapsız", kimse atanmadan kapanıyor. Mesai dışı anonsla karşılanan arama da (dahili çalmadığı için) "cevapsız" olarak, yalnızca kapanış bildirimiyle kaydediliyor; anons hattının diğer bildirimleri kayıt açmıyor.
+  - Sunucu günlüğündeki `VoIP inbound event` satırları (yalnızca alan adları, numara içermez) yeni bir doğrulama gerektiğinde kullanılabilir.
