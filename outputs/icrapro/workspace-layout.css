@@ -4733,3 +4733,28 @@ main.compact-top .stat small {
     grid-template-columns: 1fr;
   }
 }
+
+/* Product attribution shared by sign-in and module screens. */
+.product-credit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #526274;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.product-credit img {
+  display: block;
+  flex: 0 0 auto;
+  width: 108px;
+  height: 36px;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 5px;
+}
+.product-credit--modules {
+  margin-top: 24px;
+  padding-block: 12px;
+}

@@ -47,7 +47,7 @@ function modulesSettingsPage() {
     $('#content').innerHTML = `${settingsSectionTabs('modules')}<section class="panel">
       <div class="panelhead"><div><h2>Modüller</h2></div></div>
       <div class="notice" id="modulesLegacy">Büronuzun modülleri platform tarafından yönetilir; bu hesap için satın alınabilir bir modül kataloğu bulunmuyor.</div>
-    </section>`;
+    </section><footer class="product-credit product-credit--modules"><span>Bu program bir</span><img src="/kodix-logo.jpg" width="108" height="36" alt="KODix" decoding="async"><span>ürünüdür.</span></footer>`;
     bindSettingsSectionTabs();
     return;
   }
@@ -83,7 +83,7 @@ function modulesSettingsPage() {
       <div class="formbody"><div class="module-grid">${
         products.map(moduleProductCard).join('') || '<p class="empty">Şu anda sunulan ek modül yok.</p>'
       }</div></div>
-    </section>`;
+    </section><footer class="product-credit product-credit--modules"><span>Bu program bir</span><img src="/kodix-logo.jpg" width="108" height="36" alt="KODix" decoding="async"><span>ürünüdür.</span></footer>`;
   bindSettingsSectionTabs();
   document.querySelectorAll('[data-module-request]').forEach((button) => {
     const card = button.closest('[data-module-code]');

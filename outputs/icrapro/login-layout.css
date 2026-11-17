@@ -618,3 +618,12 @@ body:has(#authGate) {
 #authGate .login-story--custom :is(.login-brand, .login-story-copy, .login-story-domain) {
   visibility: hidden;
 }
+
+#authGate .login-entry-footer {
+  flex-wrap: wrap;
+}
+#authGate .login-entry-footer .product-credit {
+  order: 3;
+  flex-basis: 100%;
+  margin-top: 12px;
+}
