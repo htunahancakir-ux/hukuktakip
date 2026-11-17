@@ -3456,7 +3456,10 @@ test('a call the exchange cannot confirm (no call id) can be closed by its perso
   };
   const id = crypto.randomUUID();
   h.state.voipCalls.push({ ...base, id, requestId: 'stuck-request-0001', userId: 's' });
-  await assert.rejects(h.call('hangup', 'POST', { id }), /Çağrı kimliği henüz alınamadı/);
+  await assert.rejects(
+    h.call('hangup', 'POST', { id }),
+    (e) => e.status === 409 && e.reason === 'no_provider_id' && /çağrı kimliği vermedi/.test(e.message),
+  );
   const closed = await h.call('close', 'POST', { id });
   assert.equal(closed.ok, true);
   assert.equal(closed.call.status, 'failed', 'never answered');
@@ -3645,4 +3648,247 @@ test('VoIP settings: connection settings and "Dahililer ve yetkiler" are two tab
   // Without the phone module an admin has no integration page at all; the CEO keeps the others.
   assert.ok(!render('admin', 'firm', { voip: false })[0].includes('Entegrasyonlar'));
   assert.ok(!render('ceo', 'ai', { voip: false })[1].includes('VoIP / Telefon'));
+});
+
+test('the watchdog closes an outgoing call that never got a call ID after five minutes', async () => {
+  process.env.VOIP_CRON_SECRET = 'watchdog-test';
+  const asked = [];
+  const h = harness(async (url) => {
+    asked.push(new URL(url).pathname);
+    return new Response('{}');
+  });
+  const minutesAgo = (n) => new Date(Date.now() - n * 60000).toISOString();
+  const base = { userId: 'u', phone: '905320000000', extension: '1001', duration: 0 };
+  h.state.voipCalls.push(
+    // Start timed out at Verimor yesterday; the window was stuck on "Sonlandırılıyor…".
+    { ...base, id: 'orphan', status: 'unknown', cancelRequested: true, createdAt: minutesAgo(600) },
+    {
+      ...base,
+      id: 'orphan-browser',
+      status: 'unknown',
+      browserManaged: true,
+      browserSeenAt: minutesAgo(9),
+      createdAt: minutesAgo(9),
+      draftNote: 'Notum',
+    },
+    // Still within the window in which Verimor's first event attaches the ID.
+    { ...base, id: 'young', status: 'starting', createdAt: minutesAgo(2) },
+    { ...base, id: 'inbound', direction: 'inbound', status: 'ringing', createdAt: minutesAgo(30) },
+    { ...base, id: 'with-id', status: 'answered', providerId: 'real-call', createdAt: minutesAgo(30) },
+  );
+  await h.call('watchdog', 'GET', undefined, false, { authorization: 'Bearer watchdog-test' });
+  const by = (id) => h.state.voipCalls.find((c) => c.id === id);
+  for (const id of ['orphan', 'orphan-browser']) {
+    assert.equal(by(id).status, 'failed', id);
+    assert.equal(by(id).endSource, 'no-provider-id', id);
+    assert.match(by(id).note, /çağrı kimliği vermedi; kayıt otomatik kapatıldı/, id);
+  }
+  assert.match(by('orphan-browser').note, /^Notum/);
+  assert.equal(by('young').status, 'starting');
+  assert.equal(by('inbound').status, 'ringing');
+  assert.equal(by('with-id').status, 'answered');
+  assert.deepEqual(asked, [], 'calls without an ID never reach Verimor');
+  delete process.env.VOIP_CRON_SECRET;
+});
+
+test('"Zorla kapat" asks Verimor to hang up when it has the call, and closes the record anyway', async () => {
+  const asked = [];
+  let answer = () => new Response('OK');
+  const h = harness(async (url) => {
+    asked.push(new URL(url).pathname);
+    return answer();
+  });
+  const base = {
+    userId: 'u',
+    phone: '905320000000',
+    extension: '1001',
+    duration: 0,
+    status: 'ringing',
+    createdAt: new Date().toISOString(),
+  };
+  h.state.voipCalls.push({ ...base, id: 'a', providerId: 'call-a', cancelRequested: true });
+  const closed = await h.call('close', 'POST', { id: 'a', force: true });
+  assert.equal(closed.call.status, 'failed');
+  assert.deepEqual(asked, ['/hangup/call-a']);
+  const a = h.state.voipCalls.find((c) => c.id === 'a');
+  assert.equal(a.endSource, 'force-close');
+  assert.match(a.note, /Zorla kapat/);
+  // Verimor does not answer: the record still closes, with the reason in the note.
+  answer = () => {
+    throw new Error('network down');
+  };
+  h.state.voipCalls.push({ ...base, id: 'b', providerId: 'call-b' });
+  assert.equal((await h.call('close', 'POST', { id: 'b', force: true })).call.status, 'failed');
+  assert.match(
+    h.state.voipCalls.find((c) => c.id === 'b').note,
+    /Santrale kapatma isteği iletilemedi: Verimor yanıtı alınamadı/,
+  );
+  // Without force nothing is sent to Verimor (the existing manual close).
+  asked.length = 0;
+  h.state.voipCalls.push({ ...base, id: 'c', providerId: 'call-c' });
+  await h.call('close', 'POST', { id: 'c' });
+  assert.deepEqual(asked, []);
+  assert.equal(h.state.voipCalls.find((c) => c.id === 'c').endSource, 'manual-close');
+});
+
+async function stuckCallWindow(fetch) {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('<!doctype html><body></body>', {
+    url: 'https://example.test',
+    runScripts: 'dangerously',
+  });
+  const w = dom.window;
+  w.HTMLDialogElement.prototype.show = function () {
+    this.open = true;
+  };
+  w.HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+  };
+  w.HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  Object.assign(w, {
+    hanAuth: { id: 'u', role: 'staff' },
+    esc: (v) => String(v),
+    confirm: () => true,
+    fetch,
+  });
+  // `voipUi` is a script-level const: expose it so the test can drive and clean up the window.
+  w.eval((await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8')) + '\nwindow.testVoipUi = voipUi;');
+  return dom;
+}
+const stuckCallBase = {
+  id: 'stuck',
+  documentId: '',
+  userId: 'u',
+  phone: '905320000000',
+  status: 'unknown',
+  statusLabel: 'Doğrulanıyor',
+  staffName: 'Test',
+  duration: 0,
+  cancelRequested: true,
+  createdAt: new Date().toISOString(),
+};
+// Asked to end ten hours ago (the call of 16 November).
+const stuckCall = { ...stuckCallBase, createdAt: new Date(Date.now() - 10 * 3600000).toISOString() };
+const settleStuck = async () => {
+  for (let i = 0; i < 8; i++) await new Promise(setImmediate);
+};
+
+test('a call without a call ID unlocks the window and offers to close the record', async () => {
+  const sent = [];
+  const dom = await stuckCallWindow(async (url) => {
+    sent.push(url);
+    if (url.endsWith('/sync'))
+      return {
+        ok: false,
+        status: 409,
+        json: async () => ({
+          error: 'Santral bu arama için çağrı kimliği vermedi; durumu doğrulanamıyor.',
+          reason: 'no_provider_id',
+        }),
+      };
+    if (url.endsWith('/close'))
+      return {
+        ok: true,
+        json: async () => ({
+          ok: true,
+          call: { ...stuckCall, status: 'failed', statusLabel: 'Ulaşılamadı' },
+        }),
+      };
+    return {
+      ok: true,
+      json: async () => (url.includes('calls?') ? { calls: [stuckCall], results: [] } : { ok: true }),
+    };
+  });
+  const w = dom.window;
+  try {
+    w.showVoipActive({ id: '' }, stuckCall);
+    const host = w.document.getElementById('voipActiveCall');
+    assert(host.querySelector(':scope > .voip-cancel-wait'), 'a reopened page first shows the ending state');
+    await settleStuck();
+    assert.equal(host.querySelector(':scope > .voip-cancel-wait'), null, 'the window is unlocked');
+    assert.equal(
+      [...host.children].some((c) => c.inert),
+      false,
+    );
+    assert.match(host.textContent, /çağrı kimliği vermedi/);
+    assert.notEqual(w.document.querySelector('[data-bar-hangup-label]').textContent, 'Sonlandırılıyor…');
+    host.querySelector('[data-manual-close]').click();
+    await settleStuck();
+    assert(sent.some((u) => u.endsWith('/close')));
+    assert.equal(host.dataset.ended, 'true');
+  } finally {
+    const ui = w.testVoipUi;
+    ui.disposeActive?.();
+    clearInterval(ui.timer);
+    dom.window.close();
+  }
+});
+
+test('after 20 seconds of "Sonlandırılıyor…" the window and the call bar offer "Zorla kapat"', async () => {
+  // Just asked to end: the clock starts now.
+  const stuckCall = { ...stuckCallBase, createdAt: new Date().toISOString() };
+  let closeBody;
+  const dom = await stuckCallWindow(async (url, options) => {
+    if (url.endsWith('/close')) {
+      closeBody = JSON.parse(options.body);
+      return {
+        ok: true,
+        json: async () => ({
+          ok: true,
+          call: { ...stuckCall, status: 'failed', statusLabel: 'Ulaşılamadı' },
+        }),
+      };
+    }
+    // The exchange stays silent: the call keeps "unknown".
+    return {
+      ok: true,
+      json: async () => (url.includes('calls?') ? { calls: [stuckCall], results: [] } : { ok: true }),
+    };
+  });
+  const w = dom.window;
+  try {
+    const realNow = w.Date.now;
+    w.showVoipActive({ id: '' }, stuckCall);
+    const host = w.document.getElementById('voipActiveCall');
+    assert.equal(host.querySelector('[data-force-close]'), null, 'not offered at once');
+    const label = () => w.document.querySelector('[data-bar-hangup-label]').textContent;
+    assert.equal(label(), 'Sonlandırılıyor…');
+    w.Date.now = () => realNow() + 21000;
+    w.testVoipUi.updateActive(stuckCall);
+    const force = host.querySelector(':scope > .voip-cancel-wait [data-force-close]');
+    assert(force, 'offered after the wait');
+    assert.equal(label(), 'Zorla kapat');
+    assert.equal(w.document.querySelector('[data-global-hangup]').disabled, false);
+    w.testVoipUi.updateActive(stuckCall);
+    assert.equal(host.querySelector('[data-force-close]'), force, 'the button stays put between polls');
+    force.click();
+    await settleStuck();
+    assert.deepEqual(closeBody, { id: 'stuck', force: true });
+    assert.equal(host.dataset.ended, 'true');
+  } finally {
+    const ui = w.testVoipUi;
+    ui.disposeActive?.();
+    clearInterval(ui.timer);
+    dom.window.close();
+  }
+});
+
+test('a page reopened on a call that has been ending for long offers "Zorla kapat" at once', async () => {
+  const dom = await stuckCallWindow(async (url) => ({
+    ok: true,
+    json: async () => (url.includes('calls?') ? { calls: [stuckCall], results: [] } : { ok: true }),
+  }));
+  const w = dom.window;
+  try {
+    w.showVoipActive({ id: '' }, { ...stuckCall, providerId: undefined });
+    const host = w.document.getElementById('voipActiveCall');
+    assert(host.querySelector(':scope > .voip-cancel-wait [data-force-close]'));
+    assert.equal(w.document.querySelector('[data-bar-hangup-label]').textContent, 'Zorla kapat');
+  } finally {
+    w.testVoipUi.disposeActive?.();
+    clearInterval(w.testVoipUi.timer);
+    dom.window.close();
+  }
 });

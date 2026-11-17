@@ -1,5 +1,7 @@
 const voipActiveStatuses = new Set(['starting', 'ringing', 'answered', 'unknown']);
 const voipUi = { documentId: '', timer: null, request: 0 };
+// How long "Sonlandırılıyor…" may last before the window offers "Zorla kapat".
+const VOIP_FORCE_CLOSE_MS = 20000;
 async function voipApi(path, method = 'GET', value) {
   const response = await fetch('/api/voip/' + path, {
     method,
@@ -222,7 +224,8 @@ function voipCallBarRender() {
       </div>`;
     (document.querySelector('.shell') || document.body).prepend(bar);
     document.body.classList.add('voip-call-bar-open');
-    bar.querySelector('[data-global-hangup]').onclick = () => voipUi.bar?.hangup?.();
+    bar.querySelector('[data-global-hangup]').onclick = () =>
+      voipUi.bar?.ending && voipUi.bar.force ? voipUi.bar.forceClose?.() : voipUi.bar?.hangup?.();
     bar.querySelector('[data-bar-mute]').onclick = () => voipUi.bar?.mute?.();
     bar.querySelector('[data-bar-open]').onclick = () => voipUi.bar?.open?.();
   }
@@ -248,13 +251,19 @@ function voipCallBarRender() {
   mute.disabled = !!state.muteBusy || !!state.ending;
   mute.setAttribute('aria-pressed', String(!!state.muted));
   bar.querySelector('[data-bar-open]').hidden = !state.open;
-  hangup.disabled = !!state.ending;
-  hangup.setAttribute('aria-label', state.ending ? 'Arama sonlandırılıyor' : 'Aramayı sonlandır');
-  bar.querySelector('[data-bar-hangup-label]').textContent = state.ending
-    ? dialing
-      ? 'İptal ediliyor…'
-      : 'Sonlandırılıyor…'
-    : 'Sonlandır';
+  const force = !!state.ending && !!state.force;
+  hangup.disabled = !!state.ending && !force;
+  hangup.setAttribute(
+    'aria-label',
+    force ? 'Aramayı zorla kapat' : state.ending ? 'Arama sonlandırılıyor' : 'Aramayı sonlandır',
+  );
+  bar.querySelector('[data-bar-hangup-label]').textContent = force
+    ? 'Zorla kapat'
+    : state.ending
+      ? dialing
+        ? 'İptal ediliyor…'
+        : 'Sonlandırılıyor…'
+      : 'Sonlandır';
   voipCallBarTick();
 }
 function voipCallBarOpen(state) {
@@ -277,16 +286,23 @@ function voipCallLabel(doc, call) {
   const number = call.documentNumber || (doc.id && doc.number !== 'Dosyasız arama' ? doc.number : '');
   return number ? 'Föy ' + number : call.documentId || doc.id ? '' : 'Dosyasız arama';
 }
-function voipCancelWait(frame, waiting) {
-  frame.querySelector(':scope > .voip-cancel-wait')?.remove();
-  for (const child of frame.children) child.inert = waiting;
-  if (!waiting) return;
+// While a call is ending the window is locked. With `force` (the end took too long) the notice
+// also offers "Zorla kapat". The notice is kept between polls so the button does not flicker.
+function voipCancelWait(frame, waiting, force) {
+  const existing = frame.querySelector(':scope > .voip-cancel-wait');
+  const same = waiting && existing && !!existing.querySelector('[data-force-close]') === !!force;
+  if (!same) existing?.remove();
+  for (const child of frame.children)
+    if (!child.classList.contains('voip-cancel-wait')) child.inert = waiting;
+  if (!waiting || same) return;
   const notice = document.createElement('div');
   notice.className = 'voip-cancel-wait';
   notice.setAttribute('role', 'status');
   notice.setAttribute('aria-live', 'polite');
-  notice.innerHTML =
-    '<div><strong>Arama sonlandırılıyor…</strong><span>Kapanana kadar lütfen bekleyiniz.</span></div>';
+  notice.innerHTML = force
+    ? '<div><strong>Arama hâlâ sonlandırılıyor…</strong><span>Santralden kapanış bilgisi gelmedi. Görüşme bittiyse kaydı zorla kapatabilirsiniz.</span><button type="button" class="secondary" data-force-close>Zorla kapat</button></div>'
+    : '<div><strong>Arama sonlandırılıyor…</strong><span>Kapanana kadar lütfen bekleyiniz.</span></div>';
+  if (force) notice.querySelector('[data-force-close]').onclick = force;
   frame.append(notice);
 }
 async function voipStartCancelable(input, container, report, launchButton, context = {}) {
@@ -1677,6 +1693,12 @@ function showVoipActive(doc, call) {
     syncing = false,
     lastProviderSync = 0,
     hangupPending = false,
+    // Verimor never gave this call an ID: it can be neither checked nor hung up, only closed.
+    unverifiable = false,
+    // When the window started showing "Sonlandırılıyor…"; after VOIP_FORCE_CLOSE_MS it offers "Zorla kapat".
+    endingSince = 0,
+    forceTimer = null,
+    latest = call,
     disposed = false;
   let muted = !!call.muted;
   const started = Date.parse(call.answeredAt || call.createdAt) || Date.now();
@@ -1733,6 +1755,7 @@ function showVoipActive(doc, call) {
     resetHeaderCall();
     voipCallBarClose();
     clearInterval(heartbeatTimer);
+    clearTimeout(forceTimer);
     disposed = true;
     clearTimeout(draftTimer);
     clearInterval(elapsed);
@@ -1765,6 +1788,7 @@ function showVoipActive(doc, call) {
     if (!ended && !disposed && !voipUi.minimized) host.querySelector('[data-current-minimize]').click();
   });
   const update = (next) => {
+    latest = next;
     const wasEnded = ended;
     ended = !voipActiveStatuses.has(next.status);
     host.querySelector('[data-current-status]').textContent =
@@ -1781,7 +1805,24 @@ function showVoipActive(doc, call) {
       line.textContent =
         next.outboundLine && display ? next.outboundLine + '. hat · ' + display : 'Dış hat doğrulanıyor…';
     }
-    const ending = !ended && !next.cancelError && (next.cancelRequested || hangupPending);
+    const ending = !ended && !next.cancelError && !unverifiable && (next.cancelRequested || hangupPending);
+    if (!ending) {
+      endingSince = 0;
+      clearTimeout(forceTimer);
+    } else if (!endingSince) {
+      // Counted from when the end was asked for, so a page reopened on a call that has been
+      // "ending" for long offers "Zorla kapat" at once. A cancel happens while dialing, so the
+      // call's start stands in for it.
+      const asked = Date.parse(next.hangupRequestedAt || (next.cancelRequested ? next.createdAt : ''));
+      endingSince = Math.min(Date.now(), Number.isFinite(asked) ? asked : Date.now());
+      // Polls may fail while the exchange is silent: show the button even without a new answer.
+      clearTimeout(forceTimer);
+      forceTimer = setTimeout(
+        () => !disposed && update(latest),
+        Math.max(0, endingSince + VOIP_FORCE_CLOSE_MS - Date.now()) + 50,
+      );
+    }
+    const force = ending && Date.now() - endingSince >= VOIP_FORCE_CLOSE_MS;
     if (ended) {
       resetHeaderCall();
       voipCallBarClose();
@@ -1791,8 +1832,9 @@ function showVoipActive(doc, call) {
         status: next.statusLabel || 'Aranıyor…',
         line: line ? line.textContent : '',
         ending,
+        force,
       });
-    voipCancelWait(host, ending);
+    voipCancelWait(host, ending, force ? forceClose : null);
     // Busy/canceled calls keep the registered webphone ready for the next attempt.
     if (ended && !wasEnded && next.status === 'completed') releaseVoipWebphoneSoon();
     outcomes.hidden = !ended;
@@ -1900,6 +1942,7 @@ function showVoipActive(doc, call) {
       if (!host.open && typeof host.showModal === 'function') host.showModal();
       host.querySelector('[data-current-hangup]')?.click();
     },
+    forceClose: () => forceClose(),
   });
   update(call);
   if (call.cancelRequested)
@@ -1986,6 +2029,7 @@ function showVoipActive(doc, call) {
       await sync();
     } catch (error) {
       hangupPending = false;
+      if (error.reason === 'no_provider_id') unverifiable = true;
       voipCancelWait(host, false);
       voipCallBarUpdate({ ending: false });
       message(error.message);
@@ -1995,6 +2039,35 @@ function showVoipActive(doc, call) {
       event.target.disabled = false;
     }
   };
+  // "Zorla kapat": the server asks Verimor to hang up if it still has the call, then closes the
+  // record whatever the exchange answers.
+  async function forceClose(event) {
+    if (
+      !confirm(
+        'Arama kaydı kapatılacak. Görüşme santralde hâlâ açıksa kapatılması da istenecek. Devam edilsin mi?',
+      )
+    )
+      return;
+    const button = event?.currentTarget;
+    if (button) button.disabled = true;
+    try {
+      const result = await voipApi('close', 'POST', { id: call.id, force: true });
+      if (result.call) update(result.call);
+    } catch (error) {
+      message(error.message);
+      if (button?.isConnected) button.disabled = false;
+    }
+  }
+  // Unlock the window (it showed "Arama sonlandırılıyor…") and offer to close the record.
+  function markUnverifiable(text) {
+    if (unverifiable) return;
+    unverifiable = true;
+    hangupPending = false;
+    voipCancelWait(host, false);
+    voipCallBarUpdate({ ending: false });
+    message(text);
+    offerManualClose();
+  }
   function offerManualClose() {
     if (host.querySelector('[data-manual-close]')) return;
     const box = document.createElement('div');
@@ -2023,8 +2096,9 @@ function showVoipActive(doc, call) {
         lastProviderSync = Date.now();
         try {
           await voipApi('sync', 'POST', { id: call.id });
-        } catch {
+        } catch (error) {
           /* CDR may not exist until hangup. */
+          if (error.reason === 'no_provider_id') markUnverifiable(error.message);
         }
       }
       const data = await voipApi(
@@ -2106,10 +2180,9 @@ function showVoipActive(doc, call) {
     }
   };
   if (!ended) voipUi.timer = setInterval(sync, 2500);
-  if (call.cancelRequested && !call.cancelError && !ended) {
-    voipCancelWait(host, true);
-    sync();
-  }
+  // The lock (and "Zorla kapat" when the end was asked for long ago) was set by update(call);
+  // ask the server at once whether the exchange has closed it meanwhile.
+  if (call.cancelRequested && !call.cancelError && !ended) sync();
 }
 async function openVoipHistory(doc, phone = '') {
   let dialog = document.getElementById('voipHistory');

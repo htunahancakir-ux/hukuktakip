@@ -528,7 +528,14 @@ test('inbound check-ins persist as presence and routing through the real store p
     const state = fixture();
     state.data['icrapro-v1'].clients = [{ id: 'c', name: 'Örnek müvekkil' }];
     state.data['icrapro-v1'].docs = [
-      { id: 'd', client: 'c', phone1: '05320000000', relatedStaff: 'p', number: 'D-1', debtor: 'Örnek borçlu' },
+      {
+        id: 'd',
+        client: 'c',
+        phone1: '05320000000',
+        relatedStaff: 'p',
+        number: 'D-1',
+        debtor: 'Örnek borçlu',
+      },
     ];
     state.users.push({
       ...state.users[0],
@@ -611,10 +618,7 @@ test('inbound check-ins persist as presence and routing through the real store p
       (await pool.query('SELECT user_id,seen_at FROM han_private.voip_presence ORDER BY user_id')).rows;
     // Nobody has checked in: the fallback target answers.
     assert.deepEqual(await route(), { transfer: { target: 'queue/201' } });
-    await assert.rejects(
-      call('route?token=' + 'a'.repeat(64) + '&cli=05320000000'),
-      (e) => e.status === 401,
-    );
+    await assert.rejects(call('route?token=' + 'a'.repeat(64) + '&cli=05320000000'), (e) => e.status === 401);
     const first = await call('incoming');
     assert.equal(first.alwaysOn, true);
     assert.equal(first.call, null);
@@ -679,6 +683,63 @@ test('inbound check-ins persist as presence and routing through the real store p
       targets.map((t) => [t.id, t.extension, t.online]),
       [['test-ceo', '1001', false]],
     );
+  } finally {
+    await pg.close();
+  }
+});
+
+test('the watchdog scope loads outgoing calls without a call ID once they are five minutes old', async () => {
+  const { pg, pool } = await database();
+  try {
+    await importState(pool, fixture());
+    const ago = (minutes) => new Date(Date.now() - minutes * 60000).toISOString();
+    const base = { documentId: '', phone: '905320000007', userId: 'test-ceo', duration: 0 };
+    const calls = [
+      {
+        ...base,
+        id: 'orphan-old',
+        requestId: 'orphan-request-0001',
+        userId: 'orphan-user-1',
+        status: 'unknown',
+        createdAt: ago(600),
+      },
+      {
+        ...base,
+        id: 'orphan-young',
+        requestId: 'orphan-request-0002',
+        userId: 'orphan-user-2',
+        status: 'starting',
+        createdAt: ago(1),
+        phone: '905320000008',
+      },
+      {
+        ...base,
+        id: 'with-id',
+        requestId: 'orphan-request-0003',
+        userId: 'orphan-user-3',
+        status: 'answered',
+        providerId: 'p-1',
+        createdAt: ago(600),
+        phone: '905320000009',
+      },
+      {
+        ...base,
+        id: 'closed',
+        requestId: 'orphan-request-0004',
+        userId: 'orphan-user-4',
+        status: 'failed',
+        createdAt: ago(600),
+        phone: '905320000010',
+      },
+    ];
+    await transaction(pool, false, (tx) => {
+      tx.state.voipCalls.push(...calls);
+      tx.saveState(tx.state);
+    });
+    const loaded = await transaction(pool, false, (tx) => tx.state.voipCalls.map((c) => c.id), {
+      watchdog: true,
+    });
+    assert.deepEqual(loaded, ['orphan-old']);
   } finally {
     await pg.close();
   }

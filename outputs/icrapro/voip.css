@@ -1362,6 +1362,10 @@ dialog.voip-active-call {
   color: #60788b;
   font-size: 14px;
 }
+.voip-cancel-wait [data-force-close] {
+  margin-top: 16px;
+  cursor: pointer;
+}
 
 .voip-outbound-line {
   margin-left: 6px;

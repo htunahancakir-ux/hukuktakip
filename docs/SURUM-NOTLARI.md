@@ -1,5 +1,14 @@
 # Sürüm Notları
 
+## 2.7.1 — 17 Kasım 2026
+
+### Telefon: "Sonlandırılıyor…"da takılan arama
+
+- **Neden takılıyordu:** Verimor arama başlatma isteğine zamanında yanıt vermediğinde (16 Kasım 15:08) aramanın Verimor çağrı kimliği hiç oluşmadı. Kimliği olmayan arama ne sorgulanabiliyor ne de sonlandırılabiliyordu; pencere kilitli kalıyor, sunucu her eşitlemede 409 dönüyordu. Bu kayıt açık kaldığı sürece aynı kullanıcı yeni arama da başlatamıyordu (kullanıcı başına tek açık giden arama).
+- **Otomatik kapanış:** Verimor'dan 5 dakika içinde çağrı kimliği gelmeyen giden aramayı bekçi işi kendiliğinden kapatır; nota "Santral bu arama için çağrı kimliği vermedi; kayıt otomatik kapatıldı." yazılır.
+- **Kilit kalkar:** Sayfa açıldığında böyle bir arama "Sonlandırılıyor…" gösteriyorsa ilk kontrolde kilit kalkar, durum açıklanır ve **Kaydı kapat** seçeneği çıkar.
+- **Zorla kapat:** Herhangi bir arama 20 saniyeden uzun "Sonlandırılıyor…" durumunda kalırsa hem arama penceresinde hem üstteki arama çubuğunda **Zorla kapat** düğmesi çıkar. Onaydan sonra sunucu, Verimor'da hâlâ açıksa çağrıyı kapatmayı dener ve kaydı her durumda kapatır; Verimor yanıt vermezse nedeni nota yazılır.
+
 ## 2.7.0 — 16 Kasım 2026
 
 ### Tanıtım sayfası ve Google (SEO)
