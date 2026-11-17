@@ -9,6 +9,12 @@
 - **robots.txt ve sitemap.xml:** genel adreste site haritasını gösterir, `/api/` taranmaz. Büro adresleri (`<büro>.hanhukuktakip.com`), yönetim konsolu ve bütün uygulama ekranları `X-Robots-Tag: noindex, nofollow` ile Google dizininin dışında tutulur.
 - İletişim bölümü sunucu ayarından gelir: `HAN_SITE_CONTACT_EMAIL` ve/veya `HAN_SITE_CONTACT_PHONE` tanımlanınca sayfada "Büronuz için demo isteyin" bölümü çıkar; tanımlı değilse "Demo isteyin" düğmeleri giriş ekranına gider. Ayrıntılar docs/SAAS.md "Tanıtım sayfası ve arama motorları" bölümünde.
 
+### Telefon: Verimor yanıt vermediğinde anlaşılır uyarı
+
+- Verimor arama isteğine zamanında yanıt vermediğinde ekranda İngilizce `Unexpected token '<', "<!DOCTYPE"… is not valid JSON` hatası çıkıyordu (16 Kasım 15:08). Uygulama doğru Türkçe uyarıyı gönderiyordu, ama dış hizmet hatalarında kullanılan 502/504 kodlu cevapları Cloudflare kendi HTML sayfasıyla değiştiriyordu.
+- Kendi sunucumuz artık bu hataları **424** koduyla gönderiyor; Cloudflare bu cevaba dokunmuyor. Böylece kullanıcı "Verimor yanıtı alınamadı. Arama başladıysa tekrar başlatmayın; çağrı durumunu kontrol edin." uyarısını görüyor. Bu değişiklik telefonla sınırlı değil; SMS, yapay zekâ, harita ve ödeme hatalarının mesajları da artık ekrana ulaşıyor.
+- Telefon ekranı, beklenmeyen bir cevapla karşılaşırsa da Türkçe uyarı gösteriyor: arama başlatılırken "Sunucudan yanıt alınamadı (HTTP …). Arama başlamış olabilir; tekrar aramadan önce son aramaları kontrol edin."
+
 ## 2.6.1 — 15 Kasım 2026
 
 ### Müvekkiller: kısa üst bölüm ve süzgeç satırı

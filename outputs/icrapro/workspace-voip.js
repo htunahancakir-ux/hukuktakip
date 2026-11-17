@@ -8,13 +8,33 @@ async function voipApi(path, method = 'GET', value) {
     headers: { 'X-Han-Request': '1', ...(value ? { 'Content-Type': 'application/json' } : {}) },
     ...(value ? { body: JSON.stringify(value) } : {}),
   });
-  const result = await response.json();
+  const result = await voipReadJson(response, path.split('?')[0]);
   if (!response.ok)
     throw Object.assign(Error(result.error || 'Telefon işlemi tamamlanamadı.'), {
       status: response.status,
       reason: result.reason,
     });
   return result;
+}
+// A proxy or network error page (HTML) instead of the application's JSON answer: say what it
+// means in Turkish. For a call start the switchboard may already be dialing, so warn about
+// calling the same number twice.
+async function voipReadJson(response, action = '') {
+  try {
+    return await response.json();
+  } catch {
+    const code = response.status ? ' (HTTP ' + response.status + ')' : '';
+    throw Object.assign(
+      Error(
+        action === 'start'
+          ? 'Sunucudan yanıt alınamadı' +
+              code +
+              '. Arama başlamış olabilir; tekrar aramadan önce son aramaları kontrol edin.'
+          : 'Sunucudan yanıt alınamadı' + code + '. Birkaç saniye sonra tekrar deneyin.',
+      ),
+      { status: response.status, reason: 'unreadable_response' },
+    );
+  }
 }
 
 // ---------- Microphone, browser and connection checks ----------
@@ -797,7 +817,7 @@ async function sendVoipConversation(call, values, input) {
     headers: { 'X-Han-Request': '1', 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
-  const data = await response.json();
+  const data = await voipReadJson(response);
   if (!response.ok) throw Error(data.error || 'Görüşme kaydedilemedi.');
   doc.conversations = data.conversations;
   doc.conversationReport = data.report;
