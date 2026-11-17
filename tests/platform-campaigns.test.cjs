@@ -78,14 +78,17 @@ test('campaigns and coupons: discounts, limits, audiences, reporting and trials'
       assert.equal(r.vatKurus, await vat(r.office.id));
       assert.equal(r.vatKurus, 226_800);
       const ledger = await rows(r.office.id);
+      // Compared as a set: rows written in the same instant (clock_timestamp() is coarse in
+      // PGlite) have no defined order, which made this test fail now and then.
+      const bySet = (list) => list.map((x) => JSON.stringify(x)).sort();
       assert.deepEqual(
-        ledger.map((x) => [x.kind, x.module_code, x.amount, x.campaign_id === id]),
-        [
+        bySet(ledger.map((x) => [x.kind, x.module_code, x.amount, x.campaign_id === id])),
+        bySet([
           ['new_office', null, 1_200_000, true],
           ['module', 'voip', 60_000, true],
           ['adjustment', null, -120_000, true],
           ['adjustment', 'voip', -6_000, true],
-        ],
+        ]),
       );
       assert.deepEqual([(await campRow(id)).used_count], [1]);
       const red = await redemptions(id);
