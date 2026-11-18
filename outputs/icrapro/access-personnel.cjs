@@ -105,6 +105,7 @@ async function handlePersonnelRoutes(ctx) {
     const calculated = [
         ...calculateCallcenterBonus(ctx.state, month, 'each'),
         ...require('./marketing-bonus.cjs').calculateMarketingBonus(ctx.state, month, parkingToday()),
+        ...require('./lawyer-bonus.cjs').calculateLawyerBonus(ctx.state, month),
         ...require('./other-personnel-bonus.cjs').calculateOtherPersonnelBonus(
           ctx.state,
           month,
@@ -158,7 +159,11 @@ async function handlePersonnelRoutes(ctx) {
       throw fail(400, 'Toplam maaş sıfırdan büyük olmalıdır.');
     const next = structuredClone(ctx.state),
       record = next.data['icrapro-personnel-v1'].find((p) => p.id === v.staffId);
-    if (isCallcenter(record) || require('./other-personnel-bonus.cjs').isOtherPersonnel(record))
+    if (
+      isCallcenter(record) ||
+      require('./lawyer-bonus.cjs').isLawyer(record) ||
+      require('./other-personnel-bonus.cjs').isOtherPersonnel(record)
+    )
       amounts.bonus = record.bonus || 0;
     Object.assign(record, amounts);
     persist(next);
@@ -278,6 +283,7 @@ async function handlePersonnelRoutes(ctx) {
       bonus:
         [
           ...calculateCallcenterBonus(ctx.state, date.slice(0, 7), 'each'),
+          ...require('./lawyer-bonus.cjs').calculateLawyerBonus(ctx.state, date.slice(0, 7)),
           ...require('./marketing-bonus.cjs').calculateMarketingBonus(
             ctx.state,
             date.slice(0, 7),

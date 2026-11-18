@@ -4,6 +4,7 @@ function monthlyPayrollRows(state, month, today = month + '-31') {
   const calculated = [
     ...calculateCallcenterBonus(state, month),
     ...calculateMarketingBonus(state, month, today),
+    ...require('./lawyer-bonus.cjs').calculateLawyerBonus(state, month),
     ...require('./other-personnel-bonus.cjs').calculateOtherPersonnelBonus(state, month, today),
   ];
   return state.data['icrapro-personnel-v1'].map((p) => {

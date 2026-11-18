@@ -856,7 +856,7 @@ function personnelBonus2View() {
     esc(data.month) +
     '"></label></div><div class="overflow"><table><thead><tr><th>PERSONEL</th><th>TAHSİLAT</th><th>ORAN</th><th>ORAN PRİMİ</th><th>EK HEDEF PRİMİ</th><th>EKİP</th><th>1–15</th><th>16–AY SONU</th><th>PRİM 2 TOPLAMI</th></tr></thead><tbody>' +
     data.rows
-      .filter((r) => r.kind !== 'marketing' && r.kind !== 'other')
+      .filter((r) => !['marketing', 'other', 'lawyer'].includes(r.kind))
       .map(
         (r) =>
           '<tr><td>' +
@@ -882,18 +882,42 @@ function personnelBonus2View() {
     '</tbody><tfoot><tr><td colspan="8">TOPLAM</td><td>' +
     money(
       data.rows
-        .filter((r) => r.kind !== 'marketing' && r.kind !== 'other')
+        .filter((r) => !['marketing', 'other', 'lawyer'].includes(r.kind))
         .reduce((sum, r) => sum + r.total, 0) / 100,
     ) +
     '</td></tr></tfoot></table></div></div>' +
     personnelOtherBonusMarkup(data) +
-    personnelMarketingBonusMarkup(data);
+    personnelMarketingBonusMarkup(data) +
+    personnelLawyerBonusMarkup(data);
   $('#personnelView').querySelector('[data-bonus2-month]').onchange = (e) => {
     if (e.target.value) {
       bonus2Month = e.target.value;
       personnelCompensationPage();
     }
   };
+}
+
+function personnelLawyerBonusMarkup(data) {
+  const rows = data.rows.filter((r) => r.kind === 'lawyer');
+  if (!rows.length) return '';
+  return (
+    '<section class="panel"><div class="panelhead"><div><h2>Avukat · Prim 2</h2><p>Ofisin aylık toplam tahsilatının %1’i her avukata ayrı ayrı hesaplanır.</p></div></div><div class="overflow"><table><thead><tr><th>PERSONEL</th><th>OFİS TOPLAM CİROSU</th><th>ORAN</th><th>PRİM 2</th></tr></thead><tbody>' +
+    rows
+      .map(
+        (r) =>
+          '<tr><td>' +
+          esc(r.name) +
+          '</td><td>' +
+          money(r.officeCollected / 100) +
+          '</td><td>%1</td><td><b>' +
+          money(r.total / 100) +
+          '</b></td></tr>',
+      )
+      .join('') +
+    '</tbody><tfoot><tr><td colspan="3">TOPLAM</td><td><b>' +
+    money(rows.reduce((sum, r) => sum + r.total, 0) / 100) +
+    '</b></td></tr></tfoot></table></div></section>'
+  );
 }
 
 function personnelOtherBonusMarkup(data) {

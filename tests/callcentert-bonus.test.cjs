@@ -119,6 +119,7 @@ test('Prim 2 renders own collections, Temlik support and combined quota separate
     loadCalculatedBonus2: () => ({ month: '2026-11', rows: calculateCallcenterBonus(sample(), '2026-11') }),
     personnelOtherBonusMarkup: () => '',
     personnelMarketingBonusMarkup: () => '',
+    personnelLawyerBonusMarkup: () => '',
   });
   const source = fs.readFileSync('outputs/icrapro/personnel.js', 'utf8');
   const view = parsers.babel
