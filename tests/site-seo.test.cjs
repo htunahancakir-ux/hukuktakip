@@ -64,7 +64,19 @@ test('the product page carries search metadata and no office name', () => {
   assert.doesNotMatch(html, /PATAN|HAN \(|Han Hukuk|Bahadır/i);
   // No scripts other than the structured data, no external resources.
   assert.equal(html.match(/<script/g).length, 1);
-  assert.doesNotMatch(html, /(src|href)="https?:\/\/(?!www\.han\.example\.com)/);
+  assert.doesNotMatch(html, /\ssrc="https?:\/\//);
+  // The only link off the site is the product credit (2.7.2), opened in a new tab without
+  // handing over the page.
+  const outside = [...html.matchAll(/<a\s[^>]*href="(https?:\/\/[^"]+)"[^>]*>/g)].filter(
+    ([, url]) => !url.startsWith(ORIGIN + '/'),
+  );
+  assert.deepEqual(
+    outside.map(([, url]) => url),
+    ['https://www.kodix.com.tr/'],
+  );
+  assert.match(outside[0][0], /target="_blank"/);
+  assert.match(outside[0][0], /rel="noopener noreferrer"/);
+  assert.doesNotMatch(html, /<link\s[^>]*href="https?:\/\/(?!www\.han\.example\.com)/);
   // Without contact details every "Demo isteyin" leads to sign-in.
   assert.doesNotMatch(html, /href="#iletisim"/);
 });

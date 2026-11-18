@@ -181,7 +181,9 @@ test('our own server serves the console, browser files and loopback jobs', async
     // Scheduled jobs call the loopback address; they belong to the existing office.
     const local = await ask('127.0.0.1:4317', '/api/session');
     assert.notEqual(local.status, 404, local.text);
-    assert.deepEqual(local, await ask('www.' + BASE, '/api/session'));
+    // The Date header differs when the two answers fall on either side of a second.
+    const undated = ({ headers: { date, ...headers }, ...rest }) => ({ ...rest, headers });
+    assert.deepEqual(undated(local), undated(await ask('www.' + BASE, '/api/session')));
     // Browser files are the same everywhere; data of an unknown office is not.
     assert.equal((await ask('nobody.' + BASE, '/app.js')).status, 200);
     assert.equal((await ask('nobody.' + BASE, '/api/session')).status, 403);
