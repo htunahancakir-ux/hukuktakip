@@ -36,6 +36,7 @@ const { handleBreakRoutes } = require('./access-breaks.cjs');
 const { handleDataRoutes } = require('./access-data.cjs');
 const { handleDeletionRoutes } = require('./access-deletion.cjs');
 const { canDelete } = require('../../lib/deletion-policy.cjs');
+const { assertRequestAction, deletionTypes } = require('../../lib/module-permissions.cjs');
 const { accountingStaff } = require('../../lib/accounting-access.cjs');
 const { recognizedCollectionRevenue } = require('./profit-rules.js');
 const { syncPayrollPeriods } = require('./payroll-periods.cjs');
@@ -103,6 +104,9 @@ function createAccess(stateFile, options = {}) {
     readOnly: u.role !== 'ceo' && u.readOnly === true,
     testAccount: u.testAccount === true,
     canDelete: (u.role === 'ceo' || u.readOnly !== true) && canDelete(u),
+    modulePermissions: u.modulePermissions || {},
+    deletionTypes: Object.keys(deletionTypes).filter((type) => canDelete(u, deletionTypes[type])),
+    canDeleteCalls: canDelete(u, 'calls'),
     activeBreak: u.role === 'ceo' ? null : u.activeBreak || null,
     // The platform's support team, connected through a time-limited support access.
     platformSupport: u.platformSupport === true,
@@ -393,6 +397,7 @@ function createAccess(stateFile, options = {}) {
       }
       if (await handleWhatsAppRoutes(ctx)) return true;
       if (!u) throw fail(401, 'Giriş yapın.');
+      assertRequestAction(u, url.pathname, req.method);
       if (await handleRecoveryRoutes(ctx)) return true;
       if (await require('../../lib/recovery-channels.cjs').handle(ctx)) return true;
       if (await require('./access-ceo-pin.cjs').handleCeoPin(ctx)) return true;

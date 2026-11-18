@@ -94,7 +94,7 @@ async function handleDocumentRoutes(ctx) {
     return true;
   }
   if (url.pathname === '/api/documents/delete' && req.method === 'POST') {
-    if (!canDelete(u)) throw denied();
+    if (!canDelete(u, 'documents')) throw denied();
     const v = await body(req),
       doc = ctx.state.data['icrapro-v1'].docs.find((d) => d.id === v.documentId);
     if (!doc) throw fail(404, 'Dosya bulunamadı.');

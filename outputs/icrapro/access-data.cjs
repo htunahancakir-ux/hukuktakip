@@ -1,6 +1,7 @@
 const { validateNewClientPayouts, appendClientPayout } = require('../../lib/client-payout.cjs');
 const { apply: applyRecordPatch } = require('./record-patch.js');
 const expensePool = require('../../lib/expense-pool.cjs');
+const { assertDataActions, assertModuleAction } = require('../../lib/module-permissions.cjs');
 async function handleDataRoutes(ctx) {
   const {
     req,
@@ -51,12 +52,10 @@ async function handleDataRoutes(ctx) {
     return true;
   }
   if (url.pathname === '/api/record-attachments' && req.method === 'POST') {
-    const result = require('../../lib/record-attachments.cjs').appendAttachment(
-      ctx.state,
-      await body(req),
-      u,
-      allowed,
-    );
+    const input = await body(req);
+    const collection = require('../../lib/record-attachments.cjs').owner(input);
+    assertModuleAction(u, collection === 'docs' ? 'documents' : collection, 'update');
+    const result = require('../../lib/record-attachments.cjs').appendAttachment(ctx.state, input, u, allowed);
     if (result.next) persist(result.next);
     const { data, ...attachment } = result.attachment;
     send(res, 200, { ok: true, attachment });
@@ -199,8 +198,10 @@ async function handleDataRoutes(ctx) {
       }
       send(res, 200, { ok: true, records });
     };
-    const v = patchRequest ? { value: applyRecordPatch(key, readKey(key, u), incoming) } : incoming,
+    const previous = patchRequest || u.modulePermissions ? readKey(key, u) : null;
+    const v = patchRequest ? { value: applyRecordPatch(key, previous, incoming) } : incoming,
       next = structuredClone(ctx.state);
+    assertDataActions(u, key, previous, v.value);
     expensePool.guardGenericChanges(ctx.state, key, v.value);
     if (key === 'icrapro-v1' && ['ceo', 'admin'].includes(u.role) && Array.isArray(v.value?.docs)) {
       for (const doc of v.value.docs) {

@@ -1,4 +1,5 @@
 const { canDelete, denied } = require('../../lib/deletion-policy.cjs');
+const { deletionTypes } = require('../../lib/module-permissions.cjs');
 const crypto = require('node:crypto');
 function rowsFor(state, type) {
   const data = state.data,
@@ -23,11 +24,15 @@ function rowsFor(state, type) {
 async function handleDeletionRoutes(ctx) {
   const { req, res, url, u, body, send, fail, persist } = ctx;
   if (url.pathname !== '/api/operations/delete') return false;
-  if (!canDelete(u)) throw denied();
+  if (!Object.values(deletionTypes).some((module) => canDelete(u, module))) throw denied();
+  function assertType(type) {
+    if (!Object.hasOwn(deletionTypes, type)) throw fail(400, 'Geçerli kayıt türü seçin.');
+    if (!canDelete(u, deletionTypes[type])) throw denied();
+  }
   if (req.method === 'GET') {
-    const type = url.searchParams.get('type'),
-      rows = rowsFor(ctx.state, type);
-    if (!rows) throw fail(400, 'Geçerli kayıt türü seçin.');
+    const type = url.searchParams.get('type');
+    assertType(type);
+    const rows = rowsFor(ctx.state, type);
     const q = (url.searchParams.get('q') || '').trim().toLocaleLowerCase('tr');
     const docs = ctx.state.data['icrapro-v1'].docs;
     const labels = {
@@ -77,10 +82,10 @@ async function handleDeletionRoutes(ctx) {
     return true;
   }
   if (req.method !== 'POST') throw fail(405, 'Yöntem desteklenmiyor.');
-  const input = await body(req),
-    next = structuredClone(ctx.state),
+  const input = await body(req);
+  assertType(input?.type);
+  const next = structuredClone(ctx.state),
     rows = rowsFor(next, input.type);
-  if (!rows) throw fail(400, 'Geçerli kayıt türü seçin.');
   const index = rows.findIndex(
     (r) => r.id === input.id && (input.type !== 'conversations' || r.documentId === input.documentId),
   );

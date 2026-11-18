@@ -77,7 +77,9 @@ function scheduledRemindersPage(remote) {
           : '<p>Bu listede hatırlatma yok.</p>'
       }</div></section>`;
     if (remote?.items) bindReminderPagination(remote);
-    host.querySelector('[data-add-reminder]').onclick = () => scheduledReminderDialog(whatsappAvailable);
+    const add = host.querySelector('[data-add-reminder]');
+    add.hidden = window.hanModuleAction?.('reminders', 'create') === false;
+    add.onclick = () => scheduledReminderDialog(whatsappAvailable);
     host.querySelectorAll('[data-reminder-view]').forEach((button) => {
       button.onclick = () => {
         reminderListStatus = button.dataset.reminderView;
@@ -86,6 +88,8 @@ function scheduledRemindersPage(remote) {
       };
     });
     host.querySelectorAll('[data-reminder-action]').forEach((button) => {
+      const action = button.dataset.reminderAction === 'cancel' ? 'delete' : 'update';
+      button.hidden = window.hanModuleAction?.('reminders', action) === false;
       button.onclick = () => {
         const { reminderAction, reminderId } = button.dataset;
         if (
@@ -107,6 +111,8 @@ function scheduledRemindersPage(remote) {
 }
 
 function scheduledReminderDialog(whatsappAvailable) {
+  if (window.hanModuleAction?.('reminders', 'create') === false)
+    return toast('Hatırlatma ekleme yetkiniz kapalı.');
   const dialog = termsDialog('Hatırlatma ekle');
   const content = dialog.querySelector('.terms-dialog-content');
   content.innerHTML = `<form class="grid">

@@ -322,7 +322,7 @@ function render() {
   };
   $('#title').textContent = $('#crumb').textContent = titles[page][0];
   $('#subtitle').textContent = titles[page][1];
-  $('#newClient').hidden = page !== 'clients';
+  $('#newClient').hidden = page !== 'clients' || window.hanModuleAction?.('clients', 'create') === false;
   if (typeof bindExcelImportButtons === 'function') bindExcelImportButtons(page);
   $('#clientSearchBar').hidden = page !== 'clients';
   $('#clientSearchBar').replaceChildren();
@@ -386,6 +386,7 @@ function render() {
     if (marketingSms) marketingSms.onclick = marketingSmsPage;
     const button = document.getElementById('addProspect');
     const form = document.getElementById('prospectForm');
+    button.hidden = window.hanModuleAction?.('marketing', 'create') === false;
     document.getElementById('marketingBack').onclick = () => {
       if (!form.hidden) {
         editingProspectId = null;
@@ -450,6 +451,7 @@ function render() {
           (result.items.length ? '' : '<tr><td colspan="6" class="empty">Henüz kayıt yok.</td></tr>') +
           '</tbody></table></div>';
         document.querySelectorAll('[data-edit-prospect]').forEach((editButton) => {
+          editButton.hidden = window.hanModuleAction?.('marketing', 'update') === false;
           editButton.onclick = () => {
             const item = result.items.find((entry) => entry.id === editButton.dataset.editProspect);
             if (!item) return;

@@ -1336,6 +1336,33 @@ dialog.modal-dragging .modal-drag-handle {
 .recovery-order {
   margin: 12px 0 0;
 }
+#userPermissionsForm select {
+  max-inline-size: 100%;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
+  background: #fff;
+  color: #203047;
+}
+#permissionAccount {
+  margin-block-start: 8px;
+}
+.user-permissions-table {
+  min-inline-size: 540px;
+}
+.user-permissions-table th,
+.user-permissions-table td {
+  padding: 10px 12px;
+}
+.user-permissions-table th[scope='row'] {
+  color: #203047;
+  font-size: 13px;
+  letter-spacing: normal;
+}
+#userPermissionMatrix .actions {
+  margin-block-start: 12px;
+}
+
 /* Kullanıcı Yönetimi: "Yöneticiden iste" requests waiting for a new password. */
 .password-help-list {
   margin: 0 0 16px;

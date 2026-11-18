@@ -718,7 +718,12 @@ function accountingPage(remote) {
       )}</select></label><label class="field">İşlemi Yapan Kullanıcı<input name="operator" list="accountingOperators" data-optional="true" value="${esc(movementFilters.operator)}" placeholder="Tüm kullanıcılar"><datalist id="accountingOperators">${operators.map((n) => `<option value="${esc(n)}"></option>`).join('')}</datalist></label><label class="field">Gider Kalemi<select name="category" data-optional="true"><option value="">Tüm Gider Kalemleri</option>${accountingExpenseCategories.map((n) => `<option value="${esc(n)}" ${movementFilters.category === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label><label class="field">Açıklama / İşlem Ara<input type="search" name="query" data-optional="true" value="${esc(movementFilters.query)}" placeholder="Açıklama, evrak no veya kullanıcı…"></label></div><div class="toolbar" style="margin-top:16px"><button class="primary" type="submit">Filtrele</button><button class="secondary" type="button" id="clearMovementFilters">Filtreleri Temizle</button></div><p>Tarih aralığı başlangıç ve bitiş günlerini içerir.</p></form></details><div class="overflow acc-ledger-scroll"><table class="account-ledger"><thead><tr><th>TARİH</th><th>HESAP</th><th>İŞLEM</th><th>GİDER KALEMİ</th><th>İŞLEMİ YAPAN</th><th>AÇIKLAMA</th><th class="acc-num">GİREN</th><th class="acc-num">ÇIKAN</th><th class="acc-num">KALAN</th></tr></thead><tbody>${rows.map((e) => `<tr><td>${esc(displayDate(e.date))}</td><td>${esc(name(e.accountId))}</td><td>${accountingBadge(e)}</td><td>${esc(e.type === 'out' ? e.expenseCategory || 'Belirtilmedi' : '—')}</td><td>${esc(e.operatorName || 'Belirtilmedi')}</td><td>${esc(e.note)}</td><td class="acc-num acc-pos">${e.signed > 0 ? amount(e.signed) : '—'}</td><td class="acc-num acc-neg">${e.signed < 0 ? amount(-BigInt(e.signed)) : '—'}</td><td class="acc-num ${e.balance !== undefined ? accountingTone(e.balance) : ''}"><strong>${e.balance !== undefined ? amount(e.balance) : '—'}</strong></td></tr>`).join('') || '<tr><td colspan="9" class="empty">Henüz hesap hareketi yok.</td></tr>'}</tbody><tfoot><tr><td colspan="6"><strong>FİLTRELENEN TOPLAM</strong></td><td class="acc-num"><strong>${amount(totals.incoming)}</strong></td><td class="acc-num"><strong>${amount(totals.outgoing)}</strong></td><td>—</td></tr></tfoot></table></div><details class="acc-notes"><summary>Bu ekran nasıl çalışır?</summary><p>Hesap özetleri tüm kayıtları kapsar. Hareketler en yeniden eskiye sıralanır; kalan sütunu ilgili işlemin sonrasındaki hesap bakiyesidir.</p><p>Borçlu tahsilatı dosyaya işlenir: Borçlu Tahsilatı düğmesiyle dosyayı seçin veya dosyanın Finansal İşlemler ekranını kullanın; aynı tahsilatı Para Girişi olarak tekrar kaydetmeyin. Hesaplar arası transfer ciro veya kâr oluşturmaz. Bu ekran kayıt tutar, bankaya talimat göndermez.</p>${unassigned ? '<p>Hesap seçilmeden girilmiş eski tahsilatlar hesap bakiyelerine dahil değildir.</p>' : ''}</details></div>`;
   const accountsBox = document.querySelector('.acc-accounts-scroll');
   if (accountsBox && accountsScroll) accountsBox.scrollTop = accountsScroll;
-  for (const action of accountingActions()) document.getElementById(action.id).onclick = action.run;
+  for (const action of accountingActions()) {
+    const button = document.getElementById(action.id);
+    const module = action.id === 'accDebtorPayment' ? 'finance' : 'accounting';
+    button.disabled = window.hanModuleAction?.(module, 'create') === false;
+    button.onclick = action.run;
+  }
   if (!window.hanAccountingShortcuts) {
     window.hanAccountingShortcuts = true;
     document.addEventListener('keydown', accountingShortcut);
@@ -750,15 +755,17 @@ function accountingPage(remote) {
     };
   });
   $('#addAccount').onclick = () => accountForm();
+  $('#addAccount').hidden = window.hanModuleAction?.('accounting', 'create') === false;
   $('#exportAccountLedger').onclick = exportAccountLedger;
   $('#clientPayoutsTab').onclick = clientPayoutPage;
   $('#accountingFilter').onchange = (e) => {
     accountingFilter = e.target.value;
     accountingPage();
   };
-  document
-    .querySelectorAll('[data-edit-account]')
-    .forEach((b) => (b.onclick = () => accountForm(b.dataset.editAccount)));
+  document.querySelectorAll('[data-edit-account]').forEach((b) => {
+    b.hidden = window.hanModuleAction?.('accounting', 'update') === false;
+    b.onclick = () => accountForm(b.dataset.editAccount);
+  });
   if (accountingScrollToLedger) {
     accountingScrollToLedger = false;
     // Bring the account strip right under the action bar: accounts and movements stay together.

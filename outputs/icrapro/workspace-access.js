@@ -21,7 +21,7 @@ async function userManagement(editId) {
   const deliveryOption = (value, label, ready, missing) =>
     `<option value="${value}" ${ready ? '' : 'disabled'}>${esc(label)}${ready ? '' : ' — ' + esc(missing)}</option>`;
   $('#content').innerHTML =
-    `${passwordHelpPanel(help.requests)}<div class="panel"><div class="panelhead"><div><h2>Personel Şifre Değiştirme / Sıfırlama</h2><p>Yeni hesap ve yetki işlemleri Personel bölümünden yapılır. Şifre sıfırlanınca kullanıcının açık oturumları kapatılır.</p></div></div>${
+    `${passwordHelpPanel(help.requests)}<div class="panel"><div class="panelhead"><div><h2>Personel Şifre Değiştirme / Sıfırlama</h2><p>Yeni hesaplar Personel bölümünden açılır. Şifre sıfırlanınca kullanıcının açık oturumları kapatılır.</p></div></div>${
       selected
         ? `<form id="passwordResetForm"><div class="formbody grid"><p class="full"><b>${esc(selected.name)}</b> · ${esc(selected.username)}${helpFor ? ' · <span class="email-unverified-mark">Şifre talebi bekliyor</span>' : ''}</p><label class="field">Yeni Şifre<input name="password" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></label><label class="field">Yeni Şifre Tekrar<input name="confirm" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></label><label class="field">Yeni şifreyi kullanıcıya iletme<select name="deliver">${deliveryOption('none', 'Kendim ileteceğim (telefonla / yüz yüze)', true)}${deliveryOption(
             'sms',
@@ -87,6 +87,14 @@ async function userManagement(editId) {
           renderRows();
         });
       row.lastElementChild.append(button);
+      if (hanAuth.role === 'ceo' && account.role !== 'ceo') {
+        const permissions = document.createElement('button');
+        permissions.type = 'button';
+        permissions.className = 'link';
+        permissions.textContent = 'Yetkileri Düzenle';
+        permissions.onclick = () => userPermissionsPage(account.id);
+        row.lastElementChild.append(permissions);
+      }
     });
   };
   $('#passwordUserSearch').oninput = renderRows;
@@ -136,6 +144,100 @@ async function userManagement(editId) {
   };
 }
 
+function userPermissionsPage(selectedId) {
+  const endpoint = '/api/users/module-permissions';
+  const host = $('#content');
+  host.innerHTML = `${userAuditTabs('permissions')}<section class="panel" aria-labelledby="userPermissionsTitle">
+    <div class="panelhead"><div><h2 id="userPermissionsTitle">Rol ve Yetkiler</h2>
+      <p>Kullanıcı seçip modül bazında kayıt işlemlerini ayarlayın.</p></div></div>
+    <div class="formbody" id="userPermissionsBody"></div>
+  </section>`;
+  bindUserAuditTabs();
+  const body = $('#userPermissionsBody');
+  let data;
+  try {
+    data = authApi(endpoint);
+  } catch (error) {
+    body.textContent = error.message;
+    return;
+  }
+  if (!data.accounts.length) {
+    body.textContent = 'Yetkisi düzenlenebilecek kullanıcı yok.';
+    return;
+  }
+  const accounts = [...data.accounts].sort(
+    (a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name, 'tr'),
+  );
+  body.innerHTML = `<form id="userPermissionsForm" aria-labelledby="userPermissionsTitle" method="post">
+    <label class="field" for="permissionAccount">Kullanıcı</label>
+    <select id="permissionAccount" name="account" required>
+      <option value="">Kullanıcı seçin</option>
+      ${accounts.map((account) => `<option value="${esc(account.id)}">${esc(account.name)} · ${esc(account.username)} · ${accountRoleLabel(account.role)}${account.active ? '' : ' · Pasif'}</option>`).join('')}
+    </select>
+    <div id="userPermissionMatrix" hidden></div>
+    <p id="userPermissionsStatus" role="status"></p>
+  </form>`;
+  const form = $('#userPermissionsForm');
+  const picker = form.elements.account;
+  const matrix = $('#userPermissionMatrix');
+  const status = $('#userPermissionsStatus');
+  let account;
+  function renderMatrix() {
+    account = accounts.find((item) => item.id === picker.value);
+    matrix.hidden = !account;
+    status.textContent = '';
+    matrix.replaceChildren();
+    if (!account) return;
+    matrix.innerHTML = `<p><strong>Rol</strong> ${accountRoleLabel(account.role)}${account.readOnly ? ' · Salt okunur' : ''}. Rol ataması Personel bölümünden yapılır.</p>
+      <p id="userPermissionsHelp">Rol varsayılanı mevcut yetkiyi kullanır. Açık işlem, rolün erişebildiği kayıtlar için geçerlidir. Yöneticilere modül bazında silme yetkisi verilebilir. Hatırlatmalarda silme yetkisi iptal etmeyi kapsar.</p>
+      <div class="overflow" tabindex="0" role="region" aria-label="Modül işlem yetkileri"><table class="user-permissions-table" aria-describedby="userPermissionsHelp">
+      <thead><tr><th scope="col">Modül</th>${Object.values(data.actions)
+        .map((label) => `<th scope="col">${esc(label)}</th>`)
+        .join('')}</tr></thead>
+      <tbody>${Object.entries(data.modules)
+        .map(
+          ([module, [label, supported]]) => `<tr>
+        <th scope="row">${esc(label)}</th>${Object.entries(data.actions)
+          .map(([action, actionLabel]) => {
+            if (!supported.includes(action)) return '<td>—</td>';
+            const value = account.modulePermissions?.[module]?.[action];
+            return `<td><select name="${esc(module)}.${esc(action)}" data-permission-module="${esc(module)}" data-permission-action="${esc(action)}" aria-label="${esc(label + ' · ' + actionLabel)}">
+            <option value="">Rol varsayılanı</option>
+            <option value="true" ${value === true ? 'selected' : ''}>Açık</option>
+            <option value="false" ${value === false ? 'selected' : ''}>Kapalı</option>
+          </select></td>`;
+          })
+          .join('')}</tr>`,
+        )
+        .join('')}</tbody></table></div>
+      <div class="actions"><button class="primary" type="submit">Yetkileri Kaydet</button></div>`;
+  }
+  picker.value = selectedId || '';
+  picker.onchange = renderMatrix;
+  renderMatrix();
+  form.onsubmit = (event) => {
+    event.preventDefault();
+    if (!account) return;
+    const modulePermissions = {};
+    for (const control of matrix.querySelectorAll('[data-permission-module]')) {
+      if (!control.value) continue;
+      const { permissionModule, permissionAction } = control.dataset;
+      (modulePermissions[permissionModule] ||= {})[permissionAction] = control.value === 'true';
+    }
+    try {
+      const saved = authApi(endpoint, 'PUT', {
+        id: account.id,
+        revision: account.revision,
+        modulePermissions,
+      });
+      Object.assign(account, saved);
+      status.textContent = 'Yetkiler kaydedildi. Kullanıcı yeni yetkileriyle tekrar giriş yapabilir.';
+    } catch (error) {
+      status.textContent = error.message;
+    }
+  };
+}
+
 // 12 characters without look-alikes (0/O, 1/l/I), easy to read out on the phone.
 function strongPassword() {
   const alphabet = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -177,6 +279,9 @@ function staffAccounting() {
   $('#content').innerHTML =
     `<div class="panel"><div class="panelhead"><h2>Muhasebe — Para Giriş / Çıkış</h2></div><div class="formbody"><p>İşlemi yapan: <b>${esc(hanAuth.name)}</b></p><form id="staffCashForm"><div class="grid"><label class="field">İşlem<select name="type">${canIn ? '<option value="in">Para Girişi</option><option value="external">Haricen Para Girişi</option>' : ''}${canOut ? '<option value="out">Para Çıkışı</option><option value="advance">Avans Çıkışı</option>' : ''}</select></label><label class="field" id="advanceTypeField" hidden>Avans Türü *<select name="advanceType" disabled required><option value="">Avans türü seçin</option><option value="T.Ç">T.Ç</option><option value="S.S">S.S</option><option value="Diğer">Diğer</option></select></label><label class="field">Kasa / Banka<select name="accountId" required>${accountOptions()}</select></label>${field('Tarih', 'date', 'date', businessDate(), true)}${field('Tutar (TL)', 'amount', 'number', '', true)}<label class="field" id="staffExternalProfitField" hidden>Kâr Seçimi<select name="profitChoice" disabled required><option value="">Seçin</option><option value="yes">Kâra Ekle</option><option value="no">Kâra Ekleme</option></select></label><label class="field" id="staffCategoryField">Gider Kalemi<select name="expenseCategory">${accountingExpenseCategories.map((x) => `<option>${x}</option>`).join('')}</select></label>${field('Açıklama', 'note', 'text', '', true, true)}</div><div class="actions"><button class="primary">Kaydet</button></div></form></div></div>`;
   const form = $('#staffCashForm');
+  if (window.hanModuleAction?.('accounting', 'create') === false) {
+    form.querySelector('button.primary').disabled = true;
+  }
   function toggle() {
     const advance = form.elements.type.value === 'advance';
     $('#advanceTypeField').hidden = !advance;

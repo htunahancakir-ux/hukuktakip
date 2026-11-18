@@ -416,6 +416,8 @@ function bindBorrowerExtraPhones(form, phones, record = {}) {
 }
 
 function editBorrower(id, addAddress = false) {
+  if (window.hanModuleAction?.('documents', 'update') === false)
+    return toast('Borçlu dosyası düzenleme yetkiniz kapalı.');
   const d = db.docs.find((d) => d.id === id);
   if (!d) return;
   let dialog = document.getElementById('editBorrowerDialog');
@@ -1681,7 +1683,7 @@ function openCollectionReceipt(eventId) {
 }
 
 function setupBorrowerDeletion(dialog, d) {
-  if (!hanAuth.canDelete) return;
+  if (!(window.hanMayDelete?.('documents') ?? hanAuth.canDelete)) return;
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'secondary sheet-delete-button';
@@ -1691,7 +1693,7 @@ function setupBorrowerDeletion(dialog, d) {
 }
 
 function deleteBorrowerDocument(id) {
-  if (!hanAuth.canDelete) return;
+  if (!(window.hanMayDelete?.('documents') ?? hanAuth.canDelete)) return;
   const d = db.docs.find((d) => d.id === id);
   if (
     !d ||

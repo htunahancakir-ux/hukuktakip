@@ -26,6 +26,7 @@ const auditActions = {
 function userAuditTabs(active) {
   return `<div class="settings-tabs" role="tablist" aria-label="Kullanıcı yönetimi sekmeleri">
     <button type="button" role="tab" id="userAccountsTab" aria-selected="${active === 'users'}" class="${active === 'users' ? 'selected' : ''}">Kullanıcılar</button>
+    ${window.hanAuth?.role === 'ceo' ? `<button type="button" role="tab" id="userPermissionsTab" aria-selected="${active === 'permissions'}" class="${active === 'permissions' ? 'selected' : ''}">Rol ve Yetkiler</button>` : ''}
     <button type="button" role="tab" id="userAuditTab" aria-selected="${active === 'audit'}" class="${active === 'audit' ? 'selected' : ''}">İşlem Kayıtları</button>
   </div>`;
 }
@@ -33,6 +34,8 @@ function userAuditTabs(active) {
 function bindUserAuditTabs() {
   $('#userAccountsTab').onclick = () => userManagement();
   $('#userAuditTab').onclick = () => auditSettingsPage('users');
+  const permissions = $('#userPermissionsTab');
+  if (permissions) permissions.onclick = () => userPermissionsPage();
 }
 
 function auditSettingsPage(source = 'settings') {

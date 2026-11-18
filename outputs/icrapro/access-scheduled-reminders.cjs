@@ -1,5 +1,6 @@
 const scheduled = require('../../lib/scheduled-reminders.cjs');
 const wa = require('../../lib/whatsapp.cjs');
+const { assertModuleAction } = require('../../lib/module-permissions.cjs');
 
 async function handleScheduledReminderRoutes(ctx) {
   const { req, res, url, u, body, fail, send, crypto } = ctx;
@@ -43,6 +44,7 @@ async function handleScheduledReminderRoutes(ctx) {
   const next = structuredClone(ctx.state);
   next.scheduledReminders ||= [];
   if (['complete', 'cancel'].includes(input?.action)) {
+    assertModuleAction(u, 'reminders', input.action === 'cancel' ? 'delete' : 'update');
     const row = next.scheduledReminders.find((row) => row.accountId === u.id && row.id === input.id);
     if (!row) throw fail(404, 'Hatırlatma bulunamadı.');
     if (!row.closedAt || (input.action === 'cancel' && row.repeat && row.repeat !== 'none')) {
@@ -67,6 +69,7 @@ async function handleScheduledReminderRoutes(ctx) {
     return reply({ ok: true });
   }
   if (input?.action !== 'create') throw fail(400, 'Geçerli bir hatırlatma işlemi seçin.');
+  assertModuleAction(u, 'reminders', 'create');
   const note = typeof input.note === 'string' ? input.note.trim() : '';
   const dueAt = scheduled.scheduleTime(String(input.date || ''), String(input.time || ''));
   if (!note || note.length > 1000 || !dueAt)

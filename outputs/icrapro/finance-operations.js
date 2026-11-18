@@ -445,6 +445,12 @@ function financialOperations(id, mode, tlOnly = false) {
     `<div class="panelhead"><div><h2>${esc(d.number)} · Finansal İşlemler</h2><p><span class="debtor-name-emphasis">${esc(d.debtor)}</span> · Kalan: ${money(f.remaining / 100)} · Masraf: ${money(f.expenses / 100)}</p></div><button class="link" id="closeFinance">Kapat</button></div><form id="financeTerms"><div class="formbody"><h3 class="sectiontitle">Alacak Bileşenleri</h3>${parkingCommissionMarkup(d, f)}<button type="button" class="secondary" id="openLegalCalculator" ${locked ? 'disabled' : ''}>Vade Tarihinden Yasal Faiz ve İcra Vekâlet Ücreti Hesapla</button><p>${isParkingDocument(d) ? 'Yediemin tahsilatı kalan alacak tutarıyla sınırlı değildir. Kâr ve müvekkil payı toplam tahsilattan hesaplanır.' : d.financeTermsManual === true ? 'Faiz ve ücret tutarları kullanıcı tarafından belirlendi; otomatik hesap uygulanmaz.' : d.legalCalculationError ? esc(d.legalCalculationError) : d.legalCalculation ? 'Yasal faiz ve icra vekâlet ücreti toplam borca dahildir. Hesap tarihi: ' + esc(displayDate(d.legalCalculation.end)) : ''}</p><p>Anapara: ${money(d.amount)} · Masraf: ${money(f.expenses / 100)} · Toplam Borç: ${money(f.target / 100)}</p><div class="grid">${field('Faiz Tutarı (₺)', 'interest', 'number', d.financeInterest ?? 0, true)}${field('Avukatlık / Hizmet Ücreti (₺)', 'fee', 'number', d.financeFee ?? 0, true)}</div><p>${termsLocked ? 'İnfaz edilmiş dosyada tutarlar kilitlidir.' : 'Faiz ve ücret tutarlarını kayıtlı evraka göre girin.'}</p></div><div class="actions"><button class="secondary" ${locked ? 'disabled' : ''}>Tutarları Kaydet</button></div></form><form id="financeEntry"><div class="formbody"><h3 class="sectiontitle">Tahsilat Kaydet</h3></div><input type="hidden" name="type" value="payment"><div class="formbody grid">${field('İşlem Tarihi', 'date', 'date', businessDate(), true, true)}${field('Tutar (₺)', 'amount', 'number', '', true)}${collectionAccountField()}${['ceo', 'admin'].includes(hanAuth.role) ? turnoverStaffField() : ''}${field('Açıklama / Dekont No', 'note', 'text', '', true)}</div><div class="actions"><button type="button" class="secondary" id="latestCollectionReceipt" ${financeEvents.some((e) => e.documentId === id && e.type === 'payment') ? '' : 'disabled'}>Tahsilat Makbuzu</button><button class="primary">İşlemi Kaydet</button></div></form><form id="expenseEntry"><div class="formbody"><h3 class="sectiontitle">Masraf Ekle</h3><p>Toplam kayıtlı masraf: <b>${money(f.expenses / 100)}</b></p><div class="notice">Borca Eklemeden Kaydet yalnızca masraf kaydı oluşturur. Masrafı Borca Ekle toplam ve kalan borcu artırır.</div><input type="hidden" name="type" value="expense"><div class="grid">${field('Masraf Tarihi', 'date', 'date', businessDate(), true, true)}${field('Masraf Tutarı (₺)', 'amount', 'number', '', true)}${collectionAccountField('out')}${field('Masraf Açıklaması', 'note', 'text', '', true, true)}</div></div><div class="actions"><button type="submit" class="secondary" name="saveMode" value="costOnly">Borca Eklemeden Kaydet</button><button type="submit" class="primary" name="saveMode" value="addToDebt">Masrafı Borca Ekle</button></div></form>${financeHistoryMarkup(id)}`;
   setupFinanceOperationTabs();
   bindFinanceHistory();
+  if (window.hanModuleAction?.('finance', 'create') === false) {
+    $('#financeEntry .actions .primary').hidden = true;
+    $('#expenseEntry')
+      .querySelectorAll('[type="submit"]')
+      .forEach((button) => (button.hidden = true));
+  }
   const expenseForm = document.getElementById('expenseEntry');
   const expensePoolOption = document.createElement('option');
   expensePoolOption.value = '__expense_pool__';
@@ -569,6 +575,7 @@ function financialOperations(id, mode, tlOnly = false) {
   const expensePoolRequestId = crypto.randomUUID();
   const saveFinanceEntry = (e) => {
     e.preventDefault();
+    if (window.hanModuleAction?.('finance', 'create') === false) return;
     const v = Object.fromEntries(new FormData(e.target));
     if (e.target.id === 'expenseEntry' && e.submitter?.value !== 'addToDebt') v.type = 'costOnly';
     if (v.type === 'payment' && ['ceo', 'admin'].includes(hanAuth.role) && !v.turnoverStaffId)
@@ -689,7 +696,7 @@ function financialOperations(id, mode, tlOnly = false) {
       d.status = 'İnfaz';
       d.closedDate = v.date;
       try {
-        saveDocumentFinance(d);
+        if (window.hanModuleAction?.('documents', 'update') !== false) saveDocumentFinance(d);
       } catch {
         toast('Tahsilat kaydedildi; evrak durumunun saklanması başarısız.');
       }
@@ -1430,6 +1437,8 @@ function configureClientPayoutAmount(form, remainingCents, onChange) {
   });
 }
 function clientPayoutForm(id) {
+  if (window.hanModuleAction?.('accounting', 'create') === false)
+    return toast('Müvekkil ödemesi kaydetme yetkiniz kapalı.');
   const remote = arguments[1];
   if (window.hanRecordsEnabled && !remote) return loadRecordPayoutForm(id);
   try {

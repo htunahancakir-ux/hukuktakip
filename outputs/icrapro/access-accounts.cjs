@@ -207,6 +207,46 @@ async function handleAccountRoutes(ctx) {
     send(res, 200, { ok: true });
     return true;
   }
+  if (url.pathname === '/api/users/module-permissions') {
+    if (u.role !== 'ceo' || u.platformSupport) throw fail(403, 'Modül yetkilerini yalnızca CEO yönetebilir.');
+    const { actions, modules, normalizePermissions } = require('../../lib/module-permissions.cjs');
+    const accounts = ctx.state.users.filter((account) => account.role !== 'ceo' && !account.platformSupport);
+    const accountSettings = (account) => {
+      const modulePermissions = account.modulePermissions || {};
+      const values = Object.entries(modules).map(([id, [, operations]]) =>
+        operations.map((action) => modulePermissions[id]?.[action] ?? null),
+      );
+      return {
+        ...publicUser(account),
+        revision: crypto
+          .createHash('sha256')
+          .update(JSON.stringify([account.role, values]))
+          .digest('hex'),
+      };
+    };
+    if (req.method === 'GET') {
+      send(res, 200, { actions, modules, accounts: accounts.map(accountSettings) });
+      return true;
+    }
+    if (req.method !== 'PUT') throw fail(405, 'İşlem desteklenmiyor.');
+    const input = await body(req);
+    const account = accounts.find((account) => account.id === input?.id);
+    if (!account) throw fail(404, 'Kullanıcı bulunamadı.');
+    const current = accountSettings(account);
+    if (input.revision !== current.revision)
+      throw fail(409, 'Yetkiler başka bir oturumda değişti. Kullanıcıyı yeniden açın.');
+    const next = structuredClone(ctx.state);
+    const updated = next.users.find((user) => user.id === account.id);
+    const rules = normalizePermissions(input.modulePermissions);
+    if (Object.keys(rules).length) updated.modulePermissions = rules;
+    else delete updated.modulePermissions;
+    if (!require('node:util').isDeepStrictEqual(updated.modulePermissions, account.modulePermissions)) {
+      ctx.persistMetadata(next);
+      invalidate(account.id);
+    }
+    send(res, 200, accountSettings(updated));
+    return true;
+  }
   if (url.pathname === '/api/users') {
     if (!['ceo', 'admin'].includes(u.role)) throw fail(403, 'Yönetici yetkisi gerekli.');
     if (req.method === 'GET') {

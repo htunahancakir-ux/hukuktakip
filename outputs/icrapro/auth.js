@@ -218,6 +218,12 @@ function hanCan(permission) {
       hanAuth.permissions.includes(permission))
   );
 }
+function hanModuleAction(module, action) {
+  return hanAuth?.role === 'ceo' || hanAuth?.modulePermissions?.[module]?.[action] !== false;
+}
+function hanMayDelete(type) {
+  return hanAuth?.deletionTypes?.includes(type) ?? hanAuth?.canDelete === true;
+}
 function hanPageAllowed(p) {
   return (
     ['ceo', 'admin'].includes(hanAuth?.role) ||
@@ -316,7 +322,19 @@ function openHeaderNotifications() {
 }
 
 async function openDeletionPanel() {
-  if (!hanAuth.canDelete) return;
+  const types = [
+    ['accounting', 'Muhasebe / Müvekkil Ödemeleri'],
+    ['finance', 'Tahsilat / Masraf'],
+    ['conversations', 'Görüşmeler'],
+    ['messages', 'Personel Mesajları'],
+    ['documents', 'Borçlu Dosyaları'],
+    ['clients', 'Müvekkiller'],
+    ['accounts', 'Hesaplar'],
+    ['marketing', 'Pazarlama / Potansiyel Müvekkiller'],
+    ['personnel', 'Personel'],
+    ['cases', 'İcra İşlemleri'],
+  ].filter(([type]) => hanMayDelete(type));
+  if (!types.length) return;
   if (typeof requireCeoPin === 'function' && !(await requireCeoPin('delete'))) return;
   let dialog = document.getElementById('deleteOperationsDialog');
   if (!dialog) {
@@ -327,10 +345,7 @@ async function openDeletionPanel() {
   dialog.innerHTML = `<div class="panelhead"><h2>İşlem Silme</h2><button type="button" class="secondary" data-close>Kapat</button></div>
     <div class="formbody"><p>Silme yetkisi yalnızca hesabınıza aittir. Silinen kayıtların kopyası arşivde korunur.</p>
     <form data-search class="grid delete-ops-filter"><label class="field">Kayıt Türü<select name="type">
-    <option value="accounting">Muhasebe / Müvekkil Ödemeleri</option><option value="finance">Tahsilat / Masraf</option>
-    <option value="conversations">Görüşmeler</option><option value="messages">Personel Mesajları</option><option value="documents">Borçlu Dosyaları</option>
-    <option value="clients">Müvekkiller</option><option value="accounts">Hesaplar</option>
-    <option value="marketing">Pazarlama / Potansiyel Müvekkiller</option><option value="personnel">Personel</option><option value="cases">İcra İşlemleri</option></select></label>
+    ${types.map(([type, label]) => `<option value="${type}">${label}</option>`).join('')}</select></label>
     <label class="field">Ara<input name="q" data-optional="true" placeholder="Dosya numarası, ad veya açıklama"></label><button class="primary">Listele</button></form>
     <p data-status role="status"></p><div data-rows class="delete-ops-rows"></div><div class="actions"><button class="secondary" data-prev>Önceki</button><button class="secondary" data-next>Sonraki</button></div></div>`;
   let offset = 0,
@@ -429,7 +444,10 @@ function accessMenu() {
   document.querySelectorAll('aside .brand-home').forEach((link) => {
     link.onclick = returnToMainMenu;
   });
-  if (hanAuth.canDelete && !document.getElementById('deleteOperationsNavigation')) {
+  if (
+    (hanAuth.deletionTypes?.length ?? hanAuth.canDelete) &&
+    !document.getElementById('deleteOperationsNavigation')
+  ) {
     const button = document.createElement('button');
     button.id = 'deleteOperationsNavigation';
     button.textContent = 'İşlem Silme';

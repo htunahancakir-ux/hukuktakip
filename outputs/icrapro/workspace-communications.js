@@ -80,6 +80,7 @@ function messagesPage(remote) {
     `<div class="panel"><div class="panelhead"><div><h2>Mesajlar</h2><p>Programdaki mesajları yönetici de görebilir.</p></div><div class="toolbar"><button class="secondary" id="refreshMessages">Yenile</button><button class="primary" id="composeMessage">＋ Yeni Mesaj</button></div></div><div class="formbody"><div class="settings-tabs">${[['inbox', 'Gelen Mesajlar'], ['sent', 'Gönderilen Mesajlar'], ...(['ceo', 'admin'].includes(hanAuth.role) ? [['all', 'Tüm Mesajlar']] : [])].map(([key, label]) => `<button type="button" data-message-box="${key}" class="${messageBox === key ? 'selected' : ''}">${esc(label)}</button>`).join('')}</div><p>${esc(result.total)} mesaj · ${result.total ? messageOffset + 1 : 0}–${messageOffset + result.messages.length}</p></div><div class="overflow"><table><thead><tr><th>TARİH / SAAT</th><th>GÖNDEREN</th><th>ALICILAR</th><th>KONU</th><th>DURUM</th></tr></thead><tbody>${result.messages.map((m) => `<tr class="${m.isUnread ? 'message-unread' : ''}"><td>${messageTimestamp(m.createdAt)}</td><td>${esc(m.senderName)}</td><td>${esc(m.recipientNames.join(', '))}</td><td><button type="button" class="link" data-open-message="${esc(m.id)}">${esc(m.subject)}</button></td><td>${m.isUnread ? 'Yeni' : messageBox === 'inbox' ? 'Okundu' : m.readCount + '/' + m.recipientIds.length + ' okundu'}${messageWhatsAppSummary(m)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">Bu kutuda henüz mesaj yok.</td></tr>'}</tbody></table></div><div class="actions"><button class="secondary" id="previousMessages" ${messageOffset === 0 ? 'disabled' : ''}>Önceki</button><button class="secondary" id="nextMessages" ${messageOffset + 50 >= result.total ? 'disabled' : ''}>Sonraki</button></div></div>`;
   bindCommunicationTabs();
   $('#composeMessage').onclick = () => composeMessage();
+  $('#composeMessage').hidden = window.hanModuleAction?.('messages', 'create') === false;
   $('#refreshMessages').onclick = () => {
     messagesPage();
     updateMessageBadge();
@@ -155,6 +156,8 @@ function configureMessageRecipients(form) {
 }
 
 function composeMessage(reply) {
+  if (window.hanModuleAction?.('messages', 'create') === false)
+    return toast('Mesaj gönderme yetkiniz kapalı.');
   let users;
   try {
     users = authApi('/api/message-users');
@@ -217,7 +220,7 @@ function openMessage(message) {
     dialog.id = 'messageDetailDialog';
     document.body.append(dialog);
   }
-  dialog.innerHTML = `<div class="panelhead"><h2>${esc(message.subject)}</h2><button class="secondary" id="closeMessageDetail">Kapat</button></div><div class="formbody"><p><b>Gönderen:</b> ${esc(message.senderName)}</p><p><b>Alıcılar:</b> ${esc(message.recipientNames.join(', '))}</p><p><b>Tarih:</b> ${messageTimestamp(message.createdAt)}</p><div class="message-text">${esc(message.text)}</div>${messageWhatsAppDetail(message)}</div><div class="actions">${hanAuth.canDelete ? '<button type="button" class="secondary danger" id="deleteMessage">Mesajı Sil</button>' : ''}${message.senderId !== hanAuth.id ? '<button class="primary" id="replyMessage">Gönderene Yanıtla</button>' : ''}</div>`;
+  dialog.innerHTML = `<div class="panelhead"><h2>${esc(message.subject)}</h2><button class="secondary" id="closeMessageDetail">Kapat</button></div><div class="formbody"><p><b>Gönderen:</b> ${esc(message.senderName)}</p><p><b>Alıcılar:</b> ${esc(message.recipientNames.join(', '))}</p><p><b>Tarih:</b> ${messageTimestamp(message.createdAt)}</p><div class="message-text">${esc(message.text)}</div>${messageWhatsAppDetail(message)}</div><div class="actions">${(window.hanMayDelete?.('messages') ?? hanAuth.canDelete) ? '<button type="button" class="secondary danger" id="deleteMessage">Mesajı Sil</button>' : ''}${message.senderId !== hanAuth.id && window.hanModuleAction?.('messages', 'create') !== false ? '<button class="primary" id="replyMessage">Gönderene Yanıtla</button>' : ''}</div>`;
   $('#closeMessageDetail').onclick = () => dialog.close();
   if ($('#replyMessage'))
     $('#replyMessage').onclick = () => {
@@ -231,7 +234,7 @@ function openMessage(message) {
 // Only the CEO (and the technical support account, which is a CEO account) may delete; the
 // server keeps an archive copy like every other deleted record.
 async function deleteMessage(message, dialog) {
-  if (!hanAuth.canDelete) return;
+  if (!(window.hanMayDelete?.('messages') ?? hanAuth.canDelete)) return;
   if (!confirm('"' + message.subject + '" mesajı herkes için silinecek. Emin misiniz?')) return;
   if (typeof requireCeoPin === 'function' && !(await requireCeoPin('delete'))) return;
   try {
@@ -318,6 +321,7 @@ function workOrdersPage(remote) {
       )}</div><p>${esc(result.total)} iş emri</p></div><div class="overflow"><table><thead><tr><th>İŞ / TARİH</th><th>ATAYAN</th><th>GÖREVLİ</th><th>SON TARİH</th><th>DURUM / İŞLEM</th></tr></thead><tbody>${result.orders.map((w) => `<tr><td><button class="link" data-work-open="${esc(w.id)}">${esc(w.title)}</button><small>${messageTimestamp(w.createdAt)}</small></td><td>${esc(w.assignerName)}</td><td>${esc(w.assigneeName)}</td><td>${esc(displayDate(w.due) || '—')}</td><td>${w.status === 'done' ? '✓ Yapıldı' : 'Bekliyor'}${w.status === 'pending' && w.assigneeId === hanAuth.id ? `<div><button class="primary" data-work-done="${esc(w.id)}">Yapıldı</button></div>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">Bu seçimde iş emri yok.</td></tr>'}</tbody></table></div><div class="actions"><button class="secondary" id="previousOrders" ${workOrderOffset === 0 ? 'disabled' : ''}>Önceki</button><button class="secondary" id="nextOrders" ${workOrderOffset + 50 >= result.total ? 'disabled' : ''}>Sonraki</button></div></div>`;
   bindCommunicationTabs();
   $('#newWorkOrder').onclick = composeWorkOrder;
+  $('#newWorkOrder').hidden = window.hanModuleAction?.('workOrders', 'create') === false;
   $('#refreshWorkOrders').onclick = workOrdersPage;
   $('#workOrderScope').onchange = (e) => {
     workOrderScope = e.target.value;
@@ -354,6 +358,8 @@ function workOrdersPage(remote) {
 }
 
 function composeWorkOrder() {
+  if (window.hanModuleAction?.('workOrders', 'create') === false)
+    return toast('İş emri atama yetkiniz kapalı.');
   const users = authApi('/api/message-users');
   let dialog = document.getElementById('workOrderComposeDialog');
   if (!dialog) {
@@ -436,8 +442,10 @@ function openWorkOrder(order) {
     };
     dialog.querySelector('.formbody').append(reminder);
   }
-  if ($('#completeWorkForm'))
-    $('#completeWorkForm').onsubmit = (e) => {
+  const completeForm = $('#completeWorkForm');
+  if (completeForm && window.hanModuleAction?.('workOrders', 'update') === false) completeForm.remove();
+  else if (completeForm)
+    completeForm.onsubmit = (e) => {
       e.preventDefault();
       const button = e.target.querySelector('[type="submit"]');
       button.disabled = true;

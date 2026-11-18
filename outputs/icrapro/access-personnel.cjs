@@ -328,6 +328,11 @@ async function handlePersonnelRoutes(ctx) {
       throw fail(400, 'Maaş sıfırdan büyük olmalıdır.');
     const next = structuredClone(ctx.state),
       index = next.data['icrapro-personnel-v1'].findIndex((p) => p.id === record.id);
+    require('../../lib/module-permissions.cjs').assertModuleAction(
+      u,
+      'personnel',
+      index < 0 ? 'create' : 'update',
+    );
     let user = next.users.find((x) => x.staffId === record.id);
     const username = String(account.username || '')
         .trim()

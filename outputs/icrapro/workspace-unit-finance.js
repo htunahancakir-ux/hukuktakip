@@ -151,7 +151,7 @@ async function openUnitFinance(id, selectedCurrency) {
     saveButton.disabled = true;
     const target = form.querySelector('[data-unit-conversion]');
     target.textContent = '';
-    if (!data?.quote || pending) return;
+    if (!data?.quote || pending || window.hanModuleAction?.('finance', 'create') === false) return;
     try {
       const amount = amountTL();
       if (!Number.isSafeInteger(amount) || amount <= 0) return;

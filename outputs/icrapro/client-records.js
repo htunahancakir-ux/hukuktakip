@@ -447,6 +447,8 @@ function paintClientRows(list, remote = false) {
 }
 
 function clientModal(id, loadedRecord) {
+  if (!id && window.hanModuleAction?.('clients', 'create') === false)
+    return toast('Yeni müvekkil kaydı yetkiniz kapalı.');
   if (window.hanRecordsEnabled && id && !loadedRecord) return openRecordClient(id);
   let c = loadedRecord || db.clients.find((x) => x.id === id) || {};
   let categoryOptions;
@@ -469,6 +471,9 @@ function clientModal(id, loadedRecord) {
     document.getElementById('clientForm').elements[name].dataset.optional = 'true';
   }
   const clientIbanInput = document.getElementById('clientForm').elements.iban;
+  const writable = window.hanModuleAction?.('clients', id ? 'update' : 'create') !== false;
+  $('#clientForm .actions .primary').hidden = !writable;
+  if (!writable) $('#clientForm h2').textContent = 'Müvekkil Bilgileri';
   clientIbanInput.required = false;
   clientIbanInput.addEventListener('input', () => clientIbanInput.setCustomValidity(''));
   $('#clientForm').dataset.clientId = id || '';
@@ -478,7 +483,11 @@ function clientModal(id, loadedRecord) {
     setupClientStatement($('#clientForm'), id, c.name || c.tradeName || c.fullName || '');
   setupExtraContacts($('#clientForm'), c);
   setupClientBankAccounts($('#clientForm'), c);
-  for (const selector of ['#clientPhotos', '#clientPowerOfAttorney']) bindMultipleFileInput($(selector));
+  for (const selector of ['#clientPhotos', '#clientPowerOfAttorney']) {
+    const input = $(selector);
+    bindMultipleFileInput(input);
+    if (window.hanModuleAction?.('clients', 'update') === false) input.closest('label').hidden = true;
+  }
   $('#modal').showModal();
   setupClientCity('client', $('#clientForm'));
   setupClientDistrict('client', $('#clientForm'));
@@ -493,6 +502,7 @@ function clientModal(id, loadedRecord) {
   );
   $('#clientForm').onsubmit = async (e) => {
     e.preventDefault();
+    if (!writable) return;
     let v = { ...c, ...Object.fromEntries(new FormData(e.target)) };
     Object.assign(v, readExtraContacts(e.target));
     const city = turkeyCities.find(

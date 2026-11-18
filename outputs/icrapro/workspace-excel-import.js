@@ -11,6 +11,7 @@ function bindExcelImportButtons(currentPage) {
   button.type = 'button';
   button.className = 'secondary';
   const kind = currentPage === 'clients' ? 'clients' : 'documents';
+  if (window.hanModuleAction?.(kind, 'create') === false) return;
   button.id = kind === 'clients' ? 'excelImportClients' : 'excelImportDocuments';
   button.textContent = kind === 'clients' ? 'Excel’den Müvekkil Aktar' : 'Excel’den Borçlu Aktar';
   button.style.marginLeft = 'auto';

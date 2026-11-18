@@ -342,6 +342,7 @@ async function personnelSettings(editId) {
   $('#personnelView').innerHTML =
     `<div class="panel"><div class="panelhead"><div><h2>Personel Kayıtları</h2><p>Bilgileri görmek ve düzenlemek için personel adına tıklayın.</p></div><div class="toolbar"><span class="badge">${staffRows.filter((p) => p.active).length} aktif / ${staffRows.length} kayıt</span><button type="button" class="secondary" id="exportPersonnel">Excel'e Aktar</button><button type="button" class="primary" id="newPersonnel">Yeni Personel</button></div></div><div class="overflow"><table><thead><tr><th>AD SOYAD</th><th>BİRİM / GÖREV</th><th>TELEFON</th><th>MAAŞ + PRİM 1</th><th>PRİM 2</th><th>G. PRİM</th><th>GENEL TOPLAM</th><th>DURUM</th><th>İŞLEM</th></tr></thead><tbody>${staffRows.map((p) => `<tr><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">${esc(p.name)}</button></td><td>${esc(personnelDepartmentLabel(p.department) || '—')}<small>${esc(p.title || '—')}</small></td><td>${(window.hanPrivacy && hanPrivacy.html('phone', p.phone)) || esc(p.phone || '—')}</td><td>${privateMoney(money(staffMoney(p).salary / 100))}</td><td>${privateMoney(money(staffMoney(p).bonus / 100))}</td><td>${privateMoney(money(dailyPrimTotal(p.id) / 100))}</td><td>${privateMoney(money((staffMoney(p).total + dailyPrimTotal(p.id)) / 100))}</td><td>${p.active ? 'Aktif' : 'Pasif'}</td><td><button type="button" class="link" data-personnel-edit="${esc(p.id)}">Düzenle</button></td></tr>`).join('') || '<tr><td colspan="9" class="empty">Henüz personel yok. Yeni Personel butonuyla ekleyin.</td></tr>'}</tbody><tfoot><tr><td colspan="3"><strong>ALT TOPLAM</strong></td><td><strong>${privateMoney(money(staffRows.reduce((sum, p) => sum + staffMoney(p).salary, 0) / 100))}</strong></td><td><strong>${privateMoney(money(staffRows.reduce((sum, p) => sum + staffMoney(p).bonus, 0) / 100))}</strong></td><td><strong>${privateMoney(money(staffRows.reduce((sum, p) => sum + dailyPrimTotal(p.id), 0) / 100))}</strong></td><td><strong>${privateMoney(money(staffRows.reduce((sum, p) => sum + staffMoney(p).total + dailyPrimTotal(p.id), 0) / 100))}</strong></td><td colspan="2"></td></tr></tfoot></table></div></div>`;
   $('#newPersonnel').onclick = () => openPersonnelRecord();
+  $('#newPersonnel').hidden = window.hanModuleAction?.('personnel', 'create') === false;
   const addDepartment = document.createElement('button');
   addDepartment.type = 'button';
   addDepartment.id = 'newPersonnelDepartment';
@@ -386,6 +387,8 @@ async function personnelSettings(editId) {
   if (editId) return openPersonnelRecord(editId);
 }
 async function openPersonnelRecord(editId) {
+  if (window.hanModuleAction?.('personnel', editId ? 'update' : 'create') === false)
+    return toast('Personel kaydında bu işlem için yetkiniz kapalı.');
   if (!['ceo', 'admin'].includes(window.hanAuth?.role))
     return toast('Personel tanımını yalnızca yönetici yapabilir.');
   const requestedPage = page;
