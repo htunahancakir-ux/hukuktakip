@@ -3,6 +3,7 @@
     expenseCategories: Object.freeze([
       'Masraf',
       'Faturalar',
+      'Banka Gideri',
       'Yakıt',
       'SGK',
       'Maaş',
