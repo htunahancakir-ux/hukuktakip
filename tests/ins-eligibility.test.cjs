@@ -95,6 +95,8 @@ test('INS includes every callcenter unit and only the three existing categories,
       { id: 'cc', name: 'Call Center', department: 'Callcenter' },
       { id: 'y', name: 'Y Personel', department: 'Call Center-Y' },
       { id: 'e', name: 'E Personel', department: 'Call Center-E' },
+      { id: 't', name: 'T Personel', department: 'Call Center-T' },
+      { id: 'old-t', name: 'Eski T Personel', department: 'Temlik' },
       { id: 'admin', name: 'Yönetici', department: 'Yönetici' },
       { id: 'marketing', name: 'Pazarlama', department: 'Pazarlama' },
       { id: 'other', name: 'Başka Personel', department: 'Diğer' },
@@ -105,6 +107,8 @@ test('INS includes every callcenter unit and only the three existing categories,
       'cc',
       'y',
       'e',
+      't',
+      'old-t',
       'admin',
       'marketing',
       'other',
@@ -144,11 +148,20 @@ test('INS includes every callcenter unit and only the three existing categories,
     );
     assert.deepEqual(
       sql.rows.map((r) => r.id).sort(),
-      ['cc', 'y', 'e', 'turnover:bonus', 'turnover:hukuk-reddiyat', 'turnover:temlik-reddiyat'].sort(),
+      [
+        'cc',
+        'y',
+        'e',
+        't',
+        'old-t',
+        'turnover:bonus',
+        'turnover:hukuk-reddiyat',
+        'turnover:temlik-reddiyat',
+      ].sort(),
     );
     assert.equal(
       sql.rows.reduce((sum, r) => sum + Number(r.collected), 0),
-      6000,
+      8000,
     );
     assert.equal(sql.rows.find((r) => r.id === 'turnover:hukuk-reddiyat').collected, '1000');
     const source = fs.readFileSync('outputs/icrapro/workspace-reports.js', 'utf8');
@@ -171,7 +184,7 @@ test('INS includes every callcenter unit and only the three existing categories,
       for (const key of ['collected', 'closedCount', 'closedAmount'])
         assert.equal(same[key], Number(row[key]));
     }
-    assert.equal(local.length, 6);
+    assert.equal(local.length, 8);
   } finally {
     await pg.close();
   }

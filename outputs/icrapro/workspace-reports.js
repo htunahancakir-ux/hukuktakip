@@ -885,7 +885,7 @@ function insPersonnelRows(events, staff, docs, period, date, endDate) {
         date.slice(0, period === 'year' ? 4 : period === 'month' ? 7 : 10);
   const eligible = staff.filter(
     (p) =>
-      ['callcenter', 'callcentery', 'callcentere'].includes(
+      ['callcenter', 'callcentery', 'callcentere', 'callcentert', 'temlik'].includes(
         String(p.department || '')
           .toLocaleLowerCase('tr-TR')
           .replace(/[\s_-]/g, ''),

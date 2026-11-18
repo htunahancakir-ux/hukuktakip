@@ -68,8 +68,8 @@ test('Department names preserve built-in rules, normalize Temlik and reject dupl
       (e) => e.code === 400,
     );
   const bonus = require('../outputs/icrapro/personnel-bonus.cjs');
-  assert.equal(bonus.isCallcenter({ department: 'Temlik' }), false);
-  assert.equal(bonus.isCallcenter({ department: 'Call Center-T' }), false);
+  assert.equal(bonus.isCallcenter({ department: 'Temlik' }), true);
+  assert.equal(bonus.isCallcenter({ department: 'Call Center-T' }), true);
   assert.equal(
     require('../lib/ceo-pin.cjs').scopeFor(new URL('http://test/api/personnel-departments'), 'POST'),
     'permissions',

@@ -852,7 +852,7 @@ function editPersonnelPayroll(id) {
 function personnelBonus2View() {
   const data = loadCalculatedBonus2(bonus2Month || businessDate().slice(0, 7));
   $('#personnelView').innerHTML =
-    '<div class="panel"><div class="panelhead"><div><h2>Prim 2</h2><p>Aylık toplam tahsilata göre otomatik hesaplanır. Kota: Callcenter 900.000 TL, Call Center-Y 1.000.000 TL. Call Center-E: 500.000 TL ve üzerinde toplam tahsilatın %4’ü.</p></div><label class="field">Ay<input type="month" data-bonus2-month data-optional="true" value="' +
+    '<div class="panel"><div class="panelhead"><div><h2>Prim 2</h2><p>Aylık toplam tahsilata göre otomatik hesaplanır. Kota: Callcenter 900.000 TL, Call Center-Y 1.000.000 TL. Call Center-E: 500.000 TL ve üzerinde toplam tahsilatın %4’ü. Call Center-T: Kendi cirosu + Temlik Reddiyat aylık toplamı en az 500.000 TL ise yalnızca kendi cirosunun %4’ü.</p></div><label class="field">Ay<input type="month" data-bonus2-month data-optional="true" value="' +
     esc(data.month) +
     '"></label></div><div class="overflow"><table><thead><tr><th>PERSONEL</th><th>TAHSİLAT</th><th>ORAN</th><th>ORAN PRİMİ</th><th>EK HEDEF PRİMİ</th><th>EKİP</th><th>1–15</th><th>16–AY SONU</th><th>PRİM 2 TOPLAMI</th></tr></thead><tbody>' +
     data.rows
@@ -863,6 +863,13 @@ function personnelBonus2View() {
           esc(r.name) +
           '</td><td>' +
           money((r.collected || 0) / 100) +
+          (r.unit === 'callcentert'
+            ? '<small>Temlik Reddiyat: ' +
+              money((r.temlikCollected || 0) / 100) +
+              ' · Kota toplamı: ' +
+              money((r.quotaCollected || 0) / 100) +
+              '</small>'
+            : '') +
           '</td><td>%' +
           esc(r.rate || 0) +
           '</td>' +
