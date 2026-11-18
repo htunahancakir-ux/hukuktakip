@@ -3892,3 +3892,23 @@ test('a page reopened on a call that has been ending for long offers "Zorla kapa
     dom.window.close();
   }
 });
+
+// The Geri bildirim tab moves into the topmost open window (workspace-feedback.js), which can be
+// the call window; a stuck "Arama sonlandırılıyor" is exactly when it is needed (2.7.4).
+test('ending a call locks the call window but not the Geri bildirim tab inside it', async () => {
+  const { JSDOM } = require('jsdom');
+  const w = new JSDOM(
+    '<dialog id="call"><div class="call-body">Görüşme</div><han-feedback-edge data-feedback-open></han-feedback-edge></dialog>',
+    { runScripts: 'outside-only' },
+  ).window;
+  w.esc = (value) => String(value ?? '');
+  w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+  const frame = w.document.getElementById('call');
+  w.voipCancelWait(frame, true);
+  assert.equal(frame.querySelector('.call-body').inert, true);
+  assert.notEqual(frame.querySelector('[data-feedback-open]').inert, true);
+  assert.ok(frame.querySelector('.voip-cancel-wait'));
+  w.voipCancelWait(frame, false);
+  assert.equal(frame.querySelector('.call-body').inert, false);
+  w.close();
+});

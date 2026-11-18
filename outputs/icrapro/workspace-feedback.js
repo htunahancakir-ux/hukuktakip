@@ -32,6 +32,18 @@ function loadFeedbackCapture() {
 // The visible part of the page as a JPEG data URL, or null when it cannot be taken. The feedback
 // window, Verimor's web phone and other iframes are left out.
 async function captureFeedbackScreen() {
+  // html2canvas draws from a copy of the page, and the copy has no top layer: an open window
+  // would fall back into the page flow, usually below the visible part, and miss the picture.
+  // Each one is pinned in the copy where it is on screen, above its dimmed backdrop.
+  const windows = feedbackOpenModals().filter((d) => d.id !== 'feedbackDialog');
+  const placed = windows.map((dialog, i) => {
+    dialog.setAttribute('data-feedback-layer', String(i));
+    let backdrop = '';
+    try {
+      backdrop = getComputedStyle(dialog, '::backdrop').backgroundColor;
+    } catch {}
+    return { rect: dialog.getBoundingClientRect(), backdrop };
+  });
   try {
     const capture = await loadFeedbackCapture();
     const canvas = await capture(document.body, {
@@ -47,6 +59,7 @@ async function captureFeedbackScreen() {
         el.id === 'voipWebphone' ||
         el.tagName === 'IFRAME' ||
         el.hasAttribute?.('data-feedback-open'),
+      onclone: (copy) => pinFeedbackWindows(copy, placed),
     });
     // Large screens are scaled down so the image stays well under the upload limit.
     const width = Math.min(canvas.width, 1600);
@@ -57,7 +70,45 @@ async function captureFeedbackScreen() {
     return out.toDataURL('image/jpeg', 0.7);
   } catch {
     return null;
+  } finally {
+    windows.forEach((dialog) => dialog.removeAttribute('data-feedback-layer'));
   }
+}
+
+function pinFeedbackWindows(copy, placed) {
+  copy.querySelectorAll('[data-feedback-layer]').forEach((dialog) => {
+    const index = Number(dialog.dataset.feedbackLayer);
+    const { rect, backdrop } = placed[index] || {};
+    if (!rect) return;
+    // The topmost window gets the highest z-index there is, its backdrop the one below: on
+    // screen every fixed bar of the page (some use these values too) is under them.
+    const layer = 2147483646 - 2 * (placed.length - 1 - index);
+    if (backdrop && backdrop !== 'rgba(0, 0, 0, 0)' && backdrop !== 'transparent') {
+      const shade = copy.createElement('div');
+      shade.style.cssText = `position:fixed;inset:0;background:${backdrop};z-index:${layer}`;
+      dialog.before(shade);
+    }
+    // Inline margins (the window keeps its place while it grows) and the drag offset are
+    // already part of the measured box, so they are cleared rather than applied twice.
+    const pin = {
+      position: 'fixed',
+      inset: 'auto',
+      left: rect.left + 'px',
+      top: rect.top + 'px',
+      width: rect.width + 'px',
+      height: rect.height + 'px',
+      'box-sizing': 'border-box',
+      margin: '0',
+      translate: 'none',
+      transform: 'none',
+      'max-width': 'none',
+      'max-height': 'none',
+      'min-height': '0',
+      'z-index': String(layer + 1),
+    };
+    for (const [property, value] of Object.entries(pin))
+      dialog.style.setProperty(property, value, 'important');
+  });
 }
 
 function feedbackDialog() {
@@ -73,7 +124,8 @@ function feedbackDialog() {
 
 async function openFeedback() {
   // The screenshot is taken before the window opens, so it shows the page as the user saw it.
-  const button = document.querySelector('[data-feedback-open]');
+  const button = feedbackEdgeButton();
+  if (button?.disabled) return;
   if (button) button.disabled = true;
   feedbackUi.shot = await captureFeedbackScreen();
   if (button) button.disabled = false;
@@ -240,15 +292,118 @@ async function renderFeedbackList(box) {
   });
 }
 
+// The Geri bildirim tab is fixed to the right edge of the screen on every page and must stay above
+// everything, open windows included, or a problem in a window could not be reported with its
+// screenshot. No z-index lifts it over a window opened with showModal(): such a window is in the
+// browser's top layer, and the rest of the page is inert (visible, but clicks do nothing). So the
+// tab is a popover, itself in the top layer and raised again after every window or popover that
+// opens, and it moves into the topmost open window, the only part of the page that still takes
+// clicks. Its button lives in a shadow root: window code that disables or removes every button
+// in a window, and window styles, cannot reach it.
+const feedbackEdge = { host: null, modals: [], watching: false, raising: false };
+const FEEDBACK_EDGE_CSS = `
+  :host { position: fixed; inset: 50% 0 auto auto; translate: 0 -50%; margin: 0; padding: 0; border: 0;
+    background: none; color: inherit; overflow: visible; z-index: 2147483647; }
+  button { display: block; writing-mode: vertical-rl; rotate: 180deg; background: #183b4b; color: #fff;
+    border: 0; border-radius: 0 8px 8px 0; padding: 14px 8px; font-family: inherit; font-size: 12px;
+    font-weight: 600; line-height: 1.2; letter-spacing: .5px; box-shadow: 0 4px 14px #152d4233; cursor: pointer; }
+  button:hover { background: #244f63; padding-right: 11px; }
+  button:focus-visible { outline: 2px solid #fff; outline-offset: -4px; }
+  button:disabled { opacity: .6; cursor: progress; }
+  @media print { :host { display: none; } }`;
+
+function feedbackEdgeButton() {
+  return document.querySelector('[data-feedback-open]')?.shadowRoot?.querySelector('button') || null;
+}
+
+function feedbackIsModal(dialog) {
+  try {
+    return dialog.isConnected && dialog.open && dialog.matches(':modal');
+  } catch {
+    return false;
+  }
+}
+
+// Open modal windows, the last one on top.
+function feedbackOpenModals() {
+  return (feedbackEdge.modals = feedbackEdge.modals.filter(feedbackIsModal));
+}
+
+function raiseFeedbackEdge() {
+  const host = feedbackEdge.host;
+  if (!host?.isConnected || typeof host.showPopover !== 'function') return;
+  try {
+    if (host.matches(':popover-open')) {
+      // Hiding it would take the keyboard focus away from someone on the tab.
+      if (host.matches(':focus-within')) return;
+      host.hidePopover();
+    }
+    host.showPopover();
+  } catch {
+    /* without popovers the tab stays a fixed element with the highest z-index */
+  }
+}
+
+function placeFeedbackEdge(raise) {
+  const host = feedbackEdge.host;
+  if (!host) return;
+  const top = feedbackOpenModals().at(-1);
+  // The feedback window itself covers the tab until it closes.
+  if (top?.id === 'feedbackDialog') return;
+  const parent = top || document?.body;
+  if (!parent) return; // the page is being torn down
+  if (host.parentNode !== parent) {
+    parent.append(host);
+    raise = true;
+  }
+  if (raise) raiseFeedbackEdge();
+}
+
+function watchFeedbackLayers() {
+  if (feedbackEdge.watching) return;
+  feedbackEdge.watching = true;
+  document.querySelectorAll('dialog').forEach((d) => feedbackIsModal(d) && feedbackEdge.modals.push(d));
+  // Windows open and close through the `open` attribute; a window whose content is redrawn
+  // drops the tab, which is put back.
+  new MutationObserver((records) => {
+    let raise = false;
+    for (const { type, target } of records) {
+      if (type !== 'attributes' || target.localName !== 'dialog') continue;
+      feedbackEdge.modals = feedbackEdge.modals.filter((d) => d !== target);
+      if (feedbackIsModal(target)) {
+        feedbackEdge.modals.push(target);
+        raise = true;
+      }
+    }
+    placeFeedbackEdge(raise);
+  }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['open'] });
+  // A popover shown later (a collection notice, the incoming call strip) would cover the tab.
+  document.addEventListener(
+    'toggle',
+    (event) => {
+      if (event.newState !== 'open' || event.target === feedbackEdge.host || feedbackEdge.raising) return;
+      feedbackEdge.raising = true;
+      queueMicrotask(() => {
+        feedbackEdge.raising = false;
+        placeFeedbackEdge(true);
+      });
+    },
+    true,
+  );
+}
+
 function setupFeedbackButton() {
   if (document.querySelector('[data-feedback-open]')) return;
-  const button = document.createElement('button');
-  button.type = 'button';
-  // A tab fixed to the right edge of the screen, beside the scrollbar, on every page.
-  button.className = 'feedback-edge';
-  button.dataset.feedbackOpen = '';
-  button.textContent = 'Geri bildirim';
-  button.title = 'Hata, öneri veya soru gönderin';
-  button.onclick = () => openFeedback();
-  document.body.append(button);
+  const host = document.createElement('han-feedback-edge');
+  host.className = 'feedback-edge';
+  host.dataset.feedbackOpen = '';
+  host.attachShadow({ mode: 'open' }).innerHTML =
+    `<style>${FEEDBACK_EDGE_CSS}</style>` +
+    '<button type="button" title="Hata, öneri veya soru gönderin">Geri bildirim</button>';
+  // Clicks on the button reach the host; a click while the screenshot is taken is ignored.
+  host.addEventListener('click', () => openFeedback());
+  if (typeof host.showPopover === 'function') host.setAttribute('popover', 'manual');
+  feedbackEdge.host = host;
+  watchFeedbackLayers();
+  placeFeedbackEdge(true);
 }

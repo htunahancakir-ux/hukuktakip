@@ -292,8 +292,10 @@ function voipCancelWait(frame, waiting, force) {
   const existing = frame.querySelector(':scope > .voip-cancel-wait');
   const same = waiting && existing && !!existing.querySelector('[data-force-close]') === !!force;
   if (!same) existing?.remove();
+  // The Geri bildirim tab may sit in this window (workspace-feedback.js); it stays usable.
   for (const child of frame.children)
-    if (!child.classList.contains('voip-cancel-wait')) child.inert = waiting;
+    if (!child.classList.contains('voip-cancel-wait') && !child.hasAttribute('data-feedback-open'))
+      child.inert = waiting;
   if (!waiting || same) return;
   const notice = document.createElement('div');
   notice.className = 'voip-cancel-wait';

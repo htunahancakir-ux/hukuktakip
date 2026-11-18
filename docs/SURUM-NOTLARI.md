@@ -1,5 +1,19 @@
 # Sürüm Notları
 
+## 2.7.4 — 18 Kasım 2026
+
+### Geri bildirim sekmesi her şeyin üstünde
+
+- **Neden altta kalıyordu:** Ekranın sağındaki **Geri bildirim** sekmesi sabit bir katmandı. Açık bir pencerenin (borçlu, föy, arama penceresi vb.) ya da bazı sabit çubukların ve bildirimlerin altında kalıyordu. Pencere açıkken sayfanın geri kalanı tıklanamaz olduğu için sekme görünse bile tıklanamıyordu. Pencerede yaşanan sorun bu yüzden ekran görüntüsüyle bildirilemiyordu.
+- **Şimdi:** Sekme tarayıcının üst katmanında duruyor ve sonradan açılan her pencerenin ve bildirimin üstüne yeniden çıkıyor. Bir pencere açıldığında sekme o pencerenin içine geçiyor, böylece tıklanabiliyor. Pencere kapanınca sayfaya dönüyor. Üst üste açılan pencerelerde en üsttekine geçiyor. Pencere içeriği yeniden çizilse, penceredeki düğmeler kapatılsa ya da arama "Sonlandırılıyor…" durumunda kilitlense de sekme kullanılabilir kalıyor.
+- **Sekmeye tıklamak pencereyi kapatmıyor:** Pencerenin dışına tıklayınca pencereyi kapatan kural sekmeye tıklamayı da "dışarı tıklama" sayıyordu. Açık borçlu kartında sekmeye tıklamak kartı kapatıyor, bildirim penceresi de açılmıyordu. Sekme artık bu kuralın dışında: bildirilen pencere açık kalıyor, geri bildirim penceresi onun üstünde açılıyor.
+- **Ekran görüntüsü açık pencereyi de gösteriyor:** Önceden açık pencere bildirim görüntüsünde çıkmıyor, yalnızca arkadaki sayfa görünüyordu. Artık pencere ekrandaki yerinde, arkasındaki karartmayla birlikte görüntüye giriyor.
+
+### Testler
+
+- Tanıtım sayfası testi, 2.7.2'de eklenen KODix bağlantısını kabul ediyor: siteden dışarı çıkan tek bağlantı bu. Bağlantının yeni sekmede, `noopener noreferrer` ile açılması da denetleniyor. Dış kaynak (betik, görsel, stil) yüklenmemesi kuralı aynen geçerli.
+- Kendi sunucu yönlendirme testi, iki yanıtın `Date` başlığı saniye sınırına denk geldiğinde boşuna başarısız oluyordu; karşılaştırma artık bu başlığı içermiyor.
+
 ## 2.7.1 — 17 Kasım 2026
 
 ### Telefon: "Sonlandırılıyor…"da takılan arama

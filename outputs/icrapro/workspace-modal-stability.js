@@ -6,9 +6,11 @@
   const tracked = new WeakMap();
   const sizes = new ResizeObserver((entries) => entries.forEach((entry) => pin(entry.target)));
   // What is being shown: a different form or title is a different view and is measured anew.
+  // The Geri bildirim tab (workspace-feedback.js) can sit in a window; it is not part of the view.
+  const first = (dialog) => [...dialog.children].find((el) => !el.hasAttribute('data-feedback-open'));
   const view = (dialog) =>
     [
-      dialog.firstElementChild?.id || dialog.firstElementChild?.tagName || '',
+      first(dialog)?.id || first(dialog)?.tagName || '',
       dialog.querySelector('h2')?.textContent || '',
       dialog.className.replace(/\bmodal-dragging\b/, '').trim(),
     ].join('|');

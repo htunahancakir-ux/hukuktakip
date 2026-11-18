@@ -81,9 +81,12 @@
     if (dialog.open) dialog.close();
   }
 
+  // The Geri bildirim tab sits in the topmost window but outside its box (workspace-feedback.js):
+  // a click on it reports the window and must not close it.
   const activeModal = (event) =>
-    event.target.closest?.('dialog[open]:modal') ||
-    (!document.querySelector('dialog[open]:modal') && document.querySelector('#borrowerDetail[open]'));
+    !event.target.closest?.('[data-feedback-open]') &&
+    (event.target.closest?.('dialog[open]:modal') ||
+      (!document.querySelector('dialog[open]:modal') && document.querySelector('#borrowerDetail[open]')));
   const outside = (event, dialog) => {
     const { left, right, top, bottom } = dialog.getBoundingClientRect();
     return event.clientX < left || event.clientX > right || event.clientY < top || event.clientY > bottom;
