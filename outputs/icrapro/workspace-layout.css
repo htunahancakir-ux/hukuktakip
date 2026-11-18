@@ -4758,3 +4758,13 @@ main.compact-top .stat small {
   margin-top: 24px;
   padding-block: 12px;
 }
+
+.product-credit-link {
+  display: inline-flex;
+  flex: 0 0 auto;
+  border-radius: 5px;
+}
+.product-credit-link:focus-visible {
+  outline: 2px solid #087449;
+  outline-offset: 3px;
+}

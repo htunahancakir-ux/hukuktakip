@@ -192,7 +192,7 @@ function loginFrame(content) {
         <div class="login-mobile-brand">${loginBrand()}</div>
       </div>
       <div class="login-card"></div>
-      <div class="login-entry-footer"><div class="product-credit"><span>Bu program bir</span><img src="/kodix-logo.jpg" width="108" height="36" alt="KODix" decoding="async"><span>ürünüdür.</span></div><span>${brandEscape(brandName())}</span><span data-login-version></span><a class="login-mobile-credit" href="https://www.emlakerp.com/" target="_blank" rel="noopener noreferrer">www.emlakerp.com</a></div>
+      <div class="login-entry-footer"><div class="product-credit"><span>Bu program bir</span><a class="product-credit-link" href="https://www.kodix.com.tr/" target="_blank" rel="noopener noreferrer" aria-label="KODix web sitesini aç (yeni sekme)"><img src="/kodix-logo.jpg" width="108" height="36" alt="KODix" decoding="async"></a><span>ürünüdür.</span></div><span>${brandEscape(brandName())}</span><span data-login-version></span><a class="login-mobile-credit" href="https://www.emlakerp.com/" target="_blank" rel="noopener noreferrer">www.emlakerp.com</a></div>
     </section>`;
   // The office's own picture (Ayarlar → Firma Bilgileri); the built-in one if it cannot load.
   const art = gate.querySelector('.login-art:not([data-fallback])');
