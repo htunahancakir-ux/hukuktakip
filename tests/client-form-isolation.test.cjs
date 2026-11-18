@@ -41,6 +41,7 @@ for (const role of ['ceo', 'admin']) {
       turkeyCities: ['Ankara', 'İstanbul'],
       turkeyDistricts: { Ankara: ['Çankaya'], İstanbul: ['Kadıköy', 'Üsküdar'] },
       setupExtraContacts() {},
+      setupClientStatement() {},
       readExtraContacts: () => ({}),
       bindMultipleFileInput() {},
       collectClientAttachments: async () => [],
@@ -74,6 +75,9 @@ for (const role of ['ceo', 'admin']) {
     assert.doesNotThrow(() => w.clientModal());
     const form = w.document.getElementById('clientForm');
     assert.equal(typeof form.onsubmit, 'function', 'registration must finish initializing');
+    assert.equal(form.elements.clientCode.required, false);
+    assert.equal(form.elements.clientCode.dataset.optional, 'true');
+    assert.equal(form.elements.clientCode.closest('[data-form-panel]').dataset.formPanel, 'general');
     const ids = [...w.document.querySelectorAll('[id]')].map((el) => el.id);
     assert.equal(new Set(ids).size, ids.length, 'filters and registration must use distinct IDs');
     for (const type of ['Şahıs', 'Şirket', 'Şahıs Şirketi']) {
@@ -108,6 +112,7 @@ for (const role of ['ceo', 'admin']) {
     assert.equal(listDistrict.disabled, true);
     for (const [name, value] of Object.entries({
       tradeName: 'Örnek Firma',
+      clientCode: '  000-MV-7  ',
       identity: '1234567890',
       clientCategory: 'Diğer',
       phone: '05320000001',
@@ -117,11 +122,20 @@ for (const role of ['ceo', 'admin']) {
     await form.onsubmit({ preventDefault() {}, target: form });
     assert.equal(saved.length, 1, notices.join('; '));
     assert.equal(saved[0].type, 'Şahıs Şirketi');
+    assert.equal(saved[0].clientCode, '000-MV-7', 'Codes retain leading zeros and letters');
     assert.equal(saved[0].recordedBy, 'manager');
     assert.equal(saved[0].documentStaff, 'manager');
     assert.equal(saved[0].collectionStaff, 'manager');
     assert.equal(saved[0].city, 'İstanbul');
     assert.equal(saved[0].district, 'Kadıköy');
     assert.equal(w.document.getElementById('modal').open, false);
+    w.clientModal(saved[0].id, saved[0]);
+    const edit = w.document.getElementById('clientForm');
+    assert.equal(edit.elements.clientCode.value, '000-MV-7');
+    edit.elements.clientCode.value = '';
+    await edit.onsubmit({ preventDefault() {}, target: edit });
+    assert.equal(saved.length, 2, notices.join('; '));
+    assert.equal(saved[1].clientCode, '', 'Code can be cleared without blocking an existing client save');
+    assert.equal(saved[1].tradeName, saved[0].tradeName);
   });
 }

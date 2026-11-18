@@ -203,7 +203,7 @@ test('Client pages, selected attachments and isolated edits preserve totals, per
         ),
       });
     const old = before.data['icrapro-v1'].clients[0],
-      edited = { ...old, notes: 'updated alone' };
+      edited = { ...old, notes: 'updated alone', clientCode: '000-MV-7' };
     const queried = [],
       connect = pool.connect;
     pool.connect = async () => {
@@ -230,7 +230,9 @@ test('Client pages, selected attachments and isolated edits preserve totals, per
     const afterEdit = await store.readState();
     const expected = structuredClone(before.data);
     expected['icrapro-v1'].clients[0].notes = 'updated alone';
+    expected['icrapro-v1'].clients[0].clientCode = '000-MV-7';
     assert.deepEqual(afterEdit.data, expected, 'all unrelated data, attachments and unknown fields survive');
+    assert.equal((await get('/api/records/client?id=c0')).record.clientCode, '000-MV-7');
     assert.equal((await patch(old, { ...old, notes: 'stale overwrite' })).status, 409);
     assert.equal(
       (await patch(edited, { ...edited, identity: clients[122].identity })).status,
