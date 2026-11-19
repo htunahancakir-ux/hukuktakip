@@ -367,6 +367,55 @@ function accountingTone(value) {
   return cents > 0n ? 'acc-pos' : cents < 0n ? 'acc-neg' : 'acc-zero';
 }
 
+function accountingPeriodRange(period, date = businessDate()) {
+  if (period === 'all') return { start: '', end: '' };
+  if (period === 'day') return { start: date, end: date };
+  const [year, month] = date.split('-').map(Number);
+  if (period === 'month')
+    return {
+      start: date.slice(0, 7) + '-01',
+      end: new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10),
+    };
+  if (period === 'year') return { start: year + '-01-01', end: year + '-12-31' };
+  throw Error('Geçersiz tarih dönemi.');
+}
+
+function bindAccountingPeriods(form) {
+  const toolbar = document.createElement('div');
+  toolbar.className = 'toolbar';
+  toolbar.style.cssText = 'flex-wrap:wrap;margin-bottom:16px';
+  toolbar.setAttribute('role', 'group');
+  toolbar.setAttribute('aria-label', 'Hareket tarih aralığı');
+  for (const [period, label] of [
+    ['all', 'Tümü'],
+    ['day', 'Günlük'],
+    ['month', 'Aylık'],
+    ['year', 'Yıllık'],
+  ]) {
+    const range = accountingPeriodRange(period);
+    const selected = movementFilters.start === range.start && movementFilters.end === range.end;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = selected ? 'primary' : 'secondary';
+    button.dataset.movementPeriod = period;
+    button.textContent = label;
+    button.setAttribute('aria-pressed', String(selected));
+    button.onclick = () => {
+      const selectedRange = accountingPeriodRange(period);
+      for (const key of ['start', 'end']) {
+        const input = form.elements[key];
+        input.value = selectedRange[key];
+        input.setCustomValidity('');
+        input._dateProxy?.setCustomValidity('');
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      form.requestSubmit();
+    };
+    toolbar.append(button);
+  }
+  form.prepend(toolbar);
+}
+
 function accountingBadge(e) {
   const tone = /^Hesaplar arası/.test(e.label || '')
     ? 'transfer'
@@ -749,6 +798,7 @@ function accountingPage(remote) {
     movementFilters = next;
     accountingPage();
   };
+  bindAccountingPeriods(filterForm);
   $('#clearMovementFilters').onclick = () => {
     accountingFilter = '';
     movementFilters = { start: '', end: '', type: '', operator: '', category: '', query: '' };

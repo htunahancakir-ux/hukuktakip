@@ -27,6 +27,7 @@ test('Accounting UI loads bounded pages, preserves totals and edit baselines and
     movementFilters: { start: '', end: '', type: '', operator: '', category: '', query: '' },
     accountingExpenseCategories: ['Yakıt'],
     displayDate: (s) => s,
+    businessDate: () => '2026-11-19',
     $: (s) => w.document.querySelector(s),
     money: (n) => String(n),
     financeEvents: [],
@@ -119,6 +120,34 @@ test('Accounting UI loads bounded pages, preserves totals and edit baselines and
   await tick();
   assert.equal(scrolled, 1);
   assert.equal(new URL(requests.at(-1), w.location.origin).searchParams.get('account'), 'cash');
+  assert.equal(w.accountingPeriodRange('month', '2024-02-15').end, '2024-02-29');
+  w.document.querySelector('#accountingFilterSection').open = true;
+  for (const [period, start, end] of [
+    ['day', '2026-11-19', '2026-11-19'],
+    ['month', '2026-11-01', '2026-11-30'],
+    ['year', '2026-01-01', '2026-12-31'],
+    ['all', '', ''],
+  ]) {
+    const form = w.document.querySelector('#movementFilterForm');
+    form.elements.category.value = 'Yakıt';
+    form.elements.operator.value = 'Örnek Personel';
+    form.elements.query.value = 'Test';
+    form.querySelector('[data-movement-period="' + period + '"]').click();
+    await tick();
+    const params = new URL(requests.at(-1), w.location.origin).searchParams;
+    assert.equal(params.get('start'), start);
+    assert.equal(params.get('end'), end);
+    assert.equal(params.get('account'), 'cash');
+    assert.equal(params.get('category'), 'Yakıt');
+    assert.equal(params.get('operator'), 'Örnek Personel');
+    assert.equal(params.get('query'), 'Test');
+    assert.equal(params.get('after'), '', 'Period changes reset pagination');
+    assert.equal(w.document.querySelector('#accountingFilterSection').open, true);
+    assert.equal(
+      w.document.querySelector('[data-movement-period="' + period + '"]').getAttribute('aria-pressed'),
+      'true',
+    );
+  }
   fail = true;
   await w.accountingPage();
   assert.match(w.document.querySelector('#content').textContent, /Bağlantı hatası/);
