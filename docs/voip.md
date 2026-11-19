@@ -21,6 +21,14 @@
 5. Verimor'da dahililerin görüşme kaydı açılır, web telefonu kullanılacaksa her dahiliye personel hesabı atanır. CEO bağlantı ekranını doldurur. Üretilen gizli URL, Verimor CRM entegrasyonunda çalma/cevaplama/kapanma bildirimlerine tanımlanır; santral `domain_id` değeri eşleşmelidir.
 6. Gerçek hesapta bir gelen webhook, iki tarafın sesinin bulunduğu örnek kayıt, tarayıcı mikrofonu/web telefonu ve arama/sonlandırma akışı test edilir. Henüz gerçek Verimor hesabıyla doğrulama yapılmadı. Önizleme yalnızca sentetik verileri ve sahte santral yanıtlarını kullanır.
 
+## ACR Phone ses yükleme
+
+`POST /api/voip/acr-upload`, ACR Phone Bulut Servisleri → WebHook alanına tam HTTPS adresi olarak girilir. `Secret`, `Source`, `Date` (Unix saniye), `Duration` (milisaniye) ve `File` multipart alanları resmî NLL örneğiyle uyumludur. WAV, M4A, OGG, AAC ve MP3 kapsayıcıları kabul edilir; toplam istek en fazla 32 MiB'dir. Kayıtlar mevcut şifreli arşive ve Görüşme Kayıtları listesine eklenir. Yeniden yükleme aynı cihaz/kayıt için ikinci satır oluşturmaz; dinleme mevcut kullanıcı yetkilerini kullanır.
+
+Sunucuda `HAN_ACR_DEVICES` JSON dizisindeki her cihaz `{id, label, host, secretHash}` ile tanımlanır. `secretHash` telefona verilen en az 32 karakterlik rastgele gizli kodun SHA-256 özetidir. Ham kod kaynak depoya veya sunucu yapılandırmasına konmaz. Host eşleşmeyen bürolarda bağlantı kapalıdır. Telefon kodu yalnızca yükleme içindir; kayıt listeleme, dinleme ve silme yetkisi vermez. `Secret` ile `Test=1` alanlarını göndermek kayıt oluşturmadan kimlik doğrulamayı sınar.
+
+Bu uç yalnızca ses yüklemesidir. Cevapsız/başarısız aramaları içeren Call Reporting aktarımı ayrı bir özelliktir ve henüz bağlı değildir. İlk cihaz yüklemesinde gerçek ACR alanları doğrulanmadan dosya/personel veya gelen/giden eşleştirmesi yapılmaz; kayıt cihaz etiketiyle yönetici arşivinde görünür. Büyük MP3 dışındaki sesler için AI transkripsiyon uyumluluğu ayrıca doğrulanmalıdır. Telefonun çift taraflı ses üretmesi ve arka planda yüklemesi gerçek cihazla test edilmelidir.
+
 ## Saklama, performans ve kurtarma
 
 Ses dosyası uygulama veritabanına veya tarayıcı depolamasına yazılmaz. Veritabanında indeksli metadata; özel R2 kovasında rastgele çağrı kimliğiyle adlandırılmış AES-256-GCM şifreli nesne tutulur. Nonce her dosyada rastgeledir. Oynatma sırasında yetki yeniden kontrol edilir, GCM etiketi doğrulanır ve ses uygulamanın korumalı medya ucundan sunulur; kalıcı herkese açık bağlantı üretilmez. HTTP byte-range desteği vardır. Aktarım sırasında HTTPS kullanılır.
