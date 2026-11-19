@@ -68,7 +68,7 @@ async function request({
 } = {}) {
   const form = new FormData();
   form.set('Secret', code);
-  form.set('Source', 'ACR Phone');
+  form.set('Source', 'com.nll.cb');
   if (date !== null) form.set('Date', date);
   form.set('Duration', '1000');
   if (declaredName !== undefined) form.set('file_name', declaredName);
@@ -115,18 +115,20 @@ test('ACR upload uses the body secret, office restriction, private encrypted arc
   });
   const recordings = createRecordingStore({ cloud: false, directory: dir });
   const state = {
+    users: [{ id: 'worker-1', name: 'Test Personel', active: true }],
     voipCalls: [],
     voipConfig: {},
     voipGrants: [],
     data: { 'icrapro-v1': { docs: [], clients: [] } },
   };
   let signedIn = false;
+  let role = 'ceo';
   const handle = createVoipHandler({
     transaction: (work) => work({ state, saveState() {} }),
     recordings,
     authenticatedUser: async () => {
       if (!signedIn) throw Object.assign(Error('Sign in'), { status: 401 });
-      return { id: 'ceo', role: 'ceo' };
+      return { id: 'ceo', role };
     },
     readBody: async (req, max) => {
       const chunks = [];
@@ -169,6 +171,8 @@ test('ACR upload uses the body secret, office restriction, private encrypted arc
   const { id } = JSON.parse(uploaded.bytes());
   assert.equal(state.voipCalls.length, 1);
   assert.equal(state.voipCalls[0].provider, 'acr');
+  assert.equal(state.voipCalls[0].phone, '');
+  assert.equal(state.voipCalls[0].callerNumber, '');
   assert.equal(state.voipCalls[0].duration, 1);
   assert.deepEqual(await recordings.read(id), wav());
   const encrypted = await fs.readFile(path.join(dir, 'gorusme-kayitlari', id + '.enc'));
@@ -183,21 +187,59 @@ test('ACR upload uses the body secret, office restriction, private encrypted arc
   assert.equal(playback.headers['content-type'], 'audio/wav');
   assert.match(playback.headers['content-disposition'], /\.wav/);
   assert.deepEqual(playback.bytes(), wav());
+  // Old imported rows may contain the package name in callerNumber; hide it there too.
+  state.voipCalls[0].callerNumber = 'com.nll.cb';
+  const list = response();
+  await handle({ method: 'GET', headers: {} }, list, new URL('https://' + host + '/api/voip/recordings'));
+  assert.equal(JSON.parse(list.bytes()).calls[0].callerNumber, 'Numara aktarılmadı');
   const nativeUpload = await run({
     withoutBinaryFilename: true,
-    declaredName: 'native-recording.wav',
+    declaredName: '1000461046',
     date: null,
   });
   const nativeId = JSON.parse(nativeUpload.bytes()).id;
   assert.equal(state.voipCalls.length, 2);
-  assert.equal(state.voipCalls[1].acrFileName, 'native-recording.wav');
+  assert.equal(state.voipCalls[1].acrFileName, '1000461046');
+  assert.equal(state.voipCalls[1].phone, '', 'a numeric Android recording ID is not a telephone number');
   assert.deepEqual(
     await recordings.read(nativeId),
     wav(),
     'octet-stream bytes survive even without a filename on the file part',
   );
-  await run({ withoutBinaryFilename: true, declaredName: 'native-recording.wav', date: null });
+  await run({ withoutBinaryFilename: true, declaredName: '1000461046', date: null });
   assert.equal(state.voipCalls.length, 2, 'omitting optional Date does not duplicate retries');
+  const deviceApi = async (method = 'GET', value) => {
+    const raw = Buffer.from(JSON.stringify(value || {}));
+    const req = {
+      method,
+      headers: { host, 'content-type': 'application/json' },
+      async *[Symbol.asyncIterator]() {
+        yield raw;
+      },
+    };
+    const res = response();
+    await handle(req, res, new URL('https://' + host + '/api/voip/acr-devices'));
+    return JSON.parse(res.bytes());
+  };
+  const deviceList = await deviceApi();
+  assert.equal(deviceList.devices[0].label, 'ACR Telefon 1');
+  assert.ok(!JSON.stringify(deviceList).includes('secretHash'));
+  role = 'admin';
+  await assert.rejects(deviceApi(), { status: 403 });
+  role = 'ceo';
+  await assert.rejects(deviceApi('PUT', { devices: [{ id: 'unknown-device', label: 'Other' }] }), {
+    status: 400,
+  });
+  await assert.rejects(
+    deviceApi('PUT', { devices: [{ id: device.id, label: 'Office', userId: 'other-user' }] }),
+    { status: 400 },
+  );
+  const settings = await deviceApi('PUT', {
+    devices: [{ id: device.id, label: 'Ofis telefonu', userId: 'worker-1' }],
+  });
+  assert.equal(settings.devices[0].label, 'Ofis telefonu');
+  assert.equal(state.voipCalls[0].staffName, 'Test Personel');
+  assert.equal(state.voipCalls[0].userId, 'worker-1');
   const { pg, pool } = await database();
   try {
     await importState(pool, fixture());
@@ -213,8 +255,70 @@ test('ACR upload uses the body secret, office restriction, private encrypted arc
     const stored = await transaction(pool, false, (tx) => tx.state.voipCalls[0], { id });
     assert.equal(stored.recordingContentType, 'audio/wav');
     assert.equal(stored.provider, 'acr');
+    await transaction(
+      pool,
+      false,
+      (tx) => {
+        tx.state.voipConfig = {
+          ...tx.state.voipConfig,
+          acrDevices: { [device.id]: { label: 'Yeni cihaz adı', userId: 'test-ceo', userName: 'Test' } },
+        };
+        tx.saveState(tx.state);
+      },
+      { configWrite: true, acrProfilesWrite: true },
+    );
+    const renamed = await transaction(pool, false, (tx) => tx.state.voipCalls[0], { id });
+    assert.equal(renamed.staffName, 'Test');
+    assert.equal(renamed.acrDeviceLabel, 'Yeni cihaz adı');
+    assert.equal(renamed.userId, 'test-ceo');
+    assert.equal(
+      (await pool.query('SELECT user_id FROM han_private.voip_calls WHERE id=$1', [id])).rows[0].user_id,
+      'test-ceo',
+    );
   } finally {
     await pg.close();
+  }
+});
+
+test('ACR settings use a separate labelled form, escape labels and save device and staff together', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM(
+    '<div id="host"><form id="other"><input name="unchanged" value="keep"></form></div>',
+    { runScripts: 'outside-only', url: 'https://office.example.test' },
+  );
+  const w = dom.window;
+  w.esc = (value) =>
+    String(value ?? '').replace(
+      /[&<>"']/g,
+      (s) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[s],
+    );
+  w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+  const calls = [];
+  w.voipApi = async (route, method, value) => {
+    calls.push({ route, method, value });
+    return {
+      devices: [{ id: 'phone-1', label: '<img src=x onerror=alert(1)>', userId: '' }],
+      users: [{ id: 'worker-1', name: 'Test Personel' }],
+    };
+  };
+  try {
+    await w.voipAcrDeviceSettings(w.document.querySelector('#host'));
+    const form = w.document.querySelector('form[aria-labelledby="acrDevicesHeading"]');
+    assert.ok(form);
+    assert.equal(w.document.querySelectorAll('form form').length, 0);
+    assert.equal(form.querySelectorAll('img').length, 0);
+    form.querySelector('input').value = 'Telefonum';
+    form.querySelector('select').value = 'worker-1';
+    assert.equal(calls.length, 1, 'select changes do not submit');
+    await form.onsubmit({ preventDefault() {} });
+    assert.equal(calls[1].route, 'acr-devices');
+    assert.equal(calls[1].method, 'PUT');
+    assert.equal(calls[1].value.devices[0].label, 'Telefonum');
+    assert.equal(calls[1].value.devices[0].userId, 'worker-1');
+    assert.match(form.querySelector('[role="status"]').textContent, /kaydedildi/);
+    assert.equal(w.document.querySelector('#other input').value, 'keep');
+  } finally {
+    w.close();
   }
 });
 

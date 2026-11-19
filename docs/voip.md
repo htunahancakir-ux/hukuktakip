@@ -31,6 +31,10 @@ Sunucuda `HAN_ACR_DEVICES` JSON dizisindeki her cihaz `{id, label, host, secretH
 
 Bu uç yalnızca ses yüklemesidir. Cevapsız/başarısız aramaları içeren Call Reporting aktarımı ayrı bir özelliktir ve henüz bağlı değildir. İlk cihaz yüklemesinde gerçek ACR alanları doğrulanmadan dosya/personel veya gelen/giden eşleştirmesi yapılmaz; kayıt cihaz etiketiyle yönetici arşivinde görünür. Büyük MP3 dışındaki sesler için AI transkripsiyon uyumluluğu ayrıca doğrulanmalıdır. Telefonun çift taraflı ses üretmesi ve arka planda yüklemesi gerçek cihazla test edilmelidir.
 
+Gerçek cihaz yüklemesinde `source=com.nll.cb` uygulama kimliğidir; telefon numarası olarak kullanılmaz. `file_name` ise telefon numarasına benzeyen sayısal bir Android kayıt kimliği olabilir. Numara yalnızca açık numara alanlarından alınır, eksik olduğunda listede “Numara aktarılmadı” gösterilir. Cihaz etiketi, doğrulanmış kişi eşleştirmesi gelene kadar kişi adı olarak değiştirilmez.
+
+CEO, Ayarlar → Entegrasyonlar → VoIP / Telefon → Bağlantı ayarları → ACR telefonları bölümünden cihaz adını değiştirebilir ve aktif kullanıcı seçebilir. `GET/PUT /api/voip/acr-devices` yalnızca o isteğin bürosuna tanımlı cihazları gösterir; gizli kod ve özeti dönmez. Cihaz/kullanıcı kimlikleri sunucuda doğrulanır. Adlandırma ve kullanıcı ataması mevcut ACR kayıtlarını da tek işlemde günceller; ses dinleme yetkileri bu atamayla genişletilmez. Verimor ayarlarını değiştirmek gerekmez.
+
 ## Saklama, performans ve kurtarma
 
 Ses dosyası uygulama veritabanına veya tarayıcı depolamasına yazılmaz. Veritabanında indeksli metadata; özel R2 kovasında rastgele çağrı kimliğiyle adlandırılmış AES-256-GCM şifreli nesne tutulur. Nonce her dosyada rastgeledir. Oynatma sırasında yetki yeniden kontrol edilir, GCM etiketi doğrulanır ve ses uygulamanın korumalı medya ucundan sunulur; kalıcı herkese açık bağlantı üretilmez. HTTP byte-range desteği vardır. Aktarım sırasında HTTPS kullanılır.

@@ -467,6 +467,65 @@ function voipFallbackValue(form) {
     throw Error('Yedek hedef için ' + (kind === 'queue' ? 'kuyruk' : 'çağrı grubu') + ' numarasını girin.');
   return kind + '/' + raw;
 }
+async function voipAcrDeviceSettings(host) {
+  const section = document.createElement('section');
+  section.className = 'panel formbody';
+  section.innerHTML =
+    '<h3 id="acrDevicesHeading">ACR telefonları</h3><p data-acr-loading role="status">ACR cihazları yükleniyor…</p>';
+  host.append(section);
+  try {
+    const config = await voipApi('acr-devices');
+    if (!section.isConnected) return;
+    section.querySelector('[data-acr-loading]').remove();
+    if (!config.devices.length) {
+      const note = document.createElement('p');
+      note.textContent = 'Bu büro için tanımlı ACR telefonu bulunmuyor.';
+      section.append(note);
+      return;
+    }
+    section.insertAdjacentHTML(
+      'beforeend',
+      `<p>Cihaz adını yazabilir veya bu telefonu kullanan personeli seçebilirsiniz. Seçilen kişinin adı mevcut ve yeni görüşme kayıtlarında görünür.</p>
+      <form method="post" action="/api/voip/acr-devices" aria-labelledby="acrDevicesHeading">
+      ${config.devices
+        .map(
+          (
+            d,
+            index,
+          ) => `<fieldset data-acr-device="${esc(d.id)}"><legend>Telefon ${index + 1}</legend><div class="grid">
+        <label class="field" for="acrLabel${index}">Cihaz adı (zorunlu)<input id="acrLabel${index}" name="label${index}" type="text" required maxlength="80" value="${esc(d.label)}" autocomplete="off"></label>
+        <label class="field" for="acrUser${index}">Bu telefonu kullanan personel<select id="acrUser${index}" name="userId${index}" data-optional="true"><option value="">Personel seçilmedi — cihaz adı kullanılsın</option>${config.users.map((u) => `<option value="${esc(u.id)}" ${u.id === d.userId ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></label>
+      </div></fieldset>`,
+        )
+        .join('')}
+      <p role="status" data-acr-status></p><div class="actions"><button class="primary" type="submit">ACR Cihaz Ayarlarını Kaydet</button></div></form>`,
+    );
+    const form = section.querySelector('form');
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      if (!form.reportValidity()) return;
+      const button = form.querySelector('[type="submit"]');
+      const status = form.querySelector('[data-acr-status]');
+      const devices = [...form.querySelectorAll('[data-acr-device]')].map((row) => ({
+        id: row.dataset.acrDevice,
+        label: row.querySelector('input').value.trim(),
+        userId: row.querySelector('select').value,
+      }));
+      button.disabled = true;
+      status.textContent = 'Kaydediliyor…';
+      try {
+        await voipApi('acr-devices', 'PUT', { devices });
+        status.textContent = 'ACR cihaz ayarları kaydedildi. Görüşme listesini yenileyebilirsiniz.';
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    };
+  } catch (error) {
+    if (section.isConnected) section.querySelector('[data-acr-loading]').textContent = error.message;
+  }
+}
 function voipSettingsPage() {
   if (hanAuth.role !== 'ceo') return;
   $('#content').innerHTML =
@@ -520,7 +579,8 @@ function voipSettingsPage() {
       </fieldset>
       <label class="field full">Çağrı bildirim adresi<input readonly value="${esc(config.webhookPath ? location.origin + config.webhookPath : 'İlk kayıttan sonra oluşur.')}"><small>Verimor CRM entegrasyonunda çalma, cevaplanma ve kapanma bildirimleri için bu adresi kullanın. Adres gizli bildirim anahtarı içerir.</small></label>
     </div><p id="voipConfigStatus" role="status"></p><div class="actions"><button class="primary" type="submit">VoIP Ayarlarını Kaydet</button></div></form>`;
-      const form = host.querySelector('form');
+      void voipAcrDeviceSettings(host);
+      const form = host.querySelector('#voipConfigForm');
       voipBindFallback(form, config.inboundFallback || '');
       form.onsubmit = async (event) => {
         event.preventDefault();
