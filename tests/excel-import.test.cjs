@@ -46,7 +46,15 @@ test('Authenticated Excel import previews, selects and atomically stores clients
   let server;
   try {
     const state = fixture();
-    state.data['icrapro-v1'].clients = [{ id: 'existing', name: 'Mevcut Müvekkil', identity: '1111111111' }];
+    state.data['icrapro-v1'].clients = [
+      {
+        id: 'existing',
+        name: 'Mevcut Müvekkil',
+        identity: '1111111111',
+        clientCode: 'LIVE-CODE',
+        sourceImport: { clientCode: 'OLD-CODE' },
+      },
+    ];
     state.data['icrapro-personnel-v1'] = [{ id: 'source-staff', name: 'Kaynak Personel', active: true }];
     state.data['hanhukuk-accounting-v1'].accounts = [{ id: 'bank', name: 'Banka', openingBalance: 50000 }];
     state.users.push(
@@ -98,11 +106,16 @@ test('Authenticated Excel import previews, selects and atomically stores clients
     const templateResponse = await fetch(server.url + '/api/excel-import/template?kind=clients', { headers });
     assert.equal(templateResponse.status, 200);
     assert(templateResponse.headers.get('content-type').includes('spreadsheetml'));
+    const downloadedTemplate = Buffer.from(await templateResponse.arrayBuffer());
+    assert.deepEqual(
+      downloadedTemplate,
+      require('node:fs').readFileSync('lib/templates/muvekkil-aktarim.xlsx'),
+    );
     assert.equal(
       (
         await workbook.readWorkbook({
           fileName: 'template.xlsx',
-          fileBase64: Buffer.from(await templateResponse.arrayBuffer()).toString('base64'),
+          fileBase64: downloadedTemplate.toString('base64'),
         })
       )[0].rows[0].cells.A,
       'Müvekkil Adı',
@@ -112,7 +125,7 @@ test('Authenticated Excel import previews, selects and atomically stores clients
         name: 'Kimlik',
         rows: [
           ['Alacaklı Kodu', 'Alacaklı İsmi', 'Gerçek / Tüzel', 'Müvekkil Vergi No'],
-          ['K1', 'Örnek Firma', 'Tüzel', '2222222222'],
+          ['000-K1', 'Örnek Firma', 'Tüzel', '2222222222'],
           ['K2', 'Mevcut Müvekkil', 'Gerçek', '1111111111'],
           ['K3', 'Bozuk Kimlik', 'Tüzel', '12'],
         ],
@@ -121,7 +134,7 @@ test('Authenticated Excel import previews, selects and atomically stores clients
         name: 'İletişim',
         rows: [
           ['Kod', 'İsim / Ünvan', 'Telefon 1', 'Telefon 2', 'Adres', 'İl', 'İlçe'],
-          ['K1', 'Örnek Firma', '05320000001', '12345678901', 'Örnek Adres', 'Karabük', 'Merkez'],
+          ['000-K1', 'Örnek Firma', '05320000001', '12345678901', 'Örnek Adres', 'Karabük', 'Merkez'],
         ],
       },
     ]);
@@ -145,6 +158,10 @@ test('Authenticated Excel import previews, selects and atomically stores clients
     const afterClient = (await store.readState()).data['icrapro-v1'].clients;
     const client = afterClient.find((c) => c.name === 'Örnek Firma');
     assert(client);
+    assert.equal(client.clientCode, '000-K1');
+    const reopenedClient = await fetch(server.url + '/api/records/client?id=' + client.id, { headers });
+    assert.equal(reopenedClient.status, 200);
+    assert.equal((await reopenedClient.json()).record.clientCode, '000-K1');
     assert.equal(client.type, 'Şirket');
     assert.equal(client.additionalPhones[0], '12345678901');
     assert.equal(client.address, 'Örnek Adres');
@@ -290,6 +307,24 @@ test('Authenticated Excel import previews, selects and atomically stores clients
     assert.equal(fr.data.imported, 1, JSON.stringify(fr.data));
     assert.notEqual(fr.data.records[0].number, result.data.records[0].number);
     assert.equal((await request('preview', { ...input, mergeSheets: 'false' })).status, 400);
+    for (const [code, ready] of [
+      ['LIVE-CODE', 1],
+      ['OLD-CODE', 0],
+    ]) {
+      const byCode = await request('preview', {
+        kind: 'documents',
+        ...(await excel([
+          {
+            rows: [
+              ['Borçlu Adı', 'Müvekkil Kodu', 'Evrak Tutarı', 'Vade Tarihi'],
+              ['Kodla Eşleşen Borçlu', code, 100, '01.01.2025'],
+            ],
+          },
+        ])),
+      });
+      assert.equal(byCode.data.totals.ready, ready, JSON.stringify(byCode.data));
+      assert.equal(byCode.data.totals.error, 1 - ready);
+    }
   } finally {
     if (server) await server.close();
     await pg.close();
