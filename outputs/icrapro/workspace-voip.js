@@ -1267,8 +1267,20 @@ function setupBorrowerVoip(dialog, doc) {
   function dispose() {
     clearInterval(timer);
     document.removeEventListener('pointerdown', outside, true);
+    document.removeEventListener('borrower-phone-status-changed', phoneStatusChanged);
   }
   document.addEventListener('pointerdown', outside, true);
+  const phoneStatusChanged = (event) => {
+    if (event.detail.documentId !== doc.id) return;
+    doc.inactivePhones = event.detail.inactivePhones.slice();
+    if (!panel.hidden) void refresh();
+  };
+  document.addEventListener('borrower-phone-status-changed', phoneStatusChanged);
+  dialog.addEventListener(
+    'close',
+    () => document.removeEventListener('borrower-phone-status-changed', phoneStatusChanged),
+    { once: true },
+  );
   async function refresh() {
     if (busy || addingPhone) return;
     const seq = ++version;
@@ -1443,6 +1455,11 @@ function setupBorrowerVoip(dialog, doc) {
               : digits;
           if (!/^90[1-9]\d{9}$/.test(normalized)) {
             form.querySelector('[role="alert"]').textContent = 'Geçerli bir Türkiye telefon numarası girin.';
+            return;
+          }
+          if (phoneIsInactive(doc, normalized)) {
+            form.querySelector('[role="alert"]').textContent =
+              'Bu numara pasif. Föyün üst kısmından Aktife Al düğmesini kullanın.';
             return;
           }
           if (data.phones.some((p) => p.phone === normalized)) {

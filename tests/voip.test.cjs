@@ -7,6 +7,46 @@ const { Writable } = require('node:stream');
 const { createVoipHandler, configure, number, phones, updateEvent } = require('../lib/voip.cjs');
 const { createRecordingStore, filename } = require('../lib/voip-recordings.cjs');
 process.env.VOIP_ENCRYPTION_KEY = 'ab'.repeat(32);
+test('Inactive file numbers stay available for matching and history but cannot be dialled, even from a stale call panel', async () => {
+  let providerRequests = 0;
+  const h = harness(async () => {
+    providerRequests++;
+    throw Error('Provider must not be called');
+  });
+  const doc = h.state.data['icrapro-v1'].docs[0];
+  doc.inactivePhones = ['0 (532) 000 00 00'];
+  doc.referencePhone1 = '905320000000';
+  h.state.voipCalls.push({
+    id: 'past-call',
+    documentId: 'd',
+    phone: '905320000000',
+    userId: 'u',
+    status: 'completed',
+    createdAt: new Date(Date.now() - 3600000).toISOString(),
+    duration: 30,
+  });
+  assert(
+    phones(doc).some((p) => p.phone === '905320000000'),
+    'Incoming file matching must retain inactive numbers',
+  );
+  const panel = await h.call('calls?documentId=d');
+  assert(!panel.phones.some((p) => p.phone === '905320000000'));
+  assert(
+    panel.calls.some((c) => c.id === 'past-call'),
+    'Past conversations must remain visible',
+  );
+  await assert.rejects(
+    h.call('start', 'POST', {
+      documentId: 'd',
+      phone: '05320000000',
+      requestId: 'inactive-phone-request-01',
+    }),
+    /pasif/,
+  );
+  assert.equal(providerRequests, 0);
+  doc.inactivePhones = [];
+  assert((await h.call('calls?documentId=d')).phones.some((p) => p.phone === '905320000000'));
+});
 // A browser that supports the web phone and where the microphone was already allowed.
 function allowMicrophone(w, { state = 'granted', devices = [{ kind: 'audioinput' }], getUserMedia } = {}) {
   Object.defineProperty(w, 'isSecureContext', { value: true, configurable: true });

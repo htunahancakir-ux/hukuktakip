@@ -671,6 +671,103 @@ function bindBorrowerSheetTabs(dialog, id) {
   select(active);
 }
 
+function borrowerHeaderPhonesMarkup(doc) {
+  const own = borrowerPhoneSlots(doc);
+  const pairs = [
+    ['Tel-1', own.phone1],
+    ['Tel-2', own.phone2],
+    ...own.additionalPhones.map((v, i) => ['Tel-' + (i + 3), v]),
+    ['Ref. Tel-1', doc.referencePhone1],
+    ['Ref. Tel-2', doc.referencePhone2],
+    ['Ofis Tel-1', doc.officePhone1],
+    ['Ofis Tel-2', doc.officePhone2],
+  ];
+  const seen = new Set();
+  const editable = !hanAuth.readOnly && window.hanModuleAction?.('documents', 'update') !== false;
+  return (
+    pairs
+      .filter(([, number]) => number && !seen.has(phoneSourceKey(number)) && seen.add(phoneSourceKey(number)))
+      .map(([label, number]) => {
+        const inactive = phoneIsInactive(doc, number);
+        const displayed = window.hanPrivacy ? hanPrivacy.label('Telefon', number) : esc(number);
+        return (
+          '<div class="sheet-header-phone-row' +
+          (inactive ? ' is-inactive' : '') +
+          '"><span><small>' +
+          esc(label) +
+          '</small><strong>' +
+          displayed +
+          '</strong>' +
+          (inactive ? '<em>Pasif</em>' : '') +
+          '</span><button type="button" class="link" data-toggle-phone="' +
+          esc(phoneSourceKey(number)) +
+          '" aria-label="' +
+          esc(label + (inactive ? ' numarasını aktife al' : ' numarasını pasife al')) +
+          '"' +
+          (editable ? '' : ' disabled') +
+          '>' +
+          (inactive ? 'Aktife Al' : 'Pasife Al') +
+          '</button></div>'
+        );
+      })
+      .join('') || '<strong>—</strong>'
+  );
+}
+
+function setupBorrowerHeaderPhones(dialog, meta, doc) {
+  const target = meta.querySelector('[data-header-phones]');
+  if (!target) return;
+  const render = () => {
+    target.innerHTML = borrowerHeaderPhonesMarkup(doc);
+  };
+  render();
+  target.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-toggle-phone]');
+    if (!button || button.disabled) return;
+    event.preventDefault();
+    const phone = button.dataset.togglePhone;
+    const values = cleanInactivePhones(doc.inactivePhones);
+    const wasInactive = values.includes(phone);
+    const next = {
+      ...doc,
+      inactivePhones: wasInactive ? values.filter((v) => v !== phone) : values.concat(phone),
+    };
+    target.querySelectorAll('button').forEach((b) => {
+      b.disabled = true;
+    });
+    try {
+      const saved = await saveRecordIntakeMetadata(doc, next);
+      Object.assign(doc, saved);
+      document.dispatchEvent(
+        new CustomEvent('borrower-phone-status-changed', {
+          detail: { documentId: doc.id, inactivePhones: cleanInactivePhones(doc.inactivePhones) },
+        }),
+      );
+      toast(
+        wasInactive
+          ? 'Telefon numarası aktifleştirildi.'
+          : 'Telefon pasife alındı; Ara listesinde gösterilmez.',
+        dialog,
+      );
+    } catch (error) {
+      toast(error.message, dialog);
+    } finally {
+      if (target.isConnected) render();
+    }
+  });
+  const changed = (event) => {
+    if (event.detail.documentId !== doc.id) return;
+    doc.inactivePhones = event.detail.inactivePhones.slice();
+    render();
+  };
+  document.addEventListener('borrower-phone-status-changed', changed);
+  dialog.addEventListener(
+    'close',
+    () => document.removeEventListener('borrower-phone-status-changed', changed),
+    { once: true },
+  );
+}
+
 function layoutBorrowerSheet(dialog, d, f, client) {
   dialog.classList.add('compact-borrower-sheet');
   setupBorrowerResize(dialog);
@@ -718,12 +815,12 @@ function layoutBorrowerSheet(dialog, d, f, client) {
     '</div>' +
     field('Vade Tarihi', isParkingDocument(d) ? '—' : displayDate(d.due)) +
     field('TC / Vergi No', d.identity) +
-    field('Telefon', d.phone1) +
-    field('İl / İlçe', [d.city, d.district].filter(Boolean).join(' / ')) +
+    '<div class="sheet-meta-field sheet-header-phones"><small>Telefon</small><div data-header-phones></div></div>' +
     '<div class="sheet-address">' +
-    field('Adres', d.address) +
+    field('Adres', [d.address, d.district, d.city].filter(Boolean).join(' / ')) +
     '</div>';
   head.after(meta);
+  setupBorrowerHeaderPhones(dialog, meta, d);
   setupBorrowerEnforcementFields(dialog, d, meta);
   meta.querySelector('#sheetOpenClient')?.addEventListener('click', () => borrowerClientInfo(client.id));
   const workspace = document.createElement('div');

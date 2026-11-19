@@ -4795,3 +4795,52 @@ main.compact-top .stat small {
   outline: 2px solid #087449;
   outline-offset: 3px;
 }
+
+.compact-borrower-sheet .sheet-header-phones {
+  grid-column: span 2;
+}
+.sheet-header-phones [data-header-phones] {
+  display: grid;
+  gap: 3px;
+  max-height: 100px;
+  overflow: auto;
+}
+.sheet-header-phone-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.sheet-header-phone-row > span {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+.sheet-header-phone-row button {
+  flex: 0 0 auto;
+  padding: 2px 4px;
+  font-size: 10px;
+}
+.sheet-header-phone-row.is-inactive strong {
+  color: #7b8791;
+  text-decoration: line-through;
+}
+.sheet-header-phone-row em {
+  color: #a34a2c;
+  font-size: 9px;
+  font-style: normal;
+}
+.intake-address-location {
+  flex: 0 1 auto;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .compact-borrower-sheet .sheet-header-phones {
+    grid-column: 1 / -1;
+  }
+  .intake-borrower-sheet .intake-sheet-address {
+    flex-wrap: wrap;
+  }
+}

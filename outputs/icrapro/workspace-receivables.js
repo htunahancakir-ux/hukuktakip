@@ -548,7 +548,6 @@ function setupIntakeBorrowerSheet(form, original) {
     form.elements.phone1._phoneSourceInput.value = sourceInput.value;
     form.elements.phone1._phoneSourceInput.dispatchEvent(new Event('input', { bubbles: true }));
   });
-  value('İl / İlçe', 'location');
   const enforcement = document.createElement('div');
   enforcement.className = 'sheet-enforcement-form';
   for (const name of ['enforcementOffice', 'enforcementFileNumber']) {
@@ -556,7 +555,11 @@ function setupIntakeBorrowerSheet(form, original) {
     if (wrapper) enforcement.append(wrapper);
   }
   meta.append(enforcement);
-  value('Adres', 'address', 'intake-sheet-address');
+  const addressCell = value('Adres', 'address', 'intake-sheet-address');
+  const addressLocation = document.createElement('strong');
+  addressLocation.dataset.draftMeta = 'location';
+  addressLocation.className = 'intake-address-location';
+  addressCell.append(addressLocation);
   head.after(meta);
   const workspace = document.createElement('div');
   workspace.className = 'sheet-workspace';
@@ -713,7 +716,7 @@ function setupIntakeBorrowerSheet(form, original) {
       identity: inputs.identity.value,
       phone1: inputs.phone1.value,
       phoneSource: inputs.phone1._phoneSourceInput?.value || '',
-      location: [inputs.city.value, inputs.district.value].filter(Boolean).join(' / '),
+      location: [inputs.district.value, inputs.city.value].filter(Boolean).join(' / '),
       address: inputs.address.value,
     };
     meta.querySelectorAll('[data-draft-meta]').forEach((node) => {

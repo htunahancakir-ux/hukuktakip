@@ -33,6 +33,21 @@
     if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
     return digits;
   }
+  function cleanInactivePhones(value) {
+    if (!Array.isArray(value)) return [];
+    return [
+      ...new Set(
+        value
+          .filter((v) => typeof v === 'string')
+          .map(phoneSourceKey)
+          .filter((v) => /^\d{7,15}$/.test(v)),
+      ),
+    ];
+  }
+  function phoneIsInactive(record, value) {
+    const key = phoneSourceKey(value);
+    return !!key && cleanInactivePhones(record && record.inactivePhones).includes(key);
+  }
   function cleanPhoneSources(value) {
     const out = {};
     if (!value || typeof value !== 'object' || Array.isArray(value)) return out;
@@ -126,6 +141,8 @@
       formatIbanNumber,
       borrowerPhoneSlots,
       phoneSourceKey,
+      cleanInactivePhones,
+      phoneIsInactive,
       cleanPhoneSources,
       phoneSource,
       bindPhoneSource,
@@ -135,6 +152,8 @@
   else {
     Object.assign(root, {
       phoneSourceKey,
+      cleanInactivePhones,
+      phoneIsInactive,
       cleanPhoneSources,
       phoneSource,
       bindPhoneSource,
