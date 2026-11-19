@@ -62,16 +62,27 @@ async function request({
   bytes = wav(),
   date = '1795089600',
   probe = false,
+  metadataOnly = false,
+  declaredName,
+  withoutBinaryFilename = false,
 } = {}) {
   const form = new FormData();
   form.set('Secret', code);
   form.set('Source', 'ACR Phone');
-  form.set('Date', date);
+  if (date !== null) form.set('Date', date);
   form.set('Duration', '1000');
+  if (declaredName !== undefined) form.set('file_name', declaredName);
   if (probe) form.set('Test', '1');
-  else form.set('File', new Blob([bytes]), 'recording.wav');
+  else if (!metadataOnly)
+    form.set('File', new Blob([bytes], { type: 'application/octet-stream' }), 'recording.wav');
   const upload = new Request('https://' + hostname + '/api/voip/acr-upload', { method: 'POST', body: form });
-  const raw = Buffer.from(await upload.arrayBuffer());
+  let raw = Buffer.from(await upload.arrayBuffer());
+  if (withoutBinaryFilename) {
+    const header = Buffer.from('; filename="recording.wav"');
+    const position = raw.indexOf(header);
+    assert.ok(position > 0);
+    raw = Buffer.concat([raw.subarray(0, position), raw.subarray(position + header.length)]);
+  }
   return {
     method: 'POST',
     url: '/api/voip/acr-upload',
@@ -141,6 +152,18 @@ test('ACR upload uses the body secret, office restriction, private encrypted arc
   await assert.rejects(run({ date: 'bad' }), { status: 400 });
   const probe = await run({ probe: true });
   assert.equal(probe.statusCode, 200);
+  const nativeCheck = await run({ metadataOnly: true });
+  assert.equal(nativeCheck.statusCode, 200, 'ACR connection check need not contain the custom Test flag');
+  assert.deepEqual(JSON.parse(nativeCheck.bytes()), {
+    ready: true,
+    accepted: false,
+    recordingReceived: false,
+  });
+  await assert.rejects(run({ metadataOnly: true, code: 'wrong-native-check-code-0000000000000' }), {
+    status: 401,
+  });
+  await assert.rejects(run({ metadataOnly: true, declaredName: 'missing.wav' }), { status: 400 });
+  await assert.rejects(run({ bytes: Buffer.alloc(0) }), { status: 400 });
   assert.equal(state.voipCalls.length, 0);
   const uploaded = await run();
   const { id } = JSON.parse(uploaded.bytes());
@@ -160,6 +183,21 @@ test('ACR upload uses the body secret, office restriction, private encrypted arc
   assert.equal(playback.headers['content-type'], 'audio/wav');
   assert.match(playback.headers['content-disposition'], /\.wav/);
   assert.deepEqual(playback.bytes(), wav());
+  const nativeUpload = await run({
+    withoutBinaryFilename: true,
+    declaredName: 'native-recording.wav',
+    date: null,
+  });
+  const nativeId = JSON.parse(nativeUpload.bytes()).id;
+  assert.equal(state.voipCalls.length, 2);
+  assert.equal(state.voipCalls[1].acrFileName, 'native-recording.wav');
+  assert.deepEqual(
+    await recordings.read(nativeId),
+    wav(),
+    'octet-stream bytes survive even without a filename on the file part',
+  );
+  await run({ withoutBinaryFilename: true, declaredName: 'native-recording.wav', date: null });
+  assert.equal(state.voipCalls.length, 2, 'omitting optional Date does not duplicate retries');
   const { pg, pool } = await database();
   try {
     await importState(pool, fixture());
