@@ -448,3 +448,27 @@ test("a provider's 401 in the connection test is reported as 502; other statuses
     /API anahtarı kabul edilmedi/,
   );
 });
+test('NVIDIA Nemotron uses its documented thinking option while other chat providers keep their API format', () => {
+  const { requestBody } = require('../lib/ai-settings.cjs');
+  const runtime = {
+    apiFormat: 'chat-completions',
+    model: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+    endpoint: 'https://integrate.api.nvidia.com/v1/chat/completions',
+    reasoningEffort: 'none',
+  };
+  const direct = requestBody(runtime, { input: 'Synthetic check', maxOutputTokens: 16 });
+  assert.deepEqual(direct.chat_template_kwargs, { enable_thinking: false });
+  assert.equal(direct.reasoning_effort, undefined);
+  const thinking = requestBody(
+    { ...runtime, reasoningEffort: 'high' },
+    { input: 'Synthetic check', maxOutputTokens: 128 },
+  );
+  assert.deepEqual(thinking.chat_template_kwargs, { enable_thinking: true });
+  assert.equal(thinking.reasoning_effort, undefined);
+  const other = requestBody(
+    { ...runtime, endpoint: 'https://openrouter.ai/api/v1/chat/completions', reasoningEffort: 'high' },
+    { input: 'Synthetic check', maxOutputTokens: 16 },
+  );
+  assert.equal(other.chat_template_kwargs, undefined);
+  assert.equal(other.reasoning_effort, 'high');
+});
