@@ -61,6 +61,7 @@ async function request({
   hostname = host,
   bytes = wav(),
   date = '1795089600',
+  duration = '1000',
   probe = false,
   metadataOnly = false,
   declaredName,
@@ -70,7 +71,7 @@ async function request({
   form.set('Secret', code);
   form.set('Source', 'com.nll.cb');
   if (date !== null) form.set('Date', date);
-  form.set('Duration', '1000');
+  form.set('Duration', duration);
   if (declaredName !== undefined) form.set('file_name', declaredName);
   if (probe) form.set('Test', '1');
   else if (!metadataOnly)
@@ -140,10 +141,13 @@ test('ACR call reports persist the dialed number, reject wrong credentials and d
     },
     { configWrite: true },
   );
+  let signedIn = false;
   const handle = createVoipHandler({
     transaction: (work, scope) => transaction(pool, false, work, scope),
+    recordings: { available: true, save: async () => {}, read: async () => wav() },
     authenticatedUser: async () => {
-      throw Error('Reporting must use its own device secret');
+      if (!signedIn) throw Object.assign(Error('Sign in'), { status: 401 });
+      return { id: 'test-ceo', role: 'ceo' };
     },
     readBody: async (req, max) => {
       const chunks = [];
@@ -198,6 +202,116 @@ test('ACR call reports persist the dialed number, reject wrong credentials and d
   assert.equal(incoming.status, 'unanswered');
   assert.equal(incoming.direction, 'inbound');
   assert.equal(incoming.duration, 0);
+  assert.deepEqual(
+    await run({ number: 'number', direction: '1%7C2', date: '1795086960283', duration: '0' }),
+    { ready: true, accepted: false },
+  );
+  const upload = async (options) => {
+    const req = await request(options);
+    const res = response();
+    await handle(req, res, new URL(req.url, 'https://' + host));
+    return JSON.parse(res.bytes());
+  };
+  const audio = await upload({ duration: '43000' });
+  const merged = await transaction(pool, false, (tx) => tx.state.voipCalls[0], { id: audio.id });
+  assert.equal(merged.phone, stored.phone);
+  assert.equal(merged.acrReportId, result.id);
+  assert.equal(merged.status, 'completed');
+  assert.equal(merged.recordingPresent, true);
+  assert.equal(merged.recordingMissing, undefined);
+  assert.equal(merged.userId, 'test-ceo');
+  assert.equal(
+    (await pool.query('SELECT phone FROM han_private.voip_calls WHERE id=$1', [audio.id])).rows[0].phone,
+    stored.phone,
+    'indexed phone follows the merged call body',
+  );
+  assert.equal(
+    (await pool.query('SELECT count(*)::int AS n FROM han_private.voip_calls WHERE id=$1', [result.id]))
+      .rows[0].n,
+    0,
+    'the report is retained inside the audio row',
+  );
+  await run(fields);
+  await upload({ duration: '43000' });
+  assert.equal(
+    (await pool.query('SELECT count(*)::int AS n FROM han_private.voip_calls')).rows[0].n,
+    2,
+    'retries must not recreate the merged report',
+  );
+  const audioFirst = await upload({ date: '1795089800', duration: '9500' });
+  const later = await run({ number: '05320000003', date: '1795089800699', direction: '2', duration: '10' });
+  const matched = await transaction(pool, false, (tx) => tx.state.voipCalls[0], { id: audioFirst.id });
+  assert.equal(matched.phone, '905320000003');
+  assert.equal(matched.acrReportId, later.id);
+  assert.equal(matched.duration, 9);
+  signedIn = true;
+  const playback = response();
+  const media = { method: 'GET', headers: {}, url: '/api/voip/media?id=' + audioFirst.id };
+  await handle(media, playback, new URL(media.url, 'https://' + host));
+  assert.equal(playback.headers['content-type'], 'audio/wav');
+  assert.deepEqual(
+    playback.bytes(),
+    wav(),
+    'the retained recording UUID still plays through authenticated media',
+  );
+});
+
+test('ACR pairing rejects ambiguous, unverified, edited and different-device calls', () => {
+  const { mergeReports } = require('../lib/acr-phone.cjs');
+  const audio = {
+    id: 'audio',
+    provider: 'acr',
+    acrDeviceId: 'one',
+    createdAt: '2026-11-19T12:55:32.000Z',
+    duration: 9,
+    recordingPresent: true,
+    acrRecordingDateVerified: true,
+    phone: '',
+    recordingSha256: 'keep-audio-hash',
+    archivedAt: 'keep-archive',
+  };
+  const report = {
+    id: 'report',
+    provider: 'acr',
+    acrDeviceId: 'one',
+    createdAt: '2026-11-19T12:55:32.699Z',
+    duration: 10,
+    recordingPresent: false,
+    acrReportDateVerified: true,
+    phone: '905320000001',
+    status: 'reported',
+    direction: 'outbound',
+    acrReport: { number: '05320000001' },
+  };
+  for (const change of [
+    { acrDeviceId: 'two' },
+    { createdAt: '2026-11-19T12:55:33.000Z' },
+    { duration: 15 },
+    { acrReportDateVerified: false },
+    { note: 'User wrote this' },
+    { documentId: 'assigned-file' },
+  ]) {
+    const calls = [structuredClone(audio), { ...structuredClone(report), ...change }];
+    assert.equal(mergeReports(calls), false);
+    assert.equal(calls.length, 2);
+  }
+  const fallback = [{ ...audio, acrRecordingDateVerified: false }, report];
+  assert.equal(mergeReports(fallback), false);
+  for (const extra of [
+    { ...report, id: 'report-two', phone: '905320000002' },
+    { ...audio, id: 'audio-two' },
+  ]) {
+    const calls = structuredClone([audio, report, extra]);
+    assert.equal(mergeReports(calls), false);
+    assert.equal(calls.length, 3);
+  }
+  const calls = structuredClone([audio, report]);
+  assert.equal(mergeReports(calls), true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].id, 'audio');
+  assert.equal(calls[0].recordingSha256, audio.recordingSha256);
+  assert.equal(calls[0].archivedAt, audio.archivedAt);
+  assert.equal(calls[0].phone, report.phone);
 });
 
 test('ACR upload uses the body secret, office restriction, private encrypted archive and authenticated media', async (t) => {

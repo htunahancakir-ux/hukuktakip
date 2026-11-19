@@ -41,7 +41,11 @@ CEO, Ayarlar → Entegrasyonlar → VoIP / Telefon → Bağlantı ayarları → 
 
 Numara açık `phone_number`/`number` gibi alanlardan, tarih sayısal Unix saniye veya milisaniyeden alınır. Cihaz adı ve kullanıcı ataması ses yüklemesiyle aynı ayarlardan uygulanır. Aynı formun tekrar gönderilmesi ikinci çağrı oluşturmaz. Raporun gizli kod içermeyen metin alanları, gerçek cihazın alanlarını doğrulamak için çağrı metadata'sında tutulur; günlükte yalnızca alan adları ve rastgele kayıt/cihaz kimlikleri vardır. Ses dosyası olmayan rapor, arşiv indirme işine girmez ve dinlenebilir olarak gösterilmez.
 
-[NLL Call Reporting belgesi](https://nllapps.com/apps/cb/help-call-reporting.htm) kesin alan adlarını veya genel `duration` alanının birimini yayımlamıyor. İlk gerçek raporla numara/tarih/süre alanları doğrulanmalıdır. Açık birim içeren süreler dışında süre tahmin edilmez. Rapor ve ayrı WebHook sesinin ortak kimliği doğrulanana kadar otomatik birleştirme yapılmaz; yanlış kişinin numarasını bir ses kaydına atamamak için iki aktarım bağımsız saklanır.
+[NLL Call Reporting belgesi](https://nllapps.com/apps/cb/help-call-reporting.htm) kesin alan adlarını yayımlamıyor. 19 Kasım 2026 gerçek cihaz testlerinde `number`, `date` (Unix milisaniye), `direction` (2: giden), `duration` (saniye), `contact`, `notes` doğrulandı. Bağlantı kontrolündeki gerçek numara içermeyen `1%7C2` gibi yer tutucular çağrı oluşturmaz.
+
+Çağrı raporu ve ses, aynı cihazın aynı başlangıç saniyesine ve en fazla bir saniye farklı süreye ait tek bir aday çifti varsa birleştirilir. Sesin açık istemci tarihi yoksa, birden çok aday varsa veya rapora kullanıcı notu/dosya ataması eklenmişse birleştirilmez. Şifreli sesin UUID'si, arşiv nesnesi ve ses süresi korunur; rapor metadata'sı ve kimliği ses satırına alınır, numara arama indeksi güncellenir. İki aktarımın geliş sırası ve yeniden gönderilmesi çift satır oluşturmaz. Eşleştirme cihaz başına transaction kilidiyle yapılır; diğer cihaz ve bürolara taşmaz.
+
+FASTPANEL kurulumunda `/etc/nginx/fastpanel2-sites/fastuser/hanhukuktakip.com.includes` içinde yalnızca `location = /api/voip/acr-upload` için `client_max_body_size 32m` tanımlıdır. Genel 5 MiB sınırı sesleri uygulamaya ulaşmadan 413 ile reddediyordu; 19 Kasım'da bu özel kural eklendi, Nginx doğrulanıp reload edildi ve Cloudflare üzerinden 6 MiB sentetik yükleme `200` ile doğrulandı. Uygulama toplam istek sınırı 32 MiB olarak kalır.
 
 ## Saklama, performans ve kurtarma
 
