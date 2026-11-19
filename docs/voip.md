@@ -51,6 +51,8 @@ FASTPANEL kurulumunda `/etc/nginx/fastpanel2-sites/fastuser/hanhukuktakip.com.in
 
 ## Saklama, performans ve kurtarma
 
+Ses çözümleme kuyruğu ve arka plan işi, `HAN_RECORD_STORE=1` olduğunda AI ayarlarını ayarlar ekranıyla aynı `han_data.metadata` kaynağından okur; eski snapshot modunda `han_private.han_state` kullanılır. Ses modeli ayrı `transcriptionModel` alanıdır; metin/sohbet modeli burada seçilmemelidir. ACR'nin M4A dosyaları sağlayıcıya `audio/mp4` ve `.m4a` olarak gönderilir; kaynak ses değiştirilmez.
+
 Ses dosyası uygulama veritabanına veya tarayıcı depolamasına yazılmaz. Veritabanında indeksli metadata; özel R2 kovasında rastgele çağrı kimliğiyle adlandırılmış AES-256-GCM şifreli nesne tutulur. Nonce her dosyada rastgeledir. Oynatma sırasında yetki yeniden kontrol edilir, GCM etiketi doğrulanır ve ses uygulamanın korumalı medya ucundan sunulur; kalıcı herkese açık bağlantı üretilmez. HTTP byte-range desteği vardır. Aktarım sırasında HTTPS kullanılır.
 
 Kaynak MP3 yeniden kodlanmaz/sıkıştırılmaz; SHA-256 özeti, boyutu, arşivlenme zamanı ve 5 yıl sonraki `retainUntil` saklanır. İndirilen dosyanın adı müvekkil, föy, İstanbul tarih-saat, telefon, personel ve benzersiz çağrı kimliğini içerir. Nesne anahtarına kişisel bilgiler konulmaz. Otomatik silme yapılmaz; saklama süresinin sonunda silme politikası ayrıca uygulanmalıdır.

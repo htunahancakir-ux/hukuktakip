@@ -1237,6 +1237,33 @@ test('installed AI SDK uses the configured Gateway transcription model and uploa
   assert.equal(result.text, 'Örnek AI metni');
 });
 
+test('ACR M4A transcription preserves the original format when sent to an OpenAI-compatible audio provider', async () => {
+  const audio = Buffer.from('synthetic-m4a-payload');
+  const { transcribe } = require('../lib/voip-transcription.cjs');
+  const result = await transcribe(
+    audio,
+    {
+      provider: 'custom:test',
+      authorization: 'Bearer synthetic-only',
+      model: 'test-asr-model',
+      endpoint: 'https://audio.example.test/v1/chat/completions',
+    },
+    {
+      contentType: 'audio/mp4',
+      fetcher: async (url, options) => {
+        assert.equal(url, 'https://audio.example.test/v1/audio/transcriptions');
+        const file = options.body.get('file');
+        assert.equal(file.name, 'gorusme.m4a');
+        assert.equal(file.type, 'audio/mp4');
+        assert.deepEqual(Buffer.from(await file.arrayBuffer()), audio);
+        assert.equal(options.body.get('model'), 'test-asr-model');
+        return new Response(JSON.stringify({ text: 'Sentetik kontrol metni', language: 'tr' }));
+      },
+    },
+  );
+  assert.equal(result.text, 'Sentetik kontrol metni');
+});
+
 test('canceling an in-flight originate persists intent and hangs up as soon as the provider ID arrives', async () => {
   let release;
   const requests = [];

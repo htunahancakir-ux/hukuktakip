@@ -3,6 +3,51 @@ const assert = require('node:assert/strict');
 const { database, fixture } = require('./support/postgres.cjs');
 const { importState } = require('../lib/postgres-store.cjs');
 const { transaction } = require('../lib/voip-store.cjs');
+test('VoIP transcription reads AI credentials from the active record store rather than the retired snapshot', async (t) => {
+  const oldKey = process.env.AI_ENCRYPTION_KEY;
+  process.env.AI_ENCRYPTION_KEY = 'ab'.repeat(32);
+  t.after(() => {
+    if (oldKey === undefined) delete process.env.AI_ENCRYPTION_KEY;
+    else process.env.AI_ENCRYPTION_KEY = oldKey;
+  });
+  const { pg, pool } = await database();
+  try {
+    const state = fixture();
+    state.aiConfig = { enabled: true, provider: 'vercel-ai-gateway', model: 'old-test-model' };
+    await importState(pool, state);
+    const ai = require('../lib/ai-settings.cjs');
+    const saved = ai.configure(
+      {},
+      {
+        enabled: true,
+        provider: 'openai',
+        model: 'test-text-model',
+        summaryMaxChars: 300,
+        apiKey: 'synthetic-transcription-test-key',
+        transcriptionModel: 'test-audio-model',
+      },
+    );
+    await pool.query('INSERT INTO han_data.metadata(id,body) VALUES(1,$1::jsonb)', [
+      JSON.stringify({ aiConfig: saved }),
+    ]);
+    const legacy = await transaction(pool, false, (tx) => tx.state.aiConfig, { aiConfig: true });
+    assert.equal(legacy.model, 'old-test-model');
+    const current = await transaction(pool, true, (tx) => tx.state.aiConfig, { aiConfig: true });
+    assert.equal(current.provider, 'openai');
+    assert.equal(current.transcriptionModel, 'test-audio-model');
+    assert.equal(
+      require('../lib/voip-transcription.cjs').settings(current).authorization,
+      'Bearer synthetic-transcription-test-key',
+    );
+    const worker = await transaction(pool, true, (tx) => tx.state.aiConfig, {
+      aiConfig: true,
+      transcriptionJobs: true,
+    });
+    assert.deepEqual(worker, current, 'enqueue and background worker use the same current AI configuration');
+  } finally {
+    await pg.close();
+  }
+});
 test('standalone VoIP calls persist without a document and are scoped by destination or caller', async () => {
   const { pg, pool } = await database();
   try {
