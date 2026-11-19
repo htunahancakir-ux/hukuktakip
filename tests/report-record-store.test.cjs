@@ -19,6 +19,7 @@ function legacy(state) {
     personnel: state.data['icrapro-personnel-v1'],
     financeEvents: state.data['hanhukuk-finance-v1'],
     accounting: state.data['hanhukuk-accounting-v1'],
+    hanAccountingRules: require('../outputs/icrapro/accounting-rules.js'),
     businessDate,
     recognizedCollectionRevenue,
     financeCents: (v) => Math.round(Number(v || 0) * 100),
@@ -73,6 +74,166 @@ function comparable(rows, type) {
     .map((r) => JSON.stringify(r))
     .sort();
 }
+
+test('Expense category filters match local rows, complete totals, pagination and both exports', async () => {
+  const { pg, pool } = await database();
+  try {
+    const state = fixture();
+    const entries = Array.from({ length: 65 }, (_, i) => ({
+      id: 'bank-' + i,
+      type: 'out',
+      amount: 100 + i,
+      expenseCategory: 'Banka Gideri',
+      accountId: 'bank',
+      date: '2026-11-19',
+      operatorId: 'p',
+      note: 'Bank charge',
+    }));
+    entries.push(
+      {
+        id: 'fuel',
+        type: 'out',
+        amount: 500,
+        expenseCategory: 'Yemek',
+        accountId: 'cash',
+        date: '2026-11-18',
+      },
+      {
+        id: 'pool',
+        type: 'out',
+        amount: 5000,
+        expenseCategory: 'Masraf',
+        expensePoolFunding: true,
+        accountId: 'cash',
+        date: '2026-11-19',
+      },
+      { id: 'unknown', type: 'out', amount: 900, accountId: 'cash', date: '2026-11-19' },
+      {
+        id: 'linked',
+        type: 'out',
+        amount: 5000,
+        expenseCategory: 'Banka Gideri',
+        financeEventId: 'borrower-cost',
+        accountId: 'cash',
+        date: '2026-11-19',
+      },
+      {
+        id: 'transfer',
+        type: 'transfer',
+        amount: 999,
+        expenseCategory: 'Banka Gideri',
+        accountId: 'cash',
+        destination: 'bank',
+        date: '2026-11-19',
+      },
+    );
+    state.data['hanhukuk-accounting-v1'] = {
+      accounts: [
+        { id: 'bank', name: 'Bank' },
+        { id: 'cash', name: 'Cash' },
+      ],
+      entries,
+    };
+    state.data['hanhukuk-finance-v1'] = [
+      { id: 'borrower-cost', type: 'expense', amount: 5000, date: '2026-11-19', documentId: 'd' },
+    ];
+    state.data['icrapro-v1'].docs = [{ id: 'd', number: '1', amount: 100, status: 'Derdest' }];
+    await importState(pool, state);
+    await importRecords(pool);
+    await activateRecords(pool);
+    const token = crypto.randomBytes(32).toString('hex');
+    await pool.query(
+      "INSERT INTO han_private.han_sessions(token_hash,account_id,device_type,expires_at) VALUES($1,'test-ceo','desktop',$2)",
+      [crypto.createHash('sha256').update(token).digest('hex'), Date.now() + 600000],
+    );
+    const req = { headers: { cookie: 'han_session=' + token } };
+    const selected = { type: 'expenses', expenseCategory: 'Banka Gideri', limit: 20 };
+    const first = await reportPage(pool, req, selected);
+    assert.equal(first.count, '65');
+    assert.equal(first.totals.amount, '8580');
+    assert.equal(first.items.length, 20);
+    const rows = [...first.items];
+    let cursor = first.next;
+    while (cursor) {
+      const page = await reportPage(pool, req, { ...selected, after: cursor });
+      assert.equal(page.count, '65');
+      assert.equal(page.totals.amount, '8580');
+      rows.push(...page.items);
+      cursor = page.next;
+    }
+    assert.equal(rows.length, 65);
+    assert(rows.every((r) => r.cells.category === 'Banka Gideri'));
+    const local = legacy(structuredClone(state));
+    assert.deepEqual(
+      comparable(rows, 'expenses'),
+      comparable(
+        local.filterReportRows(local.reportRows('expenses'), { ...selected, undated: true }),
+        'expenses',
+      ),
+    );
+    const totals = await reportPage(pool, req, { type: 'expenses' });
+    assert.equal(totals.count, '68');
+    assert.equal(totals.totals.amount, '14980');
+    assert.equal(
+      (await reportPage(pool, req, { type: 'expenses', expenseCategory: 'Belirtilmedi' })).count,
+      '1',
+    );
+    const kitchen = await reportPage(pool, req, { type: 'expenses', expenseCategory: 'Mutfak Gideri' });
+    assert.equal(kitchen.count, '1');
+    assert.equal(kitchen.totals.amount, '500');
+    assert.equal(kitchen.items[0].cells.category, 'Mutfak Gideri');
+    assert.equal((await reportPage(pool, req, { type: 'expenses', expenseCategory: 'Yemek' })).count, '1');
+    const kitchenLocal = local.filterReportRows(local.reportRows('expenses'), {
+      type: 'expenses',
+      expenseCategory: 'Mutfak Gideri',
+      undated: true,
+    });
+    assert.equal(kitchenLocal.length, 1);
+    assert.equal(
+      (await reportPage(pool, req, { type: 'expenses', expenseCategory: 'Masraf' })).totals.amount,
+      '5000',
+      'Pool funding counts once; borrower costs and linked ledger rows are excluded',
+    );
+    assert.equal((await reportPage(pool, req, { ...selected, account: 'cash' })).count, '0');
+    assert.equal(
+      (
+        await reportPage(pool, req, {
+          ...selected,
+          staff: 'p',
+          from: '2026-11-19',
+          to: '2026-11-19',
+          query: 'Bank charge',
+        })
+      ).count,
+      '65',
+    );
+    assert.equal(
+      (await reportPage(pool, req, { ...selected, expenseCategory: "Banka Gideri' OR 1=1 --" })).count,
+      '0',
+    );
+    await assert.rejects(
+      reportPage(pool, req, { ...selected, expenseCategory: 'Yakıt', after: first.next }),
+      (e) => e.status === 400,
+    );
+    await assert.rejects(
+      reportPage(pool, req, { type: 'finance', expenseCategory: 'Banka Gideri' }),
+      (e) => e.status === 400,
+    );
+    for (const format of ['csv', 'html']) {
+      const output = await reportExport(pool, req, { ...selected, format });
+      let contents = '';
+      for await (const chunk of output.chunks) contents += chunk;
+      assert.equal(
+        (contents.match(/Banka Gideri/g) || []).length,
+        65,
+        format + ' exports all filtered records',
+      );
+      assert(!contents.includes('Yakıt'));
+    }
+  } finally {
+    await pg.close();
+  }
+});
 test('Cloud exports reject oversized files before headers and close the export cursor', async () => {
   let closed = false;
   const server = await serve(

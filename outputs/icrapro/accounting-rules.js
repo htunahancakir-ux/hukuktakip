@@ -1,9 +1,18 @@
 (function (root) {
+  const expenseCategoryAliases = Object.freeze({ Yemek: 'Mutfak Gideri', 'Yemek Gideri': 'Mutfak Gideri' });
   const rules = {
+    expenseCategoryAliases,
+    expenseCategoryName: (value) =>
+      Object.hasOwn(expenseCategoryAliases, value) ? expenseCategoryAliases[value] : value,
     expenseCategories: Object.freeze([
       'Masraf',
       'Faturalar',
       'Banka Gideri',
+      'İcra Giderleri',
+      'Kargo Giderleri',
+      'Ashan Giderleri',
+      'İstihbarat Gideri',
+      'Araştırma Gideri',
       'Yakıt',
       'SGK',
       'Maaş',
@@ -13,7 +22,7 @@
       'Vergi',
       'Ofis Giderleri',
       'Yediemin Gideri',
-      'Yemek',
+      'Mutfak Gideri',
       'Ulaşım',
       'Diğer',
     ]),

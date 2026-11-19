@@ -33,10 +33,10 @@ test('Accounting pages preserve all balances, transfers, exclusions and filters 
     ledger.entries.push(
       ...[
         { id: 'transfer', type: 'transfer', amount: 200, destination: 'bank' },
-        { id: 'expense', type: 'out', amount: 100, expenseCategory: 'Yakıt' },
+        { id: 'expense', type: 'out', amount: 100, expenseCategory: 'Yemek' },
         { id: 'advance', type: 'advance', amount: 90, advanceType: 'T.Ç' },
         { id: 'external', type: 'in', amount: 500, entryKind: 'external', includeInProfit: true },
-        { id: 'payout', type: 'clientPayout', amount: 30 },
+        { id: 'payout', type: 'clientPayout', amount: 30, documentId: 'd' },
       ].map((e) => ({
         ...e,
         accountId: 'cash',
@@ -53,8 +53,9 @@ test('Accounting pages preserve all balances, transfers, exclusions and filters 
       { id: 'noaccount', type: 'payment', amount: 999, accountId: '' },
     ].map((e) => ({ accountId: 'cash', date: '2026-11-03', documentId: 'd', note: 'note', ...e }));
     state.data['icrapro-v1'].docs = [
-      { id: 'd', number: 'D-001', amount: 100, status: 'Derdest', fileData: 'DO-NOT-SEND' },
+      { id: 'd', client: 'client', number: 'D-001', amount: 100, status: 'Derdest', fileData: 'DO-NOT-SEND' },
     ];
+    state.data['icrapro-v1'].clients = [{ id: 'client', name: 'Örnek Müvekkil' }];
     state.users.push({ ...state.users[0], id: 'staff', username: 'staff', role: 'staff' });
     state.data['icrapro-personnel-v1'].push({
       id: 'accountant-person',
@@ -89,6 +90,7 @@ test('Accounting pages preserve all balances, transfers, exclusions and filters 
       accounting: ledger,
       financeEvents: state.data['hanhukuk-finance-v1'],
       db: state.data['icrapro-v1'],
+      hanAccountingRules: require('../outputs/icrapro/accounting-rules.js'),
       normalizeSearch: (s) =>
         String(s || '')
           .toLocaleLowerCase('tr')
@@ -98,7 +100,19 @@ test('Accounting pages preserve all balances, transfers, exclusions and filters 
     });
     vm.runInContext(fs.readFileSync('outputs/icrapro/workspace-accounting.js', 'utf8'), ctx);
     const all = ctx.accountMovements();
+    assert.equal(all.find((e) => e.id === 'payout').label, 'Müvekkil Ödemesi (Örnek Müvekkil)');
+    assert.equal(ctx.clientPaymentLabel({ clientId: 'client' }), 'Müvekkil Ödemesi (Örnek Müvekkil)');
+    assert.equal(ctx.clientPaymentLabel({ clientName: 'Eski Kayıt' }), 'Müvekkil Ödemesi (Eski Kayıt)');
+    assert.equal(ctx.clientPaymentLabel({}), 'Müvekkil Ödemesi');
     const before = await pool.query('SELECT id,body,revision FROM han_data.ledger_entries ORDER BY id');
+    const payoutRows = await accountingPage(pool, req, { type: 'clientPayout' });
+    assert.equal(payoutRows.items[0].label, 'Müvekkil Ödemesi (Örnek Müvekkil)');
+    assert.equal((await accountingPage(pool, req, { query: 'Örnek Müvekkil' })).totals.count, '1');
+    const kitchen = await accountingPage(pool, req, { category: 'Mutfak Gideri' });
+    assert.equal(kitchen.totals.count, '1');
+    assert.equal(kitchen.totals.outgoing, '100');
+    assert.equal(kitchen.items[0].expenseCategory, 'Mutfak Gideri');
+    assert.equal((await accountingPage(pool, req, { category: 'Yemek' })).totals.count, '1');
     let fullBalances;
     for (const f of [
       {},

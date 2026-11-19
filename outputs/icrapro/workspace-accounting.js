@@ -190,6 +190,13 @@ function expensePoolHistory() {
   if (!dialog.open) dialog.showModal();
 }
 
+function clientPaymentLabel(entry) {
+  const document = db.docs.find((row) => row.id === entry.documentId);
+  const client = db.clients.find((row) => row.id === (entry.clientId || document?.client));
+  const name = client?.name || entry.clientName || '';
+  return 'Müvekkil Ödemesi' + (name ? ' (' + name + ')' : '');
+}
+
 function accountMovements() {
   const own = accounting.entries.flatMap((e) =>
     e.type === 'transfer'
@@ -212,6 +219,7 @@ function accountMovements() {
       : [
           {
             ...e,
+            expenseCategory: hanAccountingRules.expenseCategoryName(e.expenseCategory),
             signed: e.type === 'in' ? e.amount : -e.amount,
             label:
               e.type === 'in'
@@ -219,7 +227,7 @@ function accountMovements() {
                   ? 'Haricen para girişi (' + (e.includeInProfit ? 'kâra eklendi' : 'kâra eklenmedi') + ')'
                   : 'Para girişi'
                 : e.type === 'clientPayout'
-                  ? 'Müvekkile anapara ödemesi'
+                  ? clientPaymentLabel(e)
                   : e.type === 'advance'
                     ? 'Avans çıkışı · ' + (e.advanceType || '')
                     : 'Para çıkışı',

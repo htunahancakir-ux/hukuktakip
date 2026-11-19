@@ -168,7 +168,7 @@ function reportRows(type) {
           kind: 'Muhasebe gideri',
           account: accountName(e.accountId),
           staff: e.operatorName || staffName(e.operatorId),
-          category: e.expenseCategory || 'Belirtilmedi',
+          category: hanAccountingRules.expenseCategoryName(e.expenseCategory) || 'Belirtilmedi',
           collection: 0,
           revenue: 0,
           expense: e.amount,
@@ -185,7 +185,7 @@ function reportRows(type) {
         null,
         {
           kind: e.expensePoolFunding === true ? 'Masraf Avansı' : 'Muhasebe Gideri',
-          category: e.expenseCategory || 'Belirtilmedi',
+          category: hanAccountingRules.expenseCategoryName(e.expenseCategory) || 'Belirtilmedi',
           account: e.accountName || accountName(e.accountId),
           staff: e.operatorName || staffName(e.operatorId),
           amount: e.amount,
@@ -202,7 +202,7 @@ function reportRows(type) {
         {
           account: accountName(e.accountId),
           kind: e.label,
-          category: e.expenseCategory || '—',
+          category: hanAccountingRules.expenseCategoryName(e.expenseCategory) || '—',
           staff: e.operatorName || staffName(e.operatorId),
           incoming: Math.max(0, e.signed),
           outgoing: Math.max(0, -e.signed),
@@ -364,6 +364,7 @@ function filterReportRows(rows, f) {
       (!f.account || r.accountId === f.account) &&
       (!f.receiver || r.cells.receiverId === f.receiver) &&
       (!f.documentType || r.cells.type === f.documentType) &&
+      (!f.expenseCategory || r.cells.category === f.expenseCategory) &&
       normalizeSearch(Object.values(r.cells).join(' ')).includes(normalizeSearch(f.query)),
   );
 }
@@ -427,14 +428,24 @@ function updateReportFilterSummary() {
   const summary = document.getElementById('reportFilterSummary');
   if (!summary) return;
   const count =
-    ['from', 'to', 'client', 'staff', 'status', 'account', 'query', 'receiver', 'documentType'].filter(
-      (key) => String(reportFilters[key] || '').trim(),
-    ).length + (reportFilters.undated ? 0 : 1);
+    [
+      'from',
+      'to',
+      'client',
+      'staff',
+      'status',
+      'account',
+      'query',
+      'receiver',
+      'documentType',
+      'expenseCategory',
+    ].filter((key) => String(reportFilters[key] || '').trim()).length + (reportFilters.undated ? 0 : 1);
   summary.textContent = count ? count + ' filtre etkin' : 'Tüm kayıtlar';
   summary.classList.toggle('report-filter-active', count > 0);
 }
 
 function renderReportsPage() {
+  if (reportFilters.type !== 'expenses') reportFilters.expenseCategory = '';
   if (reportFilters.type !== 'hanDocuments') {
     reportFilters.receiver = '';
     reportFilters.documentType = '';
@@ -513,6 +524,12 @@ function renderReportsPage() {
   if (reportFilters.type === 'expenses') {
     $('#reportClient').closest('label').hidden = true;
     $('#reportStatus').closest('label').hidden = true;
+    $('#reportAccount')
+      .closest('label')
+      .insertAdjacentHTML(
+        'afterend',
+        `<label class="field">Gider Kalemi<select id="reportExpenseCategory"><option value="">Tüm Gider Kalemleri</option>${[...new Set([...accountingExpenseCategories, 'Belirtilmedi'])].map((category) => `<option value="${esc(category)}" ${reportFilters.expenseCategory === category ? 'selected' : ''}>${esc(category)}</option>`).join('')}</select></label>`,
+      );
     const note = document.createElement('p');
     note.className = 'notice';
     note.textContent =
@@ -538,6 +555,7 @@ function renderReportsPage() {
       undated: $('#reportUndated').checked,
       receiver: $('#reportReceiver')?.value || '',
       documentType: $('#reportDocumentType')?.value || '',
+      expenseCategory: $('#reportExpenseCategory')?.value || '',
     };
     renderReportResult();
   }
@@ -553,6 +571,7 @@ function renderReportsPage() {
     $('#' + id).onchange = refresh;
   if ($('#reportReceiver')) $('#reportReceiver').onchange = refresh;
   if ($('#reportDocumentType')) $('#reportDocumentType').onchange = refresh;
+  if ($('#reportExpenseCategory')) $('#reportExpenseCategory').onchange = refresh;
   document.querySelector('[name="reportFrom"]').onchange = refresh;
   document.querySelector('[name="reportTo"]').onchange = refresh;
   $('#reportQuery').oninput = refresh;
@@ -569,6 +588,7 @@ function renderReportsPage() {
       undated: true,
       receiver: '',
       documentType: '',
+      expenseCategory: '',
     };
     reportsPage();
   };

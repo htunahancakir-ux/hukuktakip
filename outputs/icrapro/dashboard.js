@@ -93,6 +93,7 @@ let reportFilters = {
   undated: true,
   receiver: '',
   documentType: '',
+  expenseCategory: '',
 };
 
 let clientPayoutFilter = '',

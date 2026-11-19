@@ -25,6 +25,7 @@ test('Report UI keeps complete totals across pages, rejects stale responses and 
     db: { clients: [], docs: [] },
     personnel: [],
     accounting: { accounts: [] },
+    accountingExpenseCategories: require('../outputs/icrapro/accounting-rules.js').expenseCategories,
     reportFilters: {
       type: 'documents',
       from: '',
@@ -165,11 +166,43 @@ test('Report UI keeps complete totals across pages, rejects stale responses and 
   assert.equal(w.reportFilters.client, '');
   assert.equal(w.document.querySelector('#reportClient').closest('label').hidden, true);
   assert.ok(requests.at(-1).includes('type=expenses'));
+  const expenseCategory = w.document.querySelector('#reportExpenseCategory');
+  assert([...expenseCategory.options].some((o) => o.value === 'Banka Gideri'));
+  assert([...expenseCategory.options].some((o) => o.value === 'Belirtilmedi'));
+  for (const category of [
+    'İcra Giderleri',
+    'Kargo Giderleri',
+    'Ashan Giderleri',
+    'İstihbarat Gideri',
+    'Araştırma Gideri',
+    'Mutfak Gideri',
+  ])
+    assert([...expenseCategory.options].some((o) => o.value === category));
+  assert(![...expenseCategory.options].some((o) => o.value === 'Yemek'));
+  expenseCategory.value = 'Banka Gideri';
+  expenseCategory.dispatchEvent(new w.Event('change'));
+  await tick();
+  let expenseParams = new URL(requests.at(-1), w.location).searchParams;
+  assert.equal(expenseParams.get('expenseCategory'), 'Banka Gideri');
+  assert.equal(expenseParams.get('after'), '', 'A category change starts on the first page');
+  assert.match(w.document.querySelector('#reportFilterSummary').textContent, /filtre etkin/);
+  await w.exportReport();
+  expenseParams = new URL(requests.at(-1), w.location).searchParams;
+  assert.equal(expenseParams.get('expenseCategory'), 'Banka Gideri');
+  w.document.querySelector('#clearReportFilters').click();
+  await tick();
+  assert.equal(w.reportFilters.expenseCategory, '');
+  assert.equal(w.document.querySelector('#reportExpenseCategory').value, '');
+  w.document.querySelector('#reportExpenseCategory').value = 'Banka Gideri';
+  w.document.querySelector('#reportExpenseCategory').dispatchEvent(new w.Event('change'));
+  await tick();
   w.personnel = [{ id: 'p', name: 'Örnek Personel' }];
   w.isHanDocumentReceiver = (value) => ['HAN', 'receiver:han'].includes(value);
   w.HanReceivables = { types: ['Senet', 'Fatura'] };
   w.document.querySelector('#openHanDocumentReport').click();
   await tick();
+  assert.equal(w.reportFilters.expenseCategory, '', 'Expense filters cannot leak into other reports');
+  assert.equal(w.document.querySelector('#reportExpenseCategory'), null);
   assert.match(w.document.querySelector('#openHanDocumentReport').textContent, /Evrak Raporu/);
   assert.equal(w.document.querySelector('#clientInfoReportFilters').open, true);
   assert.match(w.document.querySelector('#reportStaff').closest('label').textContent, /Dosya Sorumlusu/);
