@@ -263,7 +263,10 @@ function createAccess(stateFile, options = {}) {
         },
       };
     if (key === 'hanhukuk-accounting-v1')
-      return { accounts: value.accounts.map((a) => ({ id: a.id, name: a.name, type: a.type })), entries: [] };
+      return {
+        accounts: value.accounts.map((a) => ({ id: a.id, name: a.name, type: a.type, active: a.active })),
+        entries: [],
+      };
     return [];
   }
   function ledgerBalance(id) {

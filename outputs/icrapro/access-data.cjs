@@ -244,7 +244,19 @@ async function handleDataRoutes(ctx) {
         )) ||
       (key === 'hanhukuk-finance-v1' && allowed(u, 'documents'))
     ) {
-      if (key === 'hanhukuk-accounting-v1') validateNewClientPayouts(ctx.state, v.value, u);
+      if (key === 'hanhukuk-accounting-v1') {
+        for (const account of v.value.accounts || []) {
+          const before = ctx.state.data[key].accounts.find((row) => row.id === account.id);
+          if (
+            before &&
+            before.active !== false &&
+            account.active === false &&
+            ledgerBalance(account.id) !== 0
+          )
+            throw fail(409, 'Bakiyesi olan hesap pasife alınamaz.');
+        }
+        validateNewClientPayouts(ctx.state, v.value, u);
+      }
       if (key === 'hanhukuk-finance-v1') {
         if (!Array.isArray(v.value)) throw fail(400, 'Geçersiz finans kaydı.');
         if (!['ceo', 'admin'].includes(u.role)) {
@@ -269,6 +281,12 @@ async function handleDataRoutes(ctx) {
         for (const event of v.value) {
           if (priorIds.has(event.id)) continue;
           priorIds.add(event.id);
+          if (
+            ctx.state.data['hanhukuk-accounting-v1'].accounts.some(
+              (account) => account.id === event.accountId && account.active === false,
+            )
+          )
+            throw fail(400, 'Pasif hesaba yeni işlem girilemez.');
           if (event.unitAllocation)
             throw fail(403, 'Döviz/altın tahsilatını günlük kur ekranından kaydedin.');
           event.operatorId = u.id;

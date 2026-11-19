@@ -65,6 +65,7 @@ function accountOptions(value = '') {
   return (
     '<option value="">Hesap seçin</option>' +
     accounting.accounts
+      .filter((a) => a.active !== false)
       .map((a) => `<option value="${esc(a.id)}" ${a.id === value ? 'selected' : ''}>${esc(a.name)}</option>`)
       .join('')
   );
@@ -746,6 +747,7 @@ function accountingPage(remote) {
       '',
     )}</div><button type="button" class="acc-action acc-action--payout" id="clientPayoutsTab" data-tip="Müvekkile yapılan anapara ödemeleri ve hakediş listesi."><span class="acc-action-icon" aria-hidden="true">→</span><span class="acc-action-label">Müvekkil Ödeme</span></button></div></div><div class="acc-status" id="accStatus"></div>`;
   const accountTable = `<div class="overflow acc-accounts-scroll"><table class="account-summary"><thead><tr><th>KASA / BANKA HESABI</th><th>TÜR</th><th class="acc-num">GİREN</th><th class="acc-num">ÇIKAN</th><th class="acc-num">BAKİYE</th><th></th></tr></thead><tbody>${accounting.accounts
+    .filter((a) => a.active !== false)
     .map((a) => {
       const s = summary(a.id),
         selected = accountingFilter === a.id,
@@ -754,7 +756,15 @@ function accountingPage(remote) {
     })
     .join('')}</tbody></table></div>`;
   $('#content').innerHTML =
-    `${actionBar}<div class="panel acc-accounts"><div class="panelhead"><div><h2>Kasa ve Banka Hesapları</h2><p>Hareketlerini görmek için hesabı seçin.</p></div><div class="acc-head-side"><span class="acc-total">Toplam bakiye <b class="${accountingTone(totalBalance)}">${amount(totalBalance)}</b></span><button type="button" class="link" data-account-ledger=""${accountingFilter ? '' : ' hidden'}>Tüm Hesaplar</button><button type="button" class="secondary acc-small" id="addAccount">＋ Banka / Kasa Ekle</button></div></div>${accountTable}</div><div class="panel acc-ledger"><div class="panelhead"><div><h2>${accountingFilter ? esc(name(accountingFilter)) + ' · Cari Hesap Hareketleri' : 'Cari Hesap Hareketleri'}</h2><p>${esc(totals.count)} hareket</p></div><div class="acc-head-side"><span class="acc-chip-total">Giren <b class="acc-pos">${amount(totals.incoming)}</b></span><span class="acc-chip-total">Çıkan <b class="acc-neg">${amount(totals.outgoing)}</b></span><span class="acc-chip-total">Net <b class="${accountingTone(totals.net)}">${amount(totals.net)}</b></span><button type="button" class="secondary acc-small" id="exportAccountLedger" data-tip="Filtreye uyan tüm hareketleri Excel'de açılan dosya olarak indirir.">Excel'e Aktar</button></div></div><details class="borrower-filter-section" id="accountingFilterSection"${document.getElementById('accountingFilterSection')?.open ? ' open' : ''}><summary>Filtre</summary><form id="movementFilterForm" class="formbody"><div class="grid"><label class="field">Hesap Adı<select id="accountingFilter" aria-label="Hesap adına göre filtrele"><option value="">Tüm Hesaplar</option>${accounting.accounts.map((a) => `<option value="${esc(a.id)}" ${accountingFilter === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></label><label class="field">Başlangıç Tarihi<input type="date" name="start" data-optional="true" value="${esc(movementFilters.start)}"></label><label class="field">Bitiş Tarihi<input type="date" name="end" data-optional="true" value="${esc(movementFilters.end)}"></label><label class="field">İşlem Türü<select name="type" data-optional="true">${[
+    `${actionBar}<div class="panel acc-accounts"><div class="panelhead"><div><h2>Kasa ve Banka Hesapları</h2><p>Hareketlerini görmek için hesabı seçin.</p></div><div class="acc-head-side"><span class="acc-total">Toplam bakiye <b class="${accountingTone(totalBalance)}">${amount(totalBalance)}</b></span><button type="button" class="link" data-account-ledger=""${accountingFilter ? '' : ' hidden'}>Tüm Hesaplar</button><button type="button" class="secondary acc-small" id="addAccount">＋ Banka / Kasa Ekle</button></div></div>${accountTable}</div><div class="panel acc-ledger"><div class="panelhead"><div><h2>${accountingFilter ? esc(name(accountingFilter)) + ' · Cari Hesap Hareketleri' : 'Cari Hesap Hareketleri'}</h2><p>${esc(totals.count)} hareket</p></div><div class="acc-head-side"><span class="acc-chip-total">Giren <b class="acc-pos">${amount(totals.incoming)}</b></span><span class="acc-chip-total">Çıkan <b class="acc-neg">${amount(totals.outgoing)}</b></span><span class="acc-chip-total">Net <b class="${accountingTone(totals.net)}">${amount(totals.net)}</b></span><button type="button" class="secondary acc-small" id="exportAccountLedger" data-tip="Filtreye uyan tüm hareketleri Excel'de açılan dosya olarak indirir.">Excel'e Aktar</button></div></div><details class="borrower-filter-section" id="accountingFilterSection"${document.getElementById('accountingFilterSection')?.open ? ' open' : ''}><summary>Filtre</summary><form id="movementFilterForm" class="formbody"><div class="grid"><label class="field">Hesap Adı<select id="accountingFilter" aria-label="Hesap adına göre filtrele"><option value="">Tüm Hesaplar</option>${accounting.accounts
+      .filter((a) => a.active !== false)
+      .map(
+        (a) =>
+          `<option value="${esc(a.id)}" ${accountingFilter === a.id ? 'selected' : ''}>${esc(a.name)}</option>`,
+      )
+      .join(
+        '',
+      )}</select></label><label class="field">Başlangıç Tarihi<input type="date" name="start" data-optional="true" value="${esc(movementFilters.start)}"></label><label class="field">Bitiş Tarihi<input type="date" name="end" data-optional="true" value="${esc(movementFilters.end)}"></label><label class="field">İşlem Türü<select name="type" data-optional="true">${[
       ['', 'Tüm İşlemler'],
       ['in', 'Para Girişi'],
       ['external', 'Haricen Para Girişi'],
@@ -971,7 +981,8 @@ function cashEntryForm(kind) {
       amount = financeCents(v.amount);
     if (!Number.isSafeInteger(amount) || amount <= 0 || !v.note.trim())
       return toast('Geçerli tutar ve açıklama girin.');
-    if (!accounting.accounts.some((a) => a.id === v.accountId)) return toast('Hesap seçin.');
+    if (!accounting.accounts.some((a) => a.id === v.accountId && a.active !== false))
+      return toast('Aktif bir hesap seçin.');
     if (!['in', 'external', 'out', 'advance', 'transfer'].includes(v.type)) return;
     if (v.type === 'external') {
       if (!['yes', 'no'].includes(v.profitChoice)) return toast('Kâr seçimini yapın.');
@@ -988,7 +999,8 @@ function cashEntryForm(kind) {
     if (v.type !== 'out') delete v.expenseCategory;
     if (
       v.type === 'transfer' &&
-      (!accounting.accounts.some((a) => a.id === v.destination) || v.destination === v.accountId)
+      (!accounting.accounts.some((a) => a.id === v.destination && a.active !== false) ||
+        v.destination === v.accountId)
     )
       return toast('Transfer için farklı bir hedef hesap seçin.');
     try {

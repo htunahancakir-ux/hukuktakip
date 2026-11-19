@@ -173,12 +173,12 @@ test('Report UI keeps complete totals across pages, rejects stale responses and 
     'İcra Giderleri',
     'Kargo Giderleri',
     'Ashan Giderleri',
-    'İstihbarat Gideri',
     'Araştırma Gideri',
     'Mutfak Gideri',
   ])
     assert([...expenseCategory.options].some((o) => o.value === category));
   assert(![...expenseCategory.options].some((o) => o.value === 'Yemek'));
+  assert(![...expenseCategory.options].some((o) => o.value === 'İstihbarat Gideri'));
   expenseCategory.value = 'Banka Gideri';
   expenseCategory.dispatchEvent(new w.Event('change'));
   await tick();

@@ -11,7 +11,6 @@
       'İcra Giderleri',
       'Kargo Giderleri',
       'Ashan Giderleri',
-      'İstihbarat Gideri',
       'Araştırma Gideri',
       'Yakıt',
       'SGK',
