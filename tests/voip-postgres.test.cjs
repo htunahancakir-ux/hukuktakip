@@ -185,6 +185,45 @@ test('dedicated VoIP tables preserve snapshot, paginate history and enforce acti
       }),
       8,
     );
+    await transaction(
+      pool,
+      false,
+      (tx) => {
+        tx.state.voipCalls[0].transcription = {
+          ...job,
+          status: 'completed',
+          objectId: 'old-text',
+          completedAt: '2026-01-01',
+          parts: ['old-part'],
+        };
+        tx.saveState(tx.state);
+      },
+      { id: 'call-1' },
+    );
+    assert.equal(
+      await transaction(pool, false, (tx) => tx.state.voipEnqueued, {
+        enqueueTranscription: { mode: 'selected', ids: ['call-1'], job },
+      }),
+      0,
+    );
+    assert.equal(
+      await transaction(pool, false, (tx) => tx.state.voipEnqueued, {
+        enqueueTranscription: { mode: 'selected', ids: ['call-1'], force: true, job },
+      }),
+      1,
+    );
+    const rerun = await transaction(pool, false, (tx) => tx.state.voipCalls[0].transcription, {
+      id: 'call-1',
+    });
+    assert.deepEqual(rerun.parts, [], 'an explicit rerun starts at the first audio chunk');
+    assert.equal(rerun.objectId, 'old-text', 'the last successful text stays readable');
+    assert.equal(
+      await transaction(pool, false, (tx) => tx.state.voipEnqueued, {
+        enqueueTranscription: { mode: 'selected', ids: ['call-1'], force: true, job },
+      }),
+      0,
+      'a duplicate click never requeues an active job',
+    );
     const claimed = await transaction(
       pool,
       false,

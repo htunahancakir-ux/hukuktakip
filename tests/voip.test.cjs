@@ -568,6 +568,11 @@ test('recordings require manager or explicit current-assignee grant; reassignmen
   });
   h.user = { id: 's', name: 'Personel', role: 'staff', staffId: 'p' };
   await assert.rejects(h.call('transcript?id=' + h.state.voipCalls[0].id), (e) => e.status === 403);
+  await assert.rejects(h.call('summary?id=' + h.state.voipCalls[0].id), (e) => e.status === 403);
+  await assert.rejects(
+    h.call('summary', 'POST', { id: h.state.voipCalls[0].id, maxChars: 500 }),
+    (e) => e.status === 403,
+  );
   await assert.rejects(h.call('transcriptions', 'POST', { mode: 'all' }), (e) => e.status === 403);
   assert.equal((await h.call('calls?documentId=d')).calls[0].canListen, false);
   await assert.rejects(h.call('recording', 'POST', { id: h.state.voipCalls[0].id }), (e) => e.status === 403);
@@ -1008,7 +1013,25 @@ test('recordings archive filters status and result, plays on demand and offers n
   try {
     w.HTMLMediaElement.prototype.play = async function () {};
     w.HTMLMediaElement.prototype.pause = function () {};
+    const transcriptionBodies = [];
+    let openedBorrower,
+      openedTab = false,
+      summaryRequests = 0;
     Object.assign(w, {
+      hanRecordsEnabled: true,
+      recordAction: async (id, open) => {
+        openedBorrower = id;
+        open();
+      },
+      borrowerDetail: () => {
+        const sheet = w.document.createElement('div');
+        sheet.id = 'borrowerDetail';
+        sheet.innerHTML = '<button data-borrower-tab="conversations">Görüşmeler</button>';
+        sheet.querySelector('button').onclick = () => {
+          openedTab = true;
+        };
+        w.document.body.append(sheet);
+      },
       hanAuth: { id: 'u', role: 'ceo' },
       $: (s) => w.document.querySelector(s),
       esc: (v) => String(v).replaceAll('<', '&lt;'),
@@ -1016,9 +1039,24 @@ test('recordings archive filters status and result, plays on demand and offers n
         requests.push(url);
         if (url.endsWith('/transcriptions')) {
           const body = JSON.parse(options.body);
+          transcriptionBodies.push(body);
           assert.equal(body.mode, 'selected');
           assert.deepEqual(body.ids, ['c']);
           return { ok: true, json: async () => ({ queued: 0 }) };
+        }
+        if (url.endsWith('/summary')) {
+          const body = JSON.parse(options.body);
+          summaryRequests++;
+          assert.equal(body.id, 'c');
+          assert.equal(body.maxChars, summaryRequests === 1 ? 500 : 300);
+          return {
+            ok: true,
+            json: async () => ({
+              text: 'Özet <script>test</script>',
+              maxChars: body.maxChars,
+              completedAt: '2026-11-19T14:00:00Z',
+            }),
+          };
         }
         if (url.includes('/transcript?id='))
           return {
@@ -1092,13 +1130,37 @@ test('recordings archive filters status and result, plays on demand and offers n
     details.dispatchEvent(new w.Event('toggle'));
     await new Promise((r) => setImmediate(r));
     assert.match(details.textContent, /AI metni/);
+    const summaryForm = details.querySelector('[data-voip-summary]');
+    summaryForm.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+    await new Promise((r) => setImmediate(r));
+    assert.equal(summaryRequests, 1);
+    assert.match(details.querySelector('[data-summary-content]').textContent, /Özet <script>/);
+    summaryForm.elements.maxChars.value = '300';
+    summaryForm.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+    await new Promise((r) => setImmediate(r));
+    assert.equal(summaryRequests, 2);
+    summaryForm.elements.maxChars.value = '99';
+    summaryForm.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+    await new Promise((r) => setImmediate(r));
+    assert.equal(summaryRequests, 2, 'invalid limits do not reach the server');
+    w.document.querySelector('[data-voip-borrower]').click();
+    await new Promise((r) => setImmediate(r));
+    assert.equal(openedBorrower, 'd');
+    assert.equal(openedTab, true);
+    assert.equal(w.document.activeElement.dataset.borrowerTab, 'conversations');
+    assert.match(w.document.querySelector('[data-voip-transcribe]').textContent, /Yeniden/);
+    w.document.querySelector('[data-voip-transcribe]').click();
+    await new Promise((r) => setImmediate(r));
+    assert.equal(transcriptionBodies[0].force, true);
     assert.equal(w.document.querySelectorAll('script').length, 0);
     assert.match(w.document.querySelector('.voip-archive-notes').textContent, /Görüşme notu/);
     const checked = w.document.querySelector('[data-select-call]');
     checked.checked = true;
     checked.dispatchEvent(new w.Event('change'));
+    w.document.querySelector('[data-transcription-force]').checked = true;
     w.document.querySelector('[data-transcribe-bulk]').click();
     await new Promise((r) => setImmediate(r));
+    assert.equal(transcriptionBodies[1].force, true);
     w.document.querySelector('[data-voip-listen]').click();
     await new Promise((r) => setImmediate(r));
     const audio = w.document.querySelector('[data-voip-player] audio');
@@ -1130,7 +1192,8 @@ test('transcription queue filters records, preserves manual notes and encrypts s
     })),
   };
   let queue = Promise.resolve(),
-    runs = 0;
+    runs = 0,
+    failNext = false;
   const jobs = [];
   const scoped = (work) => {
     const next = queue.then(() =>
@@ -1147,6 +1210,7 @@ test('transcription queue filters records, preserves manual notes and encrypts s
     background: (p) => jobs.push(p),
     transcriber: async (bytes) => {
       runs++;
+      if (failNext) throw Error('Synthetic provider failure');
       assert.equal(bytes.subarray(0, 3).toString(), 'ID3');
       return { text: 'Yalnızca AI transkriptinde bulunan metin.', language: 'tr' };
     },
@@ -1166,9 +1230,21 @@ test('transcription queue filters records, preserves manual notes and encrypts s
     const raw = await fs.readFile(path.join(dir, 'gorusme-kayitlari', call.transcription.objectId + '.enc'));
     assert(!raw.includes(Buffer.from('AI transkriptinde')));
     assert.equal((await service.enqueue({ mode: 'selected', ids: [ids[0]] }, { id: 'u' })).queued, 0);
+    assert.equal(
+      (await service.enqueue({ mode: 'selected', ids: [ids[0]], force: true }, { id: 'u' })).queued,
+      1,
+    );
+    assert.equal(
+      state.voipCalls[0].transcription.objectId,
+      call.transcription.objectId,
+      'previous successful text stays readable during a rerun',
+    );
+    await Promise.all(jobs);
+    assert.equal(runs, 2, 'explicit rerun invokes transcription again');
+    assert.notEqual(state.voipCalls[0].transcription.objectId, call.transcription.objectId);
     assert.equal((await service.enqueue({ mode: 'all' }, { id: 'u' })).queued, 2);
     await Promise.all(jobs);
-    assert.equal(runs, 2);
+    assert.equal(runs, 3);
     assert.equal(
       state.voipCalls[2].transcription.status,
       'queued',
@@ -1176,7 +1252,14 @@ test('transcription queue filters records, preserves manual notes and encrypts s
     );
     state.voipCalls[2].archivedAt = new Date().toISOString();
     await service.work();
-    assert.equal(runs, 3);
+    assert.equal(runs, 4);
+    const successful = state.voipCalls[0].transcription.objectId;
+    failNext = true;
+    await service.enqueue({ mode: 'selected', ids: [ids[0]], force: true }, { id: 'u' });
+    await Promise.all(jobs);
+    assert.equal(state.voipCalls[0].transcription.status, 'failed');
+    assert.equal(state.voipCalls[0].transcription.objectId, successful);
+    assert.match((await service.read(state.voipCalls[0])).text, /AI transkriptinde/);
     await assert.rejects(
       service.enqueue({ mode: 'filtered', filters: { status: 'FORGED' } }, { id: 'u' }),
       /filtreleri/,

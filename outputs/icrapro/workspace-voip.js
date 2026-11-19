@@ -778,12 +778,35 @@ function voipPermissionsPage() {
 }
 function voipTranscriptMarkup(call) {
   const job = call.transcription;
-  if (job?.status === 'completed' && call.canListen)
-    return (
-      '<details class="voip-ai-transcript" data-voip-transcript="' +
-      esc(call.id) +
-      '"><summary>AI transkripti</summary><div data-transcript-content role="status"></div></details>'
-    );
+  const hasText = job?.status === 'completed' || !!job?.objectId;
+  const transcript =
+    hasText && call.canListen
+      ? '<details class="voip-ai-transcript" data-voip-transcript="' +
+        esc(call.id) +
+        '" data-summary-present="' +
+        (call.transcriptionSummary?.objectId ? 'true' : '') +
+        '"><summary>' +
+        (job?.status === 'completed' ? 'AI transkripti' : 'Önceki AI transkripti') +
+        '</summary><div data-transcript-content role="status"></div><section class="voip-summary"><h4>Görüşme özeti</h4><div data-summary-content></div>' +
+        (['ceo', 'admin'].includes(hanAuth.role)
+          ? '<form data-voip-summary="' +
+            esc(call.id) +
+            '" action="/api/voip/summary" method="post" aria-label="Görüşme özeti"><label for="voip-summary-' +
+            esc(call.id) +
+            '">Özet sınırı (karakter)</label><small id="voip-summary-help-' +
+            esc(call.id) +
+            '">100–10000 karakter. Mevcut transkriptten yeniden özet oluşturulur.</small><input id="voip-summary-' +
+            esc(call.id) +
+            '" aria-describedby="voip-summary-help-' +
+            esc(call.id) +
+            '" aria-invalid="false" name="maxChars" type="number" min="100" max="10000" step="1" required value="' +
+            (call.transcriptionSummary?.maxChars || 500) +
+            '"><button class="secondary" type="submit">' +
+            (call.transcriptionSummary?.objectId ? 'Yeniden özet çıkar' : 'Özet çıkar') +
+            '</button><span data-summary-feedback role="status"></span></form>'
+          : '') +
+        '</section></details>'
+      : '';
   const status =
     job?.status === 'queued'
       ? call.archivedAt
@@ -804,13 +827,16 @@ function voipTranscriptMarkup(call) {
     (job?.status === 'failed'
       ? '<small class="voip-transcription-error">' + esc(job.error || '') + '</small>'
       : '') +
+    transcript +
     (call.recordingPresent &&
     ['ceo', 'admin'].includes(hanAuth.role) &&
-    !['queued', 'processing', 'completed'].includes(job?.status)
+    !['queued', 'processing'].includes(job?.status)
       ? '<button class="link voip-transcribe-button" type="button" data-voip-transcribe="' +
         esc(call.id) +
+        '" data-force="' +
+        (hasText ? 'true' : 'false') +
         '">' +
-        (job?.status === 'failed' ? 'Yeniden yazıya çevir' : 'Yazıya çevir') +
+        (hasText || job?.status === 'failed' ? 'Yeniden yazıya çevir' : 'Yazıya çevir') +
         '</button>'
       : '')
   );
@@ -906,16 +932,35 @@ async function sendVoipConversation(call, values, input) {
   );
   return data;
 }
+function renderVoipSummary(output, summary) {
+  output.textContent = summary.text;
+  const meta = document.createElement('small');
+  meta.textContent =
+    Array.from(summary.text || '').length +
+    ' / ' +
+    summary.maxChars +
+    ' karakter · ' +
+    (summary.model || '') +
+    ' · ' +
+    voipDate(summary.completedAt) +
+    (summary.stale ? ' · Transkript yenilendi; özeti yeniden oluşturabilirsiniz.' : '');
+  output.append(meta);
+}
 function bindVoipHistory(host, refresh) {
   host.querySelectorAll('[data-voip-transcribe]').forEach((button) => {
     button.onclick = async () => {
       button.disabled = true;
       try {
-        await voipApi('transcriptions', 'POST', { mode: 'selected', ids: [button.dataset.voipTranscribe] });
+        await voipApi('transcriptions', 'POST', {
+          mode: 'selected',
+          ids: [button.dataset.voipTranscribe],
+          force: button.dataset.force === 'true',
+        });
         await refresh();
       } catch (error) {
-        button.closest('[data-voip-entry],.voip-call-entry').querySelector('[role="status"]').textContent =
-          error.message;
+        button
+          .closest('[data-voip-entry],.voip-call-entry')
+          .querySelector('.voip-entry-feedback').textContent = error.message;
         button.disabled = false;
       }
     };
@@ -932,11 +977,55 @@ function bindVoipHistory(host, refresh) {
         const meta = document.createElement('small');
         meta.textContent = (result.model || '') + ' · ' + voipDate(result.completedAt);
         content.append(meta);
+        if (details.dataset.summaryPresent) {
+          try {
+            renderVoipSummary(
+              details.querySelector('[data-summary-content]'),
+              await voipApi('summary?id=' + encodeURIComponent(details.dataset.voipTranscript)),
+            );
+          } catch (error) {
+            details.querySelector('[data-summary-content]').textContent = error.message;
+          }
+        }
         details.dataset.loaded = 'true';
       } catch (error) {
         content.textContent = error.message;
       } finally {
         delete details.dataset.loading;
+      }
+    };
+  });
+  host.querySelectorAll('[data-voip-summary]').forEach((form) => {
+    const input = form.elements.maxChars;
+    input.addEventListener('invalid', () => input.setAttribute('aria-invalid', 'true'));
+    input.addEventListener('input', () => {
+      if (input.validity.valid) input.setAttribute('aria-invalid', 'false');
+    });
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      if (form.dataset.pending || !form.reportValidity()) return;
+      const button = form.querySelector('button[type="submit"]');
+      const feedback = form.querySelector('[data-summary-feedback]');
+      form.dataset.pending = 'true';
+      form.setAttribute('aria-busy', 'true');
+      button.disabled = true;
+      feedback.textContent = 'Özet hazırlanıyor…';
+      try {
+        const result = await voipApi('summary', 'POST', {
+          id: form.dataset.voipSummary,
+          maxChars: Number(input.value),
+        });
+        if (!form.isConnected) return;
+        renderVoipSummary(form.closest('.voip-summary').querySelector('[data-summary-content]'), result);
+        form.closest('[data-voip-transcript]').dataset.summaryPresent = 'true';
+        button.textContent = 'Yeniden özet çıkar';
+        feedback.textContent = 'Özet hazır.';
+      } catch (error) {
+        if (form.isConnected) feedback.textContent = error.message;
+      } finally {
+        delete form.dataset.pending;
+        form.removeAttribute('aria-busy');
+        button.disabled = false;
       }
     };
   });
@@ -2283,7 +2372,7 @@ function voipRecordingsPage() {
   $('#content').innerHTML =
     '<section class="panel voip-archive">' +
     '<form id="voipArchiveSearch" class="voip-archive-filters"><label class="field voip-archive-query">Kayıtlarda ara<input data-optional="true" name="q" type="search" maxlength="100" placeholder="Müvekkil, föy, borçlu, numara veya personel"></label><label class="field">Tarih<input data-optional="true" name="date" type="date"></label><label class="field">Çağrı durumu<select data-optional="true" name="status"><option value="">Tüm durumlar</option><option value="completed">Görüşüldü</option><option value="unanswered">Ulaşılamadı</option><option value="busy">Meşgul</option><option value="failed">Başarısız</option><option value="active">Devam eden / doğrulanacak</option></select></label><label class="field">Yön<select data-optional="true" name="flow"><option value="">Tüm yönler</option><option value="outbound">Giden</option><option value="inbound">Gelen</option></select></label><label class="field">Görüşme sonucu<select data-optional="true" name="result"><option value="">Tüm sonuçlar</option></select></label><div class="voip-filter-actions"><button class="primary" type="submit">Filtrele</button><button class="link" type="button" data-clear-archive>Temizle</button></div></form>' +
-    '<div class="voip-transcription-toolbar"><span data-selected-count>0 kayıt seçildi</span><button class="link" type="button" data-select-page>Bu sayfayı seç</button><select data-transcription-mode aria-label="Yazıya çevrilecek kayıtlar"><option value="selected">Seçilen ses kayıtları</option><option value="filtered">Filtrelenen ses kayıtları</option><option value="all">Tüm ses kayıtları</option></select><button class="primary" type="button" data-transcribe-bulk>Yazıya çevir</button><button class="link" type="button" data-refresh-archive>Yenile</button><span data-transcription-feedback role="status"></span></div><div class="voip-archive-summary"><strong id="voipArchiveTotal" role="status"></strong><span>Tarihler İstanbul saatindedir</span></div><div class="voip-archive-table" id="voipArchiveRows"></div>' +
+    '<div class="voip-transcription-toolbar"><span data-selected-count>0 kayıt seçildi</span><button class="link" type="button" data-select-page>Bu sayfayı seç</button><select data-transcription-mode aria-label="Yazıya çevrilecek kayıtlar"><option value="selected">Seçilen ses kayıtları</option><option value="filtered">Filtrelenen ses kayıtları</option><option value="all">Tüm ses kayıtları</option></select><input id="voipTranscriptionForce" type="checkbox" name="force" data-transcription-force><label for="voipTranscriptionForce">Tamamlanmışları yeniden işle</label><button class="primary" type="button" data-transcribe-bulk>Yazıya çevir</button><button class="link" type="button" data-refresh-archive>Yenile</button><span data-transcription-feedback role="status"></span></div><div class="voip-archive-summary"><strong id="voipArchiveTotal" role="status"></strong><span>Tarihler İstanbul saatindedir</span></div><div class="voip-archive-table" id="voipArchiveRows"></div>' +
     '<div class="actions voip-archive-pagination"><span id="voipArchiveCount"></span><div><button type="button" class="secondary" id="voipArchivePrevious">Önceki</button><button type="button" class="secondary" id="voipArchiveNext">Sonraki</button></div></div></section>';
   const form = $('#voipArchiveSearch'),
     host = $('#voipArchiveRows');
@@ -2388,7 +2477,7 @@ function voipRecordingsPage() {
           data.calls
             .map(
               (c) =>
-                `<tr data-voip-entry data-call-state="${esc(c.status)}"><td><input class="voip-record-select" type="checkbox" data-select-call="${esc(c.id)}" aria-label="${esc(c.documentNumber || c.phone || c.callerNumber || '')} görüşmesini seç" ${selected.has(c.id) ? 'checked' : ''} ${!c.recordingPresent ? 'disabled' : ''}><strong>${esc(voipDate(c.createdAt))}</strong><small>${esc(voipDuration(c.duration))}</small></td><td class="voip-archive-file"><strong>${esc(c.clientName || 'Müvekkil belirtilmedi')}</strong><span>${esc(c.documentNumber || '—')} · ${esc(c.debtorName || '')}</span>${c.note || c.draftNote ? '<details class="voip-archive-notes"><summary>Personel notu</summary><p>' + esc(c.draftNote ?? c.note) + '</p></details>' : ''}${voipTranscriptMarkup(c)}</td><td>${esc(c.staffName || (c.direction === 'inbound' ? 'Cevaplanmadı' : '—'))}${window.testRecordBadge?.(c) || ''}</td><td class="voip-archive-phone">${esc(c.phone ? voipPhone(c.phone) : c.callerNumber || (c.direction === 'inbound' ? 'Gizli numara' : ''))}</td><td>${c.direction === 'inbound' ? '<span class="voip-direction-badge">Gelen</span>' : ''}<span class="voip-status-pill">${esc(c.statusLabel)}</span><small>${esc(c.result || (voipActiveStatuses.has(c.status) ? 'Görüşme sürüyor' : 'Sonuç girilmedi'))}</small>${voipProviderLine(c)}</td><td class="voip-archive-audio"><button class="secondary" type="button" data-voip-listen="${esc(c.id)}" ${!c.canListen ? 'disabled' : ''}>▶ Dinle</button>${!c.recordingPresent ? '<small>Kayıt yok / henüz hazır değil</small>' : !c.archivedAt ? '<small>Arşivden hazırlanacak</small>' : ''}<div data-voip-player></div>${(hanAuth.canDeleteCalls ?? hanAuth.canDelete) && !voipActiveStatuses.has(c.status) ? `<button class="link danger" type="button" data-voip-delete="${esc(c.id)}">Kaydı Sil</button>` : ''}<div class="voip-entry-feedback" role="status"></div></td></tr>`,
+                `<tr data-voip-entry data-call-state="${esc(c.status)}"><td><input class="voip-record-select" type="checkbox" data-select-call="${esc(c.id)}" aria-label="${esc(c.documentNumber || c.phone || c.callerNumber || '')} görüşmesini seç" ${selected.has(c.id) ? 'checked' : ''} ${!c.recordingPresent ? 'disabled' : ''}><strong>${esc(voipDate(c.createdAt))}</strong><small>${esc(voipDuration(c.duration))}</small></td><td class="voip-archive-file">${c.documentId ? `<button class="link voip-archive-borrower" type="button" data-voip-borrower="${esc(c.documentId)}" title="Borçlu föyünün Görüşmeler bölümünü aç">${esc(c.clientName || 'Müvekkil belirtilmedi')}</button>` : `<strong>${esc(c.clientName || 'Müvekkil belirtilmedi')}</strong>`}<span>${esc(c.documentNumber || '—')} · ${esc(c.debtorName || '')}</span>${c.note || c.draftNote ? '<details class="voip-archive-notes"><summary>Personel notu</summary><p>' + esc(c.draftNote ?? c.note) + '</p></details>' : ''}${voipTranscriptMarkup(c)}</td><td>${esc(c.staffName || (c.direction === 'inbound' ? 'Cevaplanmadı' : '—'))}${window.testRecordBadge?.(c) || ''}</td><td class="voip-archive-phone">${esc(c.phone ? voipPhone(c.phone) : c.callerNumber || (c.direction === 'inbound' ? 'Gizli numara' : ''))}</td><td>${c.direction === 'inbound' ? '<span class="voip-direction-badge">Gelen</span>' : ''}<span class="voip-status-pill">${esc(c.statusLabel)}</span><small>${esc(c.result || (voipActiveStatuses.has(c.status) ? 'Görüşme sürüyor' : 'Sonuç girilmedi'))}</small>${voipProviderLine(c)}</td><td class="voip-archive-audio"><button class="secondary" type="button" data-voip-listen="${esc(c.id)}" ${!c.canListen ? 'disabled' : ''}>▶ Dinle</button>${!c.recordingPresent ? '<small>Kayıt yok / henüz hazır değil</small>' : !c.archivedAt ? '<small>Arşivden hazırlanacak</small>' : ''}<div data-voip-player></div>${(hanAuth.canDeleteCalls ?? hanAuth.canDelete) && !voipActiveStatuses.has(c.status) ? `<button class="link danger" type="button" data-voip-delete="${esc(c.id)}">Kaydı Sil</button>` : ''}<div class="voip-entry-feedback" role="status"></div></td></tr>`,
             )
             .join('') +
           '</tbody></table>'
@@ -2399,6 +2488,26 @@ function voipRecordingsPage() {
       $('#voipArchivePrevious').disabled = !offset;
       $('#voipArchiveNext').disabled = offset + 50 >= data.total;
       bindVoipHistory(host, refresh);
+      host.querySelectorAll('[data-voip-borrower]').forEach((button) => {
+        button.onclick = async () => {
+          button.disabled = true;
+          const open = () => {
+            borrowerDetail(button.dataset.voipBorrower);
+            const tab = document.querySelector('#borrowerDetail [data-borrower-tab="conversations"]');
+            tab?.click();
+            tab?.focus();
+          };
+          try {
+            if (window.hanRecordsEnabled) await recordAction(button.dataset.voipBorrower, open);
+            else open();
+          } catch (error) {
+            button.closest('[data-voip-entry]').querySelector('.voip-entry-feedback').textContent =
+              error.message;
+          } finally {
+            button.disabled = false;
+          }
+        };
+      });
       host.querySelectorAll('[data-voip-delete]').forEach((button) => {
         button.onclick = () => deleteVoipRecord(button, refresh);
       });
@@ -2441,6 +2550,7 @@ function voipRecordingsPage() {
         mode,
         ids: [...selected],
         filters: appliedFilters,
+        force: toolbar.querySelector('[data-transcription-force]').checked,
       });
       feedback.textContent = result.queued
         ? result.queued + ' ses kaydı kuyruğa alındı.'

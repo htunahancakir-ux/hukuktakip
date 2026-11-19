@@ -1198,6 +1198,60 @@ dialog.voip-active-call {
   color: #3e5c72;
   font-size: 11px;
 }
+.voip-transcription-toolbar input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: #24556f;
+}
+.voip-archive-borrower {
+  padding: 0;
+  text-align: start;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.voip-summary {
+  margin-block-start: 12px;
+}
+.voip-summary h4 {
+  margin-block: 8px;
+}
+.voip-summary form {
+  display: grid;
+  gap: 6px;
+  margin-block-start: 10px;
+}
+.voip-summary input {
+  width: min(100%, 180px);
+  min-height: 48px;
+  padding: 8px;
+  font: inherit;
+  font-size: max(1rem, 1em);
+  border: 1px solid #767676;
+  border-radius: 5px;
+}
+.voip-summary input:user-invalid {
+  border-color: #a64749;
+}
+.voip-summary button {
+  justify-self: start;
+  min-height: 48px;
+}
+.voip-summary :is(button, input):focus-visible,
+.voip-archive-borrower:focus-visible {
+  outline: 3px solid #24556f;
+  outline-offset: 3px;
+}
+[data-summary-content] {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+[data-summary-content] > small {
+  display: block;
+  margin-block-start: 8px;
+  color: #587b93;
+}
 .voip-transcription-toolbar button {
   padding: 7px 10px;
   font-size: 11px;
