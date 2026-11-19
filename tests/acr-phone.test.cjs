@@ -98,6 +98,108 @@ async function request({
   };
 }
 
+async function reportRequest(fields = {}, { hostname = host, multipart = false } = {}) {
+  const form = multipart ? new FormData() : new URLSearchParams();
+  for (const [key, value] of Object.entries({ secret, source: 'com.nll.cb', ...fields }))
+    form.set(key, value);
+  const upload = new Request('https://' + hostname + '/api/voip/acr-report', { method: 'POST', body: form });
+  const raw = Buffer.from(await upload.arrayBuffer());
+  return {
+    method: 'POST',
+    url: '/api/voip/acr-report',
+    headers: {
+      host: hostname,
+      'content-type': upload.headers.get('content-type'),
+      'content-length': String(raw.length),
+    },
+    socket: { remoteAddress: '127.0.0.1' },
+    async *[Symbol.asyncIterator]() {
+      yield raw;
+    },
+  };
+}
+
+test('ACR call reports persist the dialed number, reject wrong credentials and do not pretend to contain audio', async (t) => {
+  const previous = process.env.HAN_ACR_DEVICES;
+  process.env.HAN_ACR_DEVICES = JSON.stringify([device]);
+  t.after(() => {
+    if (previous === undefined) delete process.env.HAN_ACR_DEVICES;
+    else process.env.HAN_ACR_DEVICES = previous;
+  });
+  const { pg, pool } = await database();
+  t.after(() => pg.close());
+  await importState(pool, fixture());
+  await transaction(
+    pool,
+    false,
+    (tx) => {
+      tx.state.voipConfig.acrDevices = {
+        [device.id]: { label: 'Ofis telefonu', userId: 'test-ceo', userName: 'Test' },
+      };
+      tx.saveState(tx.state);
+    },
+    { configWrite: true },
+  );
+  const handle = createVoipHandler({
+    transaction: (work, scope) => transaction(pool, false, work, scope),
+    authenticatedUser: async () => {
+      throw Error('Reporting must use its own device secret');
+    },
+    readBody: async (req, max) => {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      const raw = Buffer.concat(chunks);
+      assert.ok(raw.length <= max);
+      return raw;
+    },
+  });
+  const run = async (fields, options) => {
+    const req = await reportRequest(fields, options);
+    const res = response();
+    await handle(req, res, new URL(req.url, 'https://' + host));
+    return JSON.parse(res.bytes());
+  };
+  await assert.rejects(run({ secret: 'incorrect-reporting-secret-0000000000' }), { status: 401 });
+  await assert.rejects(run({}, { hostname: 'other.example.test' }), { status: 404 });
+  assert.deepEqual(await run(), { ready: true, accepted: false });
+  assert.deepEqual(await run({ test: '1', number: '05320000001' }), { ready: true });
+  const fields = {
+    phone_number: '+90 (532) 000 00 01',
+    call_date: '1795089600000',
+    call_type: '2',
+    duration_seconds: '43',
+    password: 'never-store',
+    api_key: 'never-store',
+  };
+  const result = await run(fields);
+  assert.equal(result.phoneReceived, true);
+  const stored = await transaction(pool, false, (tx) => tx.state.voipCalls[0], { id: result.id });
+  assert.equal(stored.phone, '905320000001');
+  assert.equal(stored.callerNumber, stored.phone);
+  assert.equal(stored.direction, 'outbound');
+  assert.equal(stored.duration, 43);
+  assert.equal(stored.createdAt, new Date(1795089600000).toISOString());
+  assert.equal(stored.status, 'reported');
+  assert.equal(stored.recordingPresent, false);
+  assert.equal(stored.recordingMissing, true);
+  assert.equal(stored.staffName, 'Test');
+  assert.equal(stored.userId, 'test-ceo');
+  assert.ok(!JSON.stringify(stored).includes('never-store'));
+  assert.ok(!JSON.stringify(stored).includes(secret));
+  assert.equal((await run(fields, { multipart: true })).id, result.id);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM han_private.voip_calls')).rows[0].n, 1);
+  assert.equal(
+    (await transaction(pool, false, (tx) => tx.state.voipCalls, { jobs: true })).length,
+    0,
+    'metadata reports do not become archive jobs',
+  );
+  const missed = await run({ number: '05320000002', date: '1795089700', type: '3', duration_ms: 'invalid' });
+  const incoming = await transaction(pool, false, (tx) => tx.state.voipCalls[0], { id: missed.id });
+  assert.equal(incoming.status, 'unanswered');
+  assert.equal(incoming.direction, 'inbound');
+  assert.equal(incoming.duration, 0);
+});
+
 test('ACR upload uses the body secret, office restriction, private encrypted archive and authenticated media', async (t) => {
   const old = { devices: process.env.HAN_ACR_DEVICES, key: process.env.VOIP_ENCRYPTION_KEY };
   process.env.HAN_ACR_DEVICES = JSON.stringify([device]);
@@ -331,6 +433,10 @@ test('ACR can authenticate before browser CSRF checks, while ordinary mutations 
     await app(await request({ probe: true }), res);
     assert.equal(res.statusCode, 200);
     assert.deepEqual(JSON.parse(res.bytes()), { ready: true });
+    const report = response();
+    await app(await reportRequest({ test: '1' }), report);
+    assert.equal(report.statusCode, 200);
+    assert.deepEqual(JSON.parse(report.bytes()), { ready: true });
     const denied = response();
     await app({ method: 'POST', url: '/api/voip/config', headers: { host }, socket: {} }, denied);
     assert.equal(denied.statusCode, 403);

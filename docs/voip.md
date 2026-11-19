@@ -29,11 +29,19 @@ ACR'nin yerleşik bağlantı kontrolü `Test` işareti veya ses dosyası gönder
 
 Sunucuda `HAN_ACR_DEVICES` JSON dizisindeki her cihaz `{id, label, host, secretHash}` ile tanımlanır. `secretHash` telefona verilen en az 32 karakterlik rastgele gizli kodun SHA-256 özetidir. Ham kod kaynak depoya veya sunucu yapılandırmasına konmaz. Host eşleşmeyen bürolarda bağlantı kapalıdır. Telefon kodu yalnızca yükleme içindir; kayıt listeleme, dinleme ve silme yetkisi vermez. `Secret` ile `Test=1` alanlarını göndermek kayıt oluşturmadan kimlik doğrulamayı sınar.
 
-Bu uç yalnızca ses yüklemesidir. Cevapsız/başarısız aramaları içeren Call Reporting aktarımı ayrı bir özelliktir ve henüz bağlı değildir. İlk cihaz yüklemesinde gerçek ACR alanları doğrulanmadan dosya/personel veya gelen/giden eşleştirmesi yapılmaz; kayıt cihaz etiketiyle yönetici arşivinde görünür. Büyük MP3 dışındaki sesler için AI transkripsiyon uyumluluğu ayrıca doğrulanmalıdır. Telefonun çift taraflı ses üretmesi ve arka planda yüklemesi gerçek cihazla test edilmelidir.
+Bu uç yalnızca ses yüklemesidir. Cevapsız/başarısız aramaları da içeren Call Reporting aktarımı aşağıdaki ayrı adrese yapılır. Büyük MP3 dışındaki sesler için AI transkripsiyon uyumluluğu ayrıca doğrulanmalıdır. Telefonun çift taraflı ses üretmesi ve arka planda yüklemesi gerçek cihazla test edilmelidir.
 
 Gerçek cihaz yüklemesinde `source=com.nll.cb` uygulama kimliğidir; telefon numarası olarak kullanılmaz. `file_name` ise telefon numarasına benzeyen sayısal bir Android kayıt kimliği olabilir. Numara yalnızca açık numara alanlarından alınır, eksik olduğunda listede “Numara aktarılmadı” gösterilir. Cihaz etiketi, doğrulanmış kişi eşleştirmesi gelene kadar kişi adı olarak değiştirilmez.
 
 CEO, Ayarlar → Entegrasyonlar → VoIP / Telefon → Bağlantı ayarları → ACR telefonları bölümünden cihaz adını değiştirebilir ve aktif kullanıcı seçebilir. `GET/PUT /api/voip/acr-devices` yalnızca o isteğin bürosuna tanımlı cihazları gösterir; gizli kod ve özeti dönmez. Cihaz/kullanıcı kimlikleri sunucuda doğrulanır. Adlandırma ve kullanıcı ataması mevcut ACR kayıtlarını da tek işlemde günceller; ses dinleme yetkileri bu atamayla genişletilmez. Verimor ayarlarını değiştirmek gerekmez.
+
+## ACR Phone çağrı raporlama
+
+`POST /api/voip/acr-report`, ACR Phone → Çağrı raporlama → Sunucuya yolla bölümündeki tam HTTPS sunucu adresidir. Aynı telefonun ses yüklemesinde kullanılan gizli kod burada da geçerlidir; istek formundaki `secret` ile ve büro hostu ile doğrulanır. Multipart ve URL-encoded formlar kabul edilir; rapor en fazla 64 KiB'dir. Bağlantı kontrolü `200` döndürür ve çağrı oluşturmadan yapılabilir.
+
+Numara açık `phone_number`/`number` gibi alanlardan, tarih sayısal Unix saniye veya milisaniyeden alınır. Cihaz adı ve kullanıcı ataması ses yüklemesiyle aynı ayarlardan uygulanır. Aynı formun tekrar gönderilmesi ikinci çağrı oluşturmaz. Raporun gizli kod içermeyen metin alanları, gerçek cihazın alanlarını doğrulamak için çağrı metadata'sında tutulur; günlükte yalnızca alan adları ve rastgele kayıt/cihaz kimlikleri vardır. Ses dosyası olmayan rapor, arşiv indirme işine girmez ve dinlenebilir olarak gösterilmez.
+
+[NLL Call Reporting belgesi](https://nllapps.com/apps/cb/help-call-reporting.htm) kesin alan adlarını veya genel `duration` alanının birimini yayımlamıyor. İlk gerçek raporla numara/tarih/süre alanları doğrulanmalıdır. Açık birim içeren süreler dışında süre tahmin edilmez. Rapor ve ayrı WebHook sesinin ortak kimliği doğrulanana kadar otomatik birleştirme yapılmaz; yanlış kişinin numarasını bir ses kaydına atamamak için iki aktarım bağımsız saklanır.
 
 ## Saklama, performans ve kurtarma
 
