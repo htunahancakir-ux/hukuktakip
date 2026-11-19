@@ -149,7 +149,7 @@ function userPermissionsPage(selectedId) {
   const host = $('#content');
   host.innerHTML = `${userAuditTabs('permissions')}<section class="panel" aria-labelledby="userPermissionsTitle">
     <div class="panelhead"><div><h2 id="userPermissionsTitle">Rol ve Yetkiler</h2>
-      <p>Kullanıcı seçip modül bazında kayıt işlemlerini ayarlayın.</p></div></div>
+      <p>Kullanıcı seçip modül bazında görüntüleme, kayıt ve ödeme yetkilerini ayarlayın.</p></div></div>
     <div class="formbody" id="userPermissionsBody"></div>
   </section>`;
   bindUserAuditTabs();
@@ -189,7 +189,7 @@ function userPermissionsPage(selectedId) {
     matrix.replaceChildren();
     if (!account) return;
     matrix.innerHTML = `<p><strong>Rol</strong> ${accountRoleLabel(account.role)}${account.readOnly ? ' · Salt okunur' : ''}. Rol ataması Personel bölümünden yapılır.</p>
-      <p id="userPermissionsHelp">Rol varsayılanı mevcut yetkiyi kullanır. Açık işlem, rolün erişebildiği kayıtlar için geçerlidir. Yöneticilere modül bazında silme yetkisi verilebilir. Hatırlatmalarda silme yetkisi iptal etmeyi kapsar.</p>
+      <p id="userPermissionsHelp">Rol varsayılanı mevcut yetkiyi kullanır. Açık işlem, rolün erişebildiği kayıtlar için geçerlidir. Personel Cari ve Hakediş için CEO, yönetici ve muhasebe personeli varsayılan olarak görüntüleyebilir ve ödeme yapabilir. Ödeme, görüntüleme ve muhasebe yeni kayıt yetkilerinin de açık olmasını gerektirir. Yöneticilere modül bazında silme yetkisi verilebilir.</p>
       <div class="overflow" tabindex="0" role="region" aria-label="Modül işlem yetkileri"><table class="user-permissions-table" aria-describedby="userPermissionsHelp">
       <thead><tr><th scope="col">Modül</th>${Object.values(data.actions)
         .map((label) => `<th scope="col">${esc(label)}</th>`)
@@ -279,6 +279,7 @@ function staffAccounting() {
   $('#content').innerHTML =
     `<div class="panel"><div class="panelhead"><h2>Muhasebe — Para Giriş / Çıkış</h2></div><div class="formbody"><p>İşlemi yapan: <b>${esc(hanAuth.name)}</b></p><form id="staffCashForm"><div class="grid"><label class="field">İşlem<select name="type">${canIn ? '<option value="in">Para Girişi</option><option value="external">Haricen Para Girişi</option>' : ''}${canOut ? '<option value="out">Para Çıkışı</option><option value="advance">Avans Çıkışı</option>' : ''}</select></label><label class="field" id="advanceTypeField" hidden>Avans Türü *<select name="advanceType" disabled required><option value="">Avans türü seçin</option><option value="T.Ç">T.Ç</option><option value="S.S">S.S</option><option value="Diğer">Diğer</option></select></label><label class="field">Kasa / Banka<select name="accountId" required>${accountOptions()}</select></label>${field('Tarih', 'date', 'date', businessDate(), true)}${field('Tutar (TL)', 'amount', 'number', '', true)}<label class="field" id="staffExternalProfitField" hidden>Kâr Seçimi<select name="profitChoice" disabled required><option value="">Seçin</option><option value="yes">Kâra Ekle</option><option value="no">Kâra Ekleme</option></select></label><label class="field" id="staffCategoryField">Gider Kalemi<select name="expenseCategory">${accountingExpenseCategories.map((x) => `<option>${x}</option>`).join('')}</select></label>${field('Açıklama', 'note', 'text', '', true, true)}</div><div class="actions"><button class="primary">Kaydet</button></div></form></div></div>`;
   const form = $('#staffCashForm');
+  if (canOut && typeof mountCashOutTabs === 'function') mountCashOutTabs(form, 'expense');
   if (window.hanModuleAction?.('accounting', 'create') === false) {
     form.querySelector('button.primary').disabled = true;
   }
@@ -296,6 +297,8 @@ function staffAccounting() {
     note.placeholder = external ? 'Paranın kaynağını ve giriş nedenini yazın…' : '';
     form.elements.profitChoice.disabled = !external;
     const out = form.elements.type.value === 'out';
+    const tabs = form.querySelector('[data-cash-out-tabs]');
+    if (tabs) tabs.hidden = !out;
     $('#staffCategoryField').hidden = !out;
     form.elements.expenseCategory.disabled = !out;
   }

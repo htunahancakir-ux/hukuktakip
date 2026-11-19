@@ -136,7 +136,7 @@ test('Scoped cash commands validate permissions, atomically transfer, deduplicat
     assert.equal(
       (
         await pool.query(
-          "SELECT count(*)::int AS n FROM han_data.ledger_entries WHERE body->>'expenseCategory'='Yediemin Gideri'",
+          "SELECT count(*)::int AS n FROM han_data.ledger_entries WHERE body->>'expenseCategory'='Yediemin'",
         )
       ).rows[0].n,
       1,

@@ -162,7 +162,7 @@ test('Expense category filters match local rows, complete totals, pagination and
       cursor = page.next;
     }
     assert.equal(rows.length, 65);
-    assert(rows.every((r) => r.cells.category === 'Banka Gideri'));
+    assert(rows.every((r) => r.cells.category === 'Banka'));
     const local = legacy(structuredClone(state));
     assert.deepEqual(
       comparable(rows, 'expenses'),
@@ -181,7 +181,7 @@ test('Expense category filters match local rows, complete totals, pagination and
     const kitchen = await reportPage(pool, req, { type: 'expenses', expenseCategory: 'Mutfak Gideri' });
     assert.equal(kitchen.count, '1');
     assert.equal(kitchen.totals.amount, '500');
-    assert.equal(kitchen.items[0].cells.category, 'Mutfak Gideri');
+    assert.equal(kitchen.items[0].cells.category, 'Mutfak');
     assert.equal((await reportPage(pool, req, { type: 'expenses', expenseCategory: 'Yemek' })).count, '1');
     const kitchenLocal = local.filterReportRows(local.reportRows('expenses'), {
       type: 'expenses',
@@ -224,7 +224,12 @@ test('Expense category filters match local rows, complete totals, pagination and
       let contents = '';
       for await (const chunk of output.chunks) contents += chunk;
       assert.equal(
-        (contents.match(/Banka Gideri/g) || []).length,
+        format === 'csv'
+          ? contents
+              .split('\r\n')
+              .slice(1)
+              .filter((line) => line.includes('"Banka"')).length
+          : (contents.match(/<td>Banka<\/td>/g) || []).length,
         65,
         format + ' exports all filtered records',
       );

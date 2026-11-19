@@ -59,6 +59,8 @@ const workspaceScripts = [
   'workspace-total-tooltips.js',
   'borrower-sheet.js',
   'finance-operations.js',
+  'workspace-current-accounts.js',
+  'workspace-external-out.js',
   'workspace-accounting.js',
   'workspace-accounting-records.js',
   'workspace-cash-records.js',

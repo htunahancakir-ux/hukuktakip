@@ -111,7 +111,7 @@ test('Accounting pages preserve all balances, transfers, exclusions and filters 
     const kitchen = await accountingPage(pool, req, { category: 'Mutfak Gideri' });
     assert.equal(kitchen.totals.count, '1');
     assert.equal(kitchen.totals.outgoing, '100');
-    assert.equal(kitchen.items[0].expenseCategory, 'Mutfak Gideri');
+    assert.equal(kitchen.items[0].expenseCategory, 'Mutfak');
     assert.equal((await accountingPage(pool, req, { category: 'Yemek' })).totals.count, '1');
     let fullBalances;
     for (const f of [

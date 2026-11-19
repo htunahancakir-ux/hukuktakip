@@ -53,8 +53,9 @@ async function handlePersonnelRoutes(ctx) {
     return true;
   }
   if (url.pathname === '/api/personnel-ledger' && req.method === 'GET') {
-    if (!['ceo', 'admin'].includes(u.role))
-      throw fail(403, 'Personel carilerini yalnızca yönetici görebilir.');
+    const { personnelLedgerAllowed } = require('../../lib/personnel-ledger-access.cjs');
+    if (!personnelLedgerAllowed(u, ctx.state.data['icrapro-personnel-v1']))
+      throw fail(403, 'Personel cari ve hakediş görüntüleme yetkiniz yok.');
     const staffId = url.searchParams.get('staffId') || '';
     const accounts = ctx.state.data['hanhukuk-accounting-v1'].accounts;
     const people = ctx.state.data['icrapro-personnel-v1'].map((person) => ({
@@ -66,6 +67,7 @@ async function handlePersonnelRoutes(ctx) {
       ? require('../../lib/personnel-ledger.cjs').details(ctx.state, staffId, parkingToday())
       : {};
     send(res, 200, {
+      canPay: personnelLedgerAllowed(u, ctx.state.data['icrapro-personnel-v1'], 'pay'),
       people,
       accounts,
       startMonth: require('../../lib/personnel-ledger.cjs').START_MONTH,

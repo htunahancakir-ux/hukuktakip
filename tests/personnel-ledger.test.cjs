@@ -119,7 +119,7 @@ test('Generic accounting updates cannot bypass the monthly advance count or alte
   assert.throws(() => ledger.assertPaymentChanges(paid, altered, ceo, '2026-11-15'), /değiştirilemez/);
   assert.throws(
     () => ledger.validatePayment(state, payment('staff'), { role: 'staff' }, '2026-11-15'),
-    /yalnızca/,
+    /yetkiniz yok/,
   );
 });
 test('Record API serializes simultaneous advances, keeps salary payments in closed months and preserves cash and expense totals', async (t) => {

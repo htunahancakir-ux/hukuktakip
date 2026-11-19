@@ -30,6 +30,10 @@ function renderActiveOperator() {
 }
 
 function filterAccountMovements(rows, accountId, filters) {
+  const category =
+    typeof hanAccountingRules === 'undefined'
+      ? filters.category
+      : hanAccountingRules.expenseCategoryName(filters.category);
   return rows.filter(
     (e) =>
       (!accountId || e.accountId === accountId) &&
@@ -42,7 +46,7 @@ function filterAccountMovements(rows, accountId, filters) {
             ? e.type === 'in' && e.entryKind !== 'external'
             : e.type === filters.type)) &&
       (!filters.operator || e.operatorName === filters.operator) &&
-      (!filters.category || (e.type === 'out' && e.expenseCategory === filters.category)) &&
+      (!category || (e.type === 'out' && e.expenseCategory === category)) &&
       (!filters.query ||
         [e.note, e.label, e.operatorName, e.expenseCategory].some((v) =>
           normalizeSearch(v).includes(normalizeSearch(filters.query)),
@@ -227,11 +231,13 @@ function accountMovements() {
                 ? e.entryKind === 'external'
                   ? 'Haricen para girişi (' + (e.includeInProfit ? 'kâra eklendi' : 'kâra eklenmedi') + ')'
                   : 'Para girişi'
-                : e.type === 'clientPayout'
-                  ? clientPaymentLabel(e)
-                  : e.type === 'advance'
-                    ? 'Avans çıkışı · ' + (e.advanceType || '')
-                    : 'Para çıkışı',
+                : e.type === 'externalOut'
+                  ? 'Harici para çıkışı (' + (e.includeInProfit ? 'kârdan düşüldü' : 'kârdan düşülmedi') + ')'
+                  : e.type === 'clientPayout'
+                    ? clientPaymentLabel(e)
+                    : e.type === 'advance'
+                      ? 'Avans çıkışı · ' + (e.advanceType || '')
+                      : 'Para çıkışı',
           },
         ],
   );
@@ -422,15 +428,17 @@ function accountingBadge(e) {
     ? 'transfer'
     : e.type === 'advance'
       ? 'advance'
-      : e.type === 'clientPayout'
-        ? 'payout'
-        : e.type === 'payment'
-          ? 'collection'
-          : ['expense', 'costOnly'].includes(e.type)
-            ? 'cost'
-            : BigInt(e.signed || 0) > 0n
-              ? 'in'
-              : 'out';
+      : e.type === 'externalOut'
+        ? 'out'
+        : e.type === 'clientPayout'
+          ? 'payout'
+          : e.type === 'payment'
+            ? 'collection'
+            : ['expense', 'costOnly'].includes(e.type)
+              ? 'cost'
+              : BigInt(e.signed || 0) > 0n
+                ? 'in'
+                : 'out';
   return `<span class="acc-badge acc-badge--${tone}">${esc(e.label)}</span>`;
 }
 
@@ -705,6 +713,8 @@ function accountingDebtorPayment() {
 }
 
 function accountingPage(remote) {
+  if (typeof hanAccountingRules !== 'undefined')
+    movementFilters.category = hanAccountingRules.expenseCategoryName(movementFilters.category);
   if (!Array.isArray(remote?.items) || !remote?.totals) remote = null;
   if (window.hanAuth && !(['ceo', 'admin'].includes(hanAuth.role) || hanAuth.accountingAccess === true))
     return staffAccounting();
@@ -756,7 +766,7 @@ function accountingPage(remote) {
     })
     .join('')}</tbody></table></div>`;
   $('#content').innerHTML =
-    `${actionBar}<div class="panel acc-accounts"><div class="panelhead"><div><h2>Kasa ve Banka Hesapları</h2><p>Hareketlerini görmek için hesabı seçin.</p></div><div class="acc-head-side"><span class="acc-total">Toplam bakiye <b class="${accountingTone(totalBalance)}">${amount(totalBalance)}</b></span><button type="button" class="link" data-account-ledger=""${accountingFilter ? '' : ' hidden'}>Tüm Hesaplar</button><button type="button" class="secondary acc-small" id="addAccount">＋ Banka / Kasa Ekle</button></div></div>${accountTable}</div><div class="panel acc-ledger"><div class="panelhead"><div><h2>${accountingFilter ? esc(name(accountingFilter)) + ' · Cari Hesap Hareketleri' : 'Cari Hesap Hareketleri'}</h2><p>${esc(totals.count)} hareket</p></div><div class="acc-head-side"><span class="acc-chip-total">Giren <b class="acc-pos">${amount(totals.incoming)}</b></span><span class="acc-chip-total">Çıkan <b class="acc-neg">${amount(totals.outgoing)}</b></span><span class="acc-chip-total">Net <b class="${accountingTone(totals.net)}">${amount(totals.net)}</b></span><button type="button" class="secondary acc-small" id="exportAccountLedger" data-tip="Filtreye uyan tüm hareketleri Excel'de açılan dosya olarak indirir.">Excel'e Aktar</button></div></div><details class="borrower-filter-section" id="accountingFilterSection"${document.getElementById('accountingFilterSection')?.open ? ' open' : ''}><summary>Filtre</summary><form id="movementFilterForm" class="formbody"><div class="grid"><label class="field">Hesap Adı<select id="accountingFilter" aria-label="Hesap adına göre filtrele"><option value="">Tüm Hesaplar</option>${accounting.accounts
+    `${actionBar}<div class="toolbar" style="margin-bottom:16px"><button type="button" class="primary" id="openCurrentAccounts">Cari Hesaplar</button></div><div class="panel acc-accounts"><div class="panelhead"><div><h2>Kasa ve Banka Hesapları</h2><p>Hareketlerini görmek için hesabı seçin.</p></div><div class="acc-head-side"><span class="acc-total">Toplam bakiye <b class="${accountingTone(totalBalance)}">${amount(totalBalance)}</b></span><button type="button" class="link" data-account-ledger=""${accountingFilter ? '' : ' hidden'}>Tüm Hesaplar</button><button type="button" class="secondary acc-small" id="addAccount">＋ Banka / Kasa Ekle</button></div></div>${accountTable}</div><div class="panel acc-ledger"><div class="panelhead"><div><h2>${accountingFilter ? esc(name(accountingFilter)) + ' · Cari Hesap Hareketleri' : 'Cari Hesap Hareketleri'}</h2><p>${esc(totals.count)} hareket</p></div><div class="acc-head-side"><span class="acc-chip-total">Giren <b class="acc-pos">${amount(totals.incoming)}</b></span><span class="acc-chip-total">Çıkan <b class="acc-neg">${amount(totals.outgoing)}</b></span><span class="acc-chip-total">Net <b class="${accountingTone(totals.net)}">${amount(totals.net)}</b></span><button type="button" class="secondary acc-small" id="exportAccountLedger" data-tip="Filtreye uyan tüm hareketleri Excel'de açılan dosya olarak indirir.">Excel'e Aktar</button></div></div><details class="borrower-filter-section" id="accountingFilterSection"${document.getElementById('accountingFilterSection')?.open ? ' open' : ''}><summary>Filtre</summary><form id="movementFilterForm" class="formbody"><div class="grid"><label class="field">Hesap Adı<select id="accountingFilter" aria-label="Hesap adına göre filtrele"><option value="">Tüm Hesaplar</option>${accounting.accounts
       .filter((a) => a.active !== false)
       .map(
         (a) =>
@@ -768,6 +778,7 @@ function accountingPage(remote) {
       ['', 'Tüm İşlemler'],
       ['in', 'Para Girişi'],
       ['external', 'Haricen Para Girişi'],
+      ['externalOut', 'Harici Para Çıkışı'],
       ['out', 'Para Çıkışı'],
       ['advance', 'Avans Çıkışı'],
       ['payment', 'Borçlu Tahsilatı'],
@@ -782,7 +793,19 @@ function accountingPage(remote) {
       )
       .join(
         '',
-      )}</select></label><label class="field">İşlemi Yapan Kullanıcı<input name="operator" list="accountingOperators" data-optional="true" value="${esc(movementFilters.operator)}" placeholder="Tüm kullanıcılar"><datalist id="accountingOperators">${operators.map((n) => `<option value="${esc(n)}"></option>`).join('')}</datalist></label><label class="field">Gider Kalemi<select name="category" data-optional="true"><option value="">Tüm Gider Kalemleri</option>${accountingExpenseCategories.map((n) => `<option value="${esc(n)}" ${movementFilters.category === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label><label class="field">Açıklama / İşlem Ara<input type="search" name="query" data-optional="true" value="${esc(movementFilters.query)}" placeholder="Açıklama, evrak no veya kullanıcı…"></label></div><div class="toolbar" style="margin-top:16px"><button class="primary" type="submit">Filtrele</button><button class="secondary" type="button" id="clearMovementFilters">Filtreleri Temizle</button></div><p>Tarih aralığı başlangıç ve bitiş günlerini içerir.</p></form></details><div class="overflow acc-ledger-scroll"><table class="account-ledger"><thead><tr><th>TARİH</th><th>HESAP</th><th>İŞLEM</th><th>GİDER KALEMİ</th><th>İŞLEMİ YAPAN</th><th>AÇIKLAMA</th><th class="acc-num">GİREN</th><th class="acc-num">ÇIKAN</th><th class="acc-num">KALAN</th></tr></thead><tbody>${rows.map((e) => `<tr><td>${esc(displayDate(e.date))}</td><td>${esc(name(e.accountId))}</td><td>${accountingBadge(e)}</td><td>${esc(e.type === 'out' ? e.expenseCategory || 'Belirtilmedi' : '—')}</td><td>${esc(e.operatorName || 'Belirtilmedi')}</td><td>${esc(e.note)}</td><td class="acc-num acc-pos">${e.signed > 0 ? amount(e.signed) : '—'}</td><td class="acc-num acc-neg">${e.signed < 0 ? amount(-BigInt(e.signed)) : '—'}</td><td class="acc-num ${e.balance !== undefined ? accountingTone(e.balance) : ''}"><strong>${e.balance !== undefined ? amount(e.balance) : '—'}</strong></td></tr>`).join('') || '<tr><td colspan="9" class="empty">Henüz hesap hareketi yok.</td></tr>'}</tbody><tfoot><tr><td colspan="6"><strong>FİLTRELENEN TOPLAM</strong></td><td class="acc-num"><strong>${amount(totals.incoming)}</strong></td><td class="acc-num"><strong>${amount(totals.outgoing)}</strong></td><td>—</td></tr></tfoot></table></div><details class="acc-notes"><summary>Bu ekran nasıl çalışır?</summary><p>Hesap özetleri tüm kayıtları kapsar. Hareketler en yeniden eskiye sıralanır; kalan sütunu ilgili işlemin sonrasındaki hesap bakiyesidir.</p><p>Borçlu tahsilatı dosyaya işlenir: Borçlu Tahsilatı düğmesiyle dosyayı seçin veya dosyanın Finansal İşlemler ekranını kullanın; aynı tahsilatı Para Girişi olarak tekrar kaydetmeyin. Hesaplar arası transfer ciro veya kâr oluşturmaz. Bu ekran kayıt tutar, bankaya talimat göndermez.</p>${unassigned ? '<p>Hesap seçilmeden girilmiş eski tahsilatlar hesap bakiyelerine dahil değildir.</p>' : ''}</details></div>`;
+      )}</select></label><label class="field">İşlemi Yapan Kullanıcı<input name="operator" list="accountingOperators" data-optional="true" value="${esc(movementFilters.operator)}" placeholder="Tüm kullanıcılar"><datalist id="accountingOperators">${operators.map((n) => `<option value="${esc(n)}"></option>`).join('')}</datalist></label><label class="field">Gider Kalemi<select name="category" data-optional="true"><option value="">Tüm Gider Kalemleri</option>${accountingExpenseCategories.map((n) => `<option value="${esc(n)}" ${movementFilters.category === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label><label class="field">Açıklama / İşlem Ara<input type="search" name="query" data-optional="true" value="${esc(movementFilters.query)}" placeholder="Açıklama, evrak no veya kullanıcı…"></label></div><div class="toolbar" style="margin-top:16px"><button class="primary" type="submit">Filtrele</button><button class="secondary" type="button" id="clearMovementFilters">Filtreleri Temizle</button></div><p>Tarih aralığı başlangıç ve bitiş günlerini içerir.</p></form></details><div class="overflow acc-ledger-scroll"><table class="account-ledger"><thead><tr><th>TARİH</th><th>HESAP</th><th>İŞLEM</th><th>GİDER KALEMİ</th><th>İŞLEMİ YAPAN</th><th>AÇIKLAMA</th><th class="acc-num">GİREN</th><th class="acc-num">ÇIKAN</th><th class="acc-num">KALAN</th></tr></thead><tbody>${rows.map((e) => `<tr><td>${esc(displayDate(e.date))}</td><td>${esc(name(e.accountId))}</td><td>${accountingBadge(e)}${typeof currentAccountMovementMarkup === 'function' ? currentAccountMovementMarkup(e) : ''}</td><td>${esc(e.type === 'out' ? e.expenseCategory || 'Belirtilmedi' : '—')}</td><td>${esc(e.operatorName || 'Belirtilmedi')}</td><td>${esc(e.note)}</td><td class="acc-num acc-pos">${e.signed > 0 ? amount(e.signed) : '—'}</td><td class="acc-num acc-neg">${e.signed < 0 ? amount(-BigInt(e.signed)) : '—'}</td><td class="acc-num ${e.balance !== undefined ? accountingTone(e.balance) : ''}"><strong>${e.balance !== undefined ? amount(e.balance) : '—'}</strong></td></tr>`).join('') || '<tr><td colspan="9" class="empty">Henüz hesap hareketi yok.</td></tr>'}</tbody><tfoot><tr><td colspan="6"><strong>FİLTRELENEN TOPLAM</strong></td><td class="acc-num"><strong>${amount(totals.incoming)}</strong></td><td class="acc-num"><strong>${amount(totals.outgoing)}</strong></td><td>—</td></tr></tfoot></table></div><details class="acc-notes"><summary>Bu ekran nasıl çalışır?</summary><p>Hesap özetleri tüm kayıtları kapsar. Hareketler en yeniden eskiye sıralanır; kalan sütunu ilgili işlemin sonrasındaki hesap bakiyesidir.</p><p>Borçlu tahsilatı dosyaya işlenir: Borçlu Tahsilatı düğmesiyle dosyayı seçin veya dosyanın Finansal İşlemler ekranını kullanın; aynı tahsilatı Para Girişi olarak tekrar kaydetmeyin. Hesaplar arası transfer ciro veya kâr oluşturmaz. Bu ekran kayıt tutar, bankaya talimat göndermez.</p>${unassigned ? '<p>Hesap seçilmeden girilmiş eski tahsilatlar hesap bakiyelerine dahil değildir.</p>' : ''}</details></div>`;
+  if (typeof currentAccountsPage === 'function')
+    $('#openCurrentAccounts').onclick = () => currentAccountsPage();
+  if (window.hanAuth?.personnelLedgerAccess?.view) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'secondary';
+    button.id = 'openPersonnelLedger';
+    button.textContent = 'Personel Hakediş / Maaş';
+    button.onclick = openAccountingPersonnelLedger;
+    $('#openCurrentAccounts').after(button);
+  }
+  if (typeof bindCurrentAccountMovementActions === 'function') bindCurrentAccountMovementActions(rows);
   const accountsBox = document.querySelector('.acc-accounts-scroll');
   if (accountsBox && accountsScroll) accountsBox.scrollTop = accountsScroll;
   for (const action of accountingActions()) {
@@ -916,6 +939,8 @@ function cashEntryForm(kind) {
   $('#modal').innerHTML =
     `<form id="cashEntryForm" class="acc-entry acc-entry--${kind}"><div class="panelhead"><div><h2>${esc(title)}</h2><p>${esc(hint)} İşlemi yapan: ${esc(activeOperator()?.name || 'Seçilmedi — önce üst bölümden personel seçin')}</p></div><button type="button" class="link" id="closeCashEntry">Kapat</button></div><div class="formbody grid">${typeControl}<label class="field">${esc(accountLabel)} *<select name="accountId" required>${accountOptions(preset)}</select></label><label class="field" id="destinationField" hidden>Paranın Gireceği Hesap *<select name="destination" disabled>${accountOptions()}</select></label>${field('İşlem Tarihi', 'date', 'date', businessDate(), true)}${field('Tutar (TL)', 'amount', 'number', '', true)}<p class="${kind === 'transfer' ? 'full ' : ''}acc-balance-line" id="cashBalanceLine" role="status"></p><fieldset class="full acc-chipset" id="expenseCategoryField" hidden><legend>Gider Kalemi *</legend>${chips('expenseCategory', accountingExpenseCategories)}</fieldset><fieldset class="full acc-chipset" id="advanceTypeField" hidden><legend>Avans Türü *</legend>${chips('advanceType', ['T.Ç', 'S.S', 'Diğer'])}</fieldset><label class="field full${kind === 'in' ? ' acc-reserve' : ''}" id="externalProfitField" hidden>Kâr Seçimi *<select name="profitChoice" disabled><option value="">Seçin</option><option value="yes">Kâra Ekle</option><option value="no">Kâra Ekleme</option></select></label>${field('Açıklama / Referans', 'note', 'text', '', true, true)}${kind === 'in' ? '<p class="full acc-form-hint">Borçlu tahsilatı buradan girilmez; Muhasebe ekranındaki Borçlu Tahsilatı düğmesini veya dosyanın Finansal İşlemler ekranını kullanın.</p>' : ''}</div><div class="actions"><button class="primary">${esc(title)} Kaydet</button></div></form>`;
   const form = $('#cashEntryForm');
+  if (kind === 'out' && typeof mountCashOutTabs === 'function') mountCashOutTabs(form, 'expense');
+  if (typeof bindCurrentAccountCashField === 'function') bindCurrentAccountCashField(form);
   const balanceLine = () => {
     const line = $('#cashBalanceLine'),
       id = form.elements.accountId.value;

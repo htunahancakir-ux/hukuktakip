@@ -245,6 +245,7 @@ async function handleDataRoutes(ctx) {
       (key === 'hanhukuk-finance-v1' && allowed(u, 'documents'))
     ) {
       if (key === 'hanhukuk-accounting-v1') {
+        require('../../lib/current-accounts.cjs').validateLedgerLinks(ctx.state, v.value);
         for (const account of v.value.accounts || []) {
           const before = ctx.state.data[key].accounts.find((row) => row.id === account.id);
           if (

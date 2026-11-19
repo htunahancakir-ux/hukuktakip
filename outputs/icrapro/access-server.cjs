@@ -100,6 +100,16 @@ function createAccess(stateFile, options = {}) {
     marketingAccess: hasMarketingAccess(state, u),
     permissions: ['ceo', 'admin'].includes(u.role) ? permissions : u.permissions,
     accountingAccess: accountingStaff(u, state.data['icrapro-personnel-v1']),
+    personnelLedgerAccess: Object.fromEntries(
+      ['view', 'pay'].map((action) => [
+        action,
+        require('../../lib/personnel-ledger-access.cjs').personnelLedgerAllowed(
+          u,
+          state.data['icrapro-personnel-v1'],
+          action,
+        ),
+      ]),
+    ),
     active: u.active,
     readOnly: u.role !== 'ceo' && u.readOnly === true,
     testAccount: u.testAccount === true,
@@ -401,6 +411,8 @@ function createAccess(stateFile, options = {}) {
       if (await handleWhatsAppRoutes(ctx)) return true;
       if (!u) throw fail(401, 'Giriş yapın.');
       assertRequestAction(u, url.pathname, req.method);
+      if (await require('./access-current-accounts.cjs').handleCurrentAccounts(ctx)) return true;
+      if (await require('./access-external-out.cjs').handleExternalOut(ctx)) return true;
       if (await handleRecoveryRoutes(ctx)) return true;
       if (await require('../../lib/recovery-channels.cjs').handle(ctx)) return true;
       if (await require('./access-ceo-pin.cjs').handleCeoPin(ctx)) return true;

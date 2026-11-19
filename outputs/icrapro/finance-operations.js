@@ -269,7 +269,8 @@ function aggregateFinance(events, period, date, accountingEntries = []) {
   const externalIncome = accountingEntries
     .filter((e) => e.type === 'in' && e.entryKind === 'external' && e.includeInProfit === true)
     .map((e) => ({ ...e, type: 'externalIncome' }));
-  const combined = [...events, ...costs, ...externalIncome];
+  const externalOut = accountingEntries.filter((e) => e.type === 'externalOut' && e.includeInProfit === true);
+  const combined = [...events, ...costs, ...externalIncome, ...externalOut];
   const keys = periodKeys(period, date);
   return keys.map((key) => {
     const rows = combined.filter((e) => (period === 'year' ? e.date.startsWith(key) : e.date === key));
@@ -285,7 +286,9 @@ function aggregateFinance(events, period, date, accountingEntries = []) {
               db.docs.find((d) => d.id === e.documentId),
             ),
           0,
-        ) + rows.filter((e) => e.type === 'externalIncome').reduce((s, e) => s + e.amount, 0),
+        ) +
+        rows.filter((e) => e.type === 'externalIncome').reduce((s, e) => s + e.amount, 0) -
+        rows.filter((e) => e.type === 'externalOut').reduce((s, e) => s + e.amount, 0),
       expenses = rows
         .filter(
           (e) =>
@@ -409,6 +412,7 @@ function dashboard(remoteBuckets) {
   $('#content')
     .querySelectorAll('[data-dashboard-day]')
     .forEach((button) => (button.onclick = () => openDashboardDay(button.dataset.dashboardDay)));
+  if (typeof mountExternalOutApprovals === 'function') mountExternalOutApprovals($('#content'));
   $('#dashboardPeriod').onchange = (e) => {
     dashboardPeriod = e.target.value;
     dashboard();

@@ -160,19 +160,21 @@ function reportRows(type) {
         },
       );
     }
-    for (const e of accounting.entries.filter((e) => e.type === 'out' && !e.financeEventId))
+    for (const e of accounting.entries.filter(
+      (e) => ['out', 'externalOut'].includes(e.type) && !e.financeEventId,
+    ))
       add(
         e.date,
         null,
         {
-          kind: 'Muhasebe gideri',
+          kind: e.type === 'externalOut' ? 'Harici para çıkışı' : 'Muhasebe gideri',
           account: accountName(e.accountId),
           staff: e.operatorName || staffName(e.operatorId),
           category: hanAccountingRules.expenseCategoryName(e.expenseCategory) || 'Belirtilmedi',
           collection: 0,
-          revenue: 0,
-          expense: e.amount,
-          profit: -e.amount,
+          revenue: e.type === 'externalOut' && e.includeInProfit ? -e.amount : 0,
+          expense: e.type === 'out' ? e.amount : 0,
+          profit: e.type === 'out' || e.includeInProfit ? -e.amount : 0,
           note: e.note,
         },
         { staffId: e.operatorId || '', accountId: e.accountId },
@@ -364,7 +366,8 @@ function filterReportRows(rows, f) {
       (!f.account || r.accountId === f.account) &&
       (!f.receiver || r.cells.receiverId === f.receiver) &&
       (!f.documentType || r.cells.type === f.documentType) &&
-      (!f.expenseCategory || r.cells.category === f.expenseCategory) &&
+      (!f.expenseCategory ||
+        r.cells.category === hanAccountingRules.expenseCategoryName(f.expenseCategory)) &&
       normalizeSearch(Object.values(r.cells).join(' ')).includes(normalizeSearch(f.query)),
   );
 }
@@ -445,6 +448,7 @@ function updateReportFilterSummary() {
 }
 
 function renderReportsPage() {
+  reportFilters.expenseCategory = hanAccountingRules.expenseCategoryName(reportFilters.expenseCategory);
   if (reportFilters.type !== 'expenses') reportFilters.expenseCategory = '';
   if (reportFilters.type !== 'hanDocuments') {
     reportFilters.receiver = '';

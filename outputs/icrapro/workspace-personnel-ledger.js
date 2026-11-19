@@ -1,3 +1,9 @@
+function openAccountingPersonnelLedger() {
+  $('#content').innerHTML =
+    '<section class="panel"><div class="panelhead"><h2>Personel Hakediş ve Ödemeleri</h2><button type="button" class="secondary" id="personnelLedgerBack">Kasa / Banka</button></div><div class="formbody" id="accountingPersonnelLedger"></div></section>';
+  $('#personnelLedgerBack').onclick = accountingPage;
+  personnelLedgerPage($('#accountingPersonnelLedger'));
+}
 function personnelPaymentPeriods(data, advance) {
   if (data.paymentUnrestricted) {
     const months = data.months.slice();
@@ -9,7 +15,14 @@ function personnelPaymentPeriods(data, advance) {
     ? data.advanceLimit > 0
       ? [{ month: data.currentMonth, remaining: data.advanceLimit }]
       : []
-    : data.months.filter((row) => row.payable && row.remaining > 0);
+    : data.months
+        .filter((row) => row.payable && row.remaining > 0)
+        .map((row) =>
+          data.paymentEarnedOnly
+            ? { ...row, remaining: Math.max(0, Math.min(row.remaining, data.balance)) }
+            : row,
+        )
+        .filter((row) => row.remaining > 0);
 }
 async function readPersonnelLedger(staffId = '', signal) {
   const path =
@@ -60,7 +73,12 @@ async function personnelLedgerPage(host, staffId = '') {
     const content = host.querySelector('[data-ledger-content]');
     const summaries = [
       ['Toplam Cari Alacağı', data.balance],
-      [data.paymentUnrestricted ? 'Ödenmemiş Hakediş' : 'Önceki Aylar · Ödenebilir', data.payable],
+      [
+        data.paymentUnrestricted || data.paymentEarnedOnly
+          ? 'Ödenmemiş Hakediş'
+          : 'Önceki Aylar · Ödenebilir',
+        data.payable,
+      ],
       ['Bu Ay Hakedişi', data.currentEarned],
       ['Bu Ay Kullanılabilir Avans', data.advanceLimit],
     ];
@@ -155,13 +173,21 @@ async function personnelLedgerPage(host, staffId = '') {
     };
     history();
     const paymentHost = content.querySelector('[data-personnel-payment]');
+    if (data.canPay === false) {
+      paymentHost.textContent = 'Bu cari hesabı görüntüleyebilirsiniz. Ödeme yapma yetkiniz kapalı.';
+      return;
+    }
     paymentHost.innerHTML =
       '<h3>Maaş / Avans Ödemesi</h3><p class="notice">' +
       (data.paymentUnrestricted
         ? 'Bu personelde maaş ve maaş avansı için tutar veya adet sınırı uygulanmaz. Tüm ödemeler cari hesaba işlenir.'
-        : 'Normal ödemelerde yalnızca kapanmış aylar seçilir. Avans ilgili ayın alacağından düşer; kalan tutar sonraki ay ödenebilir.') +
+        : data.paymentEarnedOnly
+          ? 'Avukatta ayda bir ve %25 avans sınırı yoktur. Mevcut ayın maaş ve primleri de ödenebilir; ödeme seçilen dönemin ve toplam kalan hakedişin tutarını aşamaz.'
+          : 'Normal ödemelerde yalnızca kapanmış aylar seçilir. Avans ilgili ayın alacağından düşer; kalan tutar sonraki ay ödenebilir.') +
       '</p><form class="personnel-payment-form"><div class="grid"><label class="field">Ödeme Türü<select name="mode"><option value="salaryPayment">' +
-      (data.paymentUnrestricted ? 'Maaş / Prim Ödemesi' : 'Kapanmış Ay Maaş / Prim Ödemesi') +
+      (data.paymentUnrestricted || data.paymentEarnedOnly
+        ? 'Maaş / Prim Ödemesi'
+        : 'Kapanmış Ay Maaş / Prim Ödemesi') +
       '</option><option value="salaryAdvance" ' +
       (data.paymentUnrestricted || data.advanceLimit > 0 ? '' : 'disabled') +
       '>Bu Ay Maaş Avansı</option></select></label><label class="field">Hakediş Dönemi<select name="payrollMonth" required></select></label><label class="field">Ödemenin Çıkacağı Kasa / Banka<select name="accountId" required><option value="">Hesap seçin</option>' +
@@ -198,9 +224,11 @@ async function personnelLedgerPage(host, staffId = '') {
         ? 'Maaş ve avans için tutar ve adet sınırı yok.'
         : max > 0
           ? 'En fazla ' + money(max / 100)
-          : data.advanceUsed
-            ? 'Bu ay maaş avansı kullanıldı. Ödenebilir kapanmış ay bulunmuyor.'
-            : 'Ödenebilir kapanmış ay bulunmuyor.';
+          : data.paymentEarnedOnly
+            ? 'Ödenmemiş hakediş kalmadı.'
+            : data.advanceUsed
+              ? 'Bu ay maaş avansı kullanıldı. Ödenebilir kapanmış ay bulunmuyor.'
+              : 'Ödenebilir kapanmış ay bulunmuyor.';
       form.elements.note.value = advance
         ? form.elements.payrollMonth.value + ' maaş avansı'
         : form.elements.payrollMonth.value + ' maaş ve prim ödemesi';
@@ -249,6 +277,14 @@ async function personnelLedgerPage(host, staffId = '') {
 }
 
 function setupPayrollCashFields(form) {
+  if (window.hanAuth?.personnelLedgerAccess?.pay === false) {
+    for (const input of form.querySelectorAll('[name="expenseCategory"]')) {
+      if (['Maaş', 'Prim', 'Maaş Avansı'].includes(input.value)) {
+        input.disabled = true;
+        input.closest('label').title = 'Personel ödemesi yapma yetkiniz kapalı.';
+      }
+    }
+  }
   const section = document.createElement('div');
   section.className = 'full grid payroll-cash-fields';
   section.hidden = true;
@@ -294,7 +330,11 @@ function setupPayrollCashFields(form) {
           : limit > 0
             ? 'En fazla ' +
               money(limit / 100) +
-              (advance ? ' · Ayda bir, maaş + Prim 1 toplamının %25’i.' : '')
+              (data.paymentEarnedOnly
+                ? ' · Avukat: adet ve %25 sınırı yok; kalan hakediş kadar.'
+                : advance
+                  ? ' · Ayda bir, maaş + Prim 1 toplamının %25’i.'
+                  : '')
             : advance
               ? 'Bu ay avans hakkı yok veya kullanıldı.'
               : 'Ödenebilir kapanmış ay yok.';
