@@ -202,6 +202,22 @@ test('ACR call reports persist the dialed number, reject wrong credentials and d
   assert.equal(incoming.status, 'unanswered');
   assert.equal(incoming.direction, 'inbound');
   assert.equal(incoming.duration, 0);
+  await transaction(
+    pool,
+    false,
+    (tx) => {
+      const legacy = tx.state.voipCalls[0];
+      legacy.phone = '';
+      legacy.callerNumber = '';
+      legacy.duration = 0;
+      tx.saveState(tx.state);
+    },
+    { id: result.id, acr: { deviceId: device.id, createdAt: stored.createdAt } },
+  );
+  await run(fields);
+  const reparsed = await transaction(pool, false, (tx) => tx.state.voipCalls[0], { id: result.id });
+  assert.equal(reparsed.phone, stored.phone, 'replaying the existing receipt repairs legacy normalization');
+  assert.equal(reparsed.duration, 43);
   assert.deepEqual(
     await run({ number: 'number', direction: '1%7C2', date: '1795086960283', duration: '0' }),
     { ready: true, accepted: false },
@@ -239,9 +255,15 @@ test('ACR call reports persist the dialed number, reject wrong credentials and d
     'retries must not recreate the merged report',
   );
   const audioFirst = await upload({ date: '1795089800', duration: '9500' });
-  const later = await run({ number: '05320000003', date: '1795089800699', direction: '2', duration: '10' });
+  const later = await run({
+    number: '%2B90+532+000+00+03',
+    date: '1795089800699',
+    direction: '1',
+    duration: '10',
+  });
   const matched = await transaction(pool, false, (tx) => tx.state.voipCalls[0], { id: audioFirst.id });
   assert.equal(matched.phone, '905320000003');
+  assert.equal(matched.direction, 'inbound');
   assert.equal(matched.acrReportId, later.id);
   assert.equal(matched.duration, 9);
   signedIn = true;
@@ -257,7 +279,8 @@ test('ACR call reports persist the dialed number, reject wrong credentials and d
 });
 
 test('ACR pairing rejects ambiguous, unverified, edited and different-device calls', () => {
-  const { mergeReports } = require('../lib/acr-phone.cjs');
+  const { mergeReports, callFromReport } = require('../lib/acr-phone.cjs');
+  assert.equal(callFromReport({ number: '%GG', direction: '1', date: '1795089800' }, device, host).phone, '');
   const audio = {
     id: 'audio',
     provider: 'acr',
