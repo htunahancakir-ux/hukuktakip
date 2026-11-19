@@ -113,6 +113,15 @@ function currentAccountPartyForm(p, onSaved) {
     dialog = $('#modal');
   dialog.innerHTML = `<form id="currentPartyForm"><div class="panelhead"><h2>${p ? 'Cariyi Düzenle' : 'Yeni Cari Hesap'}</h2><button type="button" class="secondary" data-current-close>Kapat</button></div><div class="formbody grid"><label class="field">Tür<select name="kind"><option value="Firma">Firma</option><option value="Kişi" ${p?.kind === 'Kişi' ? 'selected' : ''}>Kişi</option></select></label>${field('Cari Adı', 'name', 'text', p?.name || '', true)}${field('Telefon', 'phone', 'tel', p?.phone || '').replace('<input ', '<input data-optional="true" ')}${field('Telefon Kaynağı', 'phoneSource', 'text', p?.phoneSource || '').replace('<input ', '<input data-optional="true" ')}<label class="field full">Açıklama<textarea name="note" data-optional="true" maxlength="3000">${esc(p?.note || '')}</textarea></label><p class="formerror full" role="alert"></p></div><div class="actions"><button type="submit" class="primary">Cariyi Kaydet</button></div></form>`;
   const form = dialog.querySelector('form');
+  if (!p) {
+    const tabs = document.createElement('div');
+    tabs.className = 'settings-tabs';
+    tabs.style.padding = '16px 24px 0';
+    tabs.innerHTML =
+      '<button type="button" class="selected">Manuel Cari</button><button type="button" data-current-from-client>Müvekkilden Getir</button>';
+    form.querySelector('.panelhead').after(tabs);
+    tabs.querySelector('[data-current-from-client]').onclick = () => currentAccountFromClientForm(onSaved);
+  }
   let pending = false;
   dialog.querySelector('[data-current-close]').onclick = () => dialog.close();
   form.onsubmit = async (event) => {
@@ -138,6 +147,60 @@ function currentAccountPartyForm(p, onSaved) {
       button.disabled = false;
     }
   };
+  if (!dialog.open) dialog.showModal();
+}
+function currentAccountFromClientForm(onSaved) {
+  const dialog = $('#modal'),
+    id = crypto.randomUUID(),
+    screen = $('#content').firstElementChild;
+  dialog.innerHTML =
+    '<form id="currentClientPartyForm"><div class="panelhead"><h2>Müvekkilden Cari Oluştur</h2><button type="button" class="secondary" data-current-close>Kapat</button></div><div class="settings-tabs" style="padding:16px 24px 0"><button type="button" data-current-manual>Manuel Cari</button><button type="button" class="selected">Müvekkilden Getir</button></div><div class="formbody"><label class="field">Müvekkil Ara<input type="search" data-current-client-query data-optional="true" placeholder="Müvekkil adı yazın"></label><label class="field">Müvekkil<select name="clientId" required><option value="">Müvekkil seçin</option></select></label><p data-current-client-count role="status"></p><p>Seçilen müvekkile bağlı bir cari açılır. Mevcut carisi varsa aynı hesap açılır.</p><p class="formerror" role="alert"></p></div><div class="actions"><button class="primary" type="submit">Seçilen Müvekkile Cari Aç</button></div></form>';
+  const form = dialog.querySelector('form'),
+    select = form.elements.clientId;
+  dialog.querySelector('[data-current-close]').onclick = () => dialog.close();
+  dialog.querySelector('[data-current-manual]').onclick = () => currentAccountPartyForm(null, onSaved);
+  if (window.hanRecordsEnabled)
+    bindIntakeClientSelect(
+      form.querySelector('[data-current-client-query]'),
+      select,
+      'Müvekkil seçin',
+      form.querySelector('[data-current-client-count]'),
+    );
+  else {
+    const show = () => {
+      const q = form.querySelector('[data-current-client-query]').value.toLocaleLowerCase('tr');
+      select.replaceChildren(new Option('Müvekkil seçin', ''));
+      for (const c of db.clients.filter(
+        (c) => c.active !== false && c.name.toLocaleLowerCase('tr').includes(q),
+      ))
+        select.append(new Option(c.name, c.id));
+    };
+    form.querySelector('[data-current-client-query]').oninput = show;
+    show();
+  }
+  let pending = false;
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    if (pending || !form.reportValidity()) return;
+    pending = true;
+    const button = form.querySelector('.primary');
+    button.disabled = true;
+    try {
+      const result = await currentAccountApi('/from-client', 'POST', { id, clientId: select.value });
+      window.modalFormSaved?.(form);
+      select._intakeClientRequest?.abort();
+      dialog.close();
+      toast(result.existing ? 'Mevcut müvekkil carisi açıldı.' : 'Müvekkile cari açıldı.');
+      onSaved?.();
+      if (screen?.isConnected) currentAccountStatement(result.party.id);
+    } catch (error) {
+      form.querySelector('.formerror').textContent = error.message;
+    } finally {
+      pending = false;
+      button.disabled = false;
+    }
+  };
+  dialog.addEventListener('close', () => select._intakeClientRequest?.abort(), { once: true });
   if (!dialog.open) dialog.showModal();
 }
 function currentAccountManualForm(p, onSaved) {

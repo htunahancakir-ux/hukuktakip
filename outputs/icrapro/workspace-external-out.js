@@ -177,7 +177,7 @@ function mountExternalOutApprovals(host) {
   section.className = 'panel';
   section.style.marginBottom = '18px';
   section.innerHTML =
-    '<div class="panelhead"><div><h2>CEO Onayları</h2><p>Harici para çıkışı talepleri</p></div><button type="button" class="primary">Onay Bekleyenler</button></div>';
+    '<div class="panelhead"><div><h2>CEO Onayları</h2><p>Harici para çıkışı ve verilen çek talepleri</p></div><button type="button" class="primary">Onay Bekleyenler</button></div>';
   const button = section.querySelector('button');
   button.onclick = () => externalOutRequestsPage('pending');
   host.prepend(section);

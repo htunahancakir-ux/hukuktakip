@@ -149,6 +149,7 @@ function recordListInput() {
   const input = {
     ...borrowerFilters,
     status: debtorStatusFilter,
+    folder: debtorFolderFilter,
     query: $('#docSearch')?.value || '',
     limit: '50',
     sort:
@@ -229,6 +230,7 @@ async function loadRecordPage(direction = 0) {
       client: row.clientId,
       _clientName: row.clientName,
       debtor: row.debtor,
+      debtorFolder: row.debtorFolder,
       testRecord: row.testRecord,
       identity: row.identity,
       relatedStaff: row.staffId,

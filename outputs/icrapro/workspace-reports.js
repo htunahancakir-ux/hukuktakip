@@ -161,20 +161,42 @@ function reportRows(type) {
       );
     }
     for (const e of accounting.entries.filter(
-      (e) => ['out', 'externalOut'].includes(e.type) && !e.financeEventId,
+      (e) =>
+        (['out', 'externalOut'].includes(e.type) || (e.type === 'in' && e.entryKind === 'cheque')) &&
+        !e.financeEventId,
     ))
       add(
         e.date,
         null,
         {
-          kind: e.type === 'externalOut' ? 'Harici para çıkışı' : 'Muhasebe gideri',
+          kind:
+            e.entryKind === 'cheque'
+              ? e.type === 'in'
+                ? 'Alınan çek'
+                : 'Verilen çek'
+              : e.type === 'externalOut'
+                ? 'Harici para çıkışı'
+                : 'Muhasebe gideri',
           account: accountName(e.accountId),
           staff: e.operatorName || staffName(e.operatorId),
           category: hanAccountingRules.expenseCategoryName(e.expenseCategory) || 'Belirtilmedi',
           collection: 0,
-          revenue: e.type === 'externalOut' && e.includeInProfit ? -e.amount : 0,
+          revenue: e.includeInProfit
+            ? e.type === 'in'
+              ? e.amount
+              : e.type === 'externalOut'
+                ? -e.amount
+                : 0
+            : 0,
           expense: e.type === 'out' ? e.amount : 0,
-          profit: e.type === 'out' || e.includeInProfit ? -e.amount : 0,
+          profit:
+            e.type === 'in'
+              ? e.includeInProfit
+                ? e.amount
+                : 0
+              : e.type === 'out' || e.includeInProfit
+                ? -e.amount
+                : 0,
           note: e.note,
         },
         { staffId: e.operatorId || '', accountId: e.accountId },

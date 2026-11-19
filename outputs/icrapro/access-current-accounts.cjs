@@ -86,6 +86,9 @@ async function handleCurrentAccounts(ctx) {
         : 'create',
     );
     result = cari.saveParty(ctx.state, input, u);
+  } else if (url.pathname === '/api/current-accounts/from-client') {
+    assertModuleAction(u, 'accounting', 'create');
+    result = cari.fromClient(ctx.state, input, u);
   } else if (url.pathname === '/api/current-accounts/entries') {
     assertModuleAction(u, 'accounting', 'create');
     result = cari.addEntry(ctx.state, input, u);
@@ -93,11 +96,15 @@ async function handleCurrentAccounts(ctx) {
     assertModuleAction(u, 'accounting', 'update');
     result = cari.linkEntry(ctx.state, input, u);
   } else throw fail(404, 'Cari işlemi bulunamadı.');
-  if (result.next) persist(result.next);
+  if (result.next) {
+    if (url.pathname === '/api/current-accounts/from-client') ctx.persistMetadata(result.next);
+    else persist(result.next);
+  }
   send(res, 200, {
     ok: true,
     ...(result.party ? { party: result.party } : {}),
     ...(result.entry ? { entry: result.entry } : {}),
+    ...(result.existing !== undefined ? { existing: result.existing } : {}),
   });
   return true;
 }

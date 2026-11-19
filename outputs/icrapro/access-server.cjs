@@ -413,6 +413,7 @@ function createAccess(stateFile, options = {}) {
       assertRequestAction(u, url.pathname, req.method);
       if (await require('./access-current-accounts.cjs').handleCurrentAccounts(ctx)) return true;
       if (await require('./access-external-out.cjs').handleExternalOut(ctx)) return true;
+      if (await require('./access-cheques.cjs').handleCheques(ctx)) return true;
       if (await handleRecoveryRoutes(ctx)) return true;
       if (await require('../../lib/recovery-channels.cjs').handle(ctx)) return true;
       if (await require('./access-ceo-pin.cjs').handleCeoPin(ctx)) return true;

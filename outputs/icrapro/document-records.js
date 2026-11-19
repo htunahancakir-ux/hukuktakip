@@ -585,10 +585,73 @@ function matchesDebtorColumns(doc) {
   );
 }
 
+let debtorFolderFilter = '';
+
+function debtorFolderTabs() {
+  return (
+    '<div class="segments" style="padding:0 24px 20px;flex-wrap:wrap" role="group" aria-label="Borçlu klasörleri"><span>Klasörler:</span>' +
+    [['', 'Tümü'], ['none', 'Klasörsüz'], ...HanDebtorFolders.names.map((name) => [name, name])]
+      .map(
+        ([value, label]) =>
+          '<button type="button" data-debtor-folder="' + esc(value) + '">' + esc(label) + '</button>',
+      )
+      .join('') +
+    '</div>'
+  );
+}
+
+function updateDebtorFolderTabs() {
+  document.querySelectorAll('[data-debtor-folder]').forEach((button) => {
+    const selected = button.dataset.debtorFolder === debtorFolderFilter;
+    button.classList.toggle('selected', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
+}
+
+function borrowerFolderForm(record) {
+  const modal = $('#modal');
+  const expectedFolder = record.debtorFolder || '';
+  modal.innerHTML =
+    '<form id="borrowerFolderForm"><div class="panelhead"><h2>Klasöre Taşı</h2></div><div class="formbody"><p>' +
+    esc(record.number) +
+    ' · ' +
+    esc(record.debtor) +
+    '</p><label class="field">Klasör<select name="folder" data-optional="true"><option value="">Klasörsüz</option>' +
+    HanDebtorFolders.names
+      .map((name) => '<option' + (name === expectedFolder ? ' selected' : '') + '>' + esc(name) + '</option>')
+      .join('') +
+    '</select></label></div><div class="actions"><button type="button" class="secondary" id="cancelBorrowerFolder">İptal</button><button type="submit" class="primary">Kaydet</button></div></form>';
+  modal.showModal();
+  $('#cancelBorrowerFolder').onclick = () => modal.close();
+  $('#borrowerFolderForm').onsubmit = (event) => {
+    event.preventDefault();
+    const folder = event.target.elements.folder.value;
+    try {
+      authApi('/api/documents/folder', 'POST', { documentId: record.id, folder, expectedFolder });
+      const cached = db.docs.find((doc) => doc.id === record.id);
+      const baseline =
+        typeof hanDataBaselines === 'undefined'
+          ? null
+          : hanDataBaselines.get('icrapro-v1')?.docs.find((doc) => doc.id === record.id);
+      for (const row of [cached, baseline]) {
+        if (!row) continue;
+        if (folder) row.debtorFolder = folder;
+        else delete row.debtorFolder;
+      }
+      modal.close();
+      docRows();
+      toast(folder ? 'Dosya ' + folder + ' klasörüne taşındı.' : 'Dosya klasörden çıkarıldı.');
+    } catch (error) {
+      toast(error.message, modal);
+    }
+  };
+}
+
 function documents() {
   debtorStatusFilter = 'Derdest';
+  debtorFolderFilter = '';
   $('#content').innerHTML =
-    `<div class="panel"><div class="panelhead"><div><h2>Borçlu kayıtları</h2><p id="globalSearchHint">Borçlu, telefon, müvekkil, kimlik, evrak no, tür, tutar, tarih veya not ile arayın.</p></div><div class="toolbar global-search"><input class="search" id="docSearch" type="search" placeholder="Tüm alanlarda ara…" aria-label="Borçlu listesinde global arama" aria-describedby="globalSearchHint"><button type="button" class="secondary" id="clearDocSearch" hidden>Temizle</button></div></div><details class="borrower-filter-section" id="borrowerFilterSection"><summary>Filtreleme</summary>${borrowerFilterMarkup()}</details><div class="segments" style="padding:0 24px 20px" role="group" aria-label="Borçlu durum filtresi">${['Derdest', 'İnfaz', 'Bekleme', 'İade', 'İcra', 'Tümü'].map((status) => `<button type="button" data-status-filter="${status}">${status}</button>`).join('')}</div><div class="overflow borrower-records-scroll"><table class="borrower-records-table"><thead><tr><th>DURUM<select id="debtorColumnStatus" data-optional="true" aria-label="Duruma göre süz" style="display:block;width:100%;margin-top:5px">${['Tümü', 'Derdest', 'İnfaz', 'Bekleme', 'İade', 'İcra'].map((status) => '<option>' + status + '</option>').join('')}</select></th><th>EVRAK / MÜVEKKİL${debtorColumnInput('type', 'Evrak türüne göre süz', Object.keys(documentTypes))}${debtorColumnInput('record', 'Föy veya müvekkile göre süz')}</th><th>BORÇLU${debtorColumnInput('debtor', 'Borçluya göre süz')}</th><th>DOSYA SORUMLUSU${debtorColumnInput('staff', 'Dosya sorumlusuna göre süz')}</th><th>ASIL ALACAK${debtorColumnInput('amount', 'Asıl alacağa göre süz')}</th><th id="debtorEntryDateHeading"><button type="button" class="link" id="sortDebtorEntryDate" style="padding:0;font:inherit;color:inherit;letter-spacing:inherit">TAKİP TARİHİ ↕</button>${debtorColumnInput('tracking', 'Takip tarihine göre süz')}</th><th>VADE${debtorColumnInput('due', 'Vadeye göre süz')}</th><th id="closureDateHeading" hidden>İNFAZ TARİHİ${debtorColumnInput('closure', 'İnfaz tarihine göre süz')}</th><th>İŞLEM</th></tr></thead><tbody id="docRows"></tbody></table></div><div class="tablefoot" id="docSearchCount" role="status" aria-live="polite"></div></div>`;
+    `<div class="panel"><div class="panelhead"><div><h2>Borçlu kayıtları</h2><p id="globalSearchHint">Borçlu, telefon, müvekkil, kimlik, evrak no, tür, tutar, tarih veya not ile arayın.</p></div><div class="toolbar global-search"><input class="search" id="docSearch" type="search" placeholder="Tüm alanlarda ara…" aria-label="Borçlu listesinde global arama" aria-describedby="globalSearchHint"><button type="button" class="secondary" id="clearDocSearch" hidden>Temizle</button></div></div><details class="borrower-filter-section" id="borrowerFilterSection"><summary>Filtreleme</summary>${borrowerFilterMarkup()}</details><div class="segments" style="padding:0 24px 20px" role="group" aria-label="Borçlu durum filtresi">${['Derdest', 'İnfaz', 'Bekleme', 'İade', 'İcra', 'Tümü'].map((status) => `<button type="button" data-status-filter="${status}">${status}</button>`).join('')}</div>${debtorFolderTabs()}<div class="overflow borrower-records-scroll"><table class="borrower-records-table"><thead><tr><th>DURUM<select id="debtorColumnStatus" data-optional="true" aria-label="Duruma göre süz" style="display:block;width:100%;margin-top:5px">${['Tümü', 'Derdest', 'İnfaz', 'Bekleme', 'İade', 'İcra'].map((status) => '<option>' + status + '</option>').join('')}</select></th><th>EVRAK / MÜVEKKİL${debtorColumnInput('type', 'Evrak türüne göre süz', Object.keys(documentTypes))}${debtorColumnInput('record', 'Föy veya müvekkile göre süz')}</th><th>BORÇLU${debtorColumnInput('debtor', 'Borçluya göre süz')}</th><th>DOSYA SORUMLUSU${debtorColumnInput('staff', 'Dosya sorumlusuna göre süz')}</th><th>ASIL ALACAK${debtorColumnInput('amount', 'Asıl alacağa göre süz')}</th><th id="debtorEntryDateHeading"><button type="button" class="link" id="sortDebtorEntryDate" style="padding:0;font:inherit;color:inherit;letter-spacing:inherit">TAKİP TARİHİ ↕</button>${debtorColumnInput('tracking', 'Takip tarihine göre süz')}</th><th>VADE${debtorColumnInput('due', 'Vadeye göre süz')}</th><th id="closureDateHeading" hidden>İNFAZ TARİHİ${debtorColumnInput('closure', 'İnfaz tarihine göre süz')}</th><th>İŞLEM</th></tr></thead><tbody id="docRows"></tbody></table></div><div class="tablefoot" id="docSearchCount" role="status" aria-live="polite"></div></div>`;
   if (['ceo', 'admin'].includes(hanAuth.role)) {
     const archive = document.createElement('button');
     archive.type = 'button';
@@ -604,6 +667,15 @@ function documents() {
         docRows();
       }),
   );
+  document.querySelectorAll('[data-debtor-folder]').forEach((button) => {
+    button.onclick = () => {
+      debtorFolderFilter = button.dataset.debtorFolder;
+      debtorStatusFilter = 'Tümü';
+      updateDebtorFolderTabs();
+      docRows();
+    };
+  });
+  updateDebtorFolderTabs();
   bindBorrowerFilters();
   $('#sortDebtorEntryDate').onclick = () => {
     debtorEntryDateSort = debtorEntryDateSort === -1 ? 1 : -1;
@@ -683,9 +755,8 @@ function docRows() {
   const isAdmin = ['ceo', 'admin'].includes(hanAuth.role);
   db.docs.forEach(automaticLegalCharges);
   let q = $('#docSearch').value;
-  let list = filteredBorrowers(db.docs, borrowerFilters, debtorStatusFilter, q, isAdmin).filter(
-    matchesDebtorColumns,
-  );
+  const filters = { ...borrowerFilters, folder: debtorFolderFilter };
+  let list = filteredBorrowers(db.docs, filters, debtorStatusFilter, q, isAdmin).filter(matchesDebtorColumns);
   const entryHeading = $('#debtorEntryDateHeading');
   entryHeading.setAttribute(
     'aria-sort',
@@ -705,8 +776,7 @@ function docRows() {
     const status = button.dataset.statusFilter;
     button.classList.toggle('selected', status === debtorStatusFilter);
     button.setAttribute('aria-pressed', String(status === debtorStatusFilter));
-    button.textContent =
-      status + ' (' + filteredBorrowers(db.docs, borrowerFilters, status, q, isAdmin).length + ')';
+    button.textContent = status + ' (' + filteredBorrowers(db.docs, filters, status, q, isAdmin).length + ')';
   });
   $('#clearDocSearch').hidden = !q;
   $('#docSearchCount').textContent =
@@ -714,7 +784,12 @@ function docRows() {
     ': ' +
     list.length +
     ' / ' +
-    db.docs.filter((d) => debtorStatusFilter === 'Tümü' || debtorStatus(d) === debtorStatusFilter).length +
+    db.docs.filter(
+      (d) =>
+        (debtorStatusFilter === 'Tümü' || debtorStatus(d) === debtorStatusFilter) &&
+        (!debtorFolderFilter ||
+          (d.debtorFolder || '') === (debtorFolderFilter === 'none' ? '' : debtorFolderFilter)),
+    ).length +
     ' kayıt gösteriliyor';
   paintDocumentRows(list, isAdmin, showClosureDate);
 }
@@ -725,14 +800,16 @@ function paintDocumentRows(list, isAdmin, showClosureDate) {
     list
       .map(
         (d) =>
-          `<tr class="${debtorStatus(d) === 'İnfaz' ? 'status-closed' : debtorStatus(d) === 'İade' ? 'status-returned' : 'status-pending'}"><td><select ${isAdmin ? '' : 'disabled'} class="row-status" aria-label="${esc(d.debtor)} durumu" data-row-status="${esc(d.id)}">${['Derdest', 'İnfaz', 'Bekleme', 'İade', 'İcra'].map((status) => `<option ${status === debtorStatus(d) ? 'selected' : ''}>${status}</option>`).join('')}</select></td><td><strong>${esc(d.number)}</strong>${window.testRecordBadge?.(d) || ''}<small>${esc(docType(d))} · ${esc(d._clientName ?? db.clients.find((c) => c.id === d.client)?.name)}</small></td><td><button class="link debtor-name" data-debtor="${esc(d.id)}">${esc(d.debtor)}</button><small>${esc(d.status || 'Derdest')}</small></td><td>${borrowerAssignmentMarkup(d, isAdmin)}</td><td><strong>${d._principalCents ? recordMoney(d._principalCents) : money(d.amount)}</strong>${typeof unitPrincipalSupplement === 'function' ? unitPrincipalSupplement(d) : ''}${isAdmin ? `<small>Toplam alacak: ${d._targetCents ? recordMoney(d._targetCents) : money(docFinance(d).target / 100)}</small>` : ''}</td><td>${esc(displayDate(borrowerTrackingDate(d)) || '—')}</td><td>${esc(d.due ? displayDate(d.due) : '—')}</td>${showClosureDate ? '<td>' + esc(displayDate(clientPayoutClosureDate(d)) || '—') + '</td>' : ''}<td><button type="button" class="link" data-edit-debtor="${esc(d.id)}">Düzenle</button><button type="button" class="link" data-add-guarantor="${esc(d.id)}">Kefil Ekle</button><button class="link" data-receipt="${esc(d.id)}">Tutanak Görüntüle ↗</button>${isAdmin ? `<button class="link" data-finance="${esc(d.id)}">Finansal İşlemler</button>` : ''}${(window.hanMayDelete?.('documents') ?? hanAuth.canDelete) ? `<button type="button" class="link" data-delete-document="${esc(d.id)}">Dosyayı Sil</button>` : ''}${isAdmin && debtorStatus(d) === 'Derdest' ? `<button type="button" class="link" data-move-enforcement="${esc(d.id)}">İcraya Taşı</button>` : ''}</td></tr>`,
+          `<tr class="${debtorStatus(d) === 'İnfaz' ? 'status-closed' : debtorStatus(d) === 'İade' ? 'status-returned' : 'status-pending'}"><td><select ${isAdmin ? '' : 'disabled'} class="row-status" aria-label="${esc(d.debtor)} durumu" data-row-status="${esc(d.id)}">${['Derdest', 'İnfaz', 'Bekleme', 'İade', 'İcra'].map((status) => `<option ${status === debtorStatus(d) ? 'selected' : ''}>${status}</option>`).join('')}</select></td><td><strong>${esc(d.number)}</strong>${window.testRecordBadge?.(d) || ''}<small>${esc(docType(d))} · ${esc(d._clientName ?? db.clients.find((c) => c.id === d.client)?.name)}</small></td><td><button class="link debtor-name" data-debtor="${esc(d.id)}">${esc(d.debtor)}</button><small>${esc(d.status || 'Derdest')}${d.debtorFolder ? ' · ' + esc(d.debtorFolder) : ''}</small></td><td>${borrowerAssignmentMarkup(d, isAdmin)}</td><td><strong>${d._principalCents ? recordMoney(d._principalCents) : money(d.amount)}</strong>${typeof unitPrincipalSupplement === 'function' ? unitPrincipalSupplement(d) : ''}${isAdmin ? `<small>Toplam alacak: ${d._targetCents ? recordMoney(d._targetCents) : money(docFinance(d).target / 100)}</small>` : ''}</td><td>${esc(displayDate(borrowerTrackingDate(d)) || '—')}</td><td>${esc(d.due ? displayDate(d.due) : '—')}</td>${showClosureDate ? '<td>' + esc(displayDate(clientPayoutClosureDate(d)) || '—') + '</td>' : ''}<td><button type="button" class="link" data-edit-debtor="${esc(d.id)}">Düzenle</button><button type="button" class="link" data-add-guarantor="${esc(d.id)}">Kefil Ekle</button><button class="link" data-receipt="${esc(d.id)}">Tutanak Görüntüle ↗</button>${isAdmin ? `<button type="button" class="link" data-move-folder="${esc(d.id)}">Klasöre Taşı</button><button class="link" data-finance="${esc(d.id)}">Finansal İşlemler</button>` : ''}${(window.hanMayDelete?.('documents') ?? hanAuth.canDelete) ? `<button type="button" class="link" data-delete-document="${esc(d.id)}">Dosyayı Sil</button>` : ''}${isAdmin && debtorStatus(d) === 'Derdest' ? `<button type="button" class="link" data-move-enforcement="${esc(d.id)}">İcraya Taşı</button>` : ''}</td></tr>`,
       )
       .join('') ||
     `<tr><td colspan="${showClosureDate ? 9 : 8}" class="empty">Seçili durum ve aramayla eşleşen borçlu bulunamadı.</td></tr>`;
   document.querySelectorAll('#docRows tr').forEach((row) => {
     if (window.hanModuleAction?.('documents', 'update') === false) {
       row
-        .querySelectorAll('[data-edit-debtor], [data-add-guarantor], [data-move-enforcement]')
+        .querySelectorAll(
+          '[data-edit-debtor], [data-add-guarantor], [data-move-enforcement], [data-move-folder]',
+        )
         .forEach((button) => {
           button.hidden = true;
         });
@@ -757,6 +834,12 @@ function paintDocumentRows(list, isAdmin, showClosureDate) {
         document.querySelectorAll('#docRows .borrower-row-actions[open]').forEach((other) => {
           if (other !== menu) other.open = false;
         });
+    };
+  });
+  document.querySelectorAll('[data-move-folder]').forEach((button) => {
+    button.onclick = () => {
+      const record = list.find((doc) => doc.id === button.dataset.moveFolder);
+      if (record) borrowerFolderForm(record);
     };
   });
   document
@@ -1399,6 +1482,8 @@ function filteredBorrowers(docs, filters, status, query, isAdmin) {
   const norm = normalizeSearch;
   return docs.filter((d) => {
     if (status !== 'Tümü' && debtorStatus(d) !== status) return false;
+    if (filters.folder && (d.debtorFolder || '') !== (filters.folder === 'none' ? '' : filters.folder))
+      return false;
     if (
       !matchesGlobalSearch(
         d,

@@ -227,17 +227,26 @@ function accountMovements() {
             expenseCategory: hanAccountingRules.expenseCategoryName(e.expenseCategory),
             signed: e.type === 'in' ? e.amount : -e.amount,
             label:
-              e.type === 'in'
-                ? e.entryKind === 'external'
-                  ? 'Haricen para girişi (' + (e.includeInProfit ? 'kâra eklendi' : 'kâra eklenmedi') + ')'
-                  : 'Para girişi'
-                : e.type === 'externalOut'
-                  ? 'Harici para çıkışı (' + (e.includeInProfit ? 'kârdan düşüldü' : 'kârdan düşülmedi') + ')'
-                  : e.type === 'clientPayout'
-                    ? clientPaymentLabel(e)
-                    : e.type === 'advance'
-                      ? 'Avans çıkışı · ' + (e.advanceType || '')
-                      : 'Para çıkışı',
+              e.entryKind === 'cheque'
+                ? (e.type === 'in' ? 'Alınan çek' : 'Verilen çek') +
+                  (e.includeInProfit
+                    ? e.type === 'in'
+                      ? ' (kâra eklendi)'
+                      : ' (kârdan düşüldü)'
+                    : ' (kârı etkilemez)')
+                : e.type === 'in'
+                  ? e.entryKind === 'external'
+                    ? 'Haricen para girişi (' + (e.includeInProfit ? 'kâra eklendi' : 'kâra eklenmedi') + ')'
+                    : 'Para girişi'
+                  : e.type === 'externalOut'
+                    ? 'Harici para çıkışı (' +
+                      (e.includeInProfit ? 'kârdan düşüldü' : 'kârdan düşülmedi') +
+                      ')'
+                    : e.type === 'clientPayout'
+                      ? clientPaymentLabel(e)
+                      : e.type === 'advance'
+                        ? 'Avans çıkışı · ' + (e.advanceType || '')
+                        : 'Para çıkışı',
           },
         ],
   );
@@ -796,6 +805,15 @@ function accountingPage(remote) {
       )}</select></label><label class="field">İşlemi Yapan Kullanıcı<input name="operator" list="accountingOperators" data-optional="true" value="${esc(movementFilters.operator)}" placeholder="Tüm kullanıcılar"><datalist id="accountingOperators">${operators.map((n) => `<option value="${esc(n)}"></option>`).join('')}</datalist></label><label class="field">Gider Kalemi<select name="category" data-optional="true"><option value="">Tüm Gider Kalemleri</option>${accountingExpenseCategories.map((n) => `<option value="${esc(n)}" ${movementFilters.category === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label><label class="field">Açıklama / İşlem Ara<input type="search" name="query" data-optional="true" value="${esc(movementFilters.query)}" placeholder="Açıklama, evrak no veya kullanıcı…"></label></div><div class="toolbar" style="margin-top:16px"><button class="primary" type="submit">Filtrele</button><button class="secondary" type="button" id="clearMovementFilters">Filtreleri Temizle</button></div><p>Tarih aralığı başlangıç ve bitiş günlerini içerir.</p></form></details><div class="overflow acc-ledger-scroll"><table class="account-ledger"><thead><tr><th>TARİH</th><th>HESAP</th><th>İŞLEM</th><th>GİDER KALEMİ</th><th>İŞLEMİ YAPAN</th><th>AÇIKLAMA</th><th class="acc-num">GİREN</th><th class="acc-num">ÇIKAN</th><th class="acc-num">KALAN</th></tr></thead><tbody>${rows.map((e) => `<tr><td>${esc(displayDate(e.date))}</td><td>${esc(name(e.accountId))}</td><td>${accountingBadge(e)}${typeof currentAccountMovementMarkup === 'function' ? currentAccountMovementMarkup(e) : ''}</td><td>${esc(e.type === 'out' ? e.expenseCategory || 'Belirtilmedi' : '—')}</td><td>${esc(e.operatorName || 'Belirtilmedi')}</td><td>${esc(e.note)}</td><td class="acc-num acc-pos">${e.signed > 0 ? amount(e.signed) : '—'}</td><td class="acc-num acc-neg">${e.signed < 0 ? amount(-BigInt(e.signed)) : '—'}</td><td class="acc-num ${e.balance !== undefined ? accountingTone(e.balance) : ''}"><strong>${e.balance !== undefined ? amount(e.balance) : '—'}</strong></td></tr>`).join('') || '<tr><td colspan="9" class="empty">Henüz hesap hareketi yok.</td></tr>'}</tbody><tfoot><tr><td colspan="6"><strong>FİLTRELENEN TOPLAM</strong></td><td class="acc-num"><strong>${amount(totals.incoming)}</strong></td><td class="acc-num"><strong>${amount(totals.outgoing)}</strong></td><td>—</td></tr></tfoot></table></div><details class="acc-notes"><summary>Bu ekran nasıl çalışır?</summary><p>Hesap özetleri tüm kayıtları kapsar. Hareketler en yeniden eskiye sıralanır; kalan sütunu ilgili işlemin sonrasındaki hesap bakiyesidir.</p><p>Borçlu tahsilatı dosyaya işlenir: Borçlu Tahsilatı düğmesiyle dosyayı seçin veya dosyanın Finansal İşlemler ekranını kullanın; aynı tahsilatı Para Girişi olarak tekrar kaydetmeyin. Hesaplar arası transfer ciro veya kâr oluşturmaz. Bu ekran kayıt tutar, bankaya talimat göndermez.</p>${unassigned ? '<p>Hesap seçilmeden girilmiş eski tahsilatlar hesap bakiyelerine dahil değildir.</p>' : ''}</details></div>`;
   if (typeof currentAccountsPage === 'function')
     $('#openCurrentAccounts').onclick = () => currentAccountsPage();
+  if (typeof chequesPage === 'function') {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'secondary';
+    button.id = 'openCheques';
+    button.textContent = 'Çek İşlemleri';
+    button.onclick = () => chequesPage();
+    $('#openCurrentAccounts').after(button);
+  }
   if (window.hanAuth?.personnelLedgerAccess?.view) {
     const button = document.createElement('button');
     button.type = 'button';

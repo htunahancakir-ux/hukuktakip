@@ -134,6 +134,7 @@ test('Browser pages show all-record totals, escape labels and fetch only the sel
     debtorColumnFilters: {},
     debtorEntryDateSort: 0,
     debtorStatusFilter: 'Derdest',
+    debtorFolderFilter: '',
     $: (selector) => w.document.querySelector(selector),
     db: { clients: [], docs: [] },
     financeEvents: [],

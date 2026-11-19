@@ -239,6 +239,32 @@ async function handleDocumentRoutes(ctx) {
     send(res, 200, { document: result });
     return true;
   }
+  if (url.pathname === '/api/documents/folder' && req.method === 'POST') {
+    if (!['ceo', 'admin'].includes(u.role) || u.readOnly === true)
+      throw fail(403, 'Klasörü yalnızca yönetici değiştirebilir.');
+    require('../../lib/module-permissions.cjs').assertModuleAction(u, 'documents', 'update');
+    const input = await body(req);
+    const rules = require('./debtor-folders.js');
+    if (
+      typeof input.documentId !== 'string' ||
+      !rules.valid(input.folder) ||
+      !rules.valid(input.expectedFolder)
+    )
+      throw fail(400, 'Geçerli borçlu klasörü seçin.');
+    const next = structuredClone(ctx.state);
+    const record = next.data['icrapro-v1'].docs.find((d) => d.id === input.documentId);
+    if (!record) throw fail(404, 'Borçlu dosyası bulunamadı.');
+    if ((record.debtorFolder || '') !== input.expectedFolder)
+      throw fail(409, 'Dosyanın klasörü değişti. Listeyi yenileyin.');
+    if ((record.debtorFolder || '') !== input.folder) {
+      if (input.folder) record.debtorFolder = input.folder;
+      else delete record.debtorFolder;
+      record.updatedAt = new Date().toISOString();
+      persist(next);
+    }
+    send(res, 200, { ok: true, documentId: record.id, folder: record.debtorFolder || '' });
+    return true;
+  }
   if (url.pathname === '/api/documents/assign' && req.method === 'POST') {
     if (!['ceo', 'admin'].includes(u.role))
       throw fail(403, 'Dosya sorumlusunu yalnızca yönetici atayabilir.');

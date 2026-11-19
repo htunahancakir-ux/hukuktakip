@@ -267,7 +267,9 @@ function aggregateFinance(events, period, date, accountingEntries = []) {
     .filter((e) => e.type === 'out' && !e.financeEventId)
     .map((e) => ({ ...e, type: 'accountingExpense' }));
   const externalIncome = accountingEntries
-    .filter((e) => e.type === 'in' && e.entryKind === 'external' && e.includeInProfit === true)
+    .filter(
+      (e) => e.type === 'in' && ['external', 'cheque'].includes(e.entryKind) && e.includeInProfit === true,
+    )
     .map((e) => ({ ...e, type: 'externalIncome' }));
   const externalOut = accountingEntries.filter((e) => e.type === 'externalOut' && e.includeInProfit === true);
   const combined = [...events, ...costs, ...externalIncome, ...externalOut];
