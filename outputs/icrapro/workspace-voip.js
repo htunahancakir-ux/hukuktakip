@@ -1362,18 +1362,13 @@ function setupVoipConversations(dialog, doc) {
 function voipOnAndroid() {
   return navigator.userAgentData?.platform === 'Android' || /Android/i.test(navigator.userAgent);
 }
-function voipAcrChoice(devices) {
-  const unavailable = hanAuth.readOnly
-    ? 'Bu hesap salt okunurdur.'
-    : !devices.length
-      ? 'Hesabınıza ACR Phone cihazı atanmamış.'
-      : '';
-  return `<details class="voip-acr-choice"><summary class="secondary"><span class="voip-visually-hidden">Arama kanalı seçenekleri</span><span aria-hidden="true">▾</span></summary>
-    <div class="voip-acr-options">
-      ${devices.length > 1 ? `<label>Cihaz <select data-acr-device data-optional="true"><option value="">Cihaz seçin</option>${devices.map((d) => `<option value="${esc(d.id)}">${esc(d.label)}</option>`).join('')}</select></label>` : ''}
-      <button type="button" class="secondary" data-acr-send ${unavailable || devices.length > 1 ? 'disabled' : ''}>GSM ile ara (ACR Phone)</button>
-      <p data-acr-status role="status">${esc(unavailable)}</p><div data-acr-link></div>
-    </div></details>`;
+function voipAcrButtons(devices, phone = '') {
+  return devices
+    .map(
+      (device, index) =>
+        `<button type="button" class="primary voip-acr-dial" data-acr-send="${esc(device.id)}" data-acr-phone="${esc(phone)}">GSM ile ara (ACR Phone)${devices.length > 1 ? `<small>${esc(device.label || 'Telefon ' + (index + 1))}</small>` : ''}</button>`,
+    )
+    .join('');
 }
 function voipAcrLink(host, dial, status) {
   const link = document.createElement('a');
@@ -1391,57 +1386,57 @@ function voipAcrLink(host, dial, status) {
     Math.max(0, Date.parse(dial.readyUntil) - Date.now()),
   );
 }
-function bindVoipAcrChoice(choice, target, devices) {
-  const button = choice.querySelector('[data-acr-send]');
-  const status = choice.querySelector('[data-acr-status]');
-  const linkHost = choice.querySelector('[data-acr-link]');
-  const deviceSelect = choice.querySelector('[data-acr-device]');
-  if (deviceSelect)
-    deviceSelect.onchange = () => {
-      button.disabled = !deviceSelect.value;
-    };
-  button.onclick = async () => {
-    button.disabled = true;
-    if (deviceSelect) deviceSelect.disabled = true;
-    linkHost.replaceChildren();
-    status.textContent = 'GSM araması hazırlanıyor…';
-    try {
-      const deviceId = deviceSelect ? deviceSelect.value : devices[0]?.id;
-      const destination = target();
-      const { dial } = await voipApi('acr-dials', 'POST', { ...destination, deviceId });
-      if (dial.automatic) {
-        status.textContent = 'Android telefona arama komutu gönderiliyor…';
-        const query = 'acr-dials?' + new URLSearchParams({ dialId: dial.id });
-        while (choice.isConnected && choice.open) {
-          const progress = await voipApi(query);
-          if (progress.status === 'delivered') {
-            status.textContent = 'Android telefon arama komutunu aldı.';
-            break;
+function bindVoipAcrDial(view, devices, { target, status, visible, numberSelect }) {
+  const buttons = [...view.querySelectorAll('[data-acr-send]')];
+  const linkHost = view.querySelector('[data-acr-link]');
+  for (const button of buttons) {
+    button.onclick = async () => {
+      const deviceId = button.dataset.acrSend;
+      const destination = target(button);
+      const current = () => button.isConnected && visible();
+      for (const action of buttons) action.disabled = true;
+      if (numberSelect) numberSelect.disabled = true;
+      linkHost.replaceChildren();
+      status.textContent = 'GSM araması hazırlanıyor…';
+      try {
+        const { dial } = await voipApi('acr-dials', 'POST', { ...destination, deviceId });
+        if (!current()) return;
+        if (dial.automatic) {
+          status.textContent = 'Android telefona arama komutu gönderiliyor…';
+          const query = 'acr-dials?' + new URLSearchParams({ dialId: dial.id });
+          while (current()) {
+            const progress = await voipApi(query);
+            if (!current()) return;
+            if (progress.status === 'delivered') {
+              status.textContent = 'Android telefon arama komutunu aldı.';
+              break;
+            }
+            if (progress.status === 'expired') {
+              status.textContent =
+                'Telefona ulaşılamadı. HAN GSM Bağlantısı bildiriminin açık olduğunu kontrol edin.';
+              break;
+            }
+            await new Promise((resolve) =>
+              setTimeout(resolve, Math.min(2000, Math.max(100, progress.waitMs))),
+            );
           }
-          if (progress.status === 'expired') {
-            status.textContent =
-              'Telefona ulaşılamadı. HAN GSM Bağlantısı bildiriminin açık olduğunu kontrol edin.';
-            break;
-          }
-          await new Promise((resolve) => setTimeout(resolve, Math.min(2000, Math.max(100, progress.waitMs))));
+        } else if (voipOnAndroid()) {
+          const ready = await voipApi('acr-dials', 'POST', { dialId: dial.id });
+          if (!current()) return;
+          status.textContent = 'Bu telefonda varsayılan arama uygulamasını açın.';
+          voipAcrLink(linkHost, ready.dial, status);
+        } else {
+          const device = devices.find((d) => d.id === deviceId);
+          status.textContent = `İstek ${device?.label || 'ACR Phone'} için hazır. Android telefonda aynı hesapla HAN Hukuk’u açıp Bekleyen GSM aramalarına dokunun.`;
         }
-      } else if (voipOnAndroid()) {
-        if (!choice.isConnected || !choice.open || target().phone !== destination.phone) return;
-        const ready = await voipApi('acr-dials', 'POST', { dialId: dial.id });
-        if (!choice.isConnected || !choice.open || target().phone !== destination.phone) return;
-        status.textContent = 'Bu telefonda varsayılan arama uygulamasını açın.';
-        voipAcrLink(linkHost, ready.dial, status);
-      } else {
-        const device = devices.find((d) => d.id === deviceId);
-        status.textContent = `İstek ${device?.label || 'ACR Phone'} için hazır. Android telefonda aynı hesapla HAN Hukuk’u açıp Bekleyen GSM aramalarına dokunun.`;
+      } catch (error) {
+        if (current()) status.textContent = error.message;
+      } finally {
+        for (const action of buttons) action.disabled = false;
+        if (numberSelect) numberSelect.disabled = false;
       }
-    } catch (error) {
-      status.textContent = error.message;
-    } finally {
-      button.disabled = false;
-      if (deviceSelect) deviceSelect.disabled = false;
-    }
-  };
+    };
+  }
 }
 function setupVoipCard(dialog, target) {
   if (globalThis.hanModules?.voip === false || hanAuth.readOnly) return;
@@ -1471,14 +1466,18 @@ async function openVoipCardDial(target) {
     const data = await voipApi('calls?' + query);
     if (!dialog.open) return;
     voipUi.results = data.results || [];
+    const acrDevices = data.acrDevices || [];
     const verimor = data.enabled && data.extension;
+    const actions = acrDevices.length
+      ? voipAcrButtons(acrDevices) + '<div data-acr-link></div>'
+      : `<button type="button" class="primary" data-card-verimor ${verimor ? '' : 'disabled'}>Verimor ile ara</button>
+      ${verimor ? '' : '<p class="voip-notice" data-card-verimor-notice>Verimor bağlantısı ve kullanıcı dahilisi ayarlanmalı.</p>'}`;
     feedback.textContent = data.phones.length ? '' : 'Kartta aranabilecek geçerli numara yok.';
     host.innerHTML =
       (data.phones.length
         ? `<label class="field">Aranacak numara<select data-card-number>
         ${data.phones.map(({ phone }, index) => `<option value="${esc(phone)}">${index + 1}. ${window.hanPrivacy?.text('phone', phone) || esc(voipPhone(phone))}</option>`).join('')}
-        </select></label><p data-card-number-preview></p><div class="voip-channel-group"><button type="button" class="primary" data-card-verimor ${verimor ? '' : 'disabled'}>Verimor ile ara</button>${voipAcrChoice(data.acrDevices || [])}</div>
-      ${verimor ? '' : '<p class="voip-notice" data-card-verimor-notice>Verimor bağlantısı ve kullanıcı dahilisi ayarlanmalı.</p>'}`
+        </select></label><p data-card-number-preview></p><div class="voip-channel-group">${actions}</div>`
         : '') + '<button type="button" class="link" data-card-history>Arama geçmişi</button>';
     host.querySelector('[data-card-history]').onclick = () => openVoipHistory({ id: '' }, '', target);
     if (!data.phones.length) return;
@@ -1489,9 +1488,21 @@ async function openVoipCardDial(target) {
       preview.hidden = !preview.innerHTML;
     };
     showNumber();
-    const choice = host.querySelector('.voip-acr-choice');
     const dial = () => ({ cardType: target.cardType, cardId: target.cardId, phone: select.value });
-    bindVoipAcrChoice(choice, dial, data.acrDevices || []);
+    if (acrDevices.length) {
+      bindVoipAcrDial(host, acrDevices, {
+        target: dial,
+        status: feedback,
+        visible: () => dialog.open,
+        numberSelect: select,
+      });
+      select.onchange = () => {
+        showNumber();
+        feedback.textContent = '';
+        host.querySelector('[data-acr-link]').replaceChildren();
+      };
+      return;
+    }
     let confirmedPhone = '';
     const callButton = host.querySelector('[data-card-verimor]');
     if (data.enabled && !data.extension) {
@@ -1508,15 +1519,10 @@ async function openVoipCardDial(target) {
       confirmedPhone = '';
       callButton.textContent = 'Verimor ile ara';
       feedback.textContent = '';
-      choice.open = false;
-      choice.querySelector('[data-acr-link]').replaceChildren();
-      if (data.acrDevices?.length) choice.querySelector('[data-acr-status]').textContent = '';
     };
     callButton.onclick = async () => {
       const request = dial();
       select.disabled = true;
-      choice.open = false;
-      choice.inert = true;
       feedback.textContent = 'Verimor araması hazırlanıyor…';
       try {
         if (data.webphone) void openVoipWebphone(feedback, true);
@@ -1538,7 +1544,6 @@ async function openVoipCardDial(target) {
           callButton.textContent = 'Verimor ile tekrar ara';
         }
       } finally {
-        choice.inert = false;
         select.disabled = false;
       }
     };
@@ -1614,13 +1619,10 @@ function setupBorrowerVoip(dialog, doc) {
     () => document.removeEventListener('borrower-phone-status-changed', phoneStatusChanged),
     { once: true },
   );
+  const acrDialInUse = () =>
+    !panel.hidden && panel.querySelector('[data-acr-send]:disabled, [data-acr-link] a');
   async function refresh() {
-    if (
-      busy ||
-      addingPhone ||
-      document.getElementById('voipExtensionAssignment')?.open ||
-      (!panel.hidden && panel.querySelector('.voip-acr-choice[open]'))
-    )
+    if (busy || addingPhone || document.getElementById('voipExtensionAssignment')?.open || acrDialInUse())
       return;
     const seq = ++version;
     try {
@@ -1629,11 +1631,14 @@ function setupBorrowerVoip(dialog, doc) {
         !wrap.isConnected ||
         seq !== version ||
         document.getElementById('voipExtensionAssignment')?.open ||
-        panel.querySelector('.voip-acr-choice[open]')
+        acrDialInUse()
       )
         return;
       voipUi.results = data.results || voipUi.results || [];
-      if (data.enabled && data.extension && data.webphone && !phoneOpening)
+      const acrDevices = data.acrDevices || [];
+      const useAcr = acrDevices.length > 0;
+      const verimorReady = !useAcr && data.enabled && data.extension;
+      if (verimorReady && data.webphone && !phoneOpening)
         phoneOpening = openVoipWebphone(
           {
             set textContent(text) {
@@ -1645,19 +1650,22 @@ function setupBorrowerVoip(dialog, doc) {
           phoneOpening = null;
         });
       const scroll = panel.querySelector('.voip-number-list')?.scrollTop || 0;
-      const lastFocused = document.activeElement?.dataset?.dialPhone;
+      const lastFocused = document.activeElement?.dataset;
       const warningFocused = !!panel.querySelector('[data-voip-extension-warning]:focus');
+      panel.classList.toggle('voip-number-panel-acr', useAcr);
       panel.innerHTML =
         '<div class="voip-panel-heading"><div><strong>Telefonla ara</strong><span>' +
         data.phones.length +
         ' numara</span></div>' +
-        '<button type="button" class="link" data-voip-diagnose>Bağlantı testi</button>' +
+        (useAcr ? '' : '<button type="button" class="link" data-voip-diagnose>Bağlantı testi</button>') +
         (!hanAuth.readOnly
           ? '<button type="button" class="secondary" data-add-phone>＋ Numara ekle</button>'
           : '') +
         '</div>' +
-        '<div class="voip-panel-messages"><div data-voip-feedback role="alert" aria-live="assertive" hidden></div><div data-voip-repeat hidden></div><div class="voip-mic-notice" data-voip-mic hidden></div><div data-voip-trouble ' +
-        (trouble ? '' : 'hidden') +
+        '<div class="voip-panel-messages"><div data-voip-feedback role="alert" aria-live="assertive" hidden></div>' +
+        (useAcr ? '<div data-acr-link></div>' : '') +
+        '<div data-voip-repeat hidden></div><div class="voip-mic-notice" data-voip-mic hidden></div><div data-voip-trouble ' +
+        (trouble && !useAcr ? '' : 'hidden') +
         '>' +
         trouble +
         '</div></div>' +
@@ -1681,16 +1689,17 @@ function setupBorrowerVoip(dialog, doc) {
                   '">Görüşme notu</button><button type="button" class="voip-hangup" data-number-hangup="' +
                   esc(active.id) +
                   '">Sonlandır</button>'
-                : '<button type="button" class="primary" title="Verimor ile ara" data-dial-phone="' +
-                  esc(p.phone) +
-                  '" data-recent="' +
-                  (recent ? '1' : '') +
-                  '" ' +
-                  (!data.enabled || !data.extension || active || hanAuth.readOnly ? 'disabled' : '') +
-                  '>' +
-                  (recent ? 'Tekrar ara' : 'Ara') +
-                  '</button>' +
-                  voipAcrChoice(data.acrDevices || []);
+                : useAcr
+                  ? voipAcrButtons(acrDevices, p.phone)
+                  : '<button type="button" class="primary" title="Verimor ile ara" data-dial-phone="' +
+                    esc(p.phone) +
+                    '" data-recent="' +
+                    (recent ? '1' : '') +
+                    '" ' +
+                    (!data.enabled || !data.extension || active || hanAuth.readOnly ? 'disabled' : '') +
+                    '>' +
+                    (recent ? 'Tekrar ara' : 'Ara') +
+                    '</button>';
             return (
               '<article class="voip-phone-row" data-call-state="' +
               state +
@@ -1734,19 +1743,34 @@ function setupBorrowerVoip(dialog, doc) {
           .join('') || '<div class="voip-panel-empty">Aranabilecek geçerli bir telefon numarası yok.</div>') +
         '</div>';
       panel.querySelector('.voip-number-list').scrollTop = scroll;
-      panel.querySelectorAll('.voip-acr-choice').forEach((choice) => {
-        const phone = choice.previousElementSibling.dataset.dialPhone;
-        bindVoipAcrChoice(choice, () => ({ documentId: doc.id, phone }), data.acrDevices || []);
-      });
-      if (lastFocused)
-        panel.querySelector('[data-dial-phone="' + lastFocused + '"]')?.focus({ preventScroll: true });
+      if (useAcr) {
+        bindVoipAcrDial(panel, acrDevices, {
+          target: (button) => ({ documentId: doc.id, phone: button.dataset.acrPhone }),
+          status: {
+            set textContent(text) {
+              message(text, 'notice');
+            },
+          },
+          visible: () => !panel.hidden && dialog.open,
+        });
+        if (lastFocused?.acrSend)
+          [...panel.querySelectorAll('[data-acr-send]')]
+            .find(
+              (b) => b.dataset.acrSend === lastFocused.acrSend && b.dataset.acrPhone === lastFocused.acrPhone,
+            )
+            ?.focus({ preventScroll: true });
+      }
+      if (lastFocused?.dialPhone)
+        panel
+          .querySelector('[data-dial-phone="' + lastFocused.dialPhone + '"]')
+          ?.focus({ preventScroll: true });
       if (feedback) message(feedback, tone);
-      else if (!data.enabled)
+      else if (!useAcr && !data.enabled)
         message(
           'VoIP bağlantısı kapalı. Ayarlar → Entegrasyonlar → VoIP bölümünden etkinleştirin.',
           'notice',
         );
-      else if (!data.extension) {
+      else if (!useAcr && !data.extension) {
         const area = panel.querySelector('[data-voip-feedback]');
         area.dataset.tone = 'notice';
         showVoipExtensionWarning(area, () => {
@@ -1755,7 +1779,7 @@ function setupBorrowerVoip(dialog, doc) {
         });
         if (warningFocused) area.querySelector('button')?.focus({ preventScroll: true });
       }
-      if (data.enabled && data.extension) {
+      if (verimorReady) {
         // Ask for the microphone before the first call, not in the middle of it.
         voipMicrophoneCheck().then((mic) => {
           const area = panel.querySelector('[data-voip-mic]');
@@ -1941,7 +1965,7 @@ function setupBorrowerVoip(dialog, doc) {
             else dial(button.dataset.dialPhone, false);
           }),
       );
-      if (confirmation) repeatPrompt(confirmation);
+      if (confirmation && !useAcr) repeatPrompt(confirmation);
       panel.querySelectorAll('[data-number-workspace]').forEach((button) => {
         button.onclick = () => {
           voipUi.minimized = false;

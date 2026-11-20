@@ -933,6 +933,7 @@ test('UI keeps numbers, history and role-controlled audio together without prelo
     assert.match(w.document.body.textContent, /Other Staff/);
     assert.match(w.document.body.textContent, /01:30/);
     assert(w.document.querySelector('[data-dial-phone]'));
+    assert.equal(w.document.querySelector('[data-acr-send], .voip-acr-choice'), null);
     assert(w.document.querySelector('[data-number-history]'));
     w.document.querySelector('[data-add-phone]').click();
     const add = w.document.querySelector('.voip-add-phone');
@@ -983,6 +984,97 @@ test('UI keeps numbers, history and role-controlled audio together without prelo
       true,
       'native dialog cancel closes the nested panel first',
     );
+  } finally {
+    dom.window.close();
+  }
+});
+test('ACR-assigned users see direct GSM actions on files and cards even when Verimor is available', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM(
+    '<dialog open id="borrowerDetail"><div class="sheet-header-actions"></div><section data-borrower-panel="conversations"></section></dialog>',
+    { url: 'https://example.test', runScripts: 'outside-only' },
+  );
+  const w = dom.window;
+  const phones = [
+    { label: 'Tel-1', phone: '905320000001' },
+    { label: 'Tel-2', phone: '905320000002' },
+  ];
+  const devices = [{ id: 'test-android', label: 'Test telefonu' }];
+  const sent = [];
+  try {
+    w.hanAuth = { id: 'test-user', role: 'staff' };
+    w.esc = (value) => String(value).replaceAll('<', '&lt;');
+    w.HTMLDialogElement.prototype.showModal = function () {
+      this.open = true;
+    };
+    w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    let verimorChecks = 0;
+    w.openVoipWebphone = w.voipMicrophoneCheck = async () => {
+      verimorChecks++;
+    };
+    w.voipApi = async (route, method, body) => {
+      if (route.startsWith('calls?')) {
+        return {
+          enabled: true,
+          extension: route.includes('documentId') ? '1002' : '',
+          webphone: true,
+          phones,
+          calls: [],
+          active: [],
+          acrDevices: devices,
+        };
+      }
+      if (route === 'acr-dials' && method === 'POST') {
+        sent.push(JSON.parse(JSON.stringify(body)));
+        return { dial: { id: 'dial-1', automatic: true } };
+      }
+      assert.equal(route, 'acr-dials?dialId=dial-1');
+      return { status: 'delivered' };
+    };
+    w.setupBorrowerVoip(w.document.querySelector('#borrowerDetail'), { id: 'test-file' });
+    const trigger = w.document.querySelector('[data-open-voip]');
+    trigger.click();
+    await new Promise(setImmediate);
+    const panel = w.document.querySelector('.voip-number-panel');
+    const buttons = [...panel.querySelectorAll('.voip-phone-action button')];
+    assert.deepEqual(
+      buttons.map((button) => button.textContent),
+      phones.map(() => 'GSM ile ara (ACR Phone)'),
+    );
+    assert.equal(panel.querySelector('summary, [data-dial-phone], [data-voip-diagnose]'), null);
+    await buttons[1].onclick();
+    assert.deepEqual(sent[0], { documentId: 'test-file', phone: phones[1].phone, deviceId: 'test-android' });
+    assert.match(panel.querySelector('[data-voip-feedback]').textContent, /arama komutunu aldı/);
+
+    for (const cardType of ['client', 'personnel']) {
+      await w.openVoipCardDial({ cardType, cardId: 'test-' + cardType, name: 'Test' });
+      const card = w.document.querySelector('.voip-card-dial');
+      assert.equal(card.querySelector('summary, [data-card-verimor], [data-card-verimor-notice]'), null);
+      assert.equal(card.querySelector('[data-acr-send]').textContent, 'GSM ile ara (ACR Phone)');
+      card.querySelector('[data-card-number]').value = phones[1].phone;
+      await card.querySelector('[data-acr-send]').onclick();
+      assert.deepEqual(sent.at(-1), {
+        cardType,
+        cardId: 'test-' + cardType,
+        phone: phones[1].phone,
+        deviceId: 'test-android',
+      });
+      card.remove();
+    }
+    assert.equal(verimorChecks, 0);
+    trigger.click();
+    devices.push({ id: 'second-android', label: 'İkinci telefon' });
+    trigger.click();
+    await new Promise(setImmediate);
+    const secondDevice = panel.querySelector('[data-acr-send="second-android"]');
+    assert.match(secondDevice.textContent, /İkinci telefon/);
+    assert.equal(panel.querySelector('summary, select'), null);
+    await secondDevice.onclick();
+    assert.deepEqual(sent.at(-1), {
+      documentId: 'test-file',
+      phone: phones[0].phone,
+      deviceId: 'second-android',
+    });
   } finally {
     dom.window.close();
   }
