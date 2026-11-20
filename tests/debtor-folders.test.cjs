@@ -160,6 +160,7 @@ test('Folder buttons filter all statuses and the move form preserves the saved f
     documentTypes: {},
     debtorStatusFilter: 'Derdest',
     debtorColumnFilters: {},
+    debtorListSort: { column: '', direction: '' },
     borrowerFilterMarkup: () => '',
     db: { docs: [doc], clients: [] },
     hanDataBaselines: new Map([['icrapro-v1', { docs: [{ ...doc }], clients: [] }]]),
@@ -175,6 +176,7 @@ test('Folder buttons filter all statuses and the move form preserves the saved f
     };
   const root = path.join(__dirname, '../outputs/icrapro');
   w.eval(fs.readFileSync(path.join(root, 'debtor-folders.js'), 'utf8'));
+  w.eval(fs.readFileSync(path.join(root, 'workspace-list-sort.js'), 'utf8'));
   w.eval(
     fs.readFileSync(path.join(root, 'document-records.js'), 'utf8') +
       '\nwindow.folderSelection=()=>debtorFolderFilter;',

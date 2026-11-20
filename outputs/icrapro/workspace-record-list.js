@@ -140,6 +140,8 @@ function recordMoney(cents) {
     ' TL'
   );
 }
+const debtorListSort = { column: '', direction: '' };
+
 function recordListInput() {
   if (debtorStatusFilter !== 'İnfaz') {
     delete debtorColumnFilters.closure;
@@ -152,8 +154,7 @@ function recordListInput() {
     folder: debtorFolderFilter,
     query: $('#docSearch')?.value || '',
     limit: '50',
-    sort:
-      debtorEntryDateSort === 1 ? 'trackingAsc' : debtorEntryDateSort === -1 ? 'trackingDesc' : 'entryOrder',
+    sort: listSortParam(debtorListSort, 'entryOrder'),
   };
   for (const [key, value] of Object.entries(debtorColumnFilters))
     input['column' + key[0].toUpperCase() + key.slice(1)] = value;
@@ -169,6 +170,7 @@ function queueRecordPage() {
   recordListState.timer = setTimeout(() => loadRecordPage(), 150);
 }
 async function loadRecordPage(direction = 0) {
+  clearTimeout(recordListState.timer);
   const input = recordListInput(),
     key = JSON.stringify(input),
     state = recordListState;
@@ -206,12 +208,6 @@ async function loadRecordPage(direction = 0) {
     $('#closureDateHeading').hidden = !showClosureDate;
     $('#debtorColumnStatus').value = debtorStatusFilter;
     $('#clearDocSearch').hidden = !input.query;
-    $('#debtorEntryDateHeading').setAttribute(
-      'aria-sort',
-      debtorEntryDateSort === 1 ? 'ascending' : debtorEntryDateSort === -1 ? 'descending' : 'none',
-    );
-    $('#sortDebtorEntryDate').textContent =
-      'TAKİP TARİHİ ' + (debtorEntryDateSort === 1 ? '↑' : debtorEntryDateSort === -1 ? '↓' : '↕');
     document.querySelectorAll('[data-status-filter]').forEach((button) => {
       const status = button.dataset.statusFilter;
       const count =

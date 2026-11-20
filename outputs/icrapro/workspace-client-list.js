@@ -2,20 +2,22 @@ const recordClientList = {
   q: '',
   city: '',
   district: '',
+  sort: '',
   cursors: [''],
   index: 0,
   request: null,
   timer: null,
 };
 
-// The search text with the il / ilçe filter. A change of any of them starts from the first page.
+// Search, place filters and order share the same pagination state.
 function recordClientFilters() {
   const filters = {
     q: $('#search')?.value.trim() || '',
     city: typeof clientPlaceFilter === 'function' ? clientPlaceFilter().city : '',
     district: typeof clientPlaceFilter === 'function' ? clientPlaceFilter().district : '',
+    sort: listSortParam(clientListSort),
   };
-  if (['q', 'city', 'district'].some((key) => filters[key] !== recordClientList[key])) {
+  if (Object.keys(filters).some((key) => filters[key] !== recordClientList[key])) {
     Object.assign(recordClientList, filters, { cursors: [''], index: 0 });
   }
   return filters;
@@ -63,7 +65,7 @@ async function loadRecordClientPage() {
     footer = $('#total'),
     input = $('#search');
   if (page !== 'clients' || !rows || !input) return;
-  const { q, city, district } = recordClientFilters();
+  const { q, city, district, sort } = recordClientFilters();
   rows.innerHTML = '<tr><td colspan="5" class="empty">Müvekkiller yükleniyor…</td></tr>';
   footer.textContent = '';
   $('#clientSuggestions').hidden = true;
@@ -72,6 +74,7 @@ async function loadRecordClientPage() {
     const params = new URLSearchParams({ q, limit: '50' });
     if (city) params.set('city', city);
     if (district) params.set('district', district);
+    if (sort) params.set('sort', sort);
     const cursor = recordClientList.cursors[recordClientList.index];
     if (cursor) params.set('after', cursor);
     const response = await fetch('/api/records/clients?' + params, {

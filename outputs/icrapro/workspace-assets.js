@@ -49,6 +49,7 @@ const workspaceScripts = [
   'workspace-conversation-report.js',
   'workspace-scheduled-reminders.js',
   'client-bank-accounts.js',
+  'workspace-list-sort.js',
   'client-records.js',
   'debtor-folders.js',
   'document-records.js',

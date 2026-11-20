@@ -646,11 +646,29 @@ function borrowerFolderForm(record) {
   };
 }
 
+let localDebtorRows = [];
+
+function applyLocalDebtorOrder() {
+  const { column, direction } = debtorListSort;
+  if (!column) return;
+  const staffNames = new Map(personnel.map((person) => [person.id, person.name]));
+  const values = {
+    status: debtorStatus,
+    record: (doc) => doc.number,
+    debtor: (doc) => doc.debtor,
+    staff: (doc) => staffNames.get(doc.relatedStaff) || doc.relatedStaffName,
+    principal: (doc) => Number(doc.amount) || 0,
+    tracking: borrowerTrackingDate,
+    due: (doc) => doc.due,
+  };
+  sortLocalListRows($('#docRows'), localDebtorRows, (doc) => values[column](doc) ?? '', direction);
+}
+
 function documents() {
   debtorStatusFilter = 'Derdest';
   debtorFolderFilter = '';
   $('#content').innerHTML =
-    `<div class="panel"><div class="panelhead"><div><h2>Borçlu kayıtları</h2><p id="globalSearchHint">Borçlu, telefon, müvekkil, kimlik, evrak no, tür, tutar, tarih veya not ile arayın.</p></div><div class="toolbar global-search"><input class="search" id="docSearch" type="search" placeholder="Tüm alanlarda ara…" aria-label="Borçlu listesinde global arama" aria-describedby="globalSearchHint"><button type="button" class="secondary" id="clearDocSearch" hidden>Temizle</button></div></div><details class="borrower-filter-section" id="borrowerFilterSection"><summary>Filtreleme</summary>${borrowerFilterMarkup()}</details><div class="segments" style="padding:0 24px 20px" role="group" aria-label="Borçlu durum filtresi">${['Derdest', 'İnfaz', 'Bekleme', 'İade', 'İcra', 'Tümü'].map((status) => `<button type="button" data-status-filter="${status}">${status}</button>`).join('')}</div>${debtorFolderTabs()}<div class="overflow borrower-records-scroll"><table class="borrower-records-table"><thead><tr><th>DURUM<select id="debtorColumnStatus" data-optional="true" aria-label="Duruma göre süz" style="display:block;width:100%;margin-top:5px">${['Tümü', 'Derdest', 'İnfaz', 'Bekleme', 'İade', 'İcra'].map((status) => '<option>' + status + '</option>').join('')}</select></th><th>EVRAK / MÜVEKKİL${debtorColumnInput('type', 'Evrak türüne göre süz', Object.keys(documentTypes))}${debtorColumnInput('record', 'Föy veya müvekkile göre süz')}</th><th>BORÇLU${debtorColumnInput('debtor', 'Borçluya göre süz')}</th><th>DOSYA SORUMLUSU${debtorColumnInput('staff', 'Dosya sorumlusuna göre süz')}</th><th>ASIL ALACAK${debtorColumnInput('amount', 'Asıl alacağa göre süz')}</th><th id="debtorEntryDateHeading"><button type="button" class="link" id="sortDebtorEntryDate" style="padding:0;font:inherit;color:inherit;letter-spacing:inherit">TAKİP TARİHİ ↕</button>${debtorColumnInput('tracking', 'Takip tarihine göre süz')}</th><th>VADE${debtorColumnInput('due', 'Vadeye göre süz')}</th><th id="closureDateHeading" hidden>İNFAZ TARİHİ${debtorColumnInput('closure', 'İnfaz tarihine göre süz')}</th><th>İŞLEM</th></tr></thead><tbody id="docRows"></tbody></table></div><div class="tablefoot" id="docSearchCount" role="status" aria-live="polite"></div></div>`;
+    `<div class="panel"><div class="panelhead"><div><h2>Borçlu kayıtları</h2><p id="globalSearchHint">Borçlu, telefon, müvekkil, kimlik, evrak no, tür, tutar, tarih veya not ile arayın.</p></div><div class="toolbar global-search"><input class="search" id="docSearch" type="search" placeholder="Tüm alanlarda ara…" aria-label="Borçlu listesinde global arama" aria-describedby="globalSearchHint"><button type="button" class="secondary" id="clearDocSearch" hidden>Temizle</button></div></div><details class="borrower-filter-section" id="borrowerFilterSection"><summary>Filtreleme</summary>${borrowerFilterMarkup()}</details><div class="segments" style="padding:0 24px 20px" role="group" aria-label="Borçlu durum filtresi">${['Derdest', 'İnfaz', 'Bekleme', 'İade', 'İcra', 'Tümü'].map((status) => `<button type="button" data-status-filter="${status}">${status}</button>`).join('')}</div>${debtorFolderTabs()}<div class="overflow borrower-records-scroll"><table id="debtorListTable" class="borrower-records-table" aria-label="Borçlu listesi"><thead><tr><th scope="col">${listSortButton('debtorListTable', 'status', 'DURUM')}<select id="debtorColumnStatus" data-optional="true" aria-label="Duruma göre süz" style="display:block;width:100%;margin-top:5px">${['Tümü', 'Derdest', 'İnfaz', 'Bekleme', 'İade', 'İcra'].map((status) => '<option>' + status + '</option>').join('')}</select></th><th scope="col">${listSortButton('debtorListTable', 'record', 'EVRAK / MÜVEKKİL', 'Föy numarasına göre sırala')}${debtorColumnInput('type', 'Evrak türüne göre süz', Object.keys(documentTypes))}${debtorColumnInput('record', 'Föy veya müvekkile göre süz')}</th><th scope="col">${listSortButton('debtorListTable', 'debtor', 'BORÇLU')}${debtorColumnInput('debtor', 'Borçluya göre süz')}</th><th scope="col">${listSortButton('debtorListTable', 'staff', 'DOSYA SORUMLUSU')}${debtorColumnInput('staff', 'Dosya sorumlusuna göre süz')}</th><th scope="col">${listSortButton('debtorListTable', 'principal', 'ASIL ALACAK')}${debtorColumnInput('amount', 'Asıl alacağa göre süz')}</th><th scope="col">${listSortButton('debtorListTable', 'tracking', 'TAKİP TARİHİ')}${debtorColumnInput('tracking', 'Takip tarihine göre süz')}</th><th scope="col">${listSortButton('debtorListTable', 'due', 'VADE')}${debtorColumnInput('due', 'Vadeye göre süz')}</th><th scope="col" id="closureDateHeading" hidden>İNFAZ TARİHİ${debtorColumnInput('closure', 'İnfaz tarihine göre süz')}</th><th scope="col">İŞLEM</th></tr></thead><tbody id="docRows"></tbody></table></div><div class="tablefoot" id="docSearchCount" role="status" aria-live="polite"></div></div>`;
   if (['ceo', 'admin'].includes(hanAuth.role)) {
     const archive = document.createElement('button');
     archive.type = 'button';
@@ -676,10 +694,10 @@ function documents() {
   });
   updateDebtorFolderTabs();
   bindBorrowerFilters();
-  $('#sortDebtorEntryDate').onclick = () => {
-    debtorEntryDateSort = debtorEntryDateSort === -1 ? 1 : -1;
-    docRows();
-  };
+  bindListSort($('#debtorListTable'), debtorListSort, () => {
+    if (window.hanRecordsEnabled) return loadRecordPage();
+    applyLocalDebtorOrder();
+  });
   $('#debtorColumnStatus').onchange = (event) => {
     debtorStatusFilter = event.target.value;
     docRows();
@@ -756,21 +774,6 @@ function docRows() {
   let q = $('#docSearch').value;
   const filters = { ...borrowerFilters, folder: debtorFolderFilter };
   let list = filteredBorrowers(db.docs, filters, debtorStatusFilter, q, isAdmin).filter(matchesDebtorColumns);
-  const entryHeading = $('#debtorEntryDateHeading');
-  entryHeading.setAttribute(
-    'aria-sort',
-    debtorEntryDateSort === 0 ? 'none' : debtorEntryDateSort === 1 ? 'ascending' : 'descending',
-  );
-  $('#sortDebtorEntryDate').textContent =
-    'TAKİP TARİHİ ' + (debtorEntryDateSort === 0 ? '↕' : debtorEntryDateSort === 1 ? '↑' : '↓');
-  if (debtorEntryDateSort) {
-    list.sort((left, right) => {
-      const first = borrowerTrackingDate(left);
-      const second = borrowerTrackingDate(right);
-      if (!first || !second) return Number(!first) - Number(!second);
-      return debtorEntryDateSort * first.localeCompare(second);
-    });
-  }
   document.querySelectorAll('[data-status-filter]').forEach((button) => {
     const status = button.dataset.statusFilter;
     button.classList.toggle('selected', status === debtorStatusFilter);
@@ -791,6 +794,8 @@ function docRows() {
     ).length +
     ' kayıt gösteriliyor';
   paintDocumentRows(list, isAdmin, showClosureDate);
+  localDebtorRows = list;
+  applyLocalDebtorOrder();
 }
 
 function paintDocumentRows(list, isAdmin, showClosureDate) {
@@ -799,7 +804,7 @@ function paintDocumentRows(list, isAdmin, showClosureDate) {
     list
       .map(
         (d) =>
-          `<tr class="${debtorStatus(d) === 'İnfaz' ? 'status-closed' : debtorStatus(d) === 'İade' ? 'status-returned' : 'status-pending'}"><td><select ${isAdmin ? '' : 'disabled'} class="row-status" aria-label="${esc(d.debtor)} durumu" data-row-status="${esc(d.id)}">${['Derdest', 'İnfaz', 'Bekleme', 'İade', 'İcra'].map((status) => `<option ${status === debtorStatus(d) ? 'selected' : ''}>${status}</option>`).join('')}</select></td><td><strong>${esc(d.number)}</strong>${window.testRecordBadge?.(d) || ''}<small>${esc(docType(d))} · ${esc(d._clientName ?? db.clients.find((c) => c.id === d.client)?.name)}</small></td><td><button class="link debtor-name" data-debtor="${esc(d.id)}">${esc(d.debtor)}</button><small>${esc(d.status || 'Derdest')}${d.debtorFolder ? ' · ' + esc(d.debtorFolder) : ''}</small></td><td>${borrowerAssignmentMarkup(d, isAdmin)}</td><td><strong>${d._principalCents ? recordMoney(d._principalCents) : money(d.amount)}</strong>${typeof unitPrincipalSupplement === 'function' ? unitPrincipalSupplement(d) : ''}${isAdmin ? `<small>Toplam alacak: ${d._targetCents ? recordMoney(d._targetCents) : money(docFinance(d).target / 100)}</small>` : ''}</td><td>${esc(displayDate(borrowerTrackingDate(d)) || '—')}</td><td>${esc(d.due ? displayDate(d.due) : '—')}</td>${showClosureDate ? '<td>' + esc(displayDate(clientPayoutClosureDate(d)) || '—') + '</td>' : ''}<td><button type="button" class="link" data-edit-debtor="${esc(d.id)}">Düzenle</button><button type="button" class="link" data-add-guarantor="${esc(d.id)}">Kefil Ekle</button><button class="link" data-receipt="${esc(d.id)}">Tutanak Görüntüle ↗</button>${isAdmin ? `<button type="button" class="link" data-move-folder="${esc(d.id)}">Klasöre Taşı</button><button class="link" data-finance="${esc(d.id)}">Finansal İşlemler</button>` : ''}${(window.hanMayDelete?.('documents') ?? hanAuth.canDelete) ? `<button type="button" class="link" data-delete-document="${esc(d.id)}">Dosyayı Sil</button>` : ''}${isAdmin && debtorStatus(d) === 'Derdest' ? `<button type="button" class="link" data-move-enforcement="${esc(d.id)}">İcraya Taşı</button>` : ''}</td></tr>`,
+          `<tr data-list-record="${esc(d.id)}" class="${debtorStatus(d) === 'İnfaz' ? 'status-closed' : debtorStatus(d) === 'İade' ? 'status-returned' : 'status-pending'}"><td><select ${isAdmin ? '' : 'disabled'} class="row-status" aria-label="${esc(d.debtor)} durumu" data-row-status="${esc(d.id)}">${['Derdest', 'İnfaz', 'Bekleme', 'İade', 'İcra'].map((status) => `<option ${status === debtorStatus(d) ? 'selected' : ''}>${status}</option>`).join('')}</select></td><td><strong>${esc(d.number)}</strong>${window.testRecordBadge?.(d) || ''}<small>${esc(docType(d))} · ${esc(d._clientName ?? db.clients.find((c) => c.id === d.client)?.name)}</small></td><td><button class="link debtor-name" data-debtor="${esc(d.id)}">${esc(d.debtor)}</button><small>${esc(d.status || 'Derdest')}${d.debtorFolder ? ' · ' + esc(d.debtorFolder) : ''}</small></td><td>${borrowerAssignmentMarkup(d, isAdmin)}</td><td><strong>${d._principalCents ? recordMoney(d._principalCents) : money(d.amount)}</strong>${typeof unitPrincipalSupplement === 'function' ? unitPrincipalSupplement(d) : ''}${isAdmin ? `<small>Toplam alacak: ${d._targetCents ? recordMoney(d._targetCents) : money(docFinance(d).target / 100)}</small>` : ''}</td><td>${esc(displayDate(borrowerTrackingDate(d)) || '—')}</td><td>${esc(d.due ? displayDate(d.due) : '—')}</td>${showClosureDate ? '<td>' + esc(displayDate(clientPayoutClosureDate(d)) || '—') + '</td>' : ''}<td><button type="button" class="link" data-edit-debtor="${esc(d.id)}">Düzenle</button><button type="button" class="link" data-add-guarantor="${esc(d.id)}">Kefil Ekle</button><button class="link" data-receipt="${esc(d.id)}">Tutanak Görüntüle ↗</button>${isAdmin ? `<button type="button" class="link" data-move-folder="${esc(d.id)}">Klasöre Taşı</button><button class="link" data-finance="${esc(d.id)}">Finansal İşlemler</button>` : ''}${(window.hanMayDelete?.('documents') ?? hanAuth.canDelete) ? `<button type="button" class="link" data-delete-document="${esc(d.id)}">Dosyayı Sil</button>` : ''}${isAdmin && debtorStatus(d) === 'Derdest' ? `<button type="button" class="link" data-move-enforcement="${esc(d.id)}">İcraya Taşı</button>` : ''}</td></tr>`,
       )
       .join('') ||
     `<tr><td colspan="${showClosureDate ? 9 : 8}" class="empty">Seçili durum ve aramayla eşleşen borçlu bulunamadı.</td></tr>`;

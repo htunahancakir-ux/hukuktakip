@@ -36,7 +36,7 @@ test('Üst arama yazılan metni sunucuya taşır ve müvekkil sonucunu gösterir
 
 test('Client UI keeps global totals across pages, loads one editor and saves only changed client fields', async (t) => {
   const dom = new JSDOM(
-    '<div id="stats"></div><span id="count"></span><input id="search"><div id="clientSuggestions"></div><table><tbody id="rows"></tbody></table><div id="total"></div>',
+    '<div id="stats"></div><span id="count"></span><input id="search"><div id="clientSuggestions"></div><table id="clientListTable"><thead><tr></tr></thead><tbody id="rows"></tbody></table><div id="total"></div>',
     { url: 'https://local-test.invalid', runScripts: 'dangerously' },
   );
   t.after(() => dom.window.close());
@@ -60,13 +60,15 @@ test('Client UI keeps global totals across pages, loads one editor and saves onl
   for (const file of [
     'html-safety.js',
     'record-patch.js',
+    'workspace-list-sort.js',
     'client-records.js',
     'workspace-record-list.js',
     'workspace-client-list.js',
   ])
     w.eval(
       fs.readFileSync(path.join(root, file), 'utf8') +
-        (file === 'workspace-client-list.js' ? '\nwindow.clientListState=recordClientList;' : ''),
+        (file === 'workspace-client-list.js' ? '\nwindow.clientListState=recordClientList;' : '') +
+        (file === 'client-records.js' ? '\nwindow.clientListSort=clientListSort;' : ''),
     );
   w.esc = w.escapeHtml;
   assert.equal(w.recordPageNeedsCompatibility(), false, 'client menu must not hydrate the workspace');
@@ -155,6 +157,17 @@ test('Client UI keeps global totals across pages, loads one editor and saves onl
   assert.equal(w.document.querySelectorAll('#rows tr').length, 25);
   assert.match(w.document.querySelector('#total').textContent, /51–75 \/ 75/);
   assert.equal(w.document.querySelector('#stats').textContent, firstStats);
+  const table = w.document.querySelector('#clientListTable');
+  table.tHead.rows[0].innerHTML = w.clientListHeadings();
+  w.bindListSort(table, w.clientListSort, w.loadRecordClientPage);
+  const nameHeading = table.querySelector('[data-list-sort="name"]');
+  nameHeading.click();
+  assert.equal(nameHeading.closest('th').getAttribute('aria-sort'), 'ascending');
+  assert.equal(new URL(requests.at(-1).url, w.location.origin).searchParams.get('sort'), 'nameAsc');
+  assert.equal(new URL(requests.at(-1).url, w.location.origin).searchParams.has('after'), false);
+  nameHeading.click();
+  assert.equal(nameHeading.closest('th').getAttribute('aria-sort'), 'descending');
+  assert.equal(new URL(requests.at(-1).url, w.location.origin).searchParams.get('sort'), 'nameDesc');
   assert.equal(w.db.clients.length, 0, 'list projections must not become edit baselines');
   w.bindClientSearch();
   const input = w.document.querySelector('#search');

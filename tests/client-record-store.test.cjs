@@ -24,6 +24,8 @@ test('Client pages, selected attachments and isolated edits preserve totals, per
     clients[80].name = 'SAK Beyaz Eşya';
     clients[81].name = 'İsak Tekstil';
     clients[121].tradeName = 'sak Ticaret';
+    clients[80].phone = '0500 100 00 01';
+    clients[2].phone = '0500 100 00 02';
     clients[0].attachments = [
       { id: 'a', name: 'test.pdf', kind: 'powerOfAttorney', data: 'data:application/pdf;base64,JVBERi0x' },
     ];
@@ -41,10 +43,19 @@ test('Client pages, selected attachments and isolated edits preserve totals, per
           identity: '20000000000',
           status: 'İnfaz',
           amount: 100,
+          due: '2026-12-01',
           clientPaidAmount: 10,
         },
-        { id: 'd2', client: 'c0', debtor: 'Second', status: 'İade', amount: 200 },
-        { id: 'd3', client: 'c122', debtor: 'Third', status: 'Derdest', amount: 300 },
+        {
+          id: 'd2',
+          number: 'F-2',
+          client: 'c0',
+          debtor: 'Çelik',
+          status: 'İade',
+          amount: 200,
+          due: '2026-02-01',
+        },
+        { id: 'd3', number: 'F-10', client: 'c122', debtor: 'Cem', status: 'Derdest', amount: 300 },
       ],
     };
     state.data['hanhukuk-accounting-v1'] = {
@@ -121,6 +132,28 @@ test('Client pages, selected attachments and isolated edits preserve totals, per
     );
     assert.equal(new Set(pages.flatMap((p) => p.items.map((c) => c.id))).size, 123);
     assert.equal(pages[0].items[0].documentCount, '2');
+    const orderedIds = async (list, sort, filters = {}, maxPages = 4) => {
+      const hits = [];
+      let after = '';
+      for (let page = 0; page < maxPages; page++) {
+        const result = await get(
+          '/api/records/' + list + '?' + new URLSearchParams({ ...filters, sort, limit: 1, after }),
+        );
+        hits.push(...result.items.map((row) => row.id));
+        after = result.next;
+        if (!after) break;
+      }
+      return hits;
+    };
+    assert.deepEqual(await orderedIds('clients', 'documentsDesc', {}, 2), ['c0', 'c122']);
+    assert.deepEqual(await orderedIds('clients', 'nameAsc', { q: 'sak' }), ['c121', 'c80', 'c2']);
+    assert.deepEqual(await orderedIds('clients', 'contactDesc', { q: 'sak' }), ['c2', 'c80', 'c121']);
+    assert.deepEqual(await orderedIds('documents', 'principalAsc'), ['d1', 'd2', 'd3']);
+    assert.deepEqual(await orderedIds('documents', 'principalDesc'), ['d3', 'd2', 'd1']);
+    assert.deepEqual(await orderedIds('documents', 'recordAsc'), ['d1', 'd2', 'd3']);
+    assert.deepEqual(await orderedIds('documents', 'debtorAsc'), ['d3', 'd2', 'd1']);
+    assert.deepEqual(await orderedIds('documents', 'dueAsc'), ['d2', 'd1', 'd3']);
+    assert.deepEqual(await orderedIds('documents', 'dueDesc'), ['d1', 'd2', 'd3']);
     const search = await get('/api/records/clients?' + new URLSearchParams({ q: 'isik insaat %_' }));
     assert.equal(search.count, '1');
     assert.deepEqual(search.summary, pages[0].summary);

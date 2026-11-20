@@ -234,8 +234,11 @@ test('client list on record tables: il, ilçe and the search text travel to the 
       };
     },
   });
-  for (const file of ['client-records.js', 'workspace-client-list.js'])
-    w.eval(fs.readFileSync(path.join(root, file), 'utf8'));
+  for (const file of ['workspace-list-sort.js', 'client-records.js', 'workspace-client-list.js'])
+    w.eval(
+      fs.readFileSync(path.join(root, file), 'utf8') +
+        (file === 'client-records.js' ? '\nwindow.clientListSort=clientListSort;' : ''),
+    );
   w.document.getElementById('bar').innerHTML = w.clientFilterBar();
   w.bindClientSearch();
   const $ = (selector) => w.document.querySelector(selector);

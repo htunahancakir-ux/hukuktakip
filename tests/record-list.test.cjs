@@ -118,7 +118,7 @@ test('Startup reads asynchronously and does not expose a partial or empty worksp
 });
 test('Browser pages show all-record totals, escape labels and fetch only the selected file before editing', async (t) => {
   const dom = new JSDOM(
-    `<input id="docSearch"><button id="clearDocSearch"></button><button data-status-filter="Tümü"></button><button data-status-filter="Derdest"></button><table><thead><tr><th id="closureDateHeading"></th><th id="debtorEntryDateHeading"><button id="sortDebtorEntryDate"></button></th><th><select id="debtorColumnStatus"><option>Derdest</option></select></th></tr></thead><tbody id="docRows"></tbody></table><div id="docSearchCount"></div>`,
+    `<input id="docSearch"><button id="clearDocSearch"></button><button data-status-filter="Tümü"></button><button data-status-filter="Derdest"></button><table id="debtorListTable"><thead><tr><th id="closureDateHeading"></th><th><button data-list-sort="principal">ASIL ALACAK</button></th><th><button data-list-sort="due">VADE</button></th><th><select id="debtorColumnStatus"><option>Derdest</option></select></th></tr></thead><tbody id="docRows"></tbody></table><div id="docSearchCount"></div>`,
     { url: 'https://local-test.invalid', runScripts: 'dangerously' },
   );
   t.after(() => dom.window.close());
@@ -132,7 +132,6 @@ test('Browser pages show all-record totals, escape labels and fetch only the sel
     page: 'documents',
     borrowerFilters: {},
     debtorColumnFilters: {},
-    debtorEntryDateSort: 0,
     debtorStatusFilter: 'Derdest',
     debtorFolderFilter: '',
     $: (selector) => w.document.querySelector(selector),
@@ -209,7 +208,12 @@ test('Browser pages show all-record totals, escape labels and fetch only the sel
       }),
     };
   };
-  w.eval(fs.readFileSync(path.join(root, 'workspace-record-list.js'), 'utf8'));
+  w.eval(fs.readFileSync(path.join(root, 'workspace-list-sort.js'), 'utf8'));
+  w.eval(
+    fs.readFileSync(path.join(root, 'workspace-record-list.js'), 'utf8') +
+      `
+    window.bindDebtorTestSort = () => bindListSort($('#debtorListTable'), debtorListSort, loadRecordPage);`,
+  );
   await w.loadRecordPage();
   assert.equal(
     w.document.querySelectorAll('#docRows tr').length,
@@ -224,6 +228,19 @@ test('Browser pages show all-record totals, escape labels and fetch only the sel
   assert.match(w.document.querySelector('#docSearchCount').textContent, /51–75 \/ 75/);
   assert.match(w.document.querySelector('#docSearchCount').textContent, /7.490,00 TL/);
   assert.equal(w.document.querySelectorAll('#docSearchCount button')[1].disabled, true);
+  w.bindDebtorTestSort();
+  const amount = w.document.querySelector('[data-list-sort="principal"]');
+  const due = w.document.querySelector('[data-list-sort="due"]');
+  amount.click();
+  assert.equal(amount.closest('th').getAttribute('aria-sort'), 'ascending');
+  assert.equal(new URL(requests.at(-1), w.location.origin).searchParams.get('sort'), 'principalAsc');
+  assert.equal(new URL(requests.at(-1), w.location.origin).searchParams.has('after'), false);
+  amount.click();
+  assert.equal(amount.closest('th').getAttribute('aria-sort'), 'descending');
+  assert.equal(new URL(requests.at(-1), w.location.origin).searchParams.get('sort'), 'principalDesc');
+  due.click();
+  assert.equal(amount.closest('th').hasAttribute('aria-sort'), false);
+  assert.equal(due.closest('th').getAttribute('aria-sort'), 'ascending');
   await w.recordAction('d50', () => w.borrowerDetail('d50'));
   assert.equal(w.opened.notes, 'authoritative');
   assert.equal(w.financeEvents.length, 1);

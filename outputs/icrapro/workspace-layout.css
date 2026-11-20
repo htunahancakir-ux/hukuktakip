@@ -934,6 +934,35 @@ dialog:not(.compact-borrower-sheet),
   flex-wrap: wrap;
 }
 /* Compact borrower workspace. */
+.list-sort-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-height: 24px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.list-sort-button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+.list-sort-button > span::before {
+  content: '↕';
+}
+th[aria-sort='ascending'] > .list-sort-button > span::before {
+  content: '↑';
+}
+th[aria-sort='descending'] > .list-sort-button > span::before {
+  content: '↓';
+}
 .panel:has(.borrower-records-table) > .panelhead {
   padding: 16px 18px;
   gap: 18px;

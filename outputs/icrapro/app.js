@@ -330,9 +330,13 @@ function render() {
   document.querySelector('main')?.classList.toggle('compact-top', page === 'clients');
   if (page === 'clients') {
     $('#content').innerHTML =
-      `<div class="panel"><div class="panelhead client-filterbar">${clientFilterBar()}</div><div class="overflow"><table><thead><tr><th>MÜVEKKİL / UNVAN</th><th>TÜR</th><th>İLETİŞİM</th><th>EVRAK</th><th>İŞLEMLER</th></tr></thead><tbody id="rows"></tbody></table></div><div class="tablefoot" id="total"></div></div>`;
+      `<div class="panel"><div class="panelhead client-filterbar">${clientFilterBar()}</div><div class="overflow"><table id="clientListTable" aria-label="Müvekkil listesi"><thead><tr>${clientListHeadings()}<th scope="col">İŞLEMLER</th></tr></thead><tbody id="rows"></tbody></table></div><div class="tablefoot" id="total" role="status"></div></div>`;
     $('#clientSearchBar').append($('#content .panelhead'));
     if (window.hanRecordsEnabled) $('#search').value = recordClientList.q;
+    bindListSort($('#clientListTable'), clientListSort, () => {
+      if (window.hanRecordsEnabled) return loadRecordClientPage();
+      applyLocalClientOrder();
+    });
     clientRows();
     bindClientSearch();
   } else if (page === 'callRecordings') voipRecordingsPage();
@@ -546,7 +550,6 @@ let debtorStatusFilter = 'Derdest',
   };
 
 const debtorColumnFilters = {};
-let debtorEntryDateSort = 0;
 
 document.querySelectorAll('[data-page]').forEach(
   (b) =>

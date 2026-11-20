@@ -285,6 +285,39 @@ function clientPhoneDigits(query) {
   return digits.length >= 3 ? digits : '';
 }
 
+const clientListSort = { column: '', direction: '' };
+let localClientRows = [];
+
+function clientListHeadings() {
+  return [
+    ['name', 'MÜVEKKİL / UNVAN'],
+    ['type', 'TÜR'],
+    ['contact', 'İLETİŞİM'],
+    ['documents', 'EVRAK'],
+  ]
+    .map(([key, label]) => `<th scope="col">${listSortButton('clientListTable', key, label)}</th>`)
+    .join('');
+}
+
+function applyLocalClientOrder() {
+  const { column, direction } = clientListSort;
+  if (!column) return;
+  const counts = new Map();
+  if (column === 'documents')
+    for (const doc of db.docs) counts.set(doc.client, (counts.get(doc.client) || 0) + 1);
+  sortLocalListRows(
+    $('#rows'),
+    localClientRows,
+    (client) => {
+      if (column === 'documents') return counts.get(client.id) || 0;
+      if (column === 'contact')
+        return String(client.phone || '').replace(/\D/g, '') || client.email || client.address || '';
+      return client[column] || '';
+    },
+    direction,
+  );
+}
+
 function clientRows(event) {
   syncClientFilterBar();
   if (window.hanRecordsEnabled) return event ? scheduleRecordClientPage() : loadRecordClientPage();
@@ -306,6 +339,8 @@ function clientRows(event) {
   );
   renderClientSuggestions(q, list);
   paintClientRows(list);
+  localClientRows = list;
+  applyLocalClientOrder();
   $('#total').textContent =
     `${list.length} müvekkil gösteriliyor` + (q || city || district ? ' · Süzgeç uygulandı' : '');
 }
@@ -361,7 +396,7 @@ function paintClientRows(list, remote = false) {
     list
       .map(
         (c) =>
-          `<tr><td><div class="rowname"><span class="initial">${esc((c.name || '').slice(0, 2).toLocaleUpperCase('tr'))}</span><div><button type="button" class="link client-name-link" data-edit="${esc(c.id)}">${esc(c.name)}</button><small>${(window.hanPrivacy && hanPrivacy.html('id', c.identity)) || esc(c.identity || 'Kimlik bilgisi eklenmedi')}</small></div></div></td><td><span class="badge">${esc(c.type)}</span></td><td>${(window.hanPrivacy && hanPrivacy.html('phone', c.phone)) || esc(c.phone || '—')}<small>${(window.hanPrivacy && hanPrivacy.html(c.email ? 'email' : 'address', c.email || c.address)) || esc(c.email || c.address || '—')}</small></td><td>${esc(remote ? c.documentCount : db.docs.filter((d) => d.client === c.id).length)} evrak</td><td><button class="link" data-edit="${esc(c.id)}">Düzenle</button><button class="link" data-intake="${esc(c.id)}">＋ Evrak</button></td></tr>`,
+          `<tr data-list-record="${esc(c.id)}"><td><div class="rowname"><span class="initial">${esc((c.name || '').slice(0, 2).toLocaleUpperCase('tr'))}</span><div><button type="button" class="link client-name-link" data-edit="${esc(c.id)}">${esc(c.name)}</button><small>${(window.hanPrivacy && hanPrivacy.html('id', c.identity)) || esc(c.identity || 'Kimlik bilgisi eklenmedi')}</small></div></div></td><td><span class="badge">${esc(c.type)}</span></td><td>${(window.hanPrivacy && hanPrivacy.html('phone', c.phone)) || esc(c.phone || '—')}<small>${(window.hanPrivacy && hanPrivacy.html(c.email ? 'email' : 'address', c.email || c.address)) || esc(c.email || c.address || '—')}</small></td><td>${esc(remote ? c.documentCount : db.docs.filter((d) => d.client === c.id).length)} evrak</td><td><button class="link" data-edit="${esc(c.id)}">Düzenle</button><button class="link" data-intake="${esc(c.id)}">＋ Evrak</button></td></tr>`,
       )
       .join('') ||
     '<tr><td colspan="5" class="empty">Müvekkil bulunamadı. Yeni bir kayıt ekleyebilirsiniz.</td></tr>';
