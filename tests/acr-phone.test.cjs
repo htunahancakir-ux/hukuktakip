@@ -403,11 +403,11 @@ test('ACR dials match outgoing reports to the chosen card and keep the link when
     await handle(req, res, new URL(req.url, 'https://' + host));
     return JSON.parse(res.bytes());
   };
-  const api = (route, input) =>
+  const api = (route, input, headers = {}) =>
     run({
       url: '/api/voip/' + route,
       method: input ? 'POST' : 'GET',
-      headers: { host, 'content-type': 'application/json' },
+      headers: { host, 'content-type': 'application/json', ...headers },
       async *[Symbol.asyncIterator]() {
         yield Buffer.from(JSON.stringify(input));
       },
@@ -487,6 +487,45 @@ test('ACR dials match outgoing reports to the chosen card and keep the link when
   assert.equal(docHistory.rows.length, 1);
   assert.equal(docHistory.rows[0].call.id, docAudio);
   assert.equal(docHistory.rows[0].call.documentId, 'folio');
+
+  const android = (input, token) =>
+    api('acr-agent', input, token ? { authorization: 'Bearer ' + token } : {});
+  const link = () => api('acr-agent-link', { deviceId: device.id });
+  actor = { id: 'another-user', role: 'staff' };
+  await assert.rejects(link(), { status: 403 });
+  actor = { id: 'test-ceo', role: 'ceo' };
+  const { pairingCode } = await link();
+  assert.match(pairingCode, /\.[\w-]{16}$/);
+  const { token, ...agent } = await android({ pairingCode });
+  await assert.rejects(android({ pairingCode }), { status: 401 });
+  await assert.rejects(android({ ...agent, accountId: 'another-user' }, token), { status: 401 });
+  assert.equal(Object.hasOwn(await api('config'), 'acrAgents'), false);
+  assert.equal((await api('acr-devices')).devices[0].automatic, true);
+  assert.deepEqual(await android(agent, token), { dial: null });
+
+  const { dial: automatic } = await api('acr-dials', destination);
+  const automaticStatus = () => api('acr-dials?dialId=' + automatic.id);
+  assert.equal(automatic.automatic, true);
+  assert.equal((await automaticStatus()).status, 'waiting');
+  assert.equal(
+    (await api('acr-dials')).dials.some((row) => row.id === automatic.id),
+    false,
+  );
+  await assert.rejects(api('acr-dials', { dialId: automatic.id }), { status: 404 });
+  const commands = await Promise.all([android(agent, token), android(agent, token)]);
+  const delivered = commands.flatMap(({ dial }) => (dial ? [dial] : []));
+  assert.equal(delivered.length, 1);
+  assert.equal(delivered[0].id, automatic.id);
+  assert.equal(delivered[0].phone, '905320000001');
+  assert.ok(delivered[0].launchWithinMs > 0 && delivered[0].launchWithinMs <= 12000);
+  assert.equal((await automaticStatus()).status, 'delivered');
+  assert.deepEqual(await android(agent, token), { dial: null });
+
+  const autoReport = await run(await reportRequest({ ...report, date: String((docDate + 1) * 1000) }));
+  assert.ok((await history()).calls.some((call) => call.id === autoReport.id && call.cardId === 'second'));
+  await api('acr-agent-link', { deviceId: device.id, revoke: true });
+  await assert.rejects(android(agent, token), { status: 401 });
+  assert.equal((await api('acr-devices')).devices[0].automatic, false);
 });
 
 test('ACR skips audio shorter than two seconds before saving; two seconds and unknown durations remain accepted', async () => {
@@ -765,6 +804,20 @@ test('ACR can authenticate before browser CSRF checks, while ordinary mutations 
     await app(await reportRequest({ test: '1' }), report);
     assert.equal(report.statusCode, 200);
     assert.deepEqual(JSON.parse(report.bytes()), { ready: true });
+    const agent = response();
+    await app(
+      {
+        method: 'POST',
+        url: '/api/voip/acr-agent',
+        headers: { host, 'content-type': 'application/json' },
+        socket: {},
+        async *[Symbol.asyncIterator]() {
+          yield Buffer.from(JSON.stringify({ deviceId: device.id }));
+        },
+      },
+      agent,
+    );
+    assert.equal(agent.statusCode, 401);
     const denied = response();
     await app({ method: 'POST', url: '/api/voip/config', headers: { host }, socket: {} }, denied);
     assert.equal(denied.statusCode, 403);

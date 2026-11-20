@@ -495,18 +495,45 @@ async function voipAcrDeviceSettings(host) {
           ) => `<fieldset data-acr-device="${esc(d.id)}"><legend>Telefon ${index + 1}</legend><div class="grid">
         <label class="field" for="acrLabel${index}">Cihaz adı (zorunlu)<input id="acrLabel${index}" name="label${index}" type="text" required maxlength="80" value="${esc(d.label)}" autocomplete="off"></label>
         <label class="field" for="acrUser${index}">Bu telefonu kullanan personel<select id="acrUser${index}" name="userId${index}" data-optional="true"><option value="">Personel seçilmedi — cihaz adı kullanılsın</option>${config.users.map((u) => `<option value="${esc(u.id)}" ${u.id === d.userId ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></label>
-      </div></fieldset>`,
+      </div><div class="toolbar"><button type="button" class="secondary" data-acr-agent-pair ${d.userId ? '' : 'disabled'}>Android eşleştirme kodu</button><button type="button" class="link" data-acr-agent-revoke ${d.automatic ? '' : 'hidden'}>Eşleşmeyi kaldır</button></div><p data-acr-agent-status aria-live="polite">${d.automatic ? 'Otomatik GSM araması eşleştirilmiş.' : ''}</p></fieldset>`,
         )
         .join('')}
       <p role="status" data-acr-status></p><div class="actions"><button class="primary" type="submit">ACR Cihaz Ayarlarını Kaydet</button></div></form>`,
     );
     const form = section.querySelector('form');
+    const deviceRows = [...form.querySelectorAll('[data-acr-device]')];
+    for (const row of deviceRows) {
+      const pair = row.querySelector('[data-acr-agent-pair]');
+      const revoke = row.querySelector('[data-acr-agent-revoke]');
+      const status = row.querySelector('[data-acr-agent-status]');
+      const link = async (remove) => {
+        const wasDisabled = pair.disabled;
+        pair.disabled = revoke.disabled = true;
+        try {
+          const result = await voipApi('acr-agent-link', 'POST', {
+            deviceId: row.dataset.acrDevice,
+            revoke: remove,
+          });
+          revoke.hidden = remove;
+          status.textContent = remove
+            ? 'Android eşleştirmesi kaldırıldı.'
+            : `HAN GSM Bağlantısı uygulamasına 10 dakika içinde şu kodu girin. ${location.hostname}/${result.pairingCode}`;
+        } catch (error) {
+          status.textContent = error.message;
+        } finally {
+          pair.disabled = wasDisabled;
+          revoke.disabled = false;
+        }
+      };
+      pair.onclick = () => link(false);
+      revoke.onclick = () => link(true);
+    }
     form.onsubmit = async (event) => {
       event.preventDefault();
       if (!form.reportValidity()) return;
       const button = form.querySelector('[type="submit"]');
       const status = form.querySelector('[data-acr-status]');
-      const devices = [...form.querySelectorAll('[data-acr-device]')].map((row) => ({
+      const devices = deviceRows.map((row) => ({
         id: row.dataset.acrDevice,
         label: row.querySelector('input').value.trim(),
         userId: row.querySelector('select').value,
@@ -514,7 +541,15 @@ async function voipAcrDeviceSettings(host) {
       button.disabled = true;
       status.textContent = 'Kaydediliyor…';
       try {
-        await voipApi('acr-devices', 'PUT', { devices });
+        const updated = await voipApi('acr-devices', 'PUT', { devices });
+        for (const row of deviceRows) {
+          const device = updated.devices.find((d) => d.id === row.dataset.acrDevice);
+          row.querySelector('[data-acr-agent-pair]').disabled = !device?.userId;
+          row.querySelector('[data-acr-agent-revoke]').hidden = !device?.automatic;
+          row.querySelector('[data-acr-agent-status]').textContent = device?.automatic
+            ? 'Otomatik GSM araması eşleştirilmiş.'
+            : '';
+        }
         status.textContent = 'ACR cihaz ayarları kaydedildi. Görüşme listesini yenileyebilirsiniz.';
       } catch (error) {
         status.textContent = error.message;
@@ -1319,7 +1354,23 @@ function bindVoipAcrChoice(choice, target, devices) {
       const deviceId = deviceSelect ? deviceSelect.value : devices[0]?.id;
       const destination = target();
       const { dial } = await voipApi('acr-dials', 'POST', { ...destination, deviceId });
-      if (voipOnAndroid()) {
+      if (dial.automatic) {
+        status.textContent = 'Android telefona arama komutu gönderiliyor…';
+        const query = 'acr-dials?' + new URLSearchParams({ dialId: dial.id });
+        while (choice.isConnected && choice.open) {
+          const progress = await voipApi(query);
+          if (progress.status === 'delivered') {
+            status.textContent = 'Android telefon arama komutunu aldı.';
+            break;
+          }
+          if (progress.status === 'expired') {
+            status.textContent =
+              'Telefona ulaşılamadı. HAN GSM Bağlantısı bildiriminin açık olduğunu kontrol edin.';
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, Math.min(2000, Math.max(100, progress.waitMs))));
+        }
+      } else if (voipOnAndroid()) {
         if (!choice.isConnected || !choice.open || target().phone !== destination.phone) return;
         const ready = await voipApi('acr-dials', 'POST', { dialId: dial.id });
         if (!choice.isConnected || !choice.open || target().phone !== destination.phone) return;
