@@ -38,7 +38,7 @@ test('closing edited forms never opens another save prompt or submits the form',
 });
 test('Pencereler başlıktan sürüklenir, sınırda erişilebilir kalır ve yeniden açılınca sıfırlanır', async (t) => {
   const dom = new JSDOM(
-    '<dialog open><div class="panelhead"><h2>Hesap</h2><button>Kapat</button><input></div></dialog>',
+    '<dialog open><div class="panelhead"><h2>Hesap</h2><button>Kapat</button><input><details><summary><span>Arama kanalı</span></summary></details></div></dialog>',
     { runScripts: 'dangerously', url: 'https://example.test' },
   );
   t.after(() => dom.window.close());
@@ -71,6 +71,11 @@ test('Pencereler başlıktan sürüklenir, sınırda erişilebilir kalır ve yen
   pointer(w, w.document, 'pointerup', 200, 180);
   assert.equal(d.style.translate, '');
   pointer(w, h.querySelector('input'), 'pointerdown', 150, 120);
+  pointer(w, w.document, 'pointermove', 200, 180);
+  pointer(w, w.document, 'pointerup', 200, 180);
+  assert.equal(d.style.translate, '');
+  pointer(w, h.querySelector('summary span'), 'pointerdown', 150, 120);
+  assert.equal(d.classList.contains('modal-dragging'), false);
   pointer(w, w.document, 'pointermove', 200, 180);
   pointer(w, w.document, 'pointerup', 200, 180);
   assert.equal(d.style.translate, '');

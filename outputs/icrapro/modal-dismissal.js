@@ -169,7 +169,9 @@
     const dialog = header?.closest('dialog[open]');
     if (
       !dialog ||
-      event.target.closest('button,a,input,select,textarea,label,[contenteditable="true"],[role="button"]')
+      event.target.closest(
+        'button,a,input,select,textarea,label,summary,[contenteditable="true"],[role="button"]',
+      )
     )
       return;
     event.preventDefault();

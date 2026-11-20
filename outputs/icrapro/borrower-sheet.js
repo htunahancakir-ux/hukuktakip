@@ -1102,7 +1102,7 @@ function setupBorrowerDragging(dialog) {
   head.classList.add('sheet-drag-handle');
   head.title = 'Föyü taşımak için başlık alanından sürükleyin';
   head.onpointerdown = (e) => {
-    if (e.button !== 0 || e.target.closest('button,input,select,textarea,a')) return;
+    if (e.button !== 0 || e.target.closest('button,input,select,textarea,a,summary')) return;
     const rect = dialog.getBoundingClientRect(),
       offsetX = e.clientX - rect.left,
       offsetY = e.clientY - rect.top;
