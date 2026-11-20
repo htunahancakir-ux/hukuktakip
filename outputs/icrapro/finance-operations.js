@@ -893,7 +893,7 @@ function calculateLegalInterest(principal, start, end) {
   legalDate(start);
   legalDate(end);
   if (!Number.isSafeInteger(principal) || principal <= 0) throw Error('Anapara geçersiz.');
-  if (start < '2006-01-01' || end > legalCalculationSupportedThrough)
+  if (start < '2004-07-01' || end > legalCalculationSupportedThrough)
     throw Error('Bu tarih aralığı için doğrulanmış faiz oranı bulunmuyor.');
   if (end < start) throw Error('Hesap tarihi vadeden önce olamaz.');
   const rows = [];

@@ -50,6 +50,8 @@ let financeHistoryTab = 'all';
 const legalRateVerifiedThrough = '2026-11-03';
 const legalCalculationSupportedThrough = '2026-12-31';
 const legalRatePeriods = [
+  { start: '2004-07-01', end: '2005-05-01', rate: 38 },
+  { start: '2005-05-01', end: '2006-01-01', rate: 12 },
   { start: '2006-01-01', end: '2024-06-01', rate: 9 },
   { start: '2024-06-01', end: '2026-07-31', rate: 24 },
   { start: '2026-07-31', end: '2027-01-01', rate: 31 },

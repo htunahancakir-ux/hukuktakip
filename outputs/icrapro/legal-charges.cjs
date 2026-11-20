@@ -1,6 +1,9 @@
 const legalRateVerifiedThrough = '2026-11-03';
 const legalCalculationSupportedThrough = '2026-12-31';
 const legalRatePeriods = [
+  // Istanbul Bar Association historical legal-rate table; Law 5335 arts. 14 and 35(c).
+  { start: '2004-07-01', end: '2005-05-01', rate: 38 },
+  { start: '2005-05-01', end: '2006-01-01', rate: 12 },
   { start: '2006-01-01', end: '2024-06-01', rate: 9 },
   { start: '2024-06-01', end: '2026-07-31', rate: 24 },
   { start: '2026-07-31', end: '2027-01-01', rate: 31 },
@@ -28,7 +31,7 @@ function calculateLegalInterest(principal, start, end) {
   legalDate(start);
   legalDate(end);
   if (!Number.isSafeInteger(principal) || principal <= 0) throw Error('Anapara geçersiz.');
-  if (start < '2006-01-01' || end > legalCalculationSupportedThrough)
+  if (start < '2004-07-01' || end > legalCalculationSupportedThrough)
     throw Error('Bu tarih aralığı için doğrulanmış faiz oranı bulunmuyor.');
   if (end < start) throw Error('Hesap tarihi vadeden önce olamaz.');
   const rows = [];
