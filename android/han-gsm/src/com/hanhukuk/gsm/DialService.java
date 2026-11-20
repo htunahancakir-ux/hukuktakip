@@ -81,8 +81,8 @@ public final class DialService extends Service {
 
     private void poll() {
         if (!enabled()) return;
-        if (Bridge.missingPermissions(this).length != 0) {
-            stop("Otomatik arama durduruldu. Telefon ve bildirim izinlerini kontrol edin.");
+        if (Bridge.missingPermissions(this).length != 0 || !Bridge.canRunWhileIdle(this)) {
+            stop("Otomatik arama durduruldu. Telefon, bildirim ve pil izinlerini kontrol edin.");
             return;
         }
         TelecomManager telecom = getSystemService(TelecomManager.class);

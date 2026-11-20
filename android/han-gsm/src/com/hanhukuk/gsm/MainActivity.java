@@ -88,6 +88,7 @@ public final class MainActivity extends Activity {
     @Override protected void onStart() {
         super.onStart();
         settings.registerOnSharedPreferenceChangeListener(listener);
+        if (settings.getBoolean("enabled", false) && settings.contains("token")) startConnection();
         render();
     }
 
@@ -169,6 +170,10 @@ public final class MainActivity extends Activity {
             return;
         }
         settings.edit().putBoolean("enabled", true).apply();
+        startConnection();
+    }
+
+    private void startConnection() {
         try {
             startForegroundService(new Intent(this, DialService.class));
         } catch (RuntimeException unavailable) {
