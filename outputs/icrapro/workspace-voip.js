@@ -3234,40 +3234,62 @@ function setupAcrInbox() {
   button.type = 'button';
   button.className = 'secondary';
   button.dataset.acrInbox = '';
-  button.hidden = true;
+  button.textContent = 'Bekleyen GSM aramaları';
+  button.setAttribute('aria-haspopup', 'dialog');
   const announcement = document.createElement('span');
   announcement.className = 'voip-visually-hidden';
   announcement.setAttribute('role', 'status');
   actions.prepend(button, announcement);
   let inbox = { devices: [], dials: [] };
-  async function poll() {
-    if (!button.isConnected) return;
-    if (document.visibilityState === 'visible') {
-      try {
-        const next = await voipApi('acr-dials');
+  let dialog, request;
+  function refresh() {
+    return (request ||= voipApi('acr-dials')
+      .then((next) => {
         if (next.dials.some((dial) => !inbox.dials.some((old) => old.id === dial.id)))
           announcement.textContent = `Bekleyen GSM aramaları (${next.dials.length})`;
         inbox = next;
-        button.hidden = !inbox.dials.length;
-        button.textContent = `Bekleyen GSM aramaları (${inbox.dials.length})`;
-      } catch (error) {
-        if (error.status === 401) return;
-        button.hidden = true;
-      }
-    }
+        button.textContent = next.dials.length
+          ? `Bekleyen GSM aramaları (${next.dials.length})`
+          : 'Bekleyen GSM aramaları';
+        if (dialog?.open) renderInbox();
+        return true;
+      })
+      .catch((error) => {
+        const status = dialog?.querySelector('[data-acr-inbox-status]');
+        if (status) {
+          status.hidden = false;
+          status.textContent = error.message;
+        }
+        return error.status !== 401;
+      })
+      .finally(() => {
+        request = null;
+      }));
+  }
+  async function poll() {
+    if (!button.isConnected) return;
+    if (document.visibilityState === 'visible' && !(await refresh())) return;
     setTimeout(poll, 8000);
   }
-  button.onclick = () => {
-    const dialog = document.createElement('dialog');
-    dialog.className = 'voip-history';
-    dialog.setAttribute('aria-labelledby', 'acrInboxHeading');
-    dialog.innerHTML =
-      '<div class="panelhead"><h2 id="acrInboxHeading">Bekleyen GSM aramaları</h2><button type="button" class="secondary" data-close>Kapat</button></div><div class="formbody" data-acr-inbox-rows></div>';
-    document.body.append(dialog);
+  function renderInbox() {
     const rows = dialog.querySelector('[data-acr-inbox-rows]');
+    const status = dialog.querySelector('[data-acr-inbox-status]');
+    const ids = new Set(inbox.dials.map((dial) => dial.id));
+    const existing = new Set();
+    for (const row of [...rows.children]) {
+      if (ids.has(row.dataset.acrDialId)) existing.add(row.dataset.acrDialId);
+      else row.remove();
+    }
+    status.hidden = ids.size > 0;
+    const message = status.hidden
+      ? ''
+      : 'Bekleyen istek yok. Bilgisayardan GSM ile ara seçeneğine basın. İstekler 5 dakika geçerlidir.';
+    if (status.textContent !== message) status.textContent = message;
     for (const dial of inbox.dials) {
+      if (existing.has(dial.id)) continue;
       const row = document.createElement('article');
       row.className = 'voip-call-entry';
+      row.dataset.acrDialId = dial.id;
       const deviceName = inbox.devices.find((d) => d.id === dial.deviceId)?.label;
       row.innerHTML = `<strong>${esc(dial.label || 'GSM araması')}</strong><p>${window.hanPrivacy?.html('phone', dial.phone, voipPhone(dial.phone)) || esc(voipPhone(dial.phone))} ${esc(deviceName || '')}</p>
         <div data-acr-link><button class="primary" type="button">Bu telefonda hazırla</button></div><p role="status"></p>`;
@@ -3286,9 +3308,27 @@ function setupAcrInbox() {
       };
       rows.append(row);
     }
+  }
+  button.onclick = () => {
+    if (dialog?.open) return;
+    dialog = document.createElement('dialog');
+    dialog.className = 'voip-history';
+    dialog.setAttribute('aria-labelledby', 'acrInboxHeading');
+    dialog.innerHTML =
+      '<div class="panelhead"><h2 id="acrInboxHeading">Bekleyen GSM aramaları</h2><button type="button" class="secondary" data-close>Kapat</button></div><div class="formbody"><p data-acr-inbox-status role="status"></p><div data-acr-inbox-rows></div></div>';
+    document.body.append(dialog);
     dialog.querySelector('[data-close]').onclick = () => dialog.close();
-    dialog.addEventListener('close', () => dialog.remove(), { once: true });
+    const opened = dialog;
+    opened.addEventListener(
+      'close',
+      () => {
+        opened.remove();
+        if (dialog === opened) dialog = null;
+      },
+      { once: true },
+    );
     dialog.showModal();
+    void refresh();
   };
   void poll();
 }
