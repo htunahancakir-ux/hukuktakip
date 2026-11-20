@@ -495,7 +495,15 @@ async function voipAcrDeviceSettings(host) {
           ) => `<fieldset data-acr-device="${esc(d.id)}"><legend>Telefon ${index + 1}</legend><div class="grid">
         <label class="field" for="acrLabel${index}">Cihaz adı (zorunlu)<input id="acrLabel${index}" name="label${index}" type="text" required maxlength="80" value="${esc(d.label)}" autocomplete="off"></label>
         <label class="field" for="acrUser${index}">Bu telefonu kullanan personel<select id="acrUser${index}" name="userId${index}" data-optional="true"><option value="">Personel seçilmedi — cihaz adı kullanılsın</option>${config.users.map((u) => `<option value="${esc(u.id)}" ${u.id === d.userId ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></label>
-      </div><div class="toolbar"><button type="button" class="secondary" data-acr-agent-pair ${d.userId ? '' : 'disabled'}>Android eşleştirme kodu</button><button type="button" class="link" data-acr-agent-revoke ${d.automatic ? '' : 'hidden'}>Eşleşmeyi kaldır</button></div><p data-acr-agent-status aria-live="polite">${d.automatic ? 'Otomatik GSM araması eşleştirilmiş.' : ''}</p></fieldset>`,
+      </div><div class="toolbar"><button type="button" class="secondary" data-acr-agent-pair aria-controls="acrCodePanel${index}" aria-expanded="false" ${d.userId ? '' : 'disabled'}>Android eşleştirme kodu</button><button type="button" class="link" data-acr-agent-revoke ${d.automatic ? '' : 'hidden'}>Eşleşmeyi kaldır</button></div>
+        <div id="acrCodePanel${index}" data-acr-agent-code-panel hidden>
+          <label class="field" for="acrCode${index}">Android eşleştirme kodu
+            <textarea id="acrCode${index}" data-acr-agent-code rows="2" readonly spellcheck="false"></textarea>
+          </label>
+          <button type="button" class="secondary" data-acr-agent-copy command="--copy-acr-code" commandfor="acrCode${index}">Kodu kopyala</button>
+        </div>
+        <p data-acr-agent-status role="status">${d.automatic ? 'Otomatik GSM araması eşleştirilmiş.' : ''}</p>
+      </fieldset>`,
         )
         .join('')}
       <p role="status" data-acr-status></p><div class="actions"><button class="primary" type="submit">ACR Cihaz Ayarlarını Kaydet</button></div></form>`,
@@ -505,7 +513,31 @@ async function voipAcrDeviceSettings(host) {
     for (const row of deviceRows) {
       const pair = row.querySelector('[data-acr-agent-pair]');
       const revoke = row.querySelector('[data-acr-agent-revoke]');
+      const codePanel = row.querySelector('[data-acr-agent-code-panel]');
+      const code = row.querySelector('[data-acr-agent-code]');
+      const copy = row.querySelector('[data-acr-agent-copy]');
       const status = row.querySelector('[data-acr-agent-status]');
+      const copyCode = async () => {
+        const value = code.value;
+        if (!value || codePanel.hidden) return;
+        try {
+          await navigator.clipboard.writeText(value);
+          if (code.value === value)
+            status.textContent = 'Kod kopyalandı. HAN GSM Bağlantısı uygulamasına yapıştırın.';
+        } catch {
+          if (code.value !== value) return;
+          code.focus();
+          code.select();
+          status.textContent = 'Panoya erişilemedi. Seçili kodu cihazınızın kopyalama komutuyla kopyalayın.';
+        }
+      };
+      if ('CommandEvent' in window) {
+        code.addEventListener('command', (event) => {
+          if (event.command === '--copy-acr-code' && event.source === copy) void copyCode();
+        });
+      } else {
+        copy.onclick = copyCode;
+      }
       const link = async (remove) => {
         const wasDisabled = pair.disabled;
         pair.disabled = revoke.disabled = true;
@@ -515,9 +547,12 @@ async function voipAcrDeviceSettings(host) {
             revoke: remove,
           });
           revoke.hidden = remove;
+          code.value = remove ? '' : `${location.hostname}/${result.pairingCode}`;
+          codePanel.hidden = remove;
+          pair.setAttribute('aria-expanded', String(!remove));
           status.textContent = remove
             ? 'Android eşleştirmesi kaldırıldı.'
-            : `HAN GSM Bağlantısı uygulamasına 10 dakika içinde şu kodu girin. ${location.hostname}/${result.pairingCode}`;
+            : 'Kodu 10 dakika içinde HAN GSM Bağlantısı uygulamasına yapıştırın.';
         } catch (error) {
           status.textContent = error.message;
         } finally {
@@ -544,7 +579,11 @@ async function voipAcrDeviceSettings(host) {
         const updated = await voipApi('acr-devices', 'PUT', { devices });
         for (const row of deviceRows) {
           const device = updated.devices.find((d) => d.id === row.dataset.acrDevice);
-          row.querySelector('[data-acr-agent-pair]').disabled = !device?.userId;
+          const pair = row.querySelector('[data-acr-agent-pair]');
+          pair.disabled = !device?.userId;
+          pair.setAttribute('aria-expanded', 'false');
+          row.querySelector('[data-acr-agent-code-panel]').hidden = true;
+          row.querySelector('[data-acr-agent-code]').value = '';
           row.querySelector('[data-acr-agent-revoke]').hidden = !device?.automatic;
           row.querySelector('[data-acr-agent-status]').textContent = device?.automatic
             ? 'Otomatik GSM araması eşleştirilmiş.'

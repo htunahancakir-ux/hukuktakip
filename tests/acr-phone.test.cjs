@@ -749,11 +749,11 @@ test('ACR upload uses the body secret, office restriction, private encrypted arc
   }
 });
 
-test('ACR settings use a separate labelled form, escape labels and save device and staff together', async () => {
+test('ACR settings save device assignments and copy a complete Android pairing code', async () => {
   const { JSDOM } = require('jsdom');
   const dom = new JSDOM(
     '<div id="host"><form id="other"><input name="unchanged" value="keep"></form></div>',
-    { runScripts: 'outside-only', url: 'https://office.example.test' },
+    { runScripts: 'outside-only', url: 'https://www.hanhukuktakip.com' },
   );
   const w = dom.window;
   w.esc = (value) =>
@@ -763,10 +763,12 @@ test('ACR settings use a separate labelled form, escape labels and save device a
     );
   w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
   const calls = [];
+  const pairingCode = 'phone-1.AbCdEf1234_xyZ-0';
   w.voipApi = async (route, method, value) => {
     calls.push({ route, method, value });
+    if (route === 'acr-agent-link') return value.revoke ? { paired: false } : { pairingCode };
     return {
-      devices: [{ id: 'phone-1', label: '<img src=x onerror=alert(1)>', userId: '' }],
+      devices: value?.devices || [{ id: 'phone-1', label: '<img src=x onerror=alert(1)>', userId: '' }],
       users: [{ id: 'worker-1', name: 'Test Personel' }],
     };
   };
@@ -784,8 +786,42 @@ test('ACR settings use a separate labelled form, escape labels and save device a
     assert.equal(calls[1].method, 'PUT');
     assert.equal(calls[1].value.devices[0].label, 'Telefonum');
     assert.equal(calls[1].value.devices[0].userId, 'worker-1');
-    assert.match(form.querySelector('[role="status"]').textContent, /kaydedildi/);
+    assert.match(form.querySelector('[data-acr-status]').textContent, /kaydedildi/);
     assert.equal(w.document.querySelector('#other input').value, 'keep');
+
+    const pair = form.querySelector('[data-acr-agent-pair]');
+    const panel = form.querySelector('[data-acr-agent-code-panel]');
+    const code = panel.querySelector('textarea');
+    const copy = panel.querySelector('button');
+    assert.equal(panel.hidden, true);
+    await pair.onclick();
+    assert.equal(panel.hidden, false);
+    assert.equal(code.readOnly, true);
+    assert.equal(code.value, 'www.hanhukuktakip.com/' + pairingCode);
+    assert.equal(copy.type, 'button');
+
+    const status = form.querySelector('[data-acr-agent-status]');
+    const writes = [];
+    Object.defineProperty(w.navigator, 'clipboard', {
+      value: { writeText: async (text) => writes.push(text) },
+      configurable: true,
+    });
+    copy.click();
+    await new Promise(setImmediate);
+    assert.deepEqual(writes, [code.value]);
+    assert.match(status.textContent, /kopyalandı/);
+    assert.equal(calls.length, 3, 'copying does not resubmit or replace the code');
+
+    Object.defineProperty(w.navigator, 'clipboard', { value: undefined });
+    copy.click();
+    await new Promise(setImmediate);
+    assert.equal(code.selectionStart, 0);
+    assert.equal(code.selectionEnd, code.value.length);
+    assert.match(status.textContent, /Panoya erişilemedi/);
+
+    await form.querySelector('[data-acr-agent-revoke]').onclick();
+    assert.equal(panel.hidden, true);
+    assert.equal(code.value, '');
   } finally {
     w.close();
   }
