@@ -24,7 +24,10 @@
     <meta property="og:image" content="__SITE_ORIGIN__/landing-og.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Hukuk Takip Platformu: hukuk büroları için icra ve tahsilat takip yazılımı" />
+    <meta
+      property="og:image:alt"
+      content="Hukuk Takip Platformu: hukuk büroları için icra ve tahsilat takip yazılımı"
+    />
     <meta name="twitter:card" content="summary_large_image" />
     <script type="application/ld+json">
       {
@@ -71,115 +74,491 @@
         --surface: #f6f8fa;
         --serif: 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
         color-scheme: light;
-        font-family: 'Segoe UI', system-ui, -apple-system, Roboto, Arial, sans-serif;
+        font-family:
+          'Segoe UI',
+          system-ui,
+          -apple-system,
+          Roboto,
+          Arial,
+          sans-serif;
         color: var(--ink);
         background: #fff;
         line-height: 1.6;
       }
-      * { box-sizing: border-box; }
-      body { margin: 0; }
-      a { color: inherit; }
-      .wrap { width: min(1120px, 100% - 32px); margin-inline: auto; }
-      .skip { position: absolute; left: 8px; top: -60px; background: #fff; color: var(--navy); padding: 8px 12px; border-radius: 6px; z-index: 10; }
-      .skip:focus { top: 8px; }
-      :focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+      }
+      a {
+        color: inherit;
+      }
+      .wrap {
+        width: min(1120px, 100% - 32px);
+        margin-inline: auto;
+      }
+      .skip {
+        position: absolute;
+        left: 8px;
+        top: -60px;
+        background: #fff;
+        color: var(--navy);
+        padding: 8px 12px;
+        border-radius: 6px;
+        z-index: 10;
+      }
+      .skip:focus {
+        top: 8px;
+      }
+      :focus-visible {
+        outline: 2px solid var(--gold);
+        outline-offset: 3px;
+      }
 
-      .site-header { background: var(--navy); color: #fff; }
-      .site-header .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 68px; }
-      .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; font-family: var(--serif); font-size: 20px; color: #fff; }
-      .logo svg { flex: none; }
-      .logo span { color: var(--gold); }
-      .site-header nav ul { display: flex; gap: 22px; list-style: none; margin: 0; padding: 0; font-size: 14px; }
-      .site-header nav a { text-decoration: none; color: #cdd7df; }
-      .site-header nav a:hover { color: #fff; }
+      .site-header {
+        background: var(--navy);
+        color: #fff;
+      }
+      .site-header .wrap {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        min-height: 68px;
+      }
+      .logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        text-decoration: none;
+        font-family: var(--serif);
+        font-size: 20px;
+        color: #fff;
+      }
+      .logo svg {
+        flex: none;
+      }
+      .logo span {
+        color: var(--gold);
+      }
+      .site-header nav ul {
+        display: flex;
+        gap: 22px;
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        font-size: 14px;
+      }
+      .site-header nav a {
+        text-decoration: none;
+        color: #cdd7df;
+      }
+      .site-header nav a:hover {
+        color: #fff;
+      }
 
-      .button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 20px; border-radius: 7px; border: 1px solid #ffffff40; text-decoration: none; font-weight: 600; font-size: 15px; color: #fff; }
-      .button:hover { border-color: var(--gold); }
-      .button.primary { background: var(--gold); border-color: var(--gold); color: var(--navy); }
-      .button.primary:hover { background: #d5b884; }
-      .button.small { min-height: 38px; padding: 6px 14px; font-size: 14px; }
-      .button, .logo strong { white-space: nowrap; }
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        padding: 10px 20px;
+        border-radius: 7px;
+        border: 1px solid #ffffff40;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 15px;
+        color: #fff;
+      }
+      .button:hover {
+        border-color: var(--gold);
+      }
+      .button.primary {
+        background: var(--gold);
+        border-color: var(--gold);
+        color: var(--navy);
+      }
+      .button.primary:hover {
+        background: #d5b884;
+      }
+      .button.small {
+        min-height: 38px;
+        padding: 6px 14px;
+        font-size: 14px;
+      }
+      .button,
+      .logo strong {
+        white-space: nowrap;
+      }
 
-      .hero { background: linear-gradient(180deg, var(--navy) 0%, #15334a 100%); color: #fff; padding: 64px 0 76px; }
-      .hero .wrap { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 48px; align-items: center; }
-      .eyebrow { font-size: 12px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--gold); margin: 0 0 12px; font-weight: 600; }
-      h1, h2, h3 { font-family: var(--serif); line-height: 1.2; letter-spacing: -0.3px; text-wrap: balance; }
-      h1 { font-size: clamp(32px, 4.6vw, 50px); margin: 0 0 18px; }
-      .lead { font-size: 18px; color: #d4dde4; max-width: 56ch; margin: 0 0 28px; text-wrap: pretty; }
-      .actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 0; }
-      .hero-note { font-size: 13px; color: #9fb0bd; margin: 18px 0 0; }
+      .hero {
+        background: linear-gradient(180deg, var(--navy) 0%, #15334a 100%);
+        color: #fff;
+        padding: 64px 0 76px;
+      }
+      .hero .wrap {
+        display: grid;
+        grid-template-columns: 1.05fr 0.95fr;
+        gap: 48px;
+        align-items: center;
+      }
+      .eyebrow {
+        font-size: 12px;
+        letter-spacing: 1.6px;
+        text-transform: uppercase;
+        color: var(--gold);
+        margin: 0 0 12px;
+        font-weight: 600;
+      }
+      h1,
+      h2,
+      h3 {
+        font-family: var(--serif);
+        line-height: 1.2;
+        letter-spacing: -0.3px;
+        text-wrap: balance;
+      }
+      h1 {
+        font-size: clamp(32px, 4.6vw, 50px);
+        margin: 0 0 18px;
+      }
+      .lead {
+        font-size: 18px;
+        color: #d4dde4;
+        max-width: 56ch;
+        margin: 0 0 28px;
+        text-wrap: pretty;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin: 0;
+      }
+      .hero-note {
+        font-size: 13px;
+        color: #9fb0bd;
+        margin: 18px 0 0;
+      }
 
-      .preview { background: #fff; color: var(--ink); border-radius: 12px; box-shadow: 0 30px 80px #0006; overflow: hidden; font-size: 13px; }
-      .preview-bar { display: flex; gap: 6px; padding: 10px 14px; background: #eef1f4; }
-      .preview-bar i { width: 10px; height: 10px; border-radius: 50%; background: #cfd6dd; }
-      .preview-body { display: grid; grid-template-columns: 110px 1fr; min-height: 300px; }
-      .preview-side { background: var(--navy); padding: 14px 10px; display: grid; align-content: start; gap: 8px; }
-      .preview-side b { height: 9px; border-radius: 4px; background: #ffffff26; }
-      .preview-side b:first-child { background: var(--gold); width: 70%; margin-bottom: 8px; }
-      .preview-main { padding: 16px; display: grid; gap: 12px; align-content: start; }
-      .preview-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-      .preview-stats div { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
-      .preview-stats small { display: block; color: var(--muted); font-size: 11px; }
-      .preview-stats strong { font-size: 17px; }
-      .preview-table { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-      .preview-table p { display: grid; grid-template-columns: 1.4fr 1fr 0.8fr; gap: 8px; margin: 0; padding: 8px 10px; border-top: 1px solid #eef1f4; }
-      .preview-table p:first-child { border-top: 0; background: var(--surface); color: var(--muted); font-size: 11px; }
-      .tag { justify-self: start; font-size: 11px; padding: 1px 8px; border-radius: 10px; background: #edf7f2; color: #2f6b52; }
-      .tag.wait { background: #f6f0e4; color: var(--gold-ink); }
+      .preview {
+        background: #fff;
+        color: var(--ink);
+        border-radius: 12px;
+        box-shadow: 0 30px 80px #0006;
+        overflow: hidden;
+        font-size: 13px;
+      }
+      .preview-bar {
+        display: flex;
+        gap: 6px;
+        padding: 10px 14px;
+        background: #eef1f4;
+      }
+      .preview-bar i {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #cfd6dd;
+      }
+      .preview-body {
+        display: grid;
+        grid-template-columns: 110px 1fr;
+        min-height: 300px;
+      }
+      .preview-side {
+        background: var(--navy);
+        padding: 14px 10px;
+        display: grid;
+        align-content: start;
+        gap: 8px;
+      }
+      .preview-side b {
+        height: 9px;
+        border-radius: 4px;
+        background: #ffffff26;
+      }
+      .preview-side b:first-child {
+        background: var(--gold);
+        width: 70%;
+        margin-bottom: 8px;
+      }
+      .preview-main {
+        padding: 16px;
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+      .preview-stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+      }
+      .preview-stats div {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px 10px;
+      }
+      .preview-stats small {
+        display: block;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .preview-stats strong {
+        font-size: 17px;
+      }
+      .preview-table {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .preview-table p {
+        display: grid;
+        grid-template-columns: 1.4fr 1fr 0.8fr;
+        gap: 8px;
+        margin: 0;
+        padding: 8px 10px;
+        border-top: 1px solid #eef1f4;
+      }
+      .preview-table p:first-child {
+        border-top: 0;
+        background: var(--surface);
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .tag {
+        justify-self: start;
+        font-size: 11px;
+        padding: 1px 8px;
+        border-radius: 10px;
+        background: #edf7f2;
+        color: #2f6b52;
+      }
+      .tag.wait {
+        background: #f6f0e4;
+        color: var(--gold-ink);
+      }
 
-      section { padding: 72px 0; }
-      section h2 { font-size: clamp(26px, 3.2vw, 36px); margin: 0 0 12px; }
-      .section-lead { color: var(--muted); max-width: 64ch; margin: 0 0 36px; font-size: 17px; }
-      .alt { background: var(--surface); border-block: 1px solid var(--line); }
+      section {
+        padding: 72px 0;
+      }
+      section h2 {
+        font-size: clamp(26px, 3.2vw, 36px);
+        margin: 0 0 12px;
+      }
+      .section-lead {
+        color: var(--muted);
+        max-width: 64ch;
+        margin: 0 0 36px;
+        font-size: 17px;
+      }
+      .alt {
+        background: var(--surface);
+        border-block: 1px solid var(--line);
+      }
 
-      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; list-style: none; padding: 0; margin: 0; }
-      .card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 22px; }
-      .card h3 { font-size: 19px; margin: 0 0 8px; }
-      .card p { margin: 0; color: var(--muted); font-size: 15px; }
-      .card .mark { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 9px; background: #f4efe5; color: var(--gold-ink); font-weight: 700; margin-bottom: 12px; }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 18px;
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .card {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 22px;
+      }
+      .card h3 {
+        font-size: 19px;
+        margin: 0 0 8px;
+      }
+      .card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 15px;
+      }
+      .card .mark {
+        display: inline-grid;
+        place-items: center;
+        width: 36px;
+        height: 36px;
+        border-radius: 9px;
+        background: #f4efe5;
+        color: var(--gold-ink);
+        font-weight: 700;
+        margin-bottom: 12px;
+      }
 
-      .modules .card { border-top: 3px solid var(--gold); }
-      .steps { counter-reset: step; }
-      .steps li { counter-increment: step; }
-      .steps .card::before { content: counter(step); display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--navy); color: var(--gold); font-weight: 700; margin-bottom: 12px; }
+      .modules .card {
+        border-top: 3px solid var(--gold);
+      }
+      .steps {
+        counter-reset: step;
+      }
+      .steps li {
+        counter-increment: step;
+      }
+      .steps .card::before {
+        content: counter(step);
+        display: inline-grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        background: var(--navy);
+        color: var(--gold);
+        font-weight: 700;
+        margin-bottom: 12px;
+      }
 
-      .checks { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px 32px; }
-      .checks li { padding-left: 28px; position: relative; }
-      .checks li::before { content: '✓'; position: absolute; left: 0; top: 0; color: var(--gold-ink); font-weight: 700; }
-      .checks strong { display: block; }
-      .checks span { color: var(--muted); font-size: 15px; }
+      .checks {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 14px 32px;
+      }
+      .checks li {
+        padding-left: 28px;
+        position: relative;
+      }
+      .checks li::before {
+        content: '✓';
+        position: absolute;
+        left: 0;
+        top: 0;
+        color: var(--gold-ink);
+        font-weight: 700;
+      }
+      .checks strong {
+        display: block;
+      }
+      .checks span {
+        color: var(--muted);
+        font-size: 15px;
+      }
 
-      .pricing { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
-      .pricing dl { margin: 0; display: grid; gap: 14px; }
-      .pricing dt { font-weight: 700; }
-      .pricing dd { margin: 2px 0 0; color: var(--muted); }
+      .pricing {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 32px;
+        align-items: start;
+      }
+      .pricing dl {
+        margin: 0;
+        display: grid;
+        gap: 14px;
+      }
+      .pricing dt {
+        font-weight: 700;
+      }
+      .pricing dd {
+        margin: 2px 0 0;
+        color: var(--muted);
+      }
 
-      .faq details { border-bottom: 1px solid var(--line); padding: 16px 0; }
-      .faq summary { cursor: pointer; font-weight: 600; font-size: 17px; }
-      .faq details p { margin: 10px 0 0; color: var(--muted); max-width: 75ch; }
+      .faq details {
+        border-bottom: 1px solid var(--line);
+        padding: 16px 0;
+      }
+      .faq summary {
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 17px;
+      }
+      .faq details p {
+        margin: 10px 0 0;
+        color: var(--muted);
+        max-width: 75ch;
+      }
 
-      .contact { background: var(--navy); color: #fff; text-align: center; }
-      .contact p { color: #d4dde4; max-width: 60ch; margin: 0 auto 24px; }
-      .contact .actions { justify-content: center; }
+      .contact {
+        background: var(--navy);
+        color: #fff;
+        text-align: center;
+      }
+      .contact p {
+        color: #d4dde4;
+        max-width: 60ch;
+        margin: 0 auto 24px;
+      }
+      .contact .actions {
+        justify-content: center;
+      }
 
-      .site-footer { padding: 28px 0; font-size: 14px; color: var(--muted); border-top: 1px solid var(--line); }
-      .site-footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; }
+      .site-footer {
+        padding: 28px 0;
+        font-size: 14px;
+        color: var(--muted);
+        border-top: 1px solid var(--line);
+      }
+      .site-footer .wrap {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 12px;
+      }
 
       @media (max-width: 900px) {
-        .hero .wrap, .pricing { grid-template-columns: 1fr; }
-        .site-header nav ul { display: none; }
-        .hero { padding: 44px 0 56px; }
+        .hero .wrap,
+        .pricing {
+          grid-template-columns: 1fr;
+        }
+        .site-header nav ul {
+          display: none;
+        }
+        .hero {
+          padding: 44px 0 56px;
+        }
       }
       @media (max-width: 520px) {
-        .preview-body { grid-template-columns: 1fr; }
-        .preview-side { display: none; }
-        section { padding: 52px 0; }
-        .logo { font-size: 17px; }
+        .preview-body {
+          grid-template-columns: 1fr;
+        }
+        .preview-side {
+          display: none;
+        }
+        section {
+          padding: 52px 0;
+        }
+        .logo {
+          font-size: 17px;
+        }
       }
-      .product-credit { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px; color: #526274; font-size: 12px; line-height: 1.5; }
-      .product-credit img { display: block; flex: 0 0 auto; width: 108px; height: 36px; object-fit: contain; background: #fff; border-radius: 5px; }
-      .product-credit-link { display: inline-flex; flex: 0 0 auto; border-radius: 5px; }
-      .product-credit-link:focus-visible { outline: 2px solid #087449; outline-offset: 3px; }
+      .product-credit {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 6px;
+        color: #526274;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+      .product-credit img {
+        display: block;
+        flex: 0 0 auto;
+        width: 144px;
+        height: 44px;
+        object-fit: cover;
+        object-position: center 56%;
+        background: #fff;
+        border-radius: 5px;
+      }
+      .product-credit-link {
+        display: inline-flex;
+        flex: 0 0 auto;
+        border-radius: 5px;
+      }
+      .product-credit-link:focus-visible {
+        outline: 2px solid #087449;
+        outline-offset: 3px;
+      }
     </style>
   </head>
   <body>
@@ -189,7 +568,13 @@
         <a class="logo" href="/" aria-label="Hukuk Takip Platformu ana sayfa">
           <svg width="32" height="32" viewBox="0 0 64 64" aria-hidden="true">
             <rect width="64" height="64" rx="14" fill="#183b4b" />
-            <path d="M32 14v34M20 48h24M14 22h36" stroke="#c6a56f" stroke-width="4" stroke-linecap="round" fill="none" />
+            <path
+              d="M32 14v34M20 48h24M14 22h36"
+              stroke="#c6a56f"
+              stroke-width="4"
+              stroke-linecap="round"
+              fill="none"
+            />
             <path d="M14 22l-6 14h12zM50 22l-6 14h12z" fill="#c6a56f" />
           </svg>
           <strong>Hukuk Takip <span>Platformu</span></strong>
@@ -213,14 +598,16 @@
             <p class="eyebrow">Hukuk büroları için bulut yazılım</p>
             <h1 id="baslik">İcra ve tahsilat takibini tek ekranda yönetin</h1>
             <p class="lead">
-              Müvekkillerinizi, föylerinizi, borçlularınızı ve tahsilatlarınızı; büronuzun muhasebesini ve personelini
-              aynı yerden izleyin. Kurulum yok; tarayıcıdan, büronuza özel adresten çalışırsınız.
+              Müvekkillerinizi, föylerinizi, borçlularınızı ve tahsilatlarınızı; büronuzun muhasebesini ve
+              personelini aynı yerden izleyin. Kurulum yok; tarayıcıdan, büronuza özel adresten çalışırsınız.
             </p>
             <p class="actions">
               <a class="button primary" href="#iletisim">Demo isteyin</a>
               <a class="button" href="/giris">Giriş yapın</a>
             </p>
-            <p class="hero-note">Kullanıcı başına aylık ücret · Modüller isteğe bağlı · Excel’den veri aktarımı</p>
+            <p class="hero-note">
+              Kullanıcı başına aylık ücret · Modüller isteğe bağlı · Excel’den veri aktarımı
+            </p>
           </div>
           <div class="preview" aria-hidden="true">
             <div class="preview-bar"><i></i><i></i><i></i></div>
@@ -253,14 +640,67 @@
             tahsilatın müvekkile ödenmesine kadar her adım kayıt altında.
           </p>
           <ul class="grid">
-            <li class="card"><span class="mark" aria-hidden="true">◉</span><h3>Müvekkil yönetimi</h3><p>Müvekkil kartları, kategoriler, banka hesapları ve müvekkile yapılan ödemeler; telefon, il ve ilçeye göre filtreleme.</p></li>
-            <li class="card"><span class="mark" aria-hidden="true">▤</span><h3>Evrak kabul</h3><p>Gelen dosyaları föy numarasıyla kaydedin, masraf avansını ve alındı makbuzunu aynı ekrandan çıkarın.</p></li>
-            <li class="card"><span class="mark" aria-hidden="true">▦</span><h3>Borçlu ve föy takibi</h3><p>Borçlu adresleri ve telefonları, ödeme taahhütleri, kısmi tahsilat, döviz alacakları ve dosya kapanışı.</p></li>
-            <li class="card"><span class="mark" aria-hidden="true">✉</span><h3>Mesajlar ve iş emirleri</h3><p>Ekibinize iş atayın, toplu iş emri gönderin, yapılan işi ve görüşme kayıtlarını dosyada saklayın.</p></li>
-            <li class="card"><span class="mark" aria-hidden="true">◷</span><h3>Hatırlatmalar</h3><p>Taahhüt günlerini ve tekrar eden işleri kaçırmayın; zamanı gelen hatırlatma ilgili kişinin önüne düşer.</p></li>
-            <li class="card"><span class="mark" aria-hidden="true">₺</span><h3>Muhasebe ve kasa</h3><p>Tahsilat, kasa, masraf havuzu, müvekkil ödemeleri ve kâr hesabı; tutarsız kayıtlar için uyarılar.</p></li>
-            <li class="card"><span class="mark" aria-hidden="true">♙</span><h3>Personel</h3><p>Kullanıcı yetkileri, mola ve çalışma süreleri, tahsilat primleri ve personel cari hesabı.</p></li>
-            <li class="card"><span class="mark" aria-hidden="true">▥</span><h3>Raporlar ve Excel</h3><p>Tahsilat, föy, personel ve muhasebe raporları; her listeyi Excel’e aktarın, mevcut verilerinizi Excel’den taşıyın.</p></li>
+            <li class="card">
+              <span class="mark" aria-hidden="true">◉</span>
+              <h3>Müvekkil yönetimi</h3>
+              <p>
+                Müvekkil kartları, kategoriler, banka hesapları ve müvekkile yapılan ödemeler; telefon, il ve
+                ilçeye göre filtreleme.
+              </p>
+            </li>
+            <li class="card">
+              <span class="mark" aria-hidden="true">▤</span>
+              <h3>Evrak kabul</h3>
+              <p>
+                Gelen dosyaları föy numarasıyla kaydedin, masraf avansını ve alındı makbuzunu aynı ekrandan
+                çıkarın.
+              </p>
+            </li>
+            <li class="card">
+              <span class="mark" aria-hidden="true">▦</span>
+              <h3>Borçlu ve föy takibi</h3>
+              <p>
+                Borçlu adresleri ve telefonları, ödeme taahhütleri, kısmi tahsilat, döviz alacakları ve dosya
+                kapanışı.
+              </p>
+            </li>
+            <li class="card">
+              <span class="mark" aria-hidden="true">✉</span>
+              <h3>Mesajlar ve iş emirleri</h3>
+              <p>
+                Ekibinize iş atayın, toplu iş emri gönderin, yapılan işi ve görüşme kayıtlarını dosyada
+                saklayın.
+              </p>
+            </li>
+            <li class="card">
+              <span class="mark" aria-hidden="true">◷</span>
+              <h3>Hatırlatmalar</h3>
+              <p>
+                Taahhüt günlerini ve tekrar eden işleri kaçırmayın; zamanı gelen hatırlatma ilgili kişinin
+                önüne düşer.
+              </p>
+            </li>
+            <li class="card">
+              <span class="mark" aria-hidden="true">₺</span>
+              <h3>Muhasebe ve kasa</h3>
+              <p>
+                Tahsilat, kasa, masraf havuzu, müvekkil ödemeleri ve kâr hesabı; tutarsız kayıtlar için
+                uyarılar.
+              </p>
+            </li>
+            <li class="card">
+              <span class="mark" aria-hidden="true">♙</span>
+              <h3>Personel</h3>
+              <p>Kullanıcı yetkileri, mola ve çalışma süreleri, tahsilat primleri ve personel cari hesabı.</p>
+            </li>
+            <li class="card">
+              <span class="mark" aria-hidden="true">▥</span>
+              <h3>Raporlar ve Excel</h3>
+              <p>
+                Tahsilat, föy, personel ve muhasebe raporları; her listeyi Excel’e aktarın, mevcut
+                verilerinizi Excel’den taşıyın.
+              </p>
+            </li>
           </ul>
         </div>
       </section>
@@ -268,12 +708,35 @@
       <section id="moduller" class="alt modules" aria-labelledby="moduller-baslik">
         <div class="wrap">
           <h2 id="moduller-baslik">İhtiyaç duydukça eklenen modüller</h2>
-          <p class="section-lead">Temel paketle başlayın; büronuz büyüdükçe aşağıdaki modülleri ayrı ayrı açın.</p>
+          <p class="section-lead">
+            Temel paketle başlayın; büronuz büyüdükçe aşağıdaki modülleri ayrı ayrı açın.
+          </p>
           <ul class="grid">
-            <li class="card"><h3>Telefon (VoIP)</h3><p>Santralinizi bağlayın; borçluyu ekrandan arayın, gelen ve giden görüşmeler kayıtlarıyla birlikte föyde saklansın.</p></li>
-            <li class="card"><h3>Yapay zekâ asistanı</h3><p>Görüşme kayıtlarını yazıya döküp özetleyin, personel görüşmelerinden rapor çıkarın.</p></li>
-            <li class="card"><h3>WhatsApp</h3><p>Borçlu ve müvekkillere WhatsApp üzerinden mesaj ve belge gönderin, yazışmaları kayıt altında tutun.</p></li>
-            <li class="card"><h3>Rota Bulma</h3><p>Pazarlama ekibi için il, ilçe, sektör veya haritada çizilen bölgeye göre firma bulma ve ziyaret rotası oluşturma.</p></li>
+            <li class="card">
+              <h3>Telefon (VoIP)</h3>
+              <p>
+                Santralinizi bağlayın; borçluyu ekrandan arayın, gelen ve giden görüşmeler kayıtlarıyla
+                birlikte föyde saklansın.
+              </p>
+            </li>
+            <li class="card">
+              <h3>Yapay zekâ asistanı</h3>
+              <p>Görüşme kayıtlarını yazıya döküp özetleyin, personel görüşmelerinden rapor çıkarın.</p>
+            </li>
+            <li class="card">
+              <h3>WhatsApp</h3>
+              <p>
+                Borçlu ve müvekkillere WhatsApp üzerinden mesaj ve belge gönderin, yazışmaları kayıt altında
+                tutun.
+              </p>
+            </li>
+            <li class="card">
+              <h3>Rota Bulma</h3>
+              <p>
+                Pazarlama ekibi için il, ilçe, sektör veya haritada çizilen bölgeye göre firma bulma ve
+                ziyaret rotası oluşturma.
+              </p>
+            </li>
           </ul>
         </div>
       </section>
@@ -281,14 +744,39 @@
       <section id="guvenlik" aria-labelledby="guvenlik-baslik">
         <div class="wrap">
           <h2 id="guvenlik-baslik">Müvekkil verisi için güvenlik ve KVKK</h2>
-          <p class="section-lead">Bir hukuk bürosunun en değerli varlığı müvekkil bilgisidir; platform bu varsayımla kuruldu.</p>
+          <p class="section-lead">
+            Bir hukuk bürosunun en değerli varlığı müvekkil bilgisidir; platform bu varsayımla kuruldu.
+          </p>
           <ul class="checks">
-            <li><strong>Büronuza ayrılmış alan</strong><span>Her büro kendi adresinden girer; veriler veritabanı düzeyinde büro bazında ayrılır.</span></li>
-            <li><strong>Maskeli kişisel veri</strong><span>Kimlik ve telefon bilgileri ekranlarda maskeli gösterilir; toplu açma işlemleri kayda geçer.</span></li>
-            <li><strong>İşlem kayıtları</strong><span>Kim, ne zaman, hangi kaydı değiştirdi; silme işlemleri yetkiyle sınırlıdır.</span></li>
-            <li><strong>Çıkar çatışması kontrolü</strong><span>Yeni kayıtta karşı taraf mevcut müvekkillerinizle karşılaştırılır.</span></li>
-            <li><strong>Şifreli yedekleme</strong><span>Veriler her gece şifrelenerek ayrı bir depoya yedeklenir.</span></li>
-            <li><strong>Güvenli giriş</strong><span>Rol bazlı yetkiler; şifre yenileme SMS, e-posta veya yönetici onayıyla.</span></li>
+            <li>
+              <strong>Büronuza ayrılmış alan</strong
+              ><span
+                >Her büro kendi adresinden girer; veriler veritabanı düzeyinde büro bazında ayrılır.</span
+              >
+            </li>
+            <li>
+              <strong>Maskeli kişisel veri</strong
+              ><span
+                >Kimlik ve telefon bilgileri ekranlarda maskeli gösterilir; toplu açma işlemleri kayda
+                geçer.</span
+              >
+            </li>
+            <li>
+              <strong>İşlem kayıtları</strong
+              ><span>Kim, ne zaman, hangi kaydı değiştirdi; silme işlemleri yetkiyle sınırlıdır.</span>
+            </li>
+            <li>
+              <strong>Çıkar çatışması kontrolü</strong
+              ><span>Yeni kayıtta karşı taraf mevcut müvekkillerinizle karşılaştırılır.</span>
+            </li>
+            <li>
+              <strong>Şifreli yedekleme</strong
+              ><span>Veriler her gece şifrelenerek ayrı bir depoya yedeklenir.</span>
+            </li>
+            <li>
+              <strong>Güvenli giriş</strong
+              ><span>Rol bazlı yetkiler; şifre yenileme SMS, e-posta veya yönetici onayıyla.</span>
+            </li>
           </ul>
         </div>
       </section>
@@ -297,9 +785,22 @@
         <div class="wrap">
           <h2 id="nasil-baslik">Üç adımda başlayın</h2>
           <ol class="grid steps">
-            <li class="card"><h3>Adresinizi açalım</h3><p>Büronuza özel adres (ör. <em>buroadi</em>.hanhukuktakip.com) ve yönetici hesabı tanımlanır.</p></li>
-            <li class="card"><h3>Verilerinizi taşıyın</h3><p>Müvekkil, föy ve borçlu listelerinizi Excel’den aktarın; ekibinizi kullanıcı olarak ekleyin.</p></li>
-            <li class="card"><h3>Çalışmaya başlayın</h3><p>Kurulum gerekmez: ofisten, evden veya adliyeden tarayıcıyla bağlanın.</p></li>
+            <li class="card">
+              <h3>Adresinizi açalım</h3>
+              <p>
+                Büronuza özel adres (ör. <em>buroadi</em>.hanhukuktakip.com) ve yönetici hesabı tanımlanır.
+              </p>
+            </li>
+            <li class="card">
+              <h3>Verilerinizi taşıyın</h3>
+              <p>
+                Müvekkil, föy ve borçlu listelerinizi Excel’den aktarın; ekibinizi kullanıcı olarak ekleyin.
+              </p>
+            </li>
+            <li class="card">
+              <h3>Çalışmaya başlayın</h3>
+              <p>Kurulum gerekmez: ofisten, evden veya adliyeden tarayıcıyla bağlanın.</p>
+            </li>
           </ol>
         </div>
       </section>
@@ -308,12 +809,23 @@
         <div class="wrap pricing">
           <div>
             <h2 id="fiyat-baslik">Kullandığınız kadar ödeyin</h2>
-            <p class="section-lead">Sabit paket yok. Büronuz kaç kullanıcıyla çalışıyorsa o kadar kullanıcı alırsınız.</p>
+            <p class="section-lead">
+              Sabit paket yok. Büronuz kaç kullanıcıyla çalışıyorsa o kadar kullanıcı alırsınız.
+            </p>
           </div>
           <dl>
-            <div><dt>Kullanıcı başına aylık ücret</dt><dd>Kullanıcı sayınızı istediğiniz zaman artırabilirsiniz.</dd></div>
-            <div><dt>Modüller ayrı</dt><dd>Telefon, yapay zekâ, WhatsApp ve Rota Bulma yalnızca ihtiyaç duyarsanız eklenir.</dd></div>
-            <div><dt>Uygulama içinden destek</dt><dd>Destek talebinizi Ayarlar ekranından açarsınız.</dd></div>
+            <div>
+              <dt>Kullanıcı başına aylık ücret</dt>
+              <dd>Kullanıcı sayınızı istediğiniz zaman artırabilirsiniz.</dd>
+            </div>
+            <div>
+              <dt>Modüller ayrı</dt>
+              <dd>Telefon, yapay zekâ, WhatsApp ve Rota Bulma yalnızca ihtiyaç duyarsanız eklenir.</dd>
+            </div>
+            <div>
+              <dt>Uygulama içinden destek</dt>
+              <dd>Destek talebinizi Ayarlar ekranından açarsınız.</dd>
+            </div>
           </dl>
         </div>
       </section>
@@ -323,23 +835,38 @@
           <h2 id="sss-baslik">Sık sorulan sorular</h2>
           <details>
             <summary>Programı bilgisayara kurmam gerekiyor mu?</summary>
-            <p>Hayır. Hukuk Takip Platformu bulut tabanlıdır; güncel bir tarayıcıyla bilgisayardan, tabletten veya telefondan çalışırsınız. Güncellemeler otomatik gelir.</p>
+            <p>
+              Hayır. Hukuk Takip Platformu bulut tabanlıdır; güncel bir tarayıcıyla bilgisayardan, tabletten
+              veya telefondan çalışırsınız. Güncellemeler otomatik gelir.
+            </p>
           </details>
           <details>
             <summary>Mevcut Excel kayıtlarımızı aktarabilir miyiz?</summary>
-            <p>Evet. Müvekkil, föy ve borçlu listeleriniz Excel’den aktarılır; böylece sıfırdan veri girmeniz gerekmez.</p>
+            <p>
+              Evet. Müvekkil, föy ve borçlu listeleriniz Excel’den aktarılır; böylece sıfırdan veri girmeniz
+              gerekmez.
+            </p>
           </details>
           <details>
             <summary>Verilerimizi başka bürolar görebilir mi?</summary>
-            <p>Hayır. Her büro kendi adresinden çalışır ve veriler veritabanı düzeyinde büro bazında ayrılır. Büro içinde de her kullanıcı yalnızca yetkisi olan ekranları görür.</p>
+            <p>
+              Hayır. Her büro kendi adresinden çalışır ve veriler veritabanı düzeyinde büro bazında ayrılır.
+              Büro içinde de her kullanıcı yalnızca yetkisi olan ekranları görür.
+            </p>
           </details>
           <details>
             <summary>Ücretlendirme nasıl yapılıyor?</summary>
-            <p>Kullanıcı başına aylık ücret alınır; telefon, yapay zekâ, WhatsApp ve Rota Bulma modülleri isteğe bağlı olarak ayrıca eklenir.</p>
+            <p>
+              Kullanıcı başına aylık ücret alınır; telefon, yapay zekâ, WhatsApp ve Rota Bulma modülleri
+              isteğe bağlı olarak ayrıca eklenir.
+            </p>
           </details>
           <details>
             <summary>Çıktılarda ve giriş ekranında kendi büromuzun adı görünür mü?</summary>
-            <p>Evet. Giriş ekranı, makbuz, ibraname ve mesajlarda büronuzun adı ve imzası kullanılır; bunları Ayarlar’dan kendiniz düzenlersiniz.</p>
+            <p>
+              Evet. Giriş ekranı, makbuz, ibraname ve mesajlarda büronuzun adı ve imzası kullanılır; bunları
+              Ayarlar’dan kendiniz düzenlersiniz.
+            </p>
           </details>
         </div>
       </section>
@@ -350,7 +877,17 @@
     <footer class="site-footer">
       <div class="wrap">
         <span>© Hukuk Takip Platformu</span>
-        <div class="product-credit"><span>Bu program bir</span><a class="product-credit-link" href="https://www.kodix.com.tr/" target="_blank" rel="noopener noreferrer" aria-label="KODix web sitesini aç (yeni sekme)"><img src="/kodix-logo.jpg" width="108" height="36" alt="KODix" decoding="async"></a><span>ürünüdür.</span></div>
+        <div class="product-credit">
+          <span>Bu bir</span
+          ><a
+            class="product-credit-link"
+            href="https://www.kodlinx.com.tr/"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="KODlinx web sitesini aç (yeni sekme)"
+            ><img src="/kodlinx-logo.png" width="144" height="44" alt="KODlinx" decoding="async" /></a
+          ><span>ürünüdür.</span>
+        </div>
         <a href="/giris">Büro girişi</a>
       </div>
     </footer>

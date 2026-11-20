@@ -72,7 +72,7 @@ test('the product page carries search metadata and no office name', () => {
   );
   assert.deepEqual(
     outside.map(([, url]) => url),
-    ['https://www.kodix.com.tr/'],
+    ['https://www.kodlinx.com.tr/'],
   );
   assert.match(outside[0][0], /target="_blank"/);
   assert.match(outside[0][0], /rel="noopener noreferrer"/);

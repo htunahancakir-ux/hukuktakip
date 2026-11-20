@@ -4775,9 +4775,10 @@ main.compact-top .stat small {
 .product-credit img {
   display: block;
   flex: 0 0 auto;
-  width: 108px;
-  height: 36px;
-  object-fit: contain;
+  width: 144px;
+  height: 44px;
+  object-fit: cover;
+  object-position: center 56%;
   background: #fff;
   border-radius: 5px;
 }

@@ -47,7 +47,7 @@ function modulesSettingsPage() {
     $('#content').innerHTML = `${settingsSectionTabs('modules')}<section class="panel">
       <div class="panelhead"><div><h2>Modüller</h2></div></div>
       <div class="notice" id="modulesLegacy">Büronuzun modülleri platform tarafından yönetilir; bu hesap için satın alınabilir bir modül kataloğu bulunmuyor.</div>
-    </section><footer class="product-credit product-credit--modules"><span>Bu program bir</span><a class="product-credit-link" href="https://www.kodix.com.tr/" target="_blank" rel="noopener noreferrer" aria-label="KODix web sitesini aç (yeni sekme)"><img src="/kodix-logo.jpg" width="108" height="36" alt="KODix" decoding="async"></a><span>ürünüdür.</span></footer>`;
+    </section><footer class="product-credit product-credit--modules"><span>Bu bir</span><a class="product-credit-link" href="https://www.kodlinx.com.tr/" target="_blank" rel="noopener noreferrer" aria-label="KODlinx web sitesini aç (yeni sekme)"><img src="/kodlinx-logo.png" width="144" height="44" alt="KODlinx" decoding="async"></a><span>ürünüdür.</span></footer>`;
     bindSettingsSectionTabs();
     return;
   }
@@ -83,7 +83,7 @@ function modulesSettingsPage() {
       <div class="formbody"><div class="module-grid">${
         products.map(moduleProductCard).join('') || '<p class="empty">Şu anda sunulan ek modül yok.</p>'
       }</div></div>
-    </section><footer class="product-credit product-credit--modules"><span>Bu program bir</span><a class="product-credit-link" href="https://www.kodix.com.tr/" target="_blank" rel="noopener noreferrer" aria-label="KODix web sitesini aç (yeni sekme)"><img src="/kodix-logo.jpg" width="108" height="36" alt="KODix" decoding="async"></a><span>ürünüdür.</span></footer>`;
+    </section><footer class="product-credit product-credit--modules"><span>Bu bir</span><a class="product-credit-link" href="https://www.kodlinx.com.tr/" target="_blank" rel="noopener noreferrer" aria-label="KODlinx web sitesini aç (yeni sekme)"><img src="/kodlinx-logo.png" width="144" height="44" alt="KODlinx" decoding="async"></a><span>ürünüdür.</span></footer>`;
   bindSettingsSectionTabs();
   document.querySelectorAll('[data-module-request]').forEach((button) => {
     const card = button.closest('[data-module-code]');
