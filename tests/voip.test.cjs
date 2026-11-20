@@ -3308,8 +3308,8 @@ test('configure keeps only inbound users with an extension, validates the fallba
   assert.deepEqual(h.state.voipConfig.inboundUsers, ['u'], 's has no extension now; ghost is unknown');
   assert.equal(h.state.voipConfig.inboundFallback, 'queue/201');
   const config = await h.call('config');
-  assert.equal(config.routePath, '/api/voip/route?token=' + h.state.voipConfig.webhookSecret);
-  assert.match(config.routePath, /^\/api\/voip\/route\?token=[a-f0-9]{64}$/);
+  assert.equal(config.routePath, '/api/voip/route?token=' + h.state.voipConfig.webhookSecret + '&');
+  assert.match(config.routePath, /^\/api\/voip\/route\?token=[a-f0-9]{64}&$/);
   assert.deepEqual(config.inboundUsers, ['u']);
   assert.equal(config.inboundFallback, 'queue/201');
   assert.equal(config.sealedKey, undefined);
@@ -3952,6 +3952,26 @@ test('a call from a debtor rings the file assignee first, then the last caller, 
   // A number on no file with no previous call: anyone reachable.
   h.state.voipCalls = h.state.voipCalls.filter((c) => c.requestId !== 'busy-0001');
   assert.deepEqual(await h.call(routeUrl(h, '05551112233')), { transfer: { target: 'user/1001' } });
+});
+
+test('files for the same assignee route to that person even if another account called first', async () => {
+  const h = inboundHarness();
+  const { docs } = h.state.data['icrapro-v1'];
+  docs.push({ ...docs[0], id: 'second-current-file', number: 'D-2' });
+  seedOutbound(h, { documentId: 'an-earlier-file', userId: 'u', staffName: 'CEO', extension: '1001' });
+  await checkIn(h, STAFF);
+  await checkIn(h, CEO);
+
+  assert.deepEqual(await h.call(routeUrl(h)), { transfer: { target: 'user/1002' } });
+  await h.call(hookUrl(h), 'POST', inbound());
+  const [firstCall] = inboundCalls(h);
+  assert.equal(firstCall.documentId, '');
+  assert.deepEqual(firstCall.candidateDocuments, [docs[0].id, 'second-current-file']);
+
+  h.state.data['icrapro-v1'].docs.pop();
+  assert.deepEqual(await h.call(routeUrl(h)), { transfer: { target: 'user/1002' } });
+  await h.call(hookUrl(h), 'POST', inbound({ call_uuid: 'in-uuid-new-file' }));
+  assert.equal(inboundCalls(h)[1].documentId, docs[0].id);
 });
 
 test('VoIP settings: connection settings and "Dahililer ve yetkiler" are two tabs under Entegrasyonlar → VoIP', async () => {
