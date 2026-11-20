@@ -3,6 +3,72 @@ const assert = require('node:assert/strict');
 const { database, fixture } = require('./support/postgres.cjs');
 const { importState } = require('../lib/postgres-store.cjs');
 const { transaction } = require('../lib/voip-store.cjs');
+
+test('archive and transcription direction filters exclude ACR audio awaiting a report and preserve legacy outbound calls', async () => {
+  const { pg, pool } = await database();
+  const query = require('../lib/voip-query.cjs');
+  try {
+    await importState(pool, fixture());
+    const variants = [
+      { id: 'acr-in', provider: 'acr', direction: 'inbound' },
+      { id: 'acr-out', provider: 'acr', direction: 'outbound' },
+      { id: 'acr-waiting', provider: 'acr', direction: 'acr' },
+      { id: 'acr-missing', provider: 'acr' },
+      { id: 'acr-marker', direction: 'acr' },
+      { id: 'legacy' },
+      { id: 'verimor-out', provider: 'verimor', direction: 'outbound' },
+    ];
+    const calls = variants.map((c) => ({
+      ...c,
+      documentId: '',
+      phone: '',
+      userId: 'test-ceo',
+      requestId: c.id,
+      createdAt: '2026-11-20T23:08:41Z',
+      status: 'completed',
+      recordingPresent: true,
+      archivedAt: '2026-11-20T23:09:24Z',
+    }));
+    await transaction(pool, false, (tx) => {
+      tx.state.voipCalls.push(...calls);
+      tx.saveState(tx.state);
+    });
+    for (const [flow, expected] of [
+      ['inbound', ['acr-in']],
+      ['outbound', ['acr-out', 'legacy', 'verimor-out']],
+    ]) {
+      const archive = await transaction(
+        pool,
+        false,
+        (tx) => ({ rows: tx.state.voipCalls, total: tx.state.voipTotal }),
+        { list: { flow } },
+      );
+      assert.deepEqual(archive.rows.map((c) => c.id).sort(), expected);
+      assert.equal(archive.total, expected.length);
+      assert.deepEqual(
+        calls
+          .filter((c) => query.matches(c, { flow }))
+          .map((c) => c.id)
+          .sort(),
+        expected,
+      );
+      const values = [];
+      const clauses = query.filters({ flow }, values);
+      const sql = await pool.query(
+        'SELECT id FROM han_private.voip_calls WHERE ' + clauses.join(' AND ') + ' ORDER BY id',
+        values,
+      );
+      assert.deepEqual(
+        sql.rows.map((c) => c.id),
+        expected,
+      );
+    }
+    const all = await transaction(pool, false, (tx) => tx.state.voipTotal, { list: {} });
+    assert.equal(all, calls.length, 'audio waiting for reports remains visible under all directions');
+  } finally {
+    await pg.close();
+  }
+});
 test('VoIP transcription reads AI credentials from the active record store rather than the retired snapshot', async (t) => {
   const oldKey = process.env.AI_ENCRYPTION_KEY;
   process.env.AI_ENCRYPTION_KEY = 'ab'.repeat(32);

@@ -3271,13 +3271,108 @@ test('recordings archive filters by call direction', async () => {
   const url = hookUrl(h);
   await h.call(url, 'POST', inbound());
   await h.call(url, 'POST', inbound({ event_type: 'hangup', answered: 'false', duration: '0' }));
+  h.state.voipCalls.push({
+    id: 'audio-without-report',
+    provider: 'acr',
+    direction: 'acr',
+    status: 'completed',
+    createdAt: new Date().toISOString(),
+    recordingPresent: true,
+  });
   const inboundOnly = await h.call('recordings?flow=inbound');
   assert.equal(inboundOnly.calls.length, 1);
   assert.equal(inboundOnly.calls[0].direction, 'inbound');
   const outboundOnly = await h.call('recordings?flow=outbound');
   assert.equal(outboundOnly.calls.length, 1);
   assert.notEqual(outboundOnly.calls[0].direction, 'inbound');
-  assert.equal((await h.call('recordings')).calls.length, 2);
+  assert.equal((await h.call('recordings')).calls.length, 3);
+});
+
+test('ACR archive identifies each device, the counterpart and the direction without guessing missing reports', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('<main id="content"></main>', {
+    url: 'https://example.test',
+    runScripts: 'dangerously',
+  });
+  const w = dom.window;
+  const base = {
+    provider: 'acr',
+    createdAt: '2026-11-20T23:08:41Z',
+    status: 'completed',
+    statusLabel: 'Görüşüldü',
+    recordingPresent: true,
+    archivedAt: '2026-11-20T23:09:24Z',
+    canListen: true,
+    duration: 5,
+  };
+  const calls = [
+    {
+      ...base,
+      id: 'outgoing',
+      direction: 'outbound',
+      phone: '905320000001',
+      staffName: 'HAN',
+      acrDeviceLabel: 'Ofis Cep Telefonu',
+      acrReportId: 'r1',
+    },
+    {
+      ...base,
+      id: 'incoming',
+      direction: 'inbound',
+      phone: '905320000002',
+      staffName: 'Kamil',
+      acrDeviceLabel: 'GSM Hattı Kamil',
+      acrReportId: 'r2',
+    },
+    {
+      ...base,
+      id: 'waiting',
+      direction: 'acr',
+      staffName: 'Test',
+      acrDeviceLabel: '<img src=x onerror=alert(1)>',
+    },
+  ];
+  try {
+    Object.assign(w, {
+      hanAuth: { id: 'u', role: 'ceo' },
+      $: (s) => w.document.querySelector(s),
+      esc: (v) =>
+        String(v ?? '')
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('"', '&quot;'),
+      fetch: async () => ({ ok: true, json: async () => ({ calls, total: calls.length, results: [] }) }),
+    });
+    w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    w.voipRecordingsPage();
+    await new Promise(setImmediate);
+    const rows = [...w.document.querySelectorAll('tr[data-voip-entry]')];
+    assert.equal(rows.length, 3);
+    assert.match(w.document.querySelector('thead').textContent, /Personel \/ Cihaz/);
+    assert.equal(rows[0].querySelector('.voip-direction-badge').textContent, 'Giden');
+    assert.equal(rows[1].querySelector('.voip-direction-badge').textContent, 'Gelen');
+    assert.equal(rows[2].querySelector('.voip-direction-badge').textContent, 'Yön bekleniyor');
+    assert.match(rows[0].textContent, /Ofis Cep Telefonu/);
+    assert.match(rows[1].textContent, /GSM Hattı Kamil/);
+    assert.match(rows[0].querySelector('.voip-archive-phone').textContent, /Aranan numara/);
+    assert.match(rows[1].querySelector('.voip-archive-phone').textContent, /Arayan numara/);
+    assert.match(rows[2].textContent, /Numara aktarılmadı/);
+    assert.match(rows[2].textContent, /Çağrı raporu bekleniyor/);
+    assert.equal(rows[0].querySelector('.voip-report-pending'), null);
+    assert.equal(rows[1].querySelector('.voip-report-pending'), null);
+    assert.equal(rows[2].querySelector('img'), null);
+    for (const call of calls) {
+      const history = w.document.createElement('div');
+      history.innerHTML = w.voipCallMarkup(call, []);
+      assert.equal(
+        history.querySelector('.voip-direction-badge').textContent,
+        rows[calls.indexOf(call)].querySelector('.voip-direction-badge').textContent,
+      );
+      assert.equal(history.querySelector('.voip-device-label').textContent, call.acrDeviceLabel);
+    }
+  } finally {
+    dom.window.close();
+  }
 });
 // ---- Inbound routing, check-ins, incoming strip and transfer ----
 const WEBPHONE = 'https://oim.verimor.com.tr/webphone';

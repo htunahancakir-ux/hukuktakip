@@ -719,6 +719,19 @@ dialog.voip-webphone {
   line-height: 1.4;
   white-space: nowrap;
 }
+.voip-direction-badge[data-direction='outbound'] {
+  background: #e8f4ed;
+  color: #21603e;
+}
+.voip-direction-badge[data-direction='unknown'] {
+  background: #fff2d6;
+  color: #76500b;
+}
+.voip-device-label,
+.voip-report-pending {
+  display: block;
+  margin-top: 7px;
+}
 .voip-result-label {
   font-size: 10px;
   color: #476273;

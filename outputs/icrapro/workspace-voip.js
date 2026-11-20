@@ -1085,6 +1085,30 @@ function voipProviderLine(call) {
 function voipChannelLabel(call) {
   return call.provider === 'acr' ? 'ACR Phone · GSM' : 'Verimor';
 }
+function voipCallDirection(call) {
+  if (call.direction === 'inbound' || call.direction === 'outbound') return call.direction;
+  return call.provider === 'acr' || call.direction === 'acr' ? 'unknown' : 'outbound';
+}
+function voipDirectionBadge(call) {
+  const direction = voipCallDirection(call);
+  const label = { inbound: 'Gelen', outbound: 'Giden', unknown: 'Yön bekleniyor' }[direction];
+  return `<span class="voip-direction-badge" data-direction="${direction}">${label}</span>`;
+}
+function voipDeviceLabel(call) {
+  return call.provider === 'acr' && call.acrDeviceLabel
+    ? `<small class="voip-device-label">${esc(call.acrDeviceLabel)}</small>`
+    : '';
+}
+function voipCounterpartRole(call) {
+  return { inbound: 'Arayan numara', outbound: 'Aranan numara', unknown: 'Karşı numara' }[
+    voipCallDirection(call)
+  ];
+}
+function voipReportNotice(call) {
+  return call.provider === 'acr' && call.recordingPresent && !call.acrReport && !call.acrReportId
+    ? '<small class="voip-report-pending">Çağrı raporu bekleniyor. Bu telefonda ACR çağrı raporlamasını kontrol edin.</small>'
+    : '';
+}
 function voipArchiveTarget(call) {
   if (call.documentId)
     return `<button class="link voip-archive-borrower" type="button" data-voip-borrower="${esc(call.documentId)}" title="Borçlu föyünün Görüşmeler bölümünü aç">${esc(call.clientName || 'Müvekkil belirtilmedi')}</button><span>${esc(call.documentNumber || '—')} · ${esc(call.debtorName || '')}</span>`;
@@ -1093,9 +1117,9 @@ function voipArchiveTarget(call) {
   return `<strong>${esc(call.clientName || 'Müvekkil belirtilmedi')}</strong>`;
 }
 function voipCallMarkup(call, results) {
-  return `<article class="voip-call-entry" data-call-state="${esc(call.status)}"><div class="voip-call-top"><strong>${esc(voipDate(call.createdAt))}</strong>${call.direction === 'inbound' ? '<span class="voip-direction-badge">Gelen</span>' : ''}<span class="voip-status-pill">${esc(call.statusLabel)}</span></div>
+  return `<article class="voip-call-entry" data-call-state="${esc(call.status)}"><div class="voip-call-top"><strong>${esc(voipDate(call.createdAt))}</strong>${voipDirectionBadge(call)}<span class="voip-status-pill">${esc(call.statusLabel)}</span></div>
     <div class="voip-history-meta"><strong>${(window.hanPrivacy && hanPrivacy.html('phone', call.phone || call.callerNumber, call.phone ? voipPhone(call.phone) : call.callerNumber)) || esc(call.phone ? voipPhone(call.phone) : call.callerNumber || 'Gizli numara')}</strong><span>${esc(call.staffName || (call.direction === 'inbound' ? 'Cevaplanmadı' : ''))}</span>${window.testRecordBadge?.(call) || ''}<span>${esc(voipDuration(call.duration))}</span>${call.documentNumber ? '<span>Föy ' + esc(call.documentNumber) + '</span>' : ''}</div>
-    <p class="voip-history-result"><span>Görüşme sonucu</span><b>${esc(call.result || 'Henüz girilmedi')}</b></p><small>${voipChannelLabel(call)}</small>${voipProviderLine(call)}
+    ${voipDeviceLabel(call)}${voipReportNotice(call)}<p class="voip-history-result"><span>Görüşme sonucu</span><b>${esc(call.result || 'Henüz girilmedi')}</b></p><small>${voipChannelLabel(call)}</small>${voipProviderLine(call)}
     <div class="toolbar">${call.canListen ? `<button class="secondary" type="button" data-voip-listen="${esc(call.id)}">▶ Dinle</button>` : ''}${call.archivedAt && call.canListen && ['ceo', 'admin'].includes(hanAuth.role) ? `<a class="link" href="/api/voip/media?id=${encodeURIComponent(call.id)}&download=1">İndir</a>` : ''}${call.recordingPresent && !call.archivedAt && ['ceo', 'admin'].includes(hanAuth.role) ? `<button class="link" type="button" data-voip-archive="${esc(call.id)}">Arşivlemeyi yeniden dene</button>` : ''}${call.direction !== 'inbound' && voipActiveStatuses.has(call.status) && (call.userId === hanAuth.id || ['ceo', 'admin'].includes(hanAuth.role)) ? `<button class="link" type="button" data-voip-sync="${esc(call.id)}">Durumu doğrula</button>` : ''}</div>
     ${call.archiveError ? '<p class="voip-notice">' + esc(call.archiveError) + '</p>' : ''}
     ${call.draftNote || call.note ? `<details class="voip-personal-note"><summary>Personel notu</summary><p class="voip-note">${esc(call.draftNote ?? call.note ?? '')}</p></details>` : ''}${voipTranscriptMarkup(call)}
@@ -1803,7 +1827,7 @@ function setupBorrowerVoip(dialog, doc) {
               '</div><div class="voip-phone-history">' +
               (last
                 ? '<span class="voip-last-time">' +
-                  (last.direction === 'inbound' ? '<span class="voip-direction-badge">Gelen</span>' : '') +
+                  voipDirectionBadge(last) +
                   esc(voipDate(last.createdAt)) +
                   '</span><span class="voip-last-person">' +
                   esc(last.staffName || (last.direction === 'inbound' ? 'Cevaplanmadı' : '')) +
@@ -2890,7 +2914,7 @@ function voipRecordingsPage() {
       ['client', 'Müvekkil'],
       ['document', 'Dosya'],
     ],
-    [['staff', 'Arayan']],
+    [['staff', 'Personel / Cihaz']],
     [['phone', 'Telefon']],
     [
       ['status', 'Durum'],
@@ -2969,7 +2993,7 @@ function voipRecordingsPage() {
           data.calls
             .map(
               (c) =>
-                `<tr data-voip-entry data-call-state="${esc(c.status)}"><td><input class="voip-record-select" type="checkbox" data-select-call="${esc(c.id)}" aria-label="${esc(c.documentNumber || c.phone || c.callerNumber || '')} görüşmesini seç" ${selected.has(c.id) ? 'checked' : ''} ${!c.recordingPresent ? 'disabled' : ''}><strong>${esc(voipDate(c.createdAt))}</strong><small>${esc(voipDuration(c.duration))}</small></td><td class="voip-archive-file">${voipArchiveTarget(c)}${c.note || c.draftNote ? '<details class="voip-archive-notes"><summary>Personel notu</summary><p>' + esc(c.draftNote ?? c.note) + '</p></details>' : ''}${voipTranscriptMarkup(c)}</td><td>${esc(c.staffName || (c.direction === 'inbound' ? 'Cevaplanmadı' : '—'))}${window.testRecordBadge?.(c) || ''}</td><td class="voip-archive-phone">${esc(c.phone ? voipPhone(c.phone) : c.callerNumber || (c.direction === 'inbound' ? 'Gizli numara' : ''))}</td><td>${c.direction === 'inbound' ? '<span class="voip-direction-badge">Gelen</span>' : ''}<span class="voip-status-pill">${esc(c.statusLabel)}</span><small>${esc(c.result || (voipActiveStatuses.has(c.status) ? 'Görüşme sürüyor' : 'Sonuç girilmedi'))}</small><small>${voipChannelLabel(c)}</small>${voipProviderLine(c)}</td><td class="voip-archive-audio"><button class="secondary" type="button" data-voip-listen="${esc(c.id)}" ${!c.canListen ? 'disabled' : ''}>▶ Dinle</button>${!c.recordingPresent ? '<small>Kayıt yok / henüz hazır değil</small>' : !c.archivedAt ? '<small>Arşivden hazırlanacak</small>' : ''}<div data-voip-player></div>${(hanAuth.canDeleteCalls ?? hanAuth.canDelete) && !voipActiveStatuses.has(c.status) ? `<button class="link danger" type="button" data-voip-delete="${esc(c.id)}">Kaydı Sil</button>` : ''}<div class="voip-entry-feedback" role="status"></div></td></tr>`,
+                `<tr data-voip-entry data-call-state="${esc(c.status)}"><td><input class="voip-record-select" type="checkbox" data-select-call="${esc(c.id)}" aria-label="${esc(c.documentNumber || c.phone || c.callerNumber || '')} görüşmesini seç" ${selected.has(c.id) ? 'checked' : ''} ${!c.recordingPresent ? 'disabled' : ''}><strong>${esc(voipDate(c.createdAt))}</strong><small>${esc(voipDuration(c.duration))}</small></td><td class="voip-archive-file">${voipArchiveTarget(c)}${c.note || c.draftNote ? '<details class="voip-archive-notes"><summary>Personel notu</summary><p>' + esc(c.draftNote ?? c.note) + '</p></details>' : ''}${voipTranscriptMarkup(c)}</td><td>${esc(c.staffName || (c.direction === 'inbound' ? 'Cevaplanmadı' : '—'))}${voipDeviceLabel(c)}${window.testRecordBadge?.(c) || ''}</td><td class="voip-archive-phone">${esc(c.phone ? voipPhone(c.phone) : c.callerNumber || (c.provider === 'acr' ? 'Numara aktarılmadı' : c.direction === 'inbound' ? 'Gizli numara' : ''))}<small>${voipCounterpartRole(c)}</small></td><td>${voipDirectionBadge(c)}<span class="voip-status-pill">${esc(c.statusLabel)}</span><small>${esc(c.result || (voipActiveStatuses.has(c.status) ? 'Görüşme sürüyor' : 'Sonuç girilmedi'))}</small><small>${voipChannelLabel(c)}</small>${voipReportNotice(c)}${voipProviderLine(c)}</td><td class="voip-archive-audio"><button class="secondary" type="button" data-voip-listen="${esc(c.id)}" ${!c.canListen ? 'disabled' : ''}>▶ Dinle</button>${!c.recordingPresent ? '<small>Kayıt yok / henüz hazır değil</small>' : !c.archivedAt ? '<small>Arşivden hazırlanacak</small>' : ''}<div data-voip-player></div>${(hanAuth.canDeleteCalls ?? hanAuth.canDelete) && !voipActiveStatuses.has(c.status) ? `<button class="link danger" type="button" data-voip-delete="${esc(c.id)}">Kaydı Sil</button>` : ''}<div class="voip-entry-feedback" role="status"></div></td></tr>`,
             )
             .join('') +
           '</tbody></table>'
@@ -3200,7 +3224,7 @@ function openStandaloneVoip(anchor = document.querySelector('[data-standalone-vo
               .map(
                 (c) =>
                   '<div class="voip-recent-call"><span>' +
-                  (c.direction === 'inbound' ? '<span class="voip-direction-badge">Gelen</span>' : '') +
+                  voipDirectionBadge(c) +
                   esc(voipDate(c.createdAt)) +
                   ' · ' +
                   esc(c.staffName || (c.direction === 'inbound' ? 'Cevaplanmadı' : '—')) +
