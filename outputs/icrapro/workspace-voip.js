@@ -477,6 +477,22 @@ async function voipAcrDeviceSettings(host) {
     const config = await voipApi('acr-devices');
     if (!section.isConnected) return;
     section.querySelector('[data-acr-loading]').remove();
+    section.insertAdjacentHTML(
+      'beforeend',
+      `<nav aria-label="Android uygulamaları">
+        <ul>
+          ${
+            config.devices.length
+              ? `<li><a href="/api/voip/acr-download?file=han-gsm-baglantisi.apk" download>HAN GSM Bağlantısı APK indir</a></li>
+          <li><a href="/api/voip/acr-download?file=aph.apk" download>ACR Phone Helper (APH) APK indir</a></li>`
+              : ''
+          }
+          <li><a href="https://play.google.com/store/apps/details?id=com.nll.cb&amp;pcampaignid=web_share">ACR Phone · Google Play</a></li>
+          <li><a href="https://acr.app/">ACR Phone Helper · Resmî kurulum sayfası</a></li>
+          <li><a href="https://nllapps.com/store/">NLL Store</a></li>
+        </ul>
+      </nav>`,
+    );
     if (!config.devices.length) {
       const note = document.createElement('p');
       note.textContent = 'Bu büro için tanımlı ACR telefonu bulunmuyor.';

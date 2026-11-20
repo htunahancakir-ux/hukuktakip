@@ -776,6 +776,18 @@ test('ACR settings save device assignments and copy a complete Android pairing c
     await w.voipAcrDeviceSettings(w.document.querySelector('#host'));
     const form = w.document.querySelector('form[aria-labelledby="acrDevicesHeading"]');
     assert.ok(form);
+    const links = w.document.querySelector('nav[aria-label="Android uygulamaları"]');
+    assert.deepEqual(
+      [...links.querySelectorAll('a')].map((link) => link.getAttribute('href')),
+      [
+        '/api/voip/acr-download?file=han-gsm-baglantisi.apk',
+        '/api/voip/acr-download?file=aph.apk',
+        'https://play.google.com/store/apps/details?id=com.nll.cb&pcampaignid=web_share',
+        'https://acr.app/',
+        'https://nllapps.com/store/',
+      ],
+    );
+    assert.equal(links.querySelectorAll('a[download]').length, 2);
     assert.equal(w.document.querySelectorAll('form form').length, 0);
     assert.equal(form.querySelectorAll('img').length, 0);
     form.querySelector('input').value = 'Telefonum';
@@ -825,6 +837,58 @@ test('ACR settings save device assignments and copy a complete Android pairing c
   } finally {
     w.close();
   }
+});
+
+test('ACR APK downloads send the attachment bytes only to the configured office CEO', async (t) => {
+  const oldDevices = process.env.HAN_ACR_DEVICES;
+  process.env.HAN_ACR_DEVICES = JSON.stringify([device]);
+  const files = await fs.mkdtemp(path.join(os.tmpdir(), 'han-apk-test-'));
+  t.after(async () => {
+    if (oldDevices === undefined) delete process.env.HAN_ACR_DEVICES;
+    else process.env.HAN_ACR_DEVICES = oldDevices;
+    await Promise.all([
+      fs.rm(path.join(files, 'aph.apk'), { force: true }),
+      fs.rm(path.join(files, 'han-gsm-baglantisi.apk'), { force: true }),
+    ]);
+    await fs.rmdir(files);
+  });
+  const aph = Buffer.from([0x50, 0x4b, 0, 0xff, 0x03]);
+  const han = Buffer.from([0x50, 0x4b, 0xff, 0x04]);
+  await Promise.all([
+    fs.writeFile(path.join(files, 'aph.apk'), aph),
+    fs.writeFile(path.join(files, 'han-gsm-baglantisi.apk'), han),
+  ]);
+  let user = { role: 'ceo' };
+  const handle = createVoipHandler({
+    androidDownloadsDir: files,
+    authenticatedUser: async () => {
+      if (!user) throw Object.assign(Error('Oturum açmanız gerekiyor.'), { status: 401 });
+      return user;
+    },
+  });
+  const download = async (filename, method = 'GET', hostname = host) => {
+    const url = new URL('/api/voip/acr-download?file=' + encodeURIComponent(filename), 'https://' + hostname);
+    const res = response();
+    await handle({ method, headers: { host: hostname } }, res, url);
+    return res;
+  };
+  const file = await download('aph.apk');
+  assert.equal(file.statusCode, 200);
+  assert.equal(file.headers['content-type'], 'application/vnd.android.package-archive');
+  assert.equal(file.headers['content-disposition'], 'attachment; filename="aph.apk"');
+  assert.equal(file.headers['content-length'], aph.length);
+  assert.equal(file.headers['cache-control'], 'private, no-store');
+  assert.deepEqual(file.bytes(), aph);
+  assert.deepEqual((await download('han-gsm-baglantisi.apk')).bytes(), han);
+  assert.equal((await download('aph.apk', 'HEAD')).bytes().length, 0);
+  await assert.rejects(download('aph.apk', 'GET', 'other.example.test'), { status: 404 });
+  await assert.rejects(download('../aph.apk'), { status: 404 });
+  user = { role: 'ceo', platformSupport: true };
+  await assert.rejects(download('aph.apk'), { status: 403 });
+  user = { role: 'staff' };
+  await assert.rejects(download('aph.apk'), { status: 403 });
+  user = null;
+  await assert.rejects(download('aph.apk'), { status: 401 });
 });
 
 test('ACR can authenticate before browser CSRF checks, while ordinary mutations still require their source', async () => {
