@@ -763,9 +763,23 @@ test('ACR settings save device assignments and copy a complete Android pairing c
     );
   w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
   const calls = [];
+  let added = 0;
   const pairingCode = 'phone-1.AbCdEf1234_xyZ-0';
   w.voipApi = async (route, method, value) => {
     calls.push({ route, method, value });
+    if (route === 'acr-devices' && method === 'POST') {
+      assert.match(value.requestId, /^[a-f0-9-]{36}$/i);
+      const id = 'new-phone-' + ++added;
+      return {
+        device: { id, label: value.label, userId: value.userId },
+        setup: {
+          deviceId: id,
+          uploadUrl: 'https://example.test/api/voip/acr-upload',
+          reportUrl: 'https://example.test/api/voip/acr-report',
+          secret: 'synthetic-device-only-code-' + added,
+        },
+      };
+    }
     if (route === 'acr-agent-link') return value.revoke ? { paired: false } : { pairingCode };
     return {
       devices: value?.devices || [{ id: 'phone-1', label: '<img src=x onerror=alert(1)>', userId: '' }],
@@ -834,9 +848,157 @@ test('ACR settings save device assignments and copy a complete Android pairing c
     await form.querySelector('[data-acr-agent-revoke]').onclick();
     assert.equal(panel.hidden, true);
     assert.equal(code.value, '');
+    const addForm = w.document.querySelector('form[aria-labelledby="acrAddHeading"]');
+    form.querySelector('input').value = 'Unsaved device label';
+    addForm.elements.label.value = 'İkinci telefon';
+    addForm.elements.userId.value = 'worker-1';
+    await addForm.onsubmit({ preventDefault() {} });
+    assert.equal(form.querySelectorAll('[data-acr-device]').length, 2);
+    assert.equal(
+      form.querySelector('input').value,
+      'Unsaved device label',
+      'adding a phone preserves unsaved edits',
+    );
+    const second = form.querySelector('[data-acr-device="new-phone-1"]');
+    assert.equal(second.querySelector('select').value, 'worker-1');
+    assert.equal(second.querySelector('[data-acr-upload-secret]').value, 'synthetic-device-only-code-1');
+    assert.equal(second.querySelector('[data-acr-setup]').open, true);
+    assert.equal(second.querySelector('[data-acr-agent-pair]').disabled, false);
+    addForm.elements.label.value = 'Üçüncü telefon';
+    await addForm.onsubmit({ preventDefault() {} });
+    assert.equal(form.querySelectorAll('[data-acr-device]').length, 3);
+    assert.equal(w.document.querySelectorAll('form form').length, 0);
   } finally {
     w.close();
   }
+});
+
+test('new ACR phones persist per office, receive unique encrypted credentials and support uploads, reports and Android pairing', async (t) => {
+  const oldDevices = process.env.HAN_ACR_DEVICES,
+    oldKey = process.env.VOIP_ENCRYPTION_KEY;
+  process.env.HAN_ACR_DEVICES = JSON.stringify([device]);
+  process.env.VOIP_ENCRYPTION_KEY = 'ab'.repeat(32);
+  const { pg, pool } = await database();
+  t.after(async () => {
+    if (oldDevices === undefined) delete process.env.HAN_ACR_DEVICES;
+    else process.env.HAN_ACR_DEVICES = oldDevices;
+    if (oldKey === undefined) delete process.env.VOIP_ENCRYPTION_KEY;
+    else process.env.VOIP_ENCRYPTION_KEY = oldKey;
+    await pg.close();
+  });
+  await importState(pool, fixture());
+  let actor = { id: 'test-ceo', role: 'ceo' };
+  const handle = createVoipHandler({
+    transaction: (work, scope) => transaction(pool, false, work, scope),
+    authenticatedUser: async () => actor,
+    recordings: { available: true, save: async () => {} },
+    readBody: async (req) => {
+      const parts = [];
+      for await (const part of req) parts.push(part);
+      return Buffer.concat(parts);
+    },
+  });
+  const api = async (route, method = 'GET', input = {}, hostname = host) => {
+    const raw = Buffer.from(JSON.stringify(input)),
+      res = response();
+    const req = {
+      method,
+      headers: { host: hostname, 'content-type': 'application/json' },
+      async *[Symbol.asyncIterator]() {
+        yield raw;
+      },
+    };
+    await handle(req, res, new URL('/api/voip/' + route, 'https://' + hostname));
+    return JSON.parse(res.bytes());
+  };
+  const firstInput = { requestId: crypto.randomUUID(), label: 'GSM telefonu 2', userId: 'test-ceo' };
+  const first = await api('acr-devices', 'POST', firstInput);
+  const retry = await api('acr-devices', 'POST', firstInput);
+  assert.equal(retry.device.id, first.device.id);
+  assert.equal(retry.setup.secret, first.setup.secret, 'retry returns the same phone credentials');
+  const second = await api('acr-devices', 'POST', {
+    requestId: crypto.randomUUID(),
+    label: 'GSM telefonu 3',
+    userId: 'test-ceo',
+  });
+  assert.notEqual(second.device.id, first.device.id);
+  assert.notEqual(second.setup.secret, first.setup.secret);
+  assert.match(first.setup.secret, /^[a-f0-9]{64}$/);
+  const stored = (await pool.query('SELECT body FROM han_private.voip_config WHERE id=1')).rows[0].body;
+  assert(!JSON.stringify(stored).includes(first.setup.secret));
+  assert(!JSON.stringify(stored).includes(second.setup.secret));
+  assert.equal(
+    stored.acrCredentials[first.device.id].secretHash,
+    crypto.createHash('sha256').update(first.setup.secret).digest('hex'),
+  );
+  assert.equal(
+    (await api('acr-devices')).devices.length,
+    3,
+    'the existing environment device remains registered',
+  );
+  assert(!JSON.stringify(await api('acr-devices')).includes('sealedSecret'));
+  assert(!JSON.stringify(await api('config')).includes('acrCredentials'));
+  assert.equal(
+    (await api('acr-device-setup', 'POST', { deviceId: first.device.id })).secret,
+    first.setup.secret,
+  );
+  await assert.rejects(api('acr-device-setup', 'POST', { deviceId: first.device.id }, 'other.example.test'), {
+    status: 404,
+  });
+  const run = async (req) => {
+    const res = response();
+    await handle(req, res, new URL(req.url, 'https://' + req.headers.host));
+    return JSON.parse(res.bytes());
+  };
+  assert.equal((await run(await request({ code: first.setup.secret, probe: true }))).ready, true);
+  assert.equal((await run(await request({ code: second.setup.secret, probe: true }))).ready, true);
+  assert.equal((await run(await request({ probe: true }))).ready, true, 'legacy credentials still work');
+  await assert.rejects(
+    run(await request({ code: first.setup.secret, probe: true, hostname: 'other.example.test' })),
+    { status: 404 },
+  );
+  await run(await request({ code: first.setup.secret }));
+  await run(
+    await reportRequest({
+      secret: second.setup.secret,
+      number: '05320000000',
+      date: '1795089600000',
+      direction: '2',
+      duration: '15',
+    }),
+  );
+  const calls = (await pool.query('SELECT body FROM han_private.voip_calls')).rows.map((r) => r.body);
+  assert.equal(calls.length, 2);
+  assert(calls.some((c) => c.acrDeviceId === first.device.id && c.recordingPresent));
+  assert(calls.some((c) => c.acrDeviceId === second.device.id && c.acrReport));
+  assert(calls.every((c) => c.userId === 'test-ceo'));
+  const { pairingCode } = await api('acr-agent-link', 'POST', { deviceId: first.device.id });
+  const paired = await api('acr-agent', 'POST', { pairingCode });
+  assert.equal(paired.deviceId, first.device.id);
+  assert.equal(paired.accountId, 'test-ceo');
+  assert.match(paired.token, /^[\w-]{43}$/);
+  const changed = await api('acr-devices', 'PUT', {
+    devices: [{ id: first.device.id, label: 'Yeni ad', userId: 'test-ceo' }],
+  });
+  assert(changed.devices.some((d) => d.id === first.device.id && d.label === 'Yeni ad'));
+  assert.equal(
+    (await api('acr-device-setup', 'POST', { deviceId: first.device.id })).secret,
+    first.setup.secret,
+  );
+  assert.equal((await api('acr-dials')).devices.length, 2);
+  await assert.rejects(
+    api('acr-devices', 'POST', { requestId: crypto.randomUUID(), label: '', userId: 'test-ceo' }),
+    { status: 400 },
+  );
+  await assert.rejects(
+    api('acr-devices', 'POST', { requestId: crypto.randomUUID(), label: 'Other', userId: 'missing' }),
+    { status: 400 },
+  );
+  actor = { id: 'staff', role: 'admin' };
+  await assert.rejects(api('acr-devices', 'POST', firstInput), { status: 403 });
+  await assert.rejects(api('acr-device-setup', 'POST', { deviceId: first.device.id }), { status: 403 });
+  actor = { id: 'support', role: 'ceo', platformSupport: true };
+  await assert.rejects(api('acr-devices', 'POST', firstInput), { status: 403 });
 });
 
 test('ACR APK downloads send the attachment bytes only to the configured office CEO', async (t) => {

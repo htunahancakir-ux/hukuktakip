@@ -467,26 +467,43 @@ function voipFallbackValue(form) {
     throw Error('Yedek hedef için ' + (kind === 'queue' ? 'kuyruk' : 'çağrı grubu') + ' numarasını girin.');
   return kind + '/' + raw;
 }
+function voipAcrDeviceRow(d, index, users) {
+  return `<fieldset data-acr-device="${esc(d.id)}"><legend>Telefon ${index + 1}</legend><div class="grid">
+    <label class="field" for="acrLabel${index}">Cihaz adı (zorunlu)<input id="acrLabel${index}" name="label${index}" type="text" required maxlength="80" value="${esc(d.label)}" autocomplete="off"></label>
+    <label class="field" for="acrUser${index}">Bu telefonu kullanan personel<select id="acrUser${index}" name="userId${index}" data-optional="true"><option value="">Personel seçilmedi — cihaz adı kullanılsın</option>${users.map((u) => `<option value="${esc(u.id)}" ${u.id === d.userId ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></label>
+    </div><details data-acr-setup><summary>ACR bağlantı bilgileri</summary><p data-acr-setup-status role="status"></p><div data-acr-setup-fields hidden>
+      <p>ACR Phone → Bulut Servisleri → WebHook için ses sunucusunu; Çağrı raporlama → Sunucuya yolla için rapor sunucusunu kullanın. İkisinde de bu telefonun gizli kodunu girin.</p>
+      <label class="field" for="acrUpload${index}">Ses kaydı sunucusu<textarea id="acrUpload${index}" name="uploadUrl${index}" data-acr-upload-url rows="2" readonly spellcheck="false"></textarea></label>
+      <label class="field" for="acrReport${index}">Çağrı raporlama sunucusu<textarea id="acrReport${index}" name="reportUrl${index}" data-acr-report-url rows="2" readonly spellcheck="false"></textarea></label>
+      <label class="field" for="acrSecret${index}">Bu telefonun ACR gizli kodu<textarea id="acrSecret${index}" name="secret${index}" data-acr-upload-secret rows="2" readonly spellcheck="false" autocomplete="off"></textarea></label>
+    </div></details><div class="toolbar"><button type="button" class="secondary" data-acr-agent-pair aria-controls="acrCodePanel${index}" aria-expanded="false" ${d.userId ? '' : 'disabled'}>Android eşleştirme kodu</button><button type="button" class="link" data-acr-agent-revoke ${d.automatic ? '' : 'hidden'}>Eşleşmeyi kaldır</button></div>
+    <div id="acrCodePanel${index}" data-acr-agent-code-panel hidden><label class="field" for="acrCode${index}">Android eşleştirme kodu<textarea id="acrCode${index}" data-acr-agent-code rows="2" readonly spellcheck="false"></textarea></label><button type="button" class="secondary" data-acr-agent-copy command="--copy-acr-code" commandfor="acrCode${index}">Kodu kopyala</button></div>
+    <p data-acr-agent-status role="status">${d.automatic ? 'Otomatik GSM araması eşleştirilmiş.' : ''}</p></fieldset>`;
+}
 async function voipAcrDeviceSettings(host) {
   const section = document.createElement('section');
   section.className = 'panel formbody';
   section.innerHTML =
-    '<h3 id="acrDevicesHeading">ACR telefonları</h3><p data-acr-loading role="status">ACR cihazları yükleniyor…</p>';
-  host.append(section);
+    '<h3 id="acrDevicesHeading">ACR / GSM telefonları</h3><p data-acr-loading role="status">ACR cihazları yükleniyor…</p>';
+  host.prepend(section);
   try {
     const config = await voipApi('acr-devices');
     if (!section.isConnected) return;
     section.querySelector('[data-acr-loading]').remove();
     section.insertAdjacentHTML(
       'beforeend',
+      `<form method="post" action="/api/voip/acr-devices" aria-labelledby="acrAddHeading" class="voip-acr-add-form">
+      <h4 id="acrAddHeading">Yeni GSM telefonu ekle</h4><p>Her Android telefonu ayrı ekleyin. Kaydettikten sonra o telefona ait ACR bağlantı bilgileri açılır.</p><div class="grid">
+      <label class="field" for="acrNewLabel">Cihaz adı (zorunlu)<input id="acrNewLabel" name="label" type="text" required maxlength="80" autocomplete="off" placeholder="Ör. Ofis telefonu 2"></label>
+      <label class="field" for="acrNewUser">Bu telefonu kullanan personel<select id="acrNewUser" name="userId" data-optional="true"><option value="">Personel seçilmedi — cihaz adı kullanılsın</option>${config.users.map((u) => `<option value="${esc(u.id)}">${esc(u.name)}</option>`).join('')}</select></label></div>
+      <div class="actions"><button class="primary" type="submit">Yeni telefon ekle</button></div><p data-acr-add-status role="status"></p></form>`,
+    );
+    section.insertAdjacentHTML(
+      'beforeend',
       `<nav aria-label="Android uygulamaları">
         <ul>
-          ${
-            config.devices.length
-              ? `<li><a href="/api/voip/acr-download?file=han-gsm-baglantisi.apk" download>HAN GSM Bağlantısı APK indir</a></li>
-          <li><a href="/api/voip/acr-download?file=aph.apk" download>ACR Phone Helper (APH) APK indir</a></li>`
-              : ''
-          }
+          <li data-acr-download ${config.devices.length ? '' : 'hidden'}><a href="/api/voip/acr-download?file=han-gsm-baglantisi.apk" download>HAN GSM Bağlantısı APK indir</a></li>
+          <li data-acr-download ${config.devices.length ? '' : 'hidden'}><a href="/api/voip/acr-download?file=aph.apk" download>ACR Phone Helper (APH) APK indir</a></li>
           <li><a href="https://play.google.com/store/apps/details?id=com.nll.cb&amp;pcampaignid=web_share">ACR Phone · Google Play</a></li>
           <li><a href="https://acr.app/">ACR Phone Helper · Resmî kurulum sayfası</a></li>
           <li><a href="https://nllapps.com/store/">NLL Store</a></li>
@@ -496,37 +513,44 @@ async function voipAcrDeviceSettings(host) {
     if (!config.devices.length) {
       const note = document.createElement('p');
       note.textContent = 'Bu büro için tanımlı ACR telefonu bulunmuyor.';
+      note.dataset.acrEmpty = 'true';
       section.append(note);
-      return;
     }
     section.insertAdjacentHTML(
       'beforeend',
       `<p>Cihaz adını yazabilir veya bu telefonu kullanan personeli seçebilirsiniz. Seçilen kişinin adı mevcut ve yeni görüşme kayıtlarında görünür.</p>
       <form method="post" action="/api/voip/acr-devices" aria-labelledby="acrDevicesHeading">
-      ${config.devices
-        .map(
-          (
-            d,
-            index,
-          ) => `<fieldset data-acr-device="${esc(d.id)}"><legend>Telefon ${index + 1}</legend><div class="grid">
-        <label class="field" for="acrLabel${index}">Cihaz adı (zorunlu)<input id="acrLabel${index}" name="label${index}" type="text" required maxlength="80" value="${esc(d.label)}" autocomplete="off"></label>
-        <label class="field" for="acrUser${index}">Bu telefonu kullanan personel<select id="acrUser${index}" name="userId${index}" data-optional="true"><option value="">Personel seçilmedi — cihaz adı kullanılsın</option>${config.users.map((u) => `<option value="${esc(u.id)}" ${u.id === d.userId ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></label>
-      </div><div class="toolbar"><button type="button" class="secondary" data-acr-agent-pair aria-controls="acrCodePanel${index}" aria-expanded="false" ${d.userId ? '' : 'disabled'}>Android eşleştirme kodu</button><button type="button" class="link" data-acr-agent-revoke ${d.automatic ? '' : 'hidden'}>Eşleşmeyi kaldır</button></div>
-        <div id="acrCodePanel${index}" data-acr-agent-code-panel hidden>
-          <label class="field" for="acrCode${index}">Android eşleştirme kodu
-            <textarea id="acrCode${index}" data-acr-agent-code rows="2" readonly spellcheck="false"></textarea>
-          </label>
-          <button type="button" class="secondary" data-acr-agent-copy command="--copy-acr-code" commandfor="acrCode${index}">Kodu kopyala</button>
-        </div>
-        <p data-acr-agent-status role="status">${d.automatic ? 'Otomatik GSM araması eşleştirilmiş.' : ''}</p>
-      </fieldset>`,
-        )
-        .join('')}
+      ${config.devices.map((d, index) => voipAcrDeviceRow(d, index, config.users)).join('')}
       <p role="status" data-acr-status></p><div class="actions"><button class="primary" type="submit">ACR Cihaz Ayarlarını Kaydet</button></div></form>`,
     );
-    const form = section.querySelector('form');
+    const form = section.querySelector('form[aria-labelledby="acrDevicesHeading"]');
     const deviceRows = [...form.querySelectorAll('[data-acr-device]')];
-    for (const row of deviceRows) {
+    const showSetup = (row, setup) => {
+      row.querySelector('[data-acr-upload-url]').value = setup.uploadUrl;
+      row.querySelector('[data-acr-report-url]').value = setup.reportUrl;
+      row.querySelector('[data-acr-upload-secret]').value = setup.secret || '';
+      row.querySelector('[data-acr-setup-status]').textContent = setup.legacy
+        ? 'Bu telefonun mevcut ACR gizli kodunu kullanın. Yeni telefonların kodları bu bölümde görüntülenir.'
+        : 'Bu gizli kod yalnızca bu telefona aittir. İki ACR sunucu ayarında da aynı kodu kullanın.';
+      row.querySelector('[data-acr-setup-fields]').hidden = false;
+      row.dataset.setupLoaded = 'true';
+      row.querySelector('[data-acr-setup]').open = true;
+    };
+    const bindDeviceRow = (row) => {
+      const setupPanel = row.querySelector('[data-acr-setup]');
+      setupPanel.ontoggle = async () => {
+        if (!setupPanel.open || row.dataset.setupLoaded || row.dataset.setupLoading) return;
+        row.dataset.setupLoading = 'true';
+        const status = row.querySelector('[data-acr-setup-status]');
+        status.textContent = 'Bağlantı bilgileri yükleniyor…';
+        try {
+          showSetup(row, await voipApi('acr-device-setup', 'POST', { deviceId: row.dataset.acrDevice }));
+        } catch (error) {
+          status.textContent = error.message;
+        } finally {
+          delete row.dataset.setupLoading;
+        }
+      };
       const pair = row.querySelector('[data-acr-agent-pair]');
       const revoke = row.querySelector('[data-acr-agent-revoke]');
       const codePanel = row.querySelector('[data-acr-agent-code-panel]');
@@ -578,7 +602,62 @@ async function voipAcrDeviceSettings(host) {
       };
       pair.onclick = () => link(false);
       revoke.onclick = () => link(true);
-    }
+    };
+    deviceRows.forEach(bindDeviceRow);
+    const addForm = section.querySelector('form[aria-labelledby="acrAddHeading"]');
+    let requestId = crypto.randomUUID();
+    addForm.addEventListener('input', () => {
+      requestId = crypto.randomUUID();
+    });
+    addForm.onsubmit = async (event) => {
+      event.preventDefault();
+      if (addForm.dataset.pending || !addForm.reportValidity()) return;
+      const button = addForm.querySelector('[type="submit"]');
+      const status = addForm.querySelector('[data-acr-add-status]');
+      addForm.dataset.pending = 'true';
+      addForm.setAttribute('aria-busy', 'true');
+      button.disabled = true;
+      addForm.elements.label.disabled = addForm.elements.userId.disabled = true;
+      status.textContent = 'Telefon ekleniyor…';
+      try {
+        const result = await voipApi('acr-devices', 'POST', {
+          label: addForm.elements.label.value.trim(),
+          userId: addForm.elements.userId.value,
+          requestId,
+        });
+        if (!section.isConnected) return;
+        let row = deviceRows.find((r) => r.dataset.acrDevice === result.device.id);
+        if (!row) {
+          form
+            .querySelector('[data-acr-status]')
+            .insertAdjacentHTML(
+              'beforebegin',
+              voipAcrDeviceRow(result.device, deviceRows.length, config.users),
+            );
+          row = [...form.querySelectorAll('[data-acr-device]')].find(
+            (r) => r.dataset.acrDevice === result.device.id,
+          );
+          deviceRows.push(row);
+          bindDeviceRow(row);
+        }
+        showSetup(row, result.setup);
+        section.querySelector('[data-acr-empty]')?.remove();
+        section.querySelectorAll('[data-acr-download]').forEach((link) => {
+          link.hidden = false;
+        });
+        addForm.reset();
+        requestId = crypto.randomUUID();
+        status.textContent = 'Telefon eklendi. Aşağıdaki bağlantı bilgilerini yeni telefona girin.';
+        row.querySelector('[data-acr-upload-secret]').focus();
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        delete addForm.dataset.pending;
+        addForm.removeAttribute('aria-busy');
+        button.disabled = false;
+        addForm.elements.label.disabled = addForm.elements.userId.disabled = false;
+      }
+    };
     form.onsubmit = async (event) => {
       event.preventDefault();
       if (!form.reportValidity()) return;
@@ -613,7 +692,11 @@ async function voipAcrDeviceSettings(host) {
       }
     };
   } catch (error) {
-    if (section.isConnected) section.querySelector('[data-acr-loading]').textContent = error.message;
+    if (section.isConnected) {
+      const status =
+        section.querySelector('[data-acr-loading]') || section.querySelector('[data-acr-add-status]');
+      if (status) status.textContent = error.message;
+    }
   }
 }
 function voipSettingsPage() {

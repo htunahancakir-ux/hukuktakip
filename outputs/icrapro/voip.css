@@ -1912,3 +1912,36 @@ dialog.voip-webphone.voip-answering {
 .voip-fallback-row [hidden] {
   display: none;
 }
+.voip-acr-add-form {
+  padding: 16px;
+  margin-block-end: 16px;
+  border: 1px solid #b9d0db;
+  border-radius: 8px;
+  background: #f5fafc;
+}
+.voip-acr-add-form h4 {
+  margin-block-start: 0;
+}
+.voip-acr-add-form :is(input, select, button) {
+  min-height: 48px;
+}
+.voip-acr-add-form :is(input, select) {
+  font-size: max(1rem, 1em);
+}
+.voip-acr-add-form :is(input, select, button):focus-visible,
+[data-acr-setup] textarea:focus-visible {
+  outline: 3px solid #24556f;
+  outline-offset: 3px;
+}
+[data-acr-setup] {
+  margin-block: 12px;
+}
+[data-acr-setup] summary {
+  cursor: pointer;
+  color: #24556f;
+}
+[data-acr-setup] textarea {
+  width: 100%;
+  font-size: 1rem;
+  resize: vertical;
+}
