@@ -484,7 +484,7 @@ async function voipAcrDeviceSettings(host) {
   const section = document.createElement('section');
   section.className = 'panel formbody';
   section.innerHTML =
-    '<h3 id="acrDevicesHeading">ACR / GSM telefonları</h3><p data-acr-loading role="status">ACR cihazları yükleniyor…</p>';
+    '<h3 id="acrDevicesHeading">ACR telefonları</h3><p data-acr-loading role="status">ACR cihazları yükleniyor…</p>';
   host.prepend(section);
   try {
     const config = await voipApi('acr-devices');
@@ -699,6 +699,12 @@ async function voipAcrDeviceSettings(host) {
     }
   }
 }
+function voipAcrSettingsPage() {
+  if (hanAuth.role !== 'ceo') return;
+  $('#content').innerHTML = settingsSectionTabs('acr') + '<div id="voipAcrSettingsHost"></div>';
+  bindSettingsSectionTabs();
+  return voipAcrDeviceSettings($('#voipAcrSettingsHost'));
+}
 function voipSettingsPage() {
   if (hanAuth.role !== 'ceo') return;
   $('#content').innerHTML =
@@ -752,7 +758,6 @@ function voipSettingsPage() {
       </fieldset>
       <label class="field full">Çağrı bildirim adresi<input readonly value="${esc(config.webhookPath ? location.origin + config.webhookPath : 'İlk kayıttan sonra oluşur.')}"><small>Verimor CRM entegrasyonunda çalma, cevaplanma ve kapanma bildirimleri için bu adresi kullanın. Adres gizli bildirim anahtarı içerir.</small></label>
     </div><p id="voipConfigStatus" role="status"></p><div class="actions"><button class="primary" type="submit">VoIP Ayarlarını Kaydet</button></div></form>`;
-      void voipAcrDeviceSettings(host);
       const form = host.querySelector('#voipConfigForm');
       voipBindFallback(form, config.inboundFallback || '');
       form.onsubmit = async (event) => {

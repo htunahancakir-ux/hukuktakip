@@ -400,6 +400,7 @@ function bindBackupFiles(lastDownload) {
 const INTEGRATION_MODULE = {
   ai: 'ai-assistant',
   voip: 'voip',
+  acr: 'voip',
   permissions: 'voip',
   whatsapp: 'whatsapp',
   // Either product opens Rota Bulma: the module (own map keys) or the map service subscription.
@@ -414,16 +415,23 @@ function firstIntegrationTab() {
   return ['voip', 'whatsapp', 'ai', 'sms', 'maps', 'iyzico'].find(integrationAvailable) || 'iyzico';
 }
 
-// VoIP has two pages: the connection settings (CEO only) and "Dahililer ve yetkiler" (phone
-// extensions and recording access, CEO and admins). Admins see only the second one under
-// Entegrasyonlar → VoIP.
+// VoIP separates connection settings, extension rights and ACR phones.
+// Admins see extension rights; the CEO also manages connections and ACR devices.
 function settingsSectionTabs(active) {
   const ceo = hanAuth.role === 'ceo';
   const manager = ['ceo', 'admin'].includes(hanAuth.role);
-  const integration = ['ai', 'voip', 'whatsapp', 'sms', 'recovery', 'maps', 'iyzico', 'permissions'].includes(
-    active,
-  );
-  const voipPage = ['voip', 'permissions'].includes(active);
+  const integration = [
+    'ai',
+    'voip',
+    'acr',
+    'whatsapp',
+    'sms',
+    'recovery',
+    'maps',
+    'iyzico',
+    'permissions',
+  ].includes(active);
+  const voipPage = ['voip', 'permissions', 'acr'].includes(active);
   const tabs = [
     ['firm', 'Firma Bilgileri'],
     ['contact', 'İletişim ve Adres'],
@@ -453,6 +461,7 @@ function settingsSectionTabs(active) {
     ? [
         ['voip', 'Bağlantı ayarları'],
         ['permissions', 'Dahililer ve yetkiler'],
+        ['acr', 'ACR telefonları'],
       ]
     : [['permissions', 'Dahililer ve yetkiler']];
   return `<div class="settings-tabs" role="tablist" aria-label="Ayar sekmeleri">${tabs
@@ -469,12 +478,12 @@ function settingsSectionTabs(active) {
           })
           .join('')}</div>${
           voipPage
-            ? `<div class="settings-tabs integration-tabs voip-tabs" role="tablist" aria-label="VoIP / Telefon">${voipTabs
+            ? `<nav class="settings-tabs integration-tabs voip-tabs" aria-label="VoIP / Telefon">${voipTabs
                 .map(
                   ([id, label]) =>
-                    `<button type="button" id="tab-voip-${id}" role="tab" aria-selected="${id === active}" data-settings-tab="${id}" class="${id === active ? 'selected' : ''}">${label}</button>`,
+                    `<button type="button" id="tab-voip-${id}" ${id === active ? 'aria-current="page"' : ''} data-settings-tab="${id}" class="${id === active ? 'selected' : ''}">${label}</button>`,
                 )
-                .join('')}</div>`
+                .join('')}</nav>`
             : ''
         }`
       : ''
@@ -654,11 +663,20 @@ let settingsRenderId = 0;
 settings = async function () {
   const renderId = ++settingsRenderId;
   // Admins have only the VoIP extensions and recording access page under Entegrasyonlar.
-  if (['integrations', 'voip'].includes(settingsTab) && hanAuth.role !== 'ceo') settingsTab = 'permissions';
+  if (['integrations', 'voip', 'acr'].includes(settingsTab) && hanAuth.role !== 'ceo')
+    settingsTab = 'permissions';
   const requestedTab = settingsTab;
-  const pinScope = ['integrations', 'voip', 'ai', 'whatsapp', 'sms', 'recovery', 'maps', 'iyzico'].includes(
-    settingsTab,
-  )
+  const pinScope = [
+    'integrations',
+    'voip',
+    'acr',
+    'ai',
+    'whatsapp',
+    'sms',
+    'recovery',
+    'maps',
+    'iyzico',
+  ].includes(settingsTab)
     ? 'integrations'
     : settingsTab === 'permissions'
       ? 'permissions'
@@ -673,6 +691,7 @@ settings = async function () {
   if (INTEGRATION_MODULE[settingsTab] && !integrationAvailable(settingsTab))
     settingsTab = firstIntegrationTab();
   if (settingsTab === 'voip') return voipSettingsPage();
+  if (settingsTab === 'acr') return voipAcrSettingsPage();
   if (settingsTab === 'permissions') return voipPermissionsPage();
   if (settingsTab === 'backup') return backupSettingsPage();
   if (settingsTab === 'audit') return auditSettingsPage();

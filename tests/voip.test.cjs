@@ -3974,7 +3974,7 @@ test('files for the same assignee route to that person even if another account c
   assert.equal(inboundCalls(h)[1].documentId, docs[0].id);
 });
 
-test('VoIP settings: connection settings and "Dahililer ve yetkiler" are two tabs under Entegrasyonlar → VoIP', async () => {
+test('VoIP settings separate connection, extension rights and ACR phones under Entegrasyonlar → VoIP', async () => {
   const { JSDOM } = require('jsdom');
   const src = await fs.readFile('outputs/icrapro/settings.js', 'utf8');
   const tabs = src.slice(
@@ -4001,8 +4001,16 @@ test('VoIP settings: connection settings and "Dahililer ve yetkiler" are two tab
   assert.ok(!ceo[0].some((t) => t.includes('Yetkilendirme')), 'no top-level Yetkilendirme tab');
   assert.ok(ceo[0].includes('*Entegrasyonlar'));
   assert.ok(ceo[1].includes('*VoIP / Telefon'));
-  assert.deepEqual(ceo[2], ['Bağlantı ayarları', '*Dahililer ve yetkiler']);
-  assert.deepEqual(render('ceo', 'voip')[2], ['*Bağlantı ayarları', 'Dahililer ve yetkiler']);
+  assert.deepEqual(ceo[2], ['Bağlantı ayarları', '*Dahililer ve yetkiler', 'ACR telefonları']);
+  assert.deepEqual(render('ceo', 'voip')[2], [
+    '*Bağlantı ayarları',
+    'Dahililer ve yetkiler',
+    'ACR telefonları',
+  ]);
+  const acr = render('ceo', 'acr');
+  assert.ok(acr[0].includes('*Entegrasyonlar'));
+  assert.ok(acr[1].includes('*VoIP / Telefon'));
+  assert.deepEqual(acr[2], ['Bağlantı ayarları', 'Dahililer ve yetkiler', '*ACR telefonları']);
   assert.equal(render('ceo', 'sms').length, 2, 'no VoIP row on other integrations');
 
   const admin = render('admin', 'permissions');

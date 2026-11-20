@@ -1001,6 +1001,50 @@ test('new ACR phones persist per office, receive unique encrypted credentials an
   await assert.rejects(api('acr-devices', 'POST', firstInput), { status: 403 });
 });
 
+test('ACR phone provisioning opens in its own settings section, separate from switchboard configuration', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('<main id="content"></main>', {
+    runScripts: 'outside-only',
+    url: 'https://example.test',
+  });
+  const w = dom.window,
+    requests = [];
+  Object.assign(w, {
+    hanAuth: { role: 'ceo' },
+    $: (s) => w.document.querySelector(s),
+    esc: (v) => String(v ?? ''),
+    settingsSectionTabs: (active) => `<nav data-active="${active}">ACR telefonları</nav>`,
+    bindSettingsSectionTabs: () => {},
+  });
+  try {
+    w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    w.voipApi = async (route) => {
+      requests.push(route);
+      return route === 'acr-devices'
+        ? { devices: [], users: [] }
+        : { providers: [], users: [], extensions: {}, inboundUsers: [] };
+    };
+    await w.voipAcrSettingsPage();
+    assert.equal(w.document.querySelector('nav').dataset.active, 'acr');
+    assert.equal(w.document.querySelector('#acrDevicesHeading').textContent, 'ACR telefonları');
+    assert(w.document.querySelector('form[aria-labelledby="acrAddHeading"]'));
+    assert.equal(w.document.querySelector('#voipConfigForm'), null);
+    assert.deepEqual(requests, ['acr-devices']);
+    requests.length = 0;
+    w.voipSettingsPage();
+    await new Promise(setImmediate);
+    assert(w.document.querySelector('#voipConfigForm'));
+    assert.equal(w.document.querySelector('form[aria-labelledby="acrAddHeading"]'), null);
+    assert.deepEqual(requests, ['config']);
+    w.hanAuth.role = 'admin';
+    requests.length = 0;
+    await w.voipAcrSettingsPage();
+    assert.equal(requests.length, 0, 'the dedicated device-management page stays CEO-only');
+  } finally {
+    w.close();
+  }
+});
+
 test('ACR APK downloads send the attachment bytes only to the configured office CEO', async (t) => {
   const oldDevices = process.env.HAN_ACR_DEVICES;
   process.env.HAN_ACR_DEVICES = JSON.stringify([device]);
