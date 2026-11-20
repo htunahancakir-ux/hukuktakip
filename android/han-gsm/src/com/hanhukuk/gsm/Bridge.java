@@ -13,11 +13,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Locale;
 import javax.net.ssl.HttpsURLConnection;
 import org.json.JSONObject;
 
@@ -28,23 +26,8 @@ final class Bridge {
         return context.getSharedPreferences("connection", Context.MODE_PRIVATE);
     }
 
-    static String origin(String input) {
-        URI uri = URI.create(input.trim());
-        String host = uri.getHost();
-        if (host == null || !"https".equalsIgnoreCase(uri.getScheme()) || uri.getPort() != -1
-                || uri.getRawUserInfo() != null || uri.getRawQuery() != null || uri.getRawFragment() != null
-                || !("".equals(uri.getRawPath()) || "/".equals(uri.getRawPath()))) {
-            throw new IllegalArgumentException("HAN Hukuk sitesinin https adresini girin.");
-        }
-        host = host.toLowerCase(Locale.ROOT);
-        if (!host.equals("hanhukuktakip.com") && !host.endsWith(".hanhukuktakip.com")) {
-            throw new IllegalArgumentException("HAN Hukuk sitesinin https adresini girin.");
-        }
-        return "https://" + host;
-    }
-
     static JSONObject request(String origin, String token, JSONObject input) throws Exception {
-        URL url = new URL(origin(origin) + "/api/voip/acr-agent");
+        URL url = new URL(PairingCode.requireTrustedOrigin(origin) + "/api/voip/acr-agent");
         HttpsURLConnection connection = (HttpsURLConnection) url.openConnection();
         try {
             connection.setRequestMethod("POST");

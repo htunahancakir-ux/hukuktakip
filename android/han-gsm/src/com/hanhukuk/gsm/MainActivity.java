@@ -1,6 +1,8 @@
 package com.hanhukuk.gsm;
 
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Typeface;
@@ -20,6 +22,7 @@ import org.json.JSONObject;
 public final class MainActivity extends Activity {
     private SharedPreferences settings;
     private EditText code;
+    private Button paste;
     private Button pair;
     private Button start;
     private Button stop;
@@ -66,6 +69,7 @@ public final class MainActivity extends Activity {
         code.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
         content.addView(code);
 
+        paste = button(content, "Panodan yapıştır", this::pasteCode);
         pair = button(content, "Eşleştir", this::pair);
         start = button(content, "Otomatik aramayı aç", this::activate);
         stop = button(content, "Otomatik aramayı durdur", () -> {
@@ -100,36 +104,46 @@ public final class MainActivity extends Activity {
     private void render() {
         boolean linked = settings.contains("token");
         boolean enabled = settings.getBoolean("enabled", false);
-        status.setText(settings.getString("status", "HAN Hukuk’tan oluşturulan kod ile bu telefonu eşleştirin."));
+        status.setText(settings.getString("status", "HAN Hukuk’ta Kodu kopyala’ya, burada Panodan yapıştır’a dokunun."));
         pair.setEnabled(!pairing && !enabled);
+        paste.setEnabled(!pairing && !enabled);
         code.setEnabled(!pairing && !enabled);
         start.setEnabled(linked && !enabled && !pairing);
         stop.setEnabled(enabled);
     }
 
-    private void pair() {
-        String[] parts = code.getText().toString().trim().split("/", -1);
-        String origin;
-        try {
-            if (parts.length != 2 || !parts[1].matches(".{1,100}\\.[A-Za-z0-9_-]{16}")) {
-                throw new IllegalArgumentException();
-            }
-            origin = Bridge.origin("https://" + parts[0]);
-        } catch (IllegalArgumentException invalid) {
-            code.setError("HAN Hukuk’tan alınan eşleştirme kodunun tamamını girin.");
+    private void pasteCode() {
+        ClipboardManager clipboard = getSystemService(ClipboardManager.class);
+        ClipData content = clipboard == null ? null : clipboard.getPrimaryClip();
+        CharSequence text = content == null || content.getItemCount() == 0 ? null : content.getItemAt(0).getText();
+        if (text == null || text.length() == 0) {
+            code.setError("Panoda kod yok. Önce HAN Hukuk’tan kodu kopyalayın.");
             return;
         }
-        String pairingCode = parts[1];
+        code.setText(text);
+        code.setSelection(0);
+        code.setError(null);
+    }
+
+    private void pair() {
+        PairingCode input;
+        try {
+            input = PairingCode.parse(code.getText().toString());
+        } catch (IllegalArgumentException invalid) {
+            code.setError(invalid.getMessage());
+            return;
+        }
+        code.setError(null);
         pairing = true;
         render();
         status.setText("Telefon eşleştiriliyor.");
         new Thread(() -> {
             String message;
             try {
-                JSONObject result = Bridge.request(origin, "", new JSONObject().put("pairingCode", pairingCode));
+                JSONObject result = Bridge.request(input.origin, "", new JSONObject().put("pairingCode", input.value));
                 String token = result.getString("token");
                 if (!token.matches("[A-Za-z0-9_-]{43}")) throw new java.io.IOException("Yanıt");
-                settings.edit().putString("origin", origin).putString("token", token)
+                settings.edit().putString("origin", input.origin).putString("token", token)
                         .putString("deviceId", result.getString("deviceId"))
                         .putString("accountId", result.getString("accountId"))
                         .remove("lastDial").apply();
