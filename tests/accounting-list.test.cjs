@@ -83,7 +83,7 @@ test('Accounting UI loads bounded pages, preserves totals and edit baselines and
                 { id: 'cash', name: 'Kasa', type: 'cash' },
                 { id: 'archived', name: 'Pasif Banka', type: 'bank', active: false },
               ],
-              operators: ['<img src=x>'],
+              operators: ['<img src=x>', 'Ayşe Kaya'],
               next: url.includes('after=next') ? null : 'next',
             },
     };
@@ -98,6 +98,11 @@ test('Accounting UI loads bounded pages, preserves totals and edit baselines and
   assert.match(w.document.querySelector('.account-ledger thead').textContent, /KALAN/);
   assert.equal(w.document.querySelector('.account-ledger tbody tr').children.length, 9);
   assert.equal(w.document.querySelectorAll('img,script').length, 0);
+  const operator = w.document.querySelector('#movementFilterForm select[name="operator"]');
+  assert.deepEqual(
+    [...operator.options].map((option) => option.value),
+    ['', '<img src=x>', 'Ayşe Kaya'],
+  );
   const total = w.document.querySelector('tfoot').textContent;
   w.document.querySelector('#nextAccounting').click();
   await tick();
@@ -109,6 +114,14 @@ test('Accounting UI loads bounded pages, preserves totals and edit baselines and
     requests.some((u) => u.includes('/api/data')),
     false,
   );
+  const filters = w.document.querySelector('#movementFilterForm');
+  filters.elements.operator.value = 'Ayşe Kaya';
+  filters.requestSubmit();
+  await tick();
+  assert.equal(new URL(requests.at(-1), w.location.href).searchParams.get('operator'), 'Ayşe Kaya');
+  const selectedOperator = w.document.querySelector('#movementFilterForm select[name="operator"]');
+  assert.equal(selectedOperator.value, 'Ayşe Kaya');
+  assert.equal(selectedOperator.options.length, 3);
   w.movementFilters.query = 'slow';
   const old = w.accountingPage();
   await tick();
@@ -136,7 +149,7 @@ test('Accounting UI loads bounded pages, preserves totals and edit baselines and
   ]) {
     const form = w.document.querySelector('#movementFilterForm');
     form.elements.category.value = 'Yakıt';
-    form.elements.operator.value = 'Örnek Personel';
+    form.elements.operator.value = 'Ayşe Kaya';
     form.elements.query.value = 'Test';
     form.querySelector('[data-movement-period="' + period + '"]').click();
     await tick();
@@ -145,7 +158,7 @@ test('Accounting UI loads bounded pages, preserves totals and edit baselines and
     assert.equal(params.get('end'), end);
     assert.equal(params.get('account'), 'cash');
     assert.equal(params.get('category'), 'Yakıt');
-    assert.equal(params.get('operator'), 'Örnek Personel');
+    assert.equal(params.get('operator'), 'Ayşe Kaya');
     assert.equal(params.get('query'), 'Test');
     assert.equal(params.get('after'), '', 'Period changes reset pagination');
     assert.equal(w.document.querySelector('#accountingFilterSection').open, true);

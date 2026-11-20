@@ -12,7 +12,7 @@ function load(w, file, functions) {
 }
 
 for (const role of ['ceo', 'admin']) {
-  test(`${role}: client filters coexist with manual registration, company choices, personnel and city suggestions`, async (t) => {
+  test(`${role}: client filters coexist with registration, company choices and province/district dropdowns`, async (t) => {
     const dom = new JSDOM('<div id="filters"></div><dialog id="modal"></dialog>', {
       url: 'http://localhost',
       runScripts: 'dangerously',
@@ -59,11 +59,12 @@ for (const role of ['ceo', 'admin']) {
     load(w, 'client-records.js', [
       'clientModal',
       'setupClientBankAccounts',
+      'addressSelectValue',
+      'addressSelectOptions',
       'clientCityField',
       'clientAttachmentFields',
       'syncClientCompanyFields',
       'validClientIban',
-      'setupClientCity',
       'setupClientDistrict',
       'clientFilterBar',
       'clientPlaceFilter',
@@ -94,19 +95,20 @@ for (const role of ['ceo', 'admin']) {
       district = form.elements.district;
     assert.equal(district.disabled, true);
     form.querySelector('[data-form-tab="address"]').click();
-    city.value = 'ist';
-    city.dispatchEvent(new w.Event('input'));
-    const cityBox = form.querySelector('#clientCitySuggestions');
-    assert.equal(cityBox.hidden, false);
-    assert.equal(cityBox.querySelectorAll('[data-city]').length, 1);
-    cityBox.querySelector('[data-city="İstanbul"]').click();
+    assert.equal(city.tagName, 'SELECT');
+    assert.deepEqual(
+      [...city.options].map((option) => option.value),
+      ['', 'Ankara', 'İstanbul'],
+    );
+    city.value = 'İstanbul';
+    city.dispatchEvent(new w.Event('change'));
     assert.equal(city.value, 'İstanbul');
     assert.equal(district.disabled, false);
-    const districtBox = form.querySelector('#clientDistrictSuggestions');
-    district.value = 'kad';
-    district.dispatchEvent(new w.Event('input'));
-    assert.equal(districtBox.hidden, false);
-    districtBox.querySelector('[data-district="Kadıköy"]').click();
+    assert.deepEqual(
+      [...district.options].map((option) => option.value),
+      ['', 'Kadıköy', 'Üsküdar'],
+    );
+    district.value = 'Kadıköy';
     assert.equal(district.value, 'Kadıköy');
     assert.equal(listCity.value, 'Ankara');
     assert.equal(listDistrict.disabled, true);
@@ -132,10 +134,28 @@ for (const role of ['ceo', 'admin']) {
     w.clientModal(saved[0].id, saved[0]);
     const edit = w.document.getElementById('clientForm');
     assert.equal(edit.elements.clientCode.value, '000-MV-7');
+    assert.equal(edit.elements.city.value, 'İstanbul');
+    assert.equal(edit.elements.district.value, 'Kadıköy');
+    assert.deepEqual(
+      [...edit.elements.district.options].map((option) => option.value),
+      ['', 'Kadıköy', 'Üsküdar'],
+    );
     edit.elements.clientCode.value = '';
     await edit.onsubmit({ preventDefault() {}, target: edit });
     assert.equal(saved.length, 2, notices.join('; '));
     assert.equal(saved[1].clientCode, '', 'Code can be cleared without blocking an existing client save');
     assert.equal(saved[1].tradeName, saved[0].tradeName);
+
+    const prospect = w.document.createElement('form');
+    prospect.innerHTML = w.clientCityField({}, 'prospect');
+    const fill = w.setupClientDistrict('prospect', prospect);
+    fill({ city: 'istanbul', district: 'Üsküdar' });
+    assert.equal(prospect.elements.city.value, 'İstanbul');
+    assert.equal(prospect.elements.district.value, 'Üsküdar');
+    prospect.reset();
+    await new Promise(setImmediate);
+    assert.equal(prospect.elements.city.value, '');
+    assert.equal(prospect.elements.district.value, '');
+    assert.equal(prospect.elements.district.disabled, true);
   });
 }

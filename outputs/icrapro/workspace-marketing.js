@@ -277,7 +277,6 @@ function marketingSearchTab() {
     <div id="marketingResults"></div>
     <div id="marketingPlan"></div>`;
   const searchForm = $('#marketingSearchForm');
-  setupClientCity('route');
   setupClientDistrict('route');
   // The application makes every form field mandatory unless it says data-optional
   // (personnel.js). Here only a place is needed: the shared province and district fields

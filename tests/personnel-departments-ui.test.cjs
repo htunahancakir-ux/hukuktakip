@@ -57,7 +57,8 @@ for (const role of ['ceo', 'admin'])
         setupPersonnelCompensationTabs() {},
         setupPersonnelDepartmentRole() {},
         setupPersonnelSalaryRequirements() {},
-        setupClientCity() {},
+        turkeyCities: ['İstanbul'],
+        turkeyDistricts: { İstanbul: ['Kadıköy'] },
         setupClientDistrict() {},
         authApi: (path, method, body) => {
           requests.push({ path, method, body });
@@ -85,7 +86,7 @@ for (const role of ['ceo', 'admin'])
       w.eval(fs.readFileSync('outputs/icrapro/html-safety.js', 'utf8'));
       w.esc = w.escapeHtml;
       load(w, 'form-inputs.js', ['field']);
-      load(w, 'client-records.js', ['clientCityField']);
+      load(w, 'client-records.js', ['addressSelectValue', 'addressSelectOptions', 'clientCityField']);
       load(w, 'personnel.js', [
         'personnelSettings',
         'isRealPersonnelRecord',

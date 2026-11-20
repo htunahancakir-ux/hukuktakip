@@ -35,8 +35,6 @@ test('Client company controls and borrower type controls stay optional across ty
       hanAuth: { role: 'staff' },
       turkeyCities: ['İstanbul'],
       turkeyDistricts: { İstanbul: ['Kadıköy'] },
-      setupClientCity() {},
-      setupClientDistrict() {},
       setupExtraContacts() {},
       bindMultipleFileInput() {},
       readExtraContacts: () => ({}),
@@ -64,7 +62,10 @@ test('Client company controls and borrower type controls stay optional across ty
     load(w, 'client-records.js', [
       'clientModal',
       'setupClientBankAccounts',
+      'addressSelectValue',
+      'addressSelectOptions',
       'clientCityField',
+      'setupClientDistrict',
       'clientAttachmentFields',
       'syncClientCompanyFields',
       'validClientIban',
@@ -87,10 +88,11 @@ test('Client company controls and borrower type controls stay optional across ty
       assert.equal(form.elements[name].required, false);
       assert.equal(form.elements[name].checkValidity(), true);
     }
+    form.elements.city.value = 'İstanbul';
+    form.elements.city.dispatchEvent(new w.Event('change'));
     for (const [name, value] of Object.entries({
       tradeName: 'Örnek Firma',
       identity: '1234567890',
-      city: 'İstanbul',
       district: 'Kadıköy',
       clientCategory: 'Yediemin Otoparkları',
       recordedBy: 'p',

@@ -298,7 +298,7 @@ async function aiPage({ saved = {}, fetchImpl }) {
     form.elements.provider.dispatchEvent(new w.Event('change', { bubbles: true }));
   };
   const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
-  const options = () => [...w.document.querySelectorAll('#aiModelList option')].map((o) => o.value);
+  const options = () => [...form.elements.aiProviderModel.options].map((o) => o.value).filter(Boolean);
   const status = () => w.document.querySelector('#aiModelStatus').textContent;
   return { dom, w, form, requests, delays, type, choose, settle, options, status };
 }
@@ -313,7 +313,7 @@ const modelAnswer = (models) => ({
   }),
 });
 
-test("typing the address and the key lists the provider's models in the model field", async () => {
+test('typing the address and key loads provider models into native dropdowns with a manual option', async () => {
   const page = await aiPage({
     fetchImpl: async (body) =>
       body.apiKey
@@ -327,7 +327,7 @@ test("typing the address and the key lists the provider's models in the model fi
           },
   });
   try {
-    const { form, requests, delays, type, choose, settle, options, status } = page;
+    const { w, form, requests, delays, type, choose, settle, options, status } = page;
     // Nothing is asked while the page is merely open.
     await settle();
     assert.equal(requests.length, 0);
@@ -354,10 +354,25 @@ test("typing the address and the key lists the provider's models in the model fi
     assert.deepEqual(options(), ['evren-small', 'evren-large']);
     assert.match(status(), /2 model bulundu/);
     assert(delays.includes(800), 'the page waits for typing to stop');
-    // The model field offers the list, and a name that is not listed is still accepted.
-    assert.equal(form.elements.model.getAttribute('list'), 'aiModelList');
-    assert.equal(form.elements.transcriptionModel.getAttribute('list'), 'aiModelList');
+    const model = form.elements.aiProviderModel;
+    const audio = form.elements.aiProviderTranscriptionModel;
+    assert.equal(model.tagName, 'SELECT');
+    assert.deepEqual(
+      [...audio.options].map((option) => option.value),
+      ['', 'evren-small', 'evren-large'],
+    );
+    model.value = 'evren-small';
+    model.dispatchEvent(new w.Event('change'));
+    audio.value = 'evren-large';
+    audio.dispatchEvent(new w.Event('change'));
+    assert.deepEqual(options(), ['evren-small', 'evren-large']);
+    assert.equal(new w.FormData(form).get('model'), 'evren-small');
+    assert.equal(new w.FormData(form).get('transcriptionModel'), 'evren-large');
+    assert.equal(form.elements.model.closest('label').hidden, true);
+    model.value = '';
+    model.dispatchEvent(new w.Event('change'));
     form.elements.model.value = 'my-own-model';
+    assert.equal(form.elements.model.closest('label').hidden, false);
     assert.equal(form.elements.model.validity.valid, true);
   } finally {
     page.dom.window.close();

@@ -154,7 +154,6 @@ function intake(editId, showNew = true, recordReady = false) {
   if (!embeddedIntake) bindIntakeBatchToolbar();
   if (window.hanRecordsEnabled && !embeddedIntake) refreshRecordIntakeBatch();
   setupDocumentTypes();
-  setupClientCity('document');
   setupClientDistrict('document');
 
   setupOptionalDebtorFields();

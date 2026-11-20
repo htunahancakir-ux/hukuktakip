@@ -37,6 +37,10 @@ CEO, Ayarlar → Entegrasyonlar → VoIP / Telefon → Bağlantı ayarları → 
 
 ## ACR Phone çağrı raporlama
 
+Müvekkil ve personel kartları ile borçlu föyünde **Ara** altında varsayılan kanal Verimor'dur. Yanındaki arama kanalı seçicisinden **GSM ile ara (ACR Phone)** seçilebilir. Kullanıcıya ACR cihazı atanması gerekir. Android'de **Telefon uygulamasında aç**, kayıtlı numarayı varsayılan arama uygulamasına aktarır. Varsayılan uygulama ACR Phone olarak seçiliyken personel çağrıyı oradan başlatır. Bilgisayarda hazırlanan istek, aynı hesapla Android'de açık HAN Hukuk'un **Bekleyen GSM aramaları** bölümünde görünür.
+
+Hazırlanmamış istek 5 dakika, Android'de hazırlanmış istek en fazla 2 dakika geçerlidir. Çıkış yönü, doğrulanmış çağrı zamanı, cihaz ve numara tek bir hazır istekle eşleşiyorsa rapor seçilen karta bağlanır. Sonradan gelen ses aynı kart bağlantısını devralır. Geçici istek tablosu için sürüm öncesi `npm run db:migrate` çalıştırılır.
+
 `POST /api/voip/acr-report`, ACR Phone → Çağrı raporlama → Sunucuya yolla bölümündeki tam HTTPS sunucu adresidir. Aynı telefonun ses yüklemesinde kullanılan gizli kod burada da geçerlidir; istek formundaki `secret` ile ve büro hostu ile doğrulanır. Multipart ve URL-encoded formlar kabul edilir; rapor en fazla 64 KiB'dir. Bağlantı kontrolü `200` döndürür ve çağrı oluşturmadan yapılabilir.
 
 Numara açık `phone_number`/`number` gibi alanlardan, tarih sayısal Unix saniye veya milisaniyeden alınır. Cihaz adı ve kullanıcı ataması ses yüklemesiyle aynı ayarlardan uygulanır. Aynı formun tekrar gönderilmesi ikinci çağrı oluşturmaz. Raporun gizli kod içermeyen metin alanları, gerçek cihazın alanlarını doğrulamak için çağrı metadata'sında tutulur; günlükte yalnızca alan adları ve rastgele kayıt/cihaz kimlikleri vardır. Ses dosyası olmayan rapor, arşiv indirme işine girmez ve dinlenebilir olarak gösterilmez.

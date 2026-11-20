@@ -217,6 +217,108 @@ test('standalone calls use documented GET originate, retain privacy, and still p
   assert.equal(other.id, undefined);
   assert.equal(other.note, undefined);
 });
+test('missing extension opens the assignment panel for managers and refreshes the call form after saving', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('', { url: 'https://example.test', runScripts: 'outside-only' });
+  const w = dom.window;
+  const user = { id: 'u', name: 'Yönetici', username: 'yonetici', extension: '' };
+  let canOpen = false;
+  let assignmentReads = 0;
+  try {
+    w.HTMLDialogElement.prototype.showModal = function () {
+      this.open = true;
+    };
+    w.HTMLDialogElement.prototype.show = w.HTMLDialogElement.prototype.showModal;
+    w.HTMLDialogElement.prototype.close = function () {
+      this.open = false;
+      this.dispatchEvent(new w.Event('close'));
+    };
+    w.hanAuth = { id: user.id, role: 'staff' };
+    w.esc = String;
+    w.requireCeoPin = async (scope) => {
+      assert.equal(scope, 'permissions');
+      return canOpen;
+    };
+    w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    let webphoneOpens = 0;
+    w.openVoipWebphone = async () => {
+      webphoneOpens++;
+    };
+    w.voipApi = async (path, method, body) => {
+      if (path.startsWith('calls?')) {
+        return {
+          enabled: true,
+          extension: user.extension,
+          webphone: path.includes('documentId='),
+          results: [],
+          calls: [],
+          active: [],
+          phones: [],
+        };
+      }
+      assert.equal(path, 'extensions');
+      if (method === 'PUT') {
+        assert.equal(body.userId, user.id);
+        user.extension = body.extension;
+      } else assignmentReads++;
+      return {
+        users: [user],
+        extensions: [{ extension: '1001', userId: user.extension ? user.id : '', fromSwitchboard: true }],
+        switchboardListed: true,
+      };
+    };
+    w.openStandaloneVoip();
+    const dialer = w.document.querySelector('#voipStandalone');
+    const form = dialer.querySelector('form');
+    const feedback = dialer.querySelector('[data-feedback]');
+    form.elements.phone.value = '05320000009';
+    form.requestSubmit();
+    await new Promise(setImmediate);
+    assert.match(feedback.textContent, /yöneticinize başvurun/);
+    assert.equal(feedback.querySelector('button'), null);
+    assert.equal(assignmentReads, 0);
+
+    w.hanAuth.role = 'admin';
+    form.requestSubmit();
+    await new Promise(setImmediate);
+    const warning = feedback.querySelector('button');
+    assert.equal(warning.textContent, 'Kullanıcınıza telefon dahilisi atanmalı.');
+    warning.click();
+    await new Promise(setImmediate);
+    assert.equal(assignmentReads, 0, 'assignment respects the existing permissions prompt');
+
+    canOpen = true;
+    warning.click();
+    await new Promise(setImmediate);
+    const assignment = w.document.querySelector('#voipExtensionAssignment');
+    assert.equal(assignment.open, true);
+    assert.equal(dialer.open, true);
+    const row = assignment.querySelector('[data-extension-row="1001"]');
+    row.elements.person.value = user.id;
+    row.requestSubmit();
+    await new Promise(setImmediate);
+    assignment.close();
+    await new Promise(setImmediate);
+    assert.equal(form.elements.phone.value, '05320000009');
+    assert.equal(feedback.querySelector('button'), null);
+    assert.ok(dialer.querySelector('[data-dial]'));
+
+    user.extension = '';
+    const sheet = w.document.createElement('dialog');
+    sheet.innerHTML = '<div class="sheet-header-actions"></div><div class="formbody"></div>';
+    w.document.body.append(sheet);
+    sheet.showModal();
+    w.setupBorrowerVoip(sheet, { id: 'doc' });
+    sheet.querySelector('[data-open-voip]').click();
+    await new Promise(setImmediate);
+    assert.ok(sheet.querySelector('[data-voip-extension-warning]'));
+    assert.equal(webphoneOpens, 1, 'a borrower without an extension does not try to register a web phone');
+    sheet.close();
+  } finally {
+    w.close();
+  }
+});
+
 test('standalone dialer shows last call before allowing a repeated call', async () => {
   const { JSDOM } = require('jsdom');
   const dom = new JSDOM('<div class="header-actions"></div><aside><nav></nav></aside>', {
@@ -389,7 +491,7 @@ test('configuration keeps keys encrypted and validates provider, host and duplic
     /iki kullanıcı/,
   );
 });
-test('extension panel lists extensions and assigns a person picked by name', async () => {
+test('extension panel shows every active person and saves the selected account', async () => {
   const { JSDOM } = require('jsdom');
   const dom = new JSDOM('<main><section id="permissions"></section></main>', { runScripts: 'outside-only' }),
     w = dom.window;
@@ -427,19 +529,25 @@ test('extension panel lists extensions and assigns a person picked by name', asy
     ['1000', '1001'],
     'one row per extension',
   );
-  assert.equal(row('1000').elements.person.value, 'Cihan Erol (cihan)');
+  const picker = row('1000').elements.person;
+  assert.equal(picker.tagName, 'SELECT');
+  assert.equal(picker.value, 'u');
+  assert.equal(picker.selectedOptions[0].textContent, 'Cihan Erol (cihan)');
+  assert.deepEqual(
+    [...picker.options].map((option) => option.value),
+    ['', 'u', 's'],
+  );
   assert.equal(row('1001').elements.person.value, '');
-  assert.equal(w.document.querySelectorAll('#voipExtensionPeople option').length, 2, 'name suggestions');
 
-  row('1001').elements.person.value = 'Ayşe Kaya (ayse)';
+  row('1001').elements.person.value = 's';
   row('1001').requestSubmit();
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual({ ...puts.at(-1) }, { userId: 's', extension: '1001', replace: true });
-  assert.equal(row('1001').elements.person.value, 'Ayşe Kaya (ayse)');
+  assert.equal(row('1001').elements.person.value, 's');
   assert.equal(row('1001').querySelector('[role="status"]').textContent, 'Kaydedildi.');
 
-  // Typing a plain name works too; taking 1000 moves it from Cihan to Ayşe.
-  row('1000').elements.person.value = 'ayşe kaya';
+  // Taking 1000 moves it from Cihan to Ayşe and clears Ayşe's previous assignment.
+  row('1000').elements.person.value = 's';
   row('1000').requestSubmit();
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual({ ...puts.at(-1) }, { userId: 's', extension: '1000', replace: true });
@@ -447,7 +555,7 @@ test('extension panel lists extensions and assigns a person picked by name', asy
   row('1000').elements.person.value = 'Olmayan Kişi';
   row('1000').requestSubmit();
   await new Promise((resolve) => setImmediate(resolve));
-  assert.match(row('1000').querySelector('[role="status"]').textContent, /bulunamadı/);
+  assert.match(row('1000').querySelector('[role="status"]').textContent, /Listeden bir personel seçin/);
   assert.equal(puts.length, 2, 'unknown names are not sent');
 
   row('1000').querySelector('[data-unassign]').click();

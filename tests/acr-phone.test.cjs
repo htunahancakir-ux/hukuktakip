@@ -11,6 +11,7 @@ const { createRecordingStore } = require('../lib/voip-recordings.cjs');
 const { database, fixture } = require('./support/postgres.cjs');
 const { importState } = require('../lib/postgres-store.cjs');
 const { transaction } = require('../lib/voip-store.cjs');
+const { importRecords, activateRecords } = require('../lib/record-store/storage.cjs');
 const secret = 'synthetic-acr-secret-for-tests-only-123456';
 const host = 'office.example.test';
 const device = {
@@ -352,6 +353,140 @@ test('ACR pairing rejects ambiguous, unverified, edited and different-device cal
   assert.equal(short[0].recordingDuration, 1.695);
   assert.equal(short[0].recordingPresent, false);
   assert.equal(short[0].recordingSuppressed, 'too_short');
+});
+
+test('ACR dials match outgoing reports to the chosen card and keep the link when audio arrives', async (t) => {
+  const oldDevices = process.env.HAN_ACR_DEVICES;
+  process.env.HAN_ACR_DEVICES = JSON.stringify([device]);
+  const { pg, pool } = await database();
+  t.after(async () => {
+    if (oldDevices === undefined) delete process.env.HAN_ACR_DEVICES;
+    else process.env.HAN_ACR_DEVICES = oldDevices;
+    await pg.close();
+  });
+  const state = fixture();
+  state.voipConfig = { acrDevices: { [device.id]: { userId: 'test-ceo', label: 'Telefon' } } };
+  state.data['icrapro-v1'].clients = [
+    { id: 'first', name: 'Birinci', phone: '05320000001' },
+    { id: 'second', name: 'İkinci', phone: '05320000001' },
+  ];
+  state.data['icrapro-v1'].docs = [
+    {
+      id: 'folio',
+      client: 'first',
+      number: 'D-1',
+      debtor: 'Borçlu',
+      phone1: '05320000002',
+      phone2: '05320000005',
+      inactivePhones: ['5320000005'],
+    },
+  ];
+  state.data['icrapro-personnel-v1'] = [
+    { id: 'staff-card', name: 'Personel', phone: '02120000001', mobilePhone: '05320000006' },
+  ];
+  await importState(pool, state);
+  await importRecords(pool);
+  await activateRecords(pool);
+  let actor = { id: 'test-ceo', name: 'Test', role: 'ceo' };
+  const handle = createVoipHandler({
+    transaction: (work, scope) => transaction(pool, true, work, scope),
+    recordings: { available: true, save: async () => {} },
+    authenticatedUser: async () => ({ ...actor }),
+    readBody: async (req) => {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      return Buffer.concat(chunks);
+    },
+  });
+  const run = async (req) => {
+    const res = response();
+    await handle(req, res, new URL(req.url, 'https://' + host));
+    return JSON.parse(res.bytes());
+  };
+  const api = (route, input) =>
+    run({
+      url: '/api/voip/' + route,
+      method: input ? 'POST' : 'GET',
+      headers: { host, 'content-type': 'application/json' },
+      async *[Symbol.asyncIterator]() {
+        yield Buffer.from(JSON.stringify(input));
+      },
+    });
+  const destination = { deviceId: device.id, cardType: 'client', cardId: 'second', phone: '05320000001' };
+  assert.deepEqual(
+    (await api('calls?cardType=personnel&cardId=staff-card')).phones.map((p) => p.phone),
+    ['905320000006', '902120000001'],
+  );
+  await assert.rejects(api('acr-dials', { ...destination, phone: '05320000003' }), { status: 400 });
+  const { dial } = await api('acr-dials', destination);
+  assert.equal(
+    (await api('acr-dials', destination)).dial.id,
+    dial.id,
+    'queue retries reuse the existing request',
+  );
+  assert.deepEqual(
+    (await api('acr-dials')).dials.map((row) => row.id),
+    [dial.id],
+  );
+  actor = { id: 'another-user', role: 'staff' };
+  assert.deepEqual((await api('acr-dials')).dials, []);
+  await assert.rejects(api('acr-dials', { dialId: dial.id }), { status: 409 });
+  await assert.rejects(api('calls?cardType=client&cardId=second'), { status: 403 });
+  actor = { id: 'test-ceo', role: 'ceo' };
+  const { dial: ready } = await api('acr-dials', { dialId: dial.id });
+  assert.ok(ready.readyUntil);
+  const { dial: competing } = await api('acr-dials', { ...destination, cardId: 'first' });
+  await assert.rejects(api('acr-dials', { dialId: competing.id }), { status: 409 });
+  const date = Math.floor(Date.now() / 1000) + 2;
+  const report = { number: destination.phone, date: String(date * 1000), direction: '2', duration: '9' };
+  await run(await reportRequest({ ...report, direction: '1', date: String((date - 1) * 1000) }));
+  assert.equal((await api('calls?cardType=client&cardId=second')).calls.length, 0);
+  const { id: reportId } = await run(await reportRequest(report));
+  const history = () => api('calls?cardType=client&cardId=second');
+  assert.equal((await history()).calls[0].id, reportId);
+  const { id: audioId } = await run(await request({ date: String(date), duration: '9000' }));
+  await run(await reportRequest(report));
+  const { calls } = await history();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].id, audioId);
+  assert.equal(calls[0].cardId, 'second');
+  assert.equal(calls[0].cardName, 'İkinci');
+  assert.equal(calls[0].provider, 'acr');
+  assert.equal(calls[0].recordingPresent, true);
+  assert.equal((await api('calls?cardType=client&cardId=first')).calls.length, 0);
+  assert.deepEqual(
+    (await api('acr-dials')).dials.map((row) => row.id),
+    [competing.id],
+  );
+
+  await assert.rejects(
+    api('acr-dials', {
+      deviceId: device.id,
+      documentId: 'folio',
+      phone: '05320000005',
+    }),
+    { status: 400 },
+  );
+  const { dial: docDial } = await api('acr-dials', {
+    deviceId: device.id,
+    documentId: 'folio',
+    phone: '05320000002',
+  });
+  await api('acr-dials', { dialId: docDial.id });
+  const docDate = date + 2;
+  const { id: docAudio } = await run(await request({ date: String(docDate), duration: '6000' }));
+  await run(
+    await reportRequest({
+      number: '05320000002',
+      date: String(docDate * 1000),
+      direction: '2',
+      duration: '6',
+    }),
+  );
+  const docHistory = await api('history?documentId=folio');
+  assert.equal(docHistory.rows.length, 1);
+  assert.equal(docHistory.rows[0].call.id, docAudio);
+  assert.equal(docHistory.rows[0].call.documentId, 'folio');
 });
 
 test('ACR skips audio shorter than two seconds before saving; two seconds and unknown durations remain accepted', async () => {

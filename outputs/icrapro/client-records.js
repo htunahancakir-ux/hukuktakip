@@ -1,147 +1,77 @@
-function setupClientDistrict(prefix = 'client', root = document) {
-  const city = root.querySelector('#' + prefix + 'City'),
-    input = root.querySelector('#' + prefix + 'District'),
-    box = root.querySelector('#' + prefix + 'DistrictSuggestions');
-  let lastCity = city.value;
-  function synchronize() {
-    const canonical = turkeyCities.find(
-      (c) => c.toLocaleLowerCase('tr') === city.value.trim().toLocaleLowerCase('tr'),
-    );
-    if (city.value !== lastCity) {
-      input.value = '';
-      input.setCustomValidity('');
-      lastCity = city.value;
-    }
-    input.disabled = !canonical;
-    input.placeholder = canonical ? 'İlçenin ilk harfini yazın…' : 'Önce il seçin';
-    box.hidden = true;
-    input.setAttribute('aria-expanded', 'false');
-    return canonical;
-  }
-  function show() {
-    const selected = synchronize();
-    if (!selected) return;
-    const query = input.value.trim().toLocaleLowerCase('tr'),
-      names = (turkeyDistricts[selected] || []).filter((d) =>
-        normalizeSearch(d).includes(normalizeSearch(query)),
-      );
-    box.innerHTML =
-      names
-        .map((name) => `<button type="button" data-district="${esc(name)}">${esc(name)}</button>`)
-        .join('') || '<p>Eşleşen ilçe bulunamadı.</p>';
-    box.hidden = false;
-    input.setAttribute('aria-expanded', 'true');
-    box.querySelectorAll('button').forEach(
-      (b) =>
-        (b.onclick = () => {
-          input.value = b.dataset.district;
-          input.setCustomValidity('');
-          input.focus();
-          box.hidden = true;
-          input.setAttribute('aria-expanded', 'false');
-        }),
-    );
-  }
-  city.addEventListener('input', synchronize);
-  city.addEventListener('change', synchronize);
-  input.onfocus = show;
-  input.oninput = show;
-  input.onkeydown = (e) => {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      show();
-      box.querySelector('button')?.focus();
-    }
-    if (e.key === 'Escape') {
-      box.hidden = true;
-      input.setAttribute('aria-expanded', 'false');
-    }
-  };
-  box.onkeydown = (e) => {
-    const buttons = [...box.querySelectorAll('button')],
-      index = buttons.indexOf(document.activeElement);
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      const next = index + (e.key === 'ArrowDown' ? 1 : -1);
-      if (next < 0) input.focus();
-      else buttons[next % buttons.length]?.focus();
-    }
-    if (e.key === 'Escape') {
-      input.focus();
-      box.hidden = true;
-      input.setAttribute('aria-expanded', 'false');
-    }
-  };
-  input.parentElement.addEventListener('focusout', (e) => {
-    if (!input.parentElement.contains(e.relatedTarget)) {
-      box.hidden = true;
-      input.setAttribute('aria-expanded', 'false');
-    }
-  });
-  synchronize();
+function addressSelectValue(choices, value) {
+  const saved = String(value ?? '').trim();
+  const normalized = saved.toLocaleLowerCase('tr');
+  return choices.find((choice) => choice.toLocaleLowerCase('tr') === normalized) || saved;
+}
+
+function addressSelectOptions(choices, value, placeholder) {
+  const selected = addressSelectValue(choices, value);
+  const entries = selected && !choices.includes(selected) ? [selected, ...choices] : choices;
+  return `<option value="">${esc(placeholder)}</option>${entries
+    .map(
+      (choice) =>
+        `<option value="${esc(choice)}"${choice === selected ? ' selected' : ''}>${esc(choice)}</option>`,
+    )
+    .join('')}`;
 }
 
 function clientCityField(c, prefix = 'client') {
-  return `<div class="field"><label for="${prefix}City">İl *</label><input id="${prefix}City" name="city" required autocomplete="off" value="${esc(c.city || '')}" placeholder="İlin ilk harfini yazın…" aria-controls="${prefix}CitySuggestions" aria-expanded="false"><div id="${prefix}CitySuggestions" class="city-suggestions" hidden></div></div><div class="field"><label for="${prefix}District">İlçe *</label><input id="${prefix}District" name="district" required autocomplete="off" value="${esc(c.district || '')}" placeholder="Önce il seçin" aria-controls="${prefix}DistrictSuggestions" aria-expanded="false"><div id="${prefix}DistrictSuggestions" class="city-suggestions" hidden></div></div>`;
+  const city = addressSelectValue(turkeyCities, c.city);
+  const known = turkeyCities.includes(city);
+  const cityOptions = addressSelectOptions(turkeyCities, city, 'İl seçin');
+  const districtOptions = addressSelectOptions(
+    known ? turkeyDistricts[city] || [] : [],
+    c.district,
+    known ? 'İlçe seçin' : 'Önce il seçin',
+  );
+  return `<div class="field"><label for="${prefix}City">İl *</label><select id="${prefix}City" name="city" required>${cityOptions}</select></div>
+    <div class="field"><label for="${prefix}District">İlçe *</label><select id="${prefix}District" name="district" required ${known ? '' : 'disabled'}>${districtOptions}</select></div>`;
 }
 
-function setupClientCity(prefix = 'client', root = document) {
-  const input = root.querySelector('#' + prefix + 'City'),
-    box = root.querySelector('#' + prefix + 'CitySuggestions');
-  function show() {
-    const q = input.value.trim().toLocaleLowerCase('tr');
-    const cities = turkeyCities.filter((city) => normalizeSearch(city).includes(normalizeSearch(q)));
-    box.hidden = false;
-    input.setAttribute('aria-expanded', 'true');
-    box.innerHTML =
-      cities.map((city) => `<button type="button" data-city="${city}">${city}</button>`).join('') ||
-      '<p>Eşleşen il bulunamadı.</p>';
-    box.querySelectorAll('button').forEach(
-      (b) =>
-        (b.onclick = () => {
-          input.value = b.dataset.city;
-          input.dispatchEvent(new Event('change', { bubbles: true }));
-          input.setCustomValidity('');
-          box.hidden = true;
-          input.setAttribute('aria-expanded', 'false');
-          root.querySelector('#' + prefix + 'District').focus();
-        }),
+function setupClientDistrict(prefix = 'client', root = document) {
+  const city = root.querySelector('#' + prefix + 'City');
+  const district = root.querySelector('#' + prefix + 'District');
+  const initialDistrict = district.value;
+  let previousCity = city.value;
+  function setDistrict(value) {
+    const known = turkeyCities.includes(city.value);
+    district.innerHTML = addressSelectOptions(
+      known ? turkeyDistricts[city.value] || [] : [],
+      value,
+      known ? 'İlçe seçin' : 'Önce il seçin',
     );
+    district.disabled = !known;
+    district.setCustomValidity('');
   }
-  input.oninput = show;
-  input.onfocus = show;
-  input.onkeydown = (e) => {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      if (box.hidden) show();
-      box.querySelector('button')?.focus();
+  function cityChanged() {
+    city.setCustomValidity('');
+    if (previousCity === city.value) return;
+    previousCity = city.value;
+    setDistrict('');
+  }
+  city.addEventListener('input', cityChanged);
+  city.addEventListener('change', cityChanged);
+  district.addEventListener('change', () => district.setCustomValidity(''));
+  city.form?.addEventListener('reset', () =>
+    queueMicrotask(() => {
+      city.querySelector('[data-saved-city]')?.remove();
+      city.setCustomValidity('');
+      previousCity = city.value;
+      setDistrict(initialDistrict);
+    }),
+  );
+  return (location) => {
+    city.querySelector('[data-saved-city]')?.remove();
+    const value = addressSelectValue(turkeyCities, location.city);
+    if (value && !Array.from(city.options).some((option) => option.value === value)) {
+      const option = new Option(value, value);
+      option.dataset.savedCity = '';
+      city.add(option);
     }
-    if (e.key === 'Escape') {
-      box.hidden = true;
-      input.setAttribute('aria-expanded', 'false');
-    }
+    previousCity = city.value = value;
+    city.setCustomValidity('');
+    setDistrict(location.district);
   };
-  box.onkeydown = (e) => {
-    const buttons = [...box.querySelectorAll('button')],
-      index = buttons.indexOf(document.activeElement);
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      const next = e.key === 'ArrowDown' ? index + 1 : index - 1;
-      if (next < 0) input.focus();
-      else buttons[next % buttons.length]?.focus();
-    }
-    if (e.key === 'Escape') {
-      input.focus();
-      box.hidden = true;
-      input.setAttribute('aria-expanded', 'false');
-    }
-  };
-  input.form.addEventListener('focusout', (e) => {
-    if (!input.parentElement.contains(e.relatedTarget)) {
-      box.hidden = true;
-      input.setAttribute('aria-expanded', 'false');
-    }
-  });
 }
 
 function renderClientScope() {
@@ -482,6 +412,8 @@ function clientModal(id, loadedRecord) {
   if (id && ['ceo', 'admin'].includes(window.hanAuth?.role))
     setupClientStatement($('#clientForm'), id, c.name || c.tradeName || c.fullName || '');
   setupExtraContacts($('#clientForm'), c);
+  if (id && typeof setupVoipCard === 'function')
+    setupVoipCard($('#modal'), { cardType: 'client', cardId: id, name: c.name });
   setupClientBankAccounts($('#clientForm'), c);
   for (const selector of ['#clientPhotos', '#clientPowerOfAttorney']) {
     const input = $(selector);
@@ -489,7 +421,6 @@ function clientModal(id, loadedRecord) {
     if (window.hanModuleAction?.('clients', 'update') === false) input.closest('label').hidden = true;
   }
   $('#modal').showModal();
-  setupClientCity('client', $('#clientForm'));
   setupClientDistrict('client', $('#clientForm'));
   $('#close').onclick = $('#cancel').onclick = () => $('#modal').close();
   document.querySelectorAll('[data-kind]').forEach(

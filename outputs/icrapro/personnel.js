@@ -428,6 +428,8 @@ async function openPersonnelRecord(editId) {
       '',
     )}</div></div><h3 class="sectiontitle">Maaş ve Prim 1</h3><div class="grid">${salaryField('Maaş *', 'officialSalary', current.officialSalary)}${salaryField('Prim 1 (isteğe bağlı)', 'unofficialSalary', current.unofficialSalary)}<label class="settings-check full"><input name="staffActive" type="checkbox" ${current.active !== false ? 'checked' : ''}> Aktif personel · Seçim listelerinde göster</label></div></div><div class="actions"><button type="button" class="secondary" id="cancelPersonnel">Vazgeç</button><button class="primary">${editId ? 'Personeli Güncelle' : 'Personel Ekle'}</button></div></form>`;
   dialog.querySelector('[data-personnel-close]').onclick = () => dialog.close();
+  if (editId && typeof setupVoipCard === 'function')
+    setupVoipCard(dialog, { cardType: 'personnel', cardId: editId, name: current.name });
   dialog.querySelector('#cancelPersonnel').onclick = () => dialog.close();
   const form = dialog.querySelector('#personnelForm');
   setupExtraContacts(form, current);
@@ -437,7 +439,6 @@ async function openPersonnelRecord(editId) {
   setupPersonnelSalaryRequirements(form);
   if (typeof installPasswordVisibility === 'function')
     installPasswordVisibility(dialog.querySelector('#personnelForm'));
-  setupClientCity('staff');
   setupClientDistrict('staff');
   form.onsubmit = (e) => {
     e.preventDefault();

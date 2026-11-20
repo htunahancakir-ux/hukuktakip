@@ -378,8 +378,7 @@ function render() {
         </form>
         <div class="formbody"><div class="grid"><label class="field">Başlangıç Tarihi<input id="prospectFrom" type="date"></label><label class="field">Bitiş Tarihi<input id="prospectTo" type="date"></label><label class="field">Personel<input id="prospectStaffFilter" type="search" placeholder="Personel adı"></label><label class="field">Firma / İl / İlçe Ara<input id="prospectQuery" type="search"></label></div></div><div class="formbody" id="prospectList"></div>
       </section>`;
-    setupClientCity('prospect');
-    setupClientDistrict('prospect');
+    const setProspectLocation = setupClientDistrict('prospect');
     const routeFinder = document.getElementById('openRouteFinder');
     if (routeFinder) routeFinder.onclick = openMarketingRouteFinder;
     const marketingSms = document.getElementById('openMarketingSms');
@@ -465,12 +464,11 @@ function render() {
               'company',
               'contact',
               'phone',
-              'city',
-              'district',
               'address',
               'notes',
             ])
               if (form.elements[key]) form.elements[key].value = item[key] || '';
+            setProspectLocation(item);
             form.elements.phoneSource.value = phoneSource(item, item.phone);
             updateProspectFields();
             form.hidden = false;

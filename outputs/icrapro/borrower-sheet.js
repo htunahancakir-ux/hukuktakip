@@ -305,11 +305,8 @@ function guarantorForm(d, id) {
   dialog.innerHTML = `<form id="guarantorForm"><div class="panelhead"><div><h2>${id ? 'Kefili Düzenle' : 'Kefil Ekle'}</h2><p>Borçlu: ${esc(d.debtor)} · ${esc(d.number)}</p></div><button type="button" class="link" id="closeGuarantorForm">Kapat</button></div><div class="formbody grid">${field('Kefil Ad Soyad', 'name', 'text', g.name, true)}${field('TC Kimlik Numarası', 'identity', 'text', g.identity, true)}${guarantorPhoneFields(g)}${propertyFields(g, 'guarantor')}${clientCityField(g, 'guarantor')}<label class="field full">Açık Adres<textarea name="address" rows="3" required>${esc(g.address || '')}</textarea></label>${guarantorExtraAddress(g, 'address2', 'guarantor2', 'Kefil Adres-2')}${guarantorExtraAddress(g, 'officeAddress3', 'guarantor3', 'Kefil Adres (Ofis)-3')}<label class="field full">Açıklama / Not<textarea name="notes" rows="3" data-optional="true">${esc(g.notes || '')}</textarea></label></div><div class="actions"><button class="primary">Kefili Kaydet</button></div></form>`;
   $('#closeGuarantorForm').onclick = () => dialog.close();
   if (!dialog.open) dialog.showModal();
-  setupClientCity('guarantor');
   setupClientDistrict('guarantor');
-  setupClientCity('guarantor2');
   setupClientDistrict('guarantor2');
-  setupClientCity('guarantor3');
   setupClientDistrict('guarantor3');
   configureGuarantorOptionalFields();
   const form = $('#guarantorForm');
@@ -431,7 +428,6 @@ function editBorrower(id, addAddress = false) {
   $('#cancelEditBorrower').onclick = () => dialog.close();
   if (!dialog.open) dialog.showModal();
   for (const prefix of ['editDebtor']) {
-    setupClientCity(prefix);
     setupClientDistrict(prefix);
   }
   const form = $('#editBorrowerForm');
