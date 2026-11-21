@@ -3133,7 +3133,7 @@ button.secondary.danger {
   margin: 0 0 10px;
 }
 #deleteOperationsDialog .delete-ops-filter {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  grid-template-columns: minmax(140px, 1fr) repeat(2, minmax(135px, 0.8fr)) minmax(150px, 1.2fr) auto;
   align-items: end;
   gap: 12px;
 }
@@ -3193,6 +3193,11 @@ button.secondary.danger {
   margin: 10px 0 0;
   padding: 0;
   background: none;
+}
+@media (max-width: 1000px) {
+  #deleteOperationsDialog .delete-ops-filter {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 @media (max-width: 760px) {
   #deleteOperationsDialog .delete-ops-filter,
@@ -4834,6 +4839,16 @@ main.compact-top .stat small {
   gap: 3px;
   max-height: 100px;
   overflow: auto;
+}
+.borrower-inactive-phone-label {
+  display: inline-block;
+  margin: 0 8px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #fff0e6;
+  color: #9a3412;
+  font-size: 12px;
+  font-weight: 600;
 }
 .sheet-header-phone-row {
   display: flex;

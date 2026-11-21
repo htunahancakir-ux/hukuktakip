@@ -1777,6 +1777,9 @@ function setupBorrowerVoip(dialog, doc) {
         acrDialInUse()
       )
         return;
+      const callablePhones = data.phones.filter(
+        (p) => typeof phoneIsInactive !== 'function' || !phoneIsInactive(doc, p.phone),
+      );
       voipUi.results = data.results || voipUi.results || [];
       const acrDevices = data.acrDevices || [];
       const useAcr = acrDevices.length > 0;
@@ -1798,7 +1801,7 @@ function setupBorrowerVoip(dialog, doc) {
       panel.classList.toggle('voip-number-panel-acr', useAcr);
       panel.innerHTML =
         '<div class="voip-panel-heading"><div><strong>Telefonla ara</strong><span>' +
-        data.phones.length +
+        callablePhones.length +
         ' numara</span></div>' +
         (useAcr ? '' : '<button type="button" class="link" data-voip-diagnose>Bağlantı testi</button>') +
         (!hanAuth.readOnly
@@ -1813,7 +1816,7 @@ function setupBorrowerVoip(dialog, doc) {
         trouble +
         '</div></div>' +
         '<div class="voip-panel-columns" aria-hidden="true"><span>Numara</span><span>Son arama</span><span>İşlem</span></div><div class="voip-number-list">' +
-        (data.phones
+        (callablePhones
           .map((p) => {
             const calls = data.calls.filter((c) => c.phone === p.phone),
               last = calls[0],
@@ -1880,12 +1883,31 @@ function setupBorrowerVoip(dialog, doc) {
               '<div class="voip-channel-group">' +
               action +
               '</div>' +
+              (typeof borrowerPhoneStatusEditable === 'function' && borrowerPhoneStatusEditable()
+                ? '<button type="button" class="link" data-inactivate-phone="' +
+                  esc(p.phone) +
+                  '" aria-label="' +
+                  esc(p.label + ' numarasını pasife al') +
+                  '">Pasife Al</button>'
+                : '') +
               '</div></article>'
             );
           })
           .join('') || '<div class="voip-panel-empty">Aranabilecek geçerli bir telefon numarası yok.</div>') +
         '</div>';
       panel.querySelector('.voip-number-list').scrollTop = scroll;
+      panel.querySelectorAll('[data-inactivate-phone]').forEach((button) => {
+        button.onclick = async () => {
+          if (busy || button.disabled) return;
+          busy = true;
+          try {
+            await setBorrowerPhoneInactive(dialog, doc, button.dataset.inactivatePhone, true);
+          } finally {
+            busy = false;
+            await refresh();
+          }
+        };
+      });
       if (useAcr) {
         bindVoipAcrDial(panel, acrDevices, {
           target: (button) => ({ documentId: doc.id, phone: button.dataset.acrPhone }),
@@ -1989,7 +2011,7 @@ function setupBorrowerVoip(dialog, doc) {
           }
           if (phoneIsInactive(doc, normalized)) {
             form.querySelector('[role="alert"]').textContent =
-              'Bu numara pasif. Föyün üst kısmından Aktife Al düğmesini kullanın.';
+              'Bu numara pasif. Kimlik ve İletişim bölümündeki Aktife Al düğmesini kullanın.';
             return;
           }
           if (data.phones.some((p) => p.phone === normalized)) {

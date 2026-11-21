@@ -1,6 +1,16 @@
 const { canDelete, denied } = require('../../lib/deletion-policy.cjs');
 const { deletionTypes } = require('../../lib/module-permissions.cjs');
 const crypto = require('node:crypto');
+const { businessDate, validDate } = require('../../lib/business-time.cjs');
+function deletionDate(value) {
+  const text = String(value || '');
+  if (validDate(text)) return text;
+  if (/^\d{4}-\d{2}-\d{2}T/.test(text)) {
+    const stamp = new Date(text);
+    if (Number.isFinite(stamp.getTime())) return businessDate(stamp);
+  }
+  return '';
+}
 function rowsFor(state, type) {
   const data = state.data,
     records = data['icrapro-v1'];
@@ -31,8 +41,14 @@ async function handleDeletionRoutes(ctx) {
   }
   if (req.method === 'GET') {
     const type = url.searchParams.get('type');
-    assertType(type);
-    const rows = rowsFor(ctx.state, type);
+    if (type !== 'all') assertType(type);
+    const selectedTypes =
+      type === 'all' ? Object.keys(deletionTypes).filter((key) => canDelete(u, deletionTypes[key])) : [type];
+    const from = url.searchParams.get('from') || '',
+      to = url.searchParams.get('to') || '';
+    if ((from && !validDate(from)) || (to && !validDate(to)))
+      throw fail(400, 'Geçerli başlangıç ve bitiş tarihi seçin.');
+    if (from && to && from > to) throw fail(400, 'Başlangıç tarihi bitiş tarihinden sonra olamaz.');
     const q = (url.searchParams.get('q') || '').trim().toLocaleLowerCase('tr');
     const docs = ctx.state.data['icrapro-v1'].docs;
     const labels = {
@@ -46,37 +62,52 @@ async function handleDeletionRoutes(ctx) {
       advance: 'Avans',
     };
     const only = url.searchParams.get('id');
-    const items = rows
-      .filter((r) => r.id && (!only || r.id === only))
-      .map((r) => ({
-        id: r.id,
-        documentId: r.documentId,
-        label: (type === 'messages'
-          ? [
-              (r.senderName || '') + ' → ' + (r.recipientNames || []).join(', '),
-              r.subject,
-              String(r.text || '').slice(0, 120),
-            ]
-          : [
-              r.number || r.documentNumber || docs.find((d) => d.id === r.documentId)?.number,
-              r.name || r.company || r.debtor || labels[r.type] || r.type,
-              r.note || r.notes || r.title,
-            ]
-        )
-          .filter(Boolean)
-          .join(' · ')
-          .slice(0, 250),
-        date: r.date || r.createdAt || r.created || '',
-        amount: r.amount,
-        amountTl: ['finance', 'accounting'].includes(type)
-          ? Number(r.amount) / 100
-          : typeof r.amount === 'number'
-            ? r.amount
-            : undefined,
-        revision: crypto.createHash('sha256').update(JSON.stringify(r)).digest('hex'),
-      }))
-      .filter((r) => !q || r.label.toLocaleLowerCase('tr').includes(q));
-    if (type === 'messages') items.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    const items = selectedTypes.flatMap((type) =>
+      rowsFor(ctx.state, type)
+        .filter((r) => r.id && (!only || r.id === only))
+        .map((r) => ({
+          type,
+          id: r.id,
+          documentId: r.documentId,
+          label: (type === 'messages'
+            ? [
+                (r.senderName || '') + ' → ' + (r.recipientNames || []).join(', '),
+                r.subject,
+                String(r.text || '').slice(0, 120),
+              ]
+            : [
+                r.number || r.documentNumber || docs.find((d) => d.id === r.documentId)?.number,
+                r.name || r.company || r.debtor || labels[r.type] || r.type,
+                r.note || r.notes || r.title,
+              ]
+          )
+            .filter(Boolean)
+            .join(' · ')
+            .slice(0, 250),
+          date: r.date || r.createdAt || r.created || '',
+          amount: r.amount,
+          amountTl: ['finance', 'accounting'].includes(type)
+            ? Number(r.amount) / 100
+            : typeof r.amount === 'number'
+              ? r.amount
+              : undefined,
+          revision: crypto.createHash('sha256').update(JSON.stringify(r)).digest('hex'),
+        }))
+        .filter((r) => !q || r.label.toLocaleLowerCase('tr').includes(q))
+        .filter((r) => {
+          if (!from && !to) return true;
+          const day = deletionDate(r.date);
+          return day && (!from || day >= from) && (!to || day <= to);
+        }),
+    );
+    if (type === 'messages' || type === 'all')
+      items.sort(
+        (a, b) =>
+          deletionDate(b.date).localeCompare(deletionDate(a.date)) ||
+          String(b.date).localeCompare(String(a.date)) ||
+          a.type.localeCompare(b.type) ||
+          String(a.id).localeCompare(String(b.id)),
+      );
     const offset = Math.max(0, Math.floor(Number(url.searchParams.get('offset')) || 0));
     send(res, 200, { items: items.slice(offset, offset + 50), total: items.length });
     return true;

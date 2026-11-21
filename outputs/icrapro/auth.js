@@ -345,7 +345,9 @@ async function openDeletionPanel() {
   dialog.innerHTML = `<div class="panelhead"><h2>İşlem Silme</h2><button type="button" class="secondary" data-close>Kapat</button></div>
     <div class="formbody"><p>Silme yetkisi yalnızca hesabınıza aittir. Silinen kayıtların kopyası arşivde korunur.</p>
     <form data-search class="grid delete-ops-filter"><label class="field">Kayıt Türü<select name="type">
-    ${types.map(([type, label]) => `<option value="${type}">${label}</option>`).join('')}</select></label>
+    <option value="all">Hepsi</option>${types.map(([type, label]) => `<option value="${type}">${label}</option>`).join('')}</select></label>
+    <label class="field">Başlangıç Tarihi<input name="from" type="date" data-optional="true"></label>
+    <label class="field">Bitiş Tarihi<input name="to" type="date" data-optional="true"></label>
     <label class="field">Ara<input name="q" data-optional="true" placeholder="Dosya numarası, ad veya açıklama"></label><button class="primary">Listele</button></form>
     <p data-status role="status"></p><div data-rows class="delete-ops-rows"></div><div class="actions"><button class="secondary" data-prev>Önceki</button><button class="secondary" data-next>Sonraki</button></div></div>`;
   let offset = 0,
@@ -355,8 +357,11 @@ async function openDeletionPanel() {
   const load = () => {
     try {
       const type = form.elements.type.value,
-        q = form.elements.q.value;
-      const result = authApi('/api/operations/delete?' + new URLSearchParams({ type, q, offset }));
+        q = form.elements.q.value,
+        from = form.elements.from.value,
+        to = form.elements.to.value;
+      if (from && to && from > to) throw Error('Başlangıç tarihi bitiş tarihinden sonra olamaz.');
+      const result = authApi('/api/operations/delete?' + new URLSearchParams({ type, q, from, to, offset }));
       status.textContent =
         result.total +
         ' kayıt · ' +
@@ -371,7 +376,8 @@ async function openDeletionPanel() {
         const box = document.createElement('div');
         box.className = 'delete-op-row';
         const label = document.createElement('p');
-        label.textContent = row.label || row.id;
+        const recordType = types.find(([key]) => key === row.type)?.[1];
+        label.textContent = (type === 'all' && recordType ? recordType + ' · ' : '') + (row.label || row.id);
         const date = document.createElement('small');
         date.textContent =
           String(row.date || '') +
@@ -387,7 +393,7 @@ async function openDeletionPanel() {
           if (!confirm((row.label || row.id) + '\n\nBu kaydı silmek istediğinize emin misiniz?')) return;
           try {
             authApi('/api/operations/delete', 'POST', {
-              type,
+              type: row.type || type,
               id: row.id,
               documentId: row.documentId,
               revision: row.revision,
@@ -404,6 +410,9 @@ async function openDeletionPanel() {
       }
     } catch (error) {
       status.textContent = error.message;
+      dialog.querySelector('[data-rows]').replaceChildren();
+      dialog.querySelector('[data-prev]').disabled = true;
+      dialog.querySelector('[data-next]').disabled = true;
     }
   };
   form.onsubmit = (e) => {
@@ -415,6 +424,11 @@ async function openDeletionPanel() {
     offset = 0;
     load();
   };
+  for (const name of ['from', 'to'])
+    form.elements[name].onchange = () => {
+      offset = 0;
+      load();
+    };
   dialog.querySelector('[data-prev]').onclick = () => {
     offset = Math.max(0, offset - 50);
     load();

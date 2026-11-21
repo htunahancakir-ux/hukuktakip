@@ -129,9 +129,9 @@ for (const records of [false, true])
     },
   );
 
-test('Header controls retain a disabled number, refresh open call lists, and reactivate without losing contact data', async (t) => {
+test('Ara owns the inactive action; the header hides passive numbers and identity contacts retain and reactivate them', async (t) => {
   const dom = new JSDOM(
-    '<dialog open><div class="sheet-metadata"><div data-header-phones></div></div></dialog>',
+    '<dialog open><div class="sheet-header-actions"></div><div class="sheet-metadata"><div data-header-phones></div></div><section data-borrower-panel="personal"></section><section data-borrower-panel="conversations"></section></dialog>',
     { runScripts: 'dangerously' },
   );
   t.after(() => dom.window.close());
@@ -147,6 +147,7 @@ test('Header controls retain a disabled number, refresh open call lists, and rea
     events = [];
   Object.assign(w, {
     hanAuth: { role: 'admin' },
+    setupVoipConversations: () => {},
     toast: () => {},
     saveRecordIntakeMetadata: async (original, next) => {
       saves.push({ original: structuredClone(original), next: structuredClone(next) });
@@ -160,28 +161,97 @@ test('Header controls retain a disabled number, refresh open call lists, and rea
   });
   w.eval(fs.readFileSync(path.join(root, 'phone-format.js'), 'utf8'));
   w.eval(fs.readFileSync(path.join(root, 'borrower-sheet.js'), 'utf8'));
+  w.eval(fs.readFileSync(path.join(root, 'workspace-voip.js'), 'utf8'));
+  w.setupVoipConversations = () => {};
+  w.setInterval = () => 1;
+  w.clearInterval = () => {};
+  w.voipApi = async () => ({
+    phones: [
+      { phone: '905320000001', label: 'Tel-1' },
+      { phone: '905320000002', label: 'Tel-2' },
+    ],
+    calls: [],
+    active: [],
+    enabled: false,
+    extension: '',
+    acrDevices: [],
+  });
   w.document.addEventListener('borrower-phone-status-changed', (e) => events.push(e.detail));
   const dialog = w.document.querySelector('dialog'),
     meta = dialog.querySelector('.sheet-metadata');
+  const personal = dialog.querySelector('[data-borrower-panel="personal"]');
+  personal.innerHTML =
+    w.borrowerPersonalPhoneMarkup(doc, 'Tel-1', doc.phone1) +
+    w.borrowerPersonalPhoneMarkup(doc, 'Tel-2', doc.phone2);
   w.setupBorrowerHeaderPhones(dialog, meta, doc);
-  meta.querySelector('[data-toggle-phone="5320000001"]').click();
+  w.setupBorrowerHeaderPhones(dialog, meta, doc);
+  w.setupBorrowerVoip(dialog, doc);
+  dialog.querySelector('[data-open-voip]').click();
   await new Promise((r) => setImmediate(r));
+  assert.equal(meta.querySelectorAll('button').length, 0);
+  await dialog.querySelector('[data-inactivate-phone="905320000001"]').onclick();
   assert.deepEqual([...doc.inactivePhones], ['5320000001']);
-  assert.equal(meta.querySelector('.is-inactive em').textContent, 'Pasif');
-  assert.equal(meta.querySelector('.is-inactive button').textContent, 'Aktife Al');
+  assert(!meta.textContent.includes(doc.phone1));
+  assert.equal(personal.querySelector('.borrower-inactive-phone-label').textContent, 'Pasife Alındı');
+  assert.equal(dialog.querySelectorAll('.voip-phone-row').length, 1);
+  assert(!dialog.querySelector('[data-dial-phone="905320000001"]'));
   assert.equal(doc.phone1, '05320000001');
   assert.equal(doc.phoneSources['5320000001'], 'Kendisi');
   assert.equal(events.length, 1);
   assert.equal(saves.length, 1);
-  meta.querySelector('[data-toggle-phone="5320000001"]').click();
+  personal.querySelector('[data-reactivate-phone="5320000001"]').click();
   await new Promise((r) => setImmediate(r));
   assert.equal(doc.inactivePhones.length, 0);
-  assert.equal(meta.querySelectorAll('.is-inactive').length, 0);
+  assert.equal(personal.querySelectorAll('.borrower-inactive-phone-label').length, 0);
+  assert(meta.textContent.includes(doc.phone1));
+  assert.equal(dialog.querySelectorAll('.voip-phone-row').length, 2);
   assert.equal(events.length, 2);
+  assert.equal(saves.length, 2);
+  await w.setBorrowerPhoneInactive(dialog, doc, doc.phone1, true);
+  await w.setBorrowerPhoneInactive(dialog, doc, doc.phone2, true);
+  await new Promise((r) => setImmediate(r));
+  assert.equal(meta.textContent, '—');
+  assert.equal(personal.querySelectorAll('.borrower-inactive-phone-label').length, 2);
+  assert.equal(dialog.querySelectorAll('.voip-phone-row').length, 0);
   w.hanAuth.readOnly = true;
-  meta.innerHTML = '<div data-header-phones></div>';
   w.setupBorrowerHeaderPhones(dialog, meta, doc);
-  assert([...meta.querySelectorAll('button')].every((b) => b.disabled));
+  assert([...personal.querySelectorAll('button')].every((b) => b.disabled));
+  const count = saves.length;
+  assert.equal(await w.setBorrowerPhoneInactive(dialog, doc, doc.phone1, false), false);
+  assert.equal(saves.length, count);
+});
+
+test('A failed phone status save leaves the header and identity contacts unchanged and permits a retry', async (t) => {
+  const dom = new JSDOM('<dialog open><div data-header-phones></div><section></section></dialog>', {
+    runScripts: 'dangerously',
+  });
+  t.after(() => dom.window.close());
+  const w = dom.window,
+    doc = { id: 'd', phone1: '05320000001' },
+    messages = [];
+  let saves = 0;
+  Object.assign(w, {
+    hanAuth: { role: 'admin' },
+    esc: String,
+    toast: (message) => messages.push(message),
+    saveRecordIntakeMetadata: async (_doc, next) => {
+      if (++saves === 1) throw Error('Kayıt değişti');
+      return next;
+    },
+  });
+  for (const file of ['phone-format.js', 'borrower-sheet.js'])
+    w.eval(fs.readFileSync(path.join(__dirname, '../outputs/icrapro', file), 'utf8'));
+  const dialog = w.document.querySelector('dialog');
+  dialog.querySelector('section').innerHTML = w.borrowerPersonalPhoneMarkup(doc, 'Tel-1', doc.phone1);
+  w.setupBorrowerHeaderPhones(dialog, dialog, doc);
+  assert.equal(await w.setBorrowerPhoneInactive(dialog, doc, doc.phone1, true), false);
+  assert.equal(doc.inactivePhones, undefined);
+  assert(dialog.querySelector('[data-header-phones]').textContent.includes(doc.phone1));
+  assert.equal(dialog.querySelector('.borrower-inactive-phone-label'), null);
+  assert(messages.includes('Kayıt değişti'));
+  assert.equal(await w.setBorrowerPhoneInactive(dialog, doc, doc.phone1, true), true);
+  assert.equal(dialog.querySelector('[data-header-phones]').textContent, '—');
+  assert.equal(dialog.querySelector('.borrower-inactive-phone-label').textContent, 'Pasife Alındı');
 });
 
 test('Borrower header appends district and city to the address instead of showing a separate location cell', (t) => {
@@ -241,5 +311,5 @@ test('Borrower header appends district and city to the address instead of showin
       (n) => n.textContent === 'İl / İlçe',
     ),
   );
-  assert.equal(dialog.querySelector('[data-toggle-phone]').textContent, 'Pasife Al');
+  assert.equal(dialog.querySelector('[data-toggle-phone]'), null);
 });

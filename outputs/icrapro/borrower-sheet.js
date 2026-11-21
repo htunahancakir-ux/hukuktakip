@@ -17,7 +17,7 @@ function borrowerDetail(id, savedForm) {
   const value = (label, v) =>
     `<div class="detail-field"><small>${esc(label)}</small><div>${window.hanPrivacy ? hanPrivacy.label(label, displayDate(v)) : esc(displayDate(v) || '—')}</div></div>`;
   const address = (label, a, district, city) => value(label, [a, district, city].filter(Boolean).join(' / '));
-  dialog.innerHTML = `<div class="panelhead"><div><h2>Borçlu Detayı · <span class="debtor-name-emphasis">${esc(d.debtor)}</span></h2><p>${esc(d.number)} · ${esc(type)} · ${esc(client?.name || '')}</p><p><b>Dosya Sorumlusu:</b> ${esc(personnel.find((p) => p.id === d.relatedStaff)?.name || d.relatedStaffName || 'Atanmad?')}</p></div><div class="toolbar">${(Array.isArray(d.guarantors) ? d.guarantors : []).map((g, index) => `<button type="button" class="primary guarantor-top-button" data-top-guarantor="${esc(g.id)}" title="${esc(g.name)}" aria-label="Kefil ${index + 1}: ${esc(g.name)}">♙ Kefil ${index + 1}</button>`).join('')}<button class="secondary" id="closeBorrower">Kapat</button></div></div><div class="formbody"><div class="settings-tabs borrower-tabs" role="tablist" aria-label="Borçlu föyü bölümleri">${borrowerSheetTabs.map(([key, label]) => `<button type="button" role="tab" id="borrower-tab-${key}" aria-controls="borrower-panel-${key}" data-borrower-tab="${key}">${esc(label)}</button>`).join('')}</div><section role="tabpanel" id="borrower-panel-personal" aria-labelledby="borrower-tab-personal" data-borrower-panel="personal"><h3 class="sectiontitle">Borçlu Bilgileri</h3><div class="grid"><div class="detail-field"><small>Ad Soyad / Unvan</small><div class="borrower-sheet-name">${esc(d.debtor || '—')}</div></div>${value('Takip Tarihi', borrowerTrackingDate(d))}${Array.isArray(d.previousFolioNumbers) && d.previousFolioNumbers.length ? value('Önceki Föy Numaraları', d.previousFolioNumbers.join(', ')) : ''}${value('Borçlu Türü', d.debtorType || 'Şahıs')}${['Şirket', 'Şahıs Şirketi'].includes(d.debtorType) ? value('Vergi Dairesi', d.taxOffice) : ''}${value(['Şirket', 'Şahıs Şirketi'].includes(d.debtorType) ? 'Vergi No' : 'TC Kimlik / Vergi No', d.identity)}${value('Ofis TC', d.officeIdentity)}${value('Tel-1', own.phone1) + value('Kaynak / Kime Ait', phoneSource(d, own.phone1))}${value('Tel-2', own.phone2) + value('Kaynak / Kime Ait', phoneSource(d, own.phone2))}${own.additionalPhones.map((phone, i) => value('Tel-' + (i + 3), phone) + value('Kaynak / Kime Ait', phoneSource(d, phone))).join('')}${value('Ref. Tel-1', d.referencePhone1) + value('Kaynak / Kime Ait', phoneSource(d, d.referencePhone1))}${value('Ref. Tel-2', d.referencePhone2) + value('Kaynak / Kime Ait', phoneSource(d, d.referencePhone2))}${value('Ofis Tel-1', d.officePhone1) + value('Kaynak / Kime Ait', phoneSource(d, d.officePhone1))}${value('Ofis Tel-2', d.officePhone2) + value('Kaynak / Kime Ait', phoneSource(d, d.officePhone2))}${HanBorrowerAddresses.all(
+  dialog.innerHTML = `<div class="panelhead"><div><h2>Borçlu Detayı · <span class="debtor-name-emphasis">${esc(d.debtor)}</span></h2><p>${esc(d.number)} · ${esc(type)} · ${esc(client?.name || '')}</p><p><b>Dosya Sorumlusu:</b> ${esc(personnel.find((p) => p.id === d.relatedStaff)?.name || d.relatedStaffName || 'Atanmad?')}</p></div><div class="toolbar">${(Array.isArray(d.guarantors) ? d.guarantors : []).map((g, index) => `<button type="button" class="primary guarantor-top-button" data-top-guarantor="${esc(g.id)}" title="${esc(g.name)}" aria-label="Kefil ${index + 1}: ${esc(g.name)}">♙ Kefil ${index + 1}</button>`).join('')}<button class="secondary" id="closeBorrower">Kapat</button></div></div><div class="formbody"><div class="settings-tabs borrower-tabs" role="tablist" aria-label="Borçlu föyü bölümleri">${borrowerSheetTabs.map(([key, label]) => `<button type="button" role="tab" id="borrower-tab-${key}" aria-controls="borrower-panel-${key}" data-borrower-tab="${key}">${esc(label)}</button>`).join('')}</div><section role="tabpanel" id="borrower-panel-personal" aria-labelledby="borrower-tab-personal" data-borrower-panel="personal"><h3 class="sectiontitle">Borçlu Bilgileri</h3><div class="grid"><div class="detail-field"><small>Ad Soyad / Unvan</small><div class="borrower-sheet-name">${esc(d.debtor || '—')}</div></div>${value('Takip Tarihi', borrowerTrackingDate(d))}${Array.isArray(d.previousFolioNumbers) && d.previousFolioNumbers.length ? value('Önceki Föy Numaraları', d.previousFolioNumbers.join(', ')) : ''}${value('Borçlu Türü', d.debtorType || 'Şahıs')}${['Şirket', 'Şahıs Şirketi'].includes(d.debtorType) ? value('Vergi Dairesi', d.taxOffice) : ''}${value(['Şirket', 'Şahıs Şirketi'].includes(d.debtorType) ? 'Vergi No' : 'TC Kimlik / Vergi No', d.identity)}${value('Ofis TC', d.officeIdentity)}${borrowerPersonalPhoneMarkup(d, 'Tel-1', own.phone1) + value('Kaynak / Kime Ait', phoneSource(d, own.phone1))}${borrowerPersonalPhoneMarkup(d, 'Tel-2', own.phone2) + value('Kaynak / Kime Ait', phoneSource(d, own.phone2))}${own.additionalPhones.map((phone, i) => borrowerPersonalPhoneMarkup(d, 'Tel-' + (i + 3), phone) + value('Kaynak / Kime Ait', phoneSource(d, phone))).join('')}${borrowerPersonalPhoneMarkup(d, 'Ref. Tel-1', d.referencePhone1) + value('Kaynak / Kime Ait', phoneSource(d, d.referencePhone1))}${borrowerPersonalPhoneMarkup(d, 'Ref. Tel-2', d.referencePhone2) + value('Kaynak / Kime Ait', phoneSource(d, d.referencePhone2))}${borrowerPersonalPhoneMarkup(d, 'Ofis Tel-1', d.officePhone1) + value('Kaynak / Kime Ait', phoneSource(d, d.officePhone1))}${borrowerPersonalPhoneMarkup(d, 'Ofis Tel-2', d.officePhone2) + value('Kaynak / Kime Ait', phoneSource(d, d.officePhone2))}${HanBorrowerAddresses.all(
     d,
   )
     .map((a, i) => address('Adres ' + (i + 1), a.address, a.district, a.city) + value('Kaynak', a.source))
@@ -667,7 +667,7 @@ function bindBorrowerSheetTabs(dialog, id) {
   select(active);
 }
 
-function borrowerHeaderPhonesMarkup(doc) {
+function borrowerPhoneEntries(doc) {
   const own = borrowerPhoneSlots(doc);
   const pairs = [
     ['Tel-1', own.phone1],
@@ -679,31 +679,88 @@ function borrowerHeaderPhonesMarkup(doc) {
     ['Ofis Tel-2', doc.officePhone2],
   ];
   const seen = new Set();
-  const editable = !hanAuth.readOnly && window.hanModuleAction?.('documents', 'update') !== false;
+  return pairs.filter(
+    ([, number]) => number && !seen.has(phoneSourceKey(number)) && seen.add(phoneSourceKey(number)),
+  );
+}
+
+function borrowerPhoneStatusEditable() {
+  return !hanAuth.readOnly && window.hanModuleAction?.('documents', 'update') !== false;
+}
+
+function borrowerPersonalPhoneMarkup(doc, label, number) {
+  const inactive = phoneIsInactive(doc, number);
+  const displayed = window.hanPrivacy ? hanPrivacy.label('Telefon', number || '—') : esc(number || '—');
   return (
-    pairs
-      .filter(([, number]) => number && !seen.has(phoneSourceKey(number)) && seen.add(phoneSourceKey(number)))
+    '<div class="detail-field" data-personal-phone="' +
+    esc(phoneSourceKey(number)) +
+    '"><small>' +
+    esc(label) +
+    '</small><div>' +
+    displayed +
+    (inactive
+      ? '<span class="borrower-inactive-phone-label">Pasife Alındı</span><button type="button" class="link" data-reactivate-phone="' +
+        esc(phoneSourceKey(number)) +
+        '"' +
+        (borrowerPhoneStatusEditable() ? '' : ' disabled') +
+        '>Aktife Al</button>'
+      : '') +
+    '</div></div>'
+  );
+}
+
+async function setBorrowerPhoneInactive(dialog, doc, number, inactive) {
+  if (!borrowerPhoneStatusEditable() || dialog._phoneStatusSaving) return false;
+  const phone = phoneSourceKey(number);
+  if (!borrowerPhoneEntries(doc).some(([, n]) => phoneSourceKey(n) === phone)) return false;
+  const values = cleanInactivePhones(doc.inactivePhones);
+  if (values.includes(phone) === inactive) return true;
+  const next = {
+    ...doc,
+    inactivePhones: inactive ? values.concat(phone) : values.filter((v) => v !== phone),
+  };
+  dialog._phoneStatusSaving = true;
+  dialog.querySelectorAll('[data-inactivate-phone], [data-reactivate-phone]').forEach((b) => {
+    b.disabled = true;
+  });
+  try {
+    const saved = await saveRecordIntakeMetadata(doc, next);
+    Object.assign(doc, saved);
+    document.dispatchEvent(
+      new CustomEvent('borrower-phone-status-changed', {
+        detail: { documentId: doc.id, inactivePhones: cleanInactivePhones(doc.inactivePhones) },
+      }),
+    );
+    toast(
+      inactive
+        ? 'Telefon pasife alındı; ana ekranda ve Ara listesinde gösterilmez.'
+        : 'Telefon numarası aktifleştirildi.',
+      dialog,
+    );
+    return true;
+  } catch (error) {
+    toast(error.message, dialog);
+    return false;
+  } finally {
+    dialog._phoneStatusSaving = false;
+    dialog.querySelectorAll('[data-inactivate-phone], [data-reactivate-phone]').forEach((b) => {
+      b.disabled = !borrowerPhoneStatusEditable();
+    });
+  }
+}
+
+function borrowerHeaderPhonesMarkup(doc) {
+  return (
+    borrowerPhoneEntries(doc)
+      .filter(([, number]) => !phoneIsInactive(doc, number))
       .map(([label, number]) => {
-        const inactive = phoneIsInactive(doc, number);
         const displayed = window.hanPrivacy ? hanPrivacy.label('Telefon', number) : esc(number);
         return (
-          '<div class="sheet-header-phone-row' +
-          (inactive ? ' is-inactive' : '') +
-          '"><span><small>' +
+          '<div class="sheet-header-phone-row"><span><small>' +
           esc(label) +
           '</small><strong>' +
           displayed +
-          '</strong>' +
-          (inactive ? '<em>Pasif</em>' : '') +
-          '</span><button type="button" class="link" data-toggle-phone="' +
-          esc(phoneSourceKey(number)) +
-          '" aria-label="' +
-          esc(label + (inactive ? ' numarasını aktife al' : ' numarasını pasife al')) +
-          '"' +
-          (editable ? '' : ' disabled') +
-          '>' +
-          (inactive ? 'Aktife Al' : 'Pasife Al') +
-          '</button></div>'
+          '</strong></span></div>'
         );
       })
       .join('') || '<strong>—</strong>'
@@ -713,55 +770,41 @@ function borrowerHeaderPhonesMarkup(doc) {
 function setupBorrowerHeaderPhones(dialog, meta, doc) {
   const target = meta.querySelector('[data-header-phones]');
   if (!target) return;
+  dialog._phoneStatusCleanup?.();
   const render = () => {
     target.innerHTML = borrowerHeaderPhonesMarkup(doc);
+    dialog.querySelectorAll('[data-personal-phone]').forEach((field) => {
+      const key = field.dataset.personalPhone;
+      const entry = borrowerPhoneEntries(doc).find(([, number]) => phoneSourceKey(number) === key);
+      if (entry)
+        field.outerHTML = borrowerPersonalPhoneMarkup(
+          doc,
+          field.querySelector('small').textContent,
+          entry[1],
+        );
+    });
   };
   render();
-  target.addEventListener('click', async (event) => {
-    const button = event.target.closest('[data-toggle-phone]');
+  const reactivate = async (event) => {
+    const button = event.target.closest('[data-reactivate-phone]');
     if (!button || button.disabled) return;
     event.preventDefault();
-    const phone = button.dataset.togglePhone;
-    const values = cleanInactivePhones(doc.inactivePhones);
-    const wasInactive = values.includes(phone);
-    const next = {
-      ...doc,
-      inactivePhones: wasInactive ? values.filter((v) => v !== phone) : values.concat(phone),
-    };
-    target.querySelectorAll('button').forEach((b) => {
-      b.disabled = true;
-    });
-    try {
-      const saved = await saveRecordIntakeMetadata(doc, next);
-      Object.assign(doc, saved);
-      document.dispatchEvent(
-        new CustomEvent('borrower-phone-status-changed', {
-          detail: { documentId: doc.id, inactivePhones: cleanInactivePhones(doc.inactivePhones) },
-        }),
-      );
-      toast(
-        wasInactive
-          ? 'Telefon numarası aktifleştirildi.'
-          : 'Telefon pasife alındı; Ara listesinde gösterilmez.',
-        dialog,
-      );
-    } catch (error) {
-      toast(error.message, dialog);
-    } finally {
-      if (target.isConnected) render();
-    }
-  });
+    await setBorrowerPhoneInactive(dialog, doc, button.dataset.reactivatePhone, false);
+  };
+  dialog.addEventListener('click', reactivate);
   const changed = (event) => {
     if (event.detail.documentId !== doc.id) return;
     doc.inactivePhones = event.detail.inactivePhones.slice();
     render();
   };
   document.addEventListener('borrower-phone-status-changed', changed);
-  dialog.addEventListener(
-    'close',
-    () => document.removeEventListener('borrower-phone-status-changed', changed),
-    { once: true },
-  );
+  const cleanup = () => {
+    document.removeEventListener('borrower-phone-status-changed', changed);
+    dialog.removeEventListener('click', reactivate);
+    dialog.removeEventListener('close', cleanup);
+  };
+  dialog._phoneStatusCleanup = cleanup;
+  dialog.addEventListener('close', cleanup, { once: true });
 }
 
 function layoutBorrowerSheet(dialog, d, f, client) {
