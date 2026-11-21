@@ -512,6 +512,8 @@ test('ACR dials match outgoing reports to the chosen card and keep the link when
   assert.deepEqual(await android(agent, token), { dial: null });
 
   const replacement = await link();
+  assert.match(replacement.qrCodeDataUrl, /^data:image\/gif;base64,/);
+  assert(replacement.qrSize >= 150 && replacement.qrSize < 500);
   assert.equal(replacement.paired, true);
   assert.equal((await api('acr-devices')).devices[0].automatic, true);
   assert.deepEqual(
@@ -827,7 +829,10 @@ test('ACR settings save device assignments and copy a complete Android pairing c
         },
       };
     }
-    if (route === 'acr-agent-link') return value.revoke ? { paired: false } : { pairingCode };
+    if (route === 'acr-agent-link')
+      return value.revoke
+        ? { paired: false }
+        : { pairingCode, ...require('../lib/acr-qr.cjs').pairingQr('www.hanhukuktakip.com', pairingCode) };
     return {
       devices: value?.devices || [{ id: 'phone-1', label: '<img src=x onerror=alert(1)>', userId: '' }],
       users: [{ id: 'worker-1', name: 'Test Personel' }],
@@ -850,7 +855,7 @@ test('ACR settings save device assignments and copy a complete Android pairing c
     );
     assert.equal(links.querySelectorAll('a[download]').length, 2);
     assert.equal(w.document.querySelectorAll('form form').length, 0);
-    assert.equal(form.querySelectorAll('img').length, 0);
+    assert.equal(form.querySelectorAll('img:not([data-acr-agent-qr])').length, 0);
     form.querySelector('input').value = 'Telefonum';
     form.querySelector('select').value = 'worker-1';
     assert.equal(calls.length, 1, 'select changes do not submit');
@@ -871,6 +876,11 @@ test('ACR settings save device assignments and copy a complete Android pairing c
     assert.equal(panel.hidden, false);
     assert.equal(code.readOnly, true);
     assert.equal(code.value, 'www.hanhukuktakip.com/' + pairingCode);
+    const qr = panel.querySelector('[data-acr-agent-qr]');
+    assert.equal(qr.hidden, false);
+    assert.match(qr.getAttribute('src'), /^data:image\/gif;base64,/);
+    assert.match(qr.alt, /eşleştirmek/);
+    assert.equal(qr.getAttribute('aria-describedby'), 'acrQrHelp0');
     assert.equal(copy.type, 'button');
 
     const status = form.querySelector('[data-acr-agent-status]');
@@ -895,6 +905,8 @@ test('ACR settings save device assignments and copy a complete Android pairing c
     await form.querySelector('[data-acr-agent-revoke]').onclick();
     assert.equal(panel.hidden, true);
     assert.equal(code.value, '');
+    assert.equal(qr.hidden, true);
+    assert.equal(qr.getAttribute('src'), null);
     const addForm = w.document.querySelector('form[aria-labelledby="acrAddHeading"]');
     form.querySelector('input').value = 'Unsaved device label';
     addForm.elements.label.value = 'İkinci telefon';

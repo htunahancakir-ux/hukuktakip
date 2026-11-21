@@ -42,31 +42,33 @@ public final class DialService extends Service {
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int id) {
-        if (intent != null && STOP.equals(intent.getAction())) {
-            stop("Otomatik arama durduruldu.");
-            return START_NOT_STICKY;
-        }
-        if (!settings.getBoolean("enabled", false) || !settings.contains("token")) {
-            stopSelf();
-            return START_NOT_STICKY;
-        }
-        if (running) return START_STICKY;
         try {
-            Notification connection = notification("HAN Hukuk’a bağlanılıyor.");
+            Notification connection = notification(running
+                    ? settings.getString("status", READY) : "HAN Hukuk’a bağlanılıyor.");
             if (Build.VERSION.SDK_INT >= 34) {
                 startForeground(NOTIFICATION, connection, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
             } else {
                 startForeground(NOTIFICATION, connection);
             }
+            // Even a STOP racing with startForegroundService must satisfy Android's foreground deadline.
+            if (intent != null && STOP.equals(intent.getAction())) {
+                stop("Otomatik arama durduruldu.");
+                return START_NOT_STICKY;
+            }
+            if (!settings.getBoolean("enabled", false) || !settings.contains("token")) {
+                stopSelf();
+                return START_NOT_STICKY;
+            }
+            if (running) return START_STICKY;
             if (!Bridge.canRunWhileIdle(this)) {
-                stop("Ekran kapalıyken arama alabilmek için pil iznini verin.");
+                pause("Ekran kapalıyken arama alabilmek için pil iznini verin.");
                 return START_NOT_STICKY;
             }
             connectionLock = getSystemService(PowerManager.class)
                     .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "com.hanhukuk.gsm:connection");
             connectionLock.acquire();
         } catch (RuntimeException unavailable) {
-            stop("Otomatik arama başlatılamadı. Uygulamayı tekrar açın.");
+            pause("Otomatik arama başlatılamadı. Uygulamayı tekrar açın.");
             return START_NOT_STICKY;
         }
         running = true;
@@ -82,7 +84,7 @@ public final class DialService extends Service {
     private void poll() {
         if (!enabled()) return;
         if (Bridge.missingPermissions(this).length != 0 || !Bridge.canRunWhileIdle(this)) {
-            stop("Otomatik arama durduruldu. Telefon, bildirim ve pil izinlerini kontrol edin.");
+            pause("Bağlantı bekletiliyor. Telefon, bildirim ve pil izinlerini kontrol edin.");
             return;
         }
         TelecomManager telecom = getSystemService(TelecomManager.class);
@@ -129,7 +131,7 @@ public final class DialService extends Service {
             settings.edit().remove("token").remove("deviceId").remove("accountId").apply();
             stop("Eşleşme sona erdi. HAN Hukuk’tan yeni kod oluşturun.");
         } catch (SecurityException denied) {
-            stop("Android arama izni vermedi. Telefon ayarlarını kontrol edin.");
+            pause("Android arama izni vermedi. Telefon ayarlarını kontrol edin.");
         } catch (Exception unavailable) {
             update("HAN Hukuk bağlantısı bekleniyor.");
         }
@@ -159,6 +161,12 @@ public final class DialService extends Service {
     private void stop(String message) {
         running = false;
         settings.edit().putBoolean("enabled", false).putString("status", message).apply();
+        stopSelf();
+    }
+
+    private void pause(String message) {
+        running = false;
+        settings.edit().putString("status", message).apply();
         stopSelf();
     }
 

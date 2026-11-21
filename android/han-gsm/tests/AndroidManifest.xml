@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.hanhukuk.gsm.tests" android:versionCode="1" android:versionName="1">
+    <application android:label="HAN GSM lifecycle checks" android:allowBackup="false" />
+    <instrumentation android:name="com.hanhukuk.gsm.tests.LifecycleInstrumentation"
+        android:targetPackage="com.hanhukuk.gsm" android:functionalTest="true" />
+</manifest>

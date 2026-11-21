@@ -732,6 +732,12 @@ dialog.voip-webphone {
   display: block;
   margin-top: 7px;
 }
+.voip-pairing-qr {
+  max-width: 100%;
+  height: auto;
+  margin: 12px 0;
+  image-rendering: pixelated;
+}
 .voip-result-label {
   font-size: 10px;
   color: #476273;

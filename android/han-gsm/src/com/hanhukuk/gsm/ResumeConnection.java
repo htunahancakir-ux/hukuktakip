@@ -11,11 +11,16 @@ public final class ResumeConnection extends BroadcastReceiver {
                 && !Intent.ACTION_MY_PACKAGE_REPLACED.equals(intent.getAction())) return;
         SharedPreferences settings = Bridge.settings(context);
         if (!settings.getBoolean("enabled", false) || !settings.contains("token")) return;
+        if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())
+                && !settings.getBoolean("startOnBoot", true)) return;
         try {
+            settings.edit().putString("status", "Telefon bağlantısı otomatik başlatılıyor.")
+                    .putString("lastResumeAction", intent.getAction()).putLong("lastResumeAt", System.currentTimeMillis()).commit();
             context.startForegroundService(new Intent(context, DialService.class));
         } catch (RuntimeException unavailable) {
-            settings.edit().putBoolean("enabled", false)
-                    .putString("status", "Bağlantıyı yeniden başlatmak için Otomatik aramayı aç’a dokunun.").apply();
+            // A temporary Android restriction must not erase the user's automatic-start choice.
+            settings.edit().putString("status",
+                    "Android bağlantıyı başlatamadı. Uygulamayı açıp Bağlantıyı yeniden başlat’a dokunun.").apply();
         }
     }
 }

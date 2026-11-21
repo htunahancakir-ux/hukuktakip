@@ -476,8 +476,8 @@ function voipAcrDeviceRow(d, index, users) {
       <label class="field" for="acrUpload${index}">Ses kaydı sunucusu<textarea id="acrUpload${index}" name="uploadUrl${index}" data-acr-upload-url rows="2" readonly spellcheck="false"></textarea></label>
       <label class="field" for="acrReport${index}">Çağrı raporlama sunucusu<textarea id="acrReport${index}" name="reportUrl${index}" data-acr-report-url rows="2" readonly spellcheck="false"></textarea></label>
       <label class="field" for="acrSecret${index}">Bu telefonun ACR gizli kodu<textarea id="acrSecret${index}" name="secret${index}" data-acr-upload-secret rows="2" readonly spellcheck="false" autocomplete="off"></textarea></label>
-    </div></details><div class="toolbar"><button type="button" class="secondary" data-acr-agent-pair aria-controls="acrCodePanel${index}" aria-expanded="false" ${d.userId ? '' : 'disabled'}>Android eşleştirme kodu</button><button type="button" class="link" data-acr-agent-revoke ${d.automatic ? '' : 'hidden'}>Eşleşmeyi kaldır</button></div>
-    <div id="acrCodePanel${index}" data-acr-agent-code-panel hidden><label class="field" for="acrCode${index}">Android eşleştirme kodu<textarea id="acrCode${index}" data-acr-agent-code rows="2" readonly spellcheck="false"></textarea></label><button type="button" class="secondary" data-acr-agent-copy command="--copy-acr-code" commandfor="acrCode${index}">Kodu kopyala</button></div>
+    </div></details><div class="toolbar"><button type="button" class="secondary" data-acr-agent-pair aria-controls="acrCodePanel${index}" aria-expanded="false" ${d.userId ? '' : 'disabled'}>Android QR / eşleştirme kodu</button><button type="button" class="link" data-acr-agent-revoke ${d.automatic ? '' : 'hidden'}>Eşleşmeyi kaldır</button></div>
+    <div id="acrCodePanel${index}" data-acr-agent-code-panel hidden><p id="acrQrHelp${index}">Telefonda HAN GSM Bağlantısı → QR kod ile eşleştir seçeneğiyle okutun. Kod 10 dakika geçerlidir. İsterseniz aşağıdaki kodu kopyalayabilirsiniz.</p><img data-acr-agent-qr class="voip-pairing-qr" alt="Bu telefonu HAN GSM Bağlantısı ile eşleştirmek için QR kod" aria-describedby="acrQrHelp${index}" hidden><label class="field" for="acrCode${index}">Android eşleştirme kodu<textarea id="acrCode${index}" data-acr-agent-code rows="2" readonly spellcheck="false"></textarea></label><button type="button" class="secondary" data-acr-agent-copy command="--copy-acr-code" commandfor="acrCode${index}">Kodu kopyala</button></div>
     <p data-acr-agent-status role="status">${d.automatic ? 'Otomatik GSM araması eşleştirilmiş. Telefonda HAN GSM Bağlantısı uygulamasında otomatik aramayı açık tutun.' : 'Otomatik arama henüz eşleştirilmemiş. Android eşleştirme kodunu bu telefondaki HAN GSM Bağlantısı uygulamasına yapıştırıp Eşleştir → Otomatik aramayı aç adımlarını tamamlayın.'}</p></fieldset>`;
 }
 async function voipAcrDeviceSettings(host) {
@@ -502,7 +502,7 @@ async function voipAcrDeviceSettings(host) {
       'beforeend',
       `<nav aria-label="Android uygulamaları">
         <ul>
-          <li data-acr-download ${config.devices.length ? '' : 'hidden'}><a href="/api/voip/acr-download?file=han-gsm-baglantisi.apk" download>HAN GSM Bağlantısı APK indir</a></li>
+          <li data-acr-download ${config.devices.length ? '' : 'hidden'}><a href="/api/voip/acr-download?file=han-gsm-baglantisi.apk" download>HAN GSM Bağlantısı 1.2 APK indir</a></li>
           <li data-acr-download ${config.devices.length ? '' : 'hidden'}><a href="/api/voip/acr-download?file=aph.apk" download>ACR Phone Helper (APH) APK indir</a></li>
           <li><a href="https://play.google.com/store/apps/details?id=com.nll.cb&amp;pcampaignid=web_share">ACR Phone · Google Play</a></li>
           <li><a href="https://acr.app/">ACR Phone Helper · Resmî kurulum sayfası</a></li>
@@ -555,6 +555,8 @@ async function voipAcrDeviceSettings(host) {
       const revoke = row.querySelector('[data-acr-agent-revoke]');
       const codePanel = row.querySelector('[data-acr-agent-code-panel]');
       const code = row.querySelector('[data-acr-agent-code]');
+      const qr = row.querySelector('[data-acr-agent-qr]');
+      let expiryTimer;
       const copy = row.querySelector('[data-acr-agent-copy]');
       const status = row.querySelector('[data-acr-agent-status]');
       const copyCode = async () => {
@@ -587,15 +589,35 @@ async function voipAcrDeviceSettings(host) {
             revoke: remove,
           });
           revoke.hidden = remove;
+          clearTimeout(expiryTimer);
           code.value = remove ? '' : `${location.hostname}/${result.pairingCode}`;
+          qr.hidden = remove || !result.qrCodeDataUrl;
+          qr.removeAttribute('src');
+          if (!qr.hidden) {
+            qr.src = result.qrCodeDataUrl;
+            qr.width = qr.height = result.qrSize;
+          }
           codePanel.hidden = remove;
           pair.setAttribute('aria-expanded', String(!remove));
           status.textContent = remove
             ? 'Android eşleştirmesi kaldırıldı.'
-            : 'Kodu 10 dakika içinde bu telefondaki HAN GSM Bağlantısı uygulamasına yapıştırın. Eşleştir → Otomatik aramayı aç adımlarını tamamlayın.' +
+            : 'HAN GSM Bağlantısı uygulamasında QR kod ile eşleştir seçeneğini kullanın veya kodu yapıştırın. Kamera iznini yalnızca QR okurken verin.' +
               (result.paired
                 ? ' Mevcut otomatik bağlantı, yeni eşleştirme tamamlanana kadar çalışmaya devam eder.'
                 : '');
+          if (!remove) {
+            const value = code.value;
+            expiryTimer = setTimeout(() => {
+              if (!row.isConnected || code.value !== value) return;
+              code.value = '';
+              qr.hidden = true;
+              qr.removeAttribute('src');
+              codePanel.hidden = true;
+              pair.setAttribute('aria-expanded', 'false');
+              status.textContent =
+                'Eşleştirme kodunun süresi doldu. Yeni QR / kod oluşturabilirsiniz; mevcut bağlantınız korunur.';
+            }, 10 * 60000);
+          }
         } catch (error) {
           status.textContent = error.message;
         } finally {
@@ -682,6 +704,8 @@ async function voipAcrDeviceSettings(host) {
           pair.setAttribute('aria-expanded', 'false');
           row.querySelector('[data-acr-agent-code-panel]').hidden = true;
           row.querySelector('[data-acr-agent-code]').value = '';
+          row.querySelector('[data-acr-agent-qr]').hidden = true;
+          row.querySelector('[data-acr-agent-qr]').removeAttribute('src');
           row.querySelector('[data-acr-agent-revoke]').hidden = !device?.automatic;
           row.querySelector('[data-acr-agent-status]').textContent = device?.automatic
             ? 'Otomatik GSM araması eşleştirilmiş. Telefonda HAN GSM Bağlantısı uygulamasında otomatik aramayı açık tutun.'
