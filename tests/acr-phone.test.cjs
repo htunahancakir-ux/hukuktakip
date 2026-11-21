@@ -413,6 +413,14 @@ test('ACR dials match outgoing reports to the chosen card and keep the link when
       },
     });
   const destination = { deviceId: device.id, cardType: 'client', cardId: 'second', phone: '05320000001' };
+  await assert.rejects(api('acr-dials', { ...destination, requireAutomatic: true }), {
+    status: 409,
+  });
+  assert.deepEqual(
+    (await api('acr-dials')).dials,
+    [],
+    'desktop automatic requests do not create a manual queue entry without a paired phone',
+  );
   assert.deepEqual(
     (await api('calls?cardType=personnel&cardId=staff-card')).phones.map((p) => p.phone),
     ['905320000006', '902120000001'],
@@ -503,7 +511,16 @@ test('ACR dials match outgoing reports to the chosen card and keep the link when
   assert.equal((await api('acr-devices')).devices[0].automatic, true);
   assert.deepEqual(await android(agent, token), { dial: null });
 
-  const { dial: automatic } = await api('acr-dials', destination);
+  const replacement = await link();
+  assert.equal(replacement.paired, true);
+  assert.equal((await api('acr-devices')).devices[0].automatic, true);
+  assert.deepEqual(
+    await android(agent, token),
+    { dial: null },
+    'generating a replacement code does not disconnect the working phone',
+  );
+
+  const { dial: automatic } = await api('acr-dials', { ...destination, requireAutomatic: true });
   const automaticStatus = () => api('acr-dials?dialId=' + automatic.id);
   assert.equal(automatic.automatic, true);
   assert.equal((await automaticStatus()).status, 'waiting');
@@ -523,9 +540,39 @@ test('ACR dials match outgoing reports to the chosen card and keep the link when
 
   const autoReport = await run(await reportRequest({ ...report, date: String((docDate + 1) * 1000) }));
   assert.ok((await history()).calls.some((call) => call.id === autoReport.id && call.cardId === 'second'));
-  await api('acr-agent-link', { deviceId: device.id, revoke: true });
+  const { token: newToken, ...newAgent } = await android({ pairingCode: replacement.pairingCode });
   await assert.rejects(android(agent, token), { status: 401 });
+  assert.deepEqual(await android(newAgent, newToken), { dial: null });
+  await api('acr-agent-link', { deviceId: device.id, revoke: true });
+  await assert.rejects(android(newAgent, newToken), { status: 401 });
   assert.equal((await api('acr-devices')).devices[0].automatic, false);
+});
+
+test('expired or replaced Android pairing codes preserve the active connection; reassignment never preserves another owner token', () => {
+  const { linkDevice, pairDevice, pendingDial } = require('../lib/acr-agent.cjs');
+  const state = { voipConfig: { acrDevices: { phone: { userId: 'owner' } } }, acrOutboundDials: [] };
+  const first = linkDevice(state, 'phone');
+  assert.equal(first.paired, false);
+  const original = pairDevice(state, 'phone', first.pairingCode.split('.')[1]);
+  const generation = state.voipConfig.acrAgents.phone.generation;
+  const code1 = linkDevice(state, 'phone');
+  state.voipConfig.acrAgents.phone.pairUntil = Date.now() - 1;
+  assert.equal(pairDevice(state, 'phone', code1.pairingCode.split('.')[1]), null);
+  assert.equal(pendingDial(state, 'phone', original.accountId, original.token, Date.now()), null);
+  const code2 = linkDevice(state, 'phone');
+  const code3 = linkDevice(state, 'phone');
+  assert.equal(pairDevice(state, 'phone', code2.pairingCode.split('.')[1]), null);
+  assert.equal(state.voipConfig.acrAgents.phone.generation, generation);
+  assert.equal(pendingDial(state, 'phone', original.accountId, original.token, Date.now()), null);
+  const next = pairDevice(state, 'phone', code3.pairingCode.split('.')[1]);
+  assert.equal(pendingDial(state, 'phone', original.accountId, original.token, Date.now()), undefined);
+  assert.equal(pendingDial(state, 'phone', next.accountId, next.token, Date.now()), null);
+  state.voipConfig.acrDevices.phone.userId = 'other-owner';
+  const reassigned = linkDevice(state, 'phone');
+  assert.equal(reassigned.paired, false);
+  assert.equal(state.voipConfig.acrAgents.phone.tokenHash, undefined);
+  assert.equal(state.voipConfig.acrAgents.phone.generation, undefined);
+  assert.equal(pendingDial(state, 'phone', next.accountId, next.token, Date.now()), undefined);
 });
 
 test('ACR skips audio shorter than two seconds before saving; two seconds and unknown durations remain accepted', async () => {

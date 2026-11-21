@@ -1043,7 +1043,12 @@ test('ACR-assigned users see direct GSM actions on files and cards even when Ver
     );
     assert.equal(panel.querySelector('summary, [data-dial-phone], [data-voip-diagnose]'), null);
     await buttons[1].onclick();
-    assert.deepEqual(sent[0], { documentId: 'test-file', phone: phones[1].phone, deviceId: 'test-android' });
+    assert.deepEqual(sent[0], {
+      documentId: 'test-file',
+      phone: phones[1].phone,
+      deviceId: 'test-android',
+      requireAutomatic: true,
+    });
     assert.match(panel.querySelector('[data-voip-feedback]').textContent, /arama komutunu aldı/);
 
     for (const cardType of ['client', 'personnel']) {
@@ -1058,6 +1063,7 @@ test('ACR-assigned users see direct GSM actions on files and cards even when Ver
         cardId: 'test-' + cardType,
         phone: phones[1].phone,
         deviceId: 'test-android',
+        requireAutomatic: true,
       });
       card.remove();
     }
@@ -1074,11 +1080,63 @@ test('ACR-assigned users see direct GSM actions on files and cards even when Ver
       documentId: 'test-file',
       phone: phones[0].phone,
       deviceId: 'second-android',
+      requireAutomatic: true,
     });
   } finally {
     dom.window.close();
   }
 });
+test('desktop GSM actions require automatic delivery and show actionable pairing feedback; Android can still open its dialer', async () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM(
+    '<section><button data-acr-send="phone">GSM ile ara</button><div data-acr-link></div><p role="status"></p></section>',
+    { url: 'https://example.test', runScripts: 'outside-only' },
+  );
+  const w = dom.window;
+  try {
+    w.eval(await fs.readFile('outputs/icrapro/workspace-voip.js', 'utf8'));
+    const view = w.document.querySelector('section');
+    const button = view.querySelector('button');
+    const status = view.querySelector('[role="status"]');
+    const sent = [];
+    w.voipApi = async (route, method, body) => {
+      sent.push(body);
+      assert.equal(route, 'acr-dials');
+      throw Error(
+        'Bu telefonun otomatik arama bağlantısı eşleşmemiş. HAN GSM Bağlantısı uygulamasında eşleştirin.',
+      );
+    };
+    w.bindVoipAcrDial(view, [{ id: 'phone', label: 'Ofis' }], {
+      target: () => ({ documentId: 'd', phone: '905320000001' }),
+      status,
+      visible: () => true,
+    });
+    await button.onclick();
+    assert.equal(sent[0].requireAutomatic, true);
+    assert.match(status.textContent, /HAN GSM Bağlantısı/);
+    assert.doesNotMatch(status.textContent, /aynı hesapla|Bekleyen GSM|için hazır/);
+    assert.equal(button.disabled, false);
+    assert.equal(view.querySelector('[data-acr-link]').childElementCount, 0);
+
+    Object.defineProperty(w.navigator, 'userAgentData', {
+      value: { platform: 'Android' },
+      configurable: true,
+    });
+    w.voipApi = async (route, method, body) => {
+      sent.push(body);
+      return body.dialId
+        ? { dial: { phone: '905320000001', readyUntil: new Date(Date.now() + 30000).toISOString() } }
+        : { dial: { id: 'manual' } };
+    };
+    await button.onclick();
+    assert.equal(Object.hasOwn(sent[1], 'requireAutomatic'), false);
+    assert.equal(sent[2].dialId, 'manual');
+    assert.equal(view.querySelector('a').href, 'tel:+905320000001');
+  } finally {
+    dom.window.close();
+  }
+});
+
 test('live call workspace preserves typed notes across polling, then saves the chosen result after hangup', async () => {
   const { JSDOM } = require('jsdom');
   const dom = new JSDOM('<dialog id="borrowerDetail" open><button data-open-voip>☎ Ara</button></dialog>', {
